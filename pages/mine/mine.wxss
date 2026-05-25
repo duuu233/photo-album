@@ -1,9 +1,10 @@
 .mine-page {
   background:
-    linear-gradient(180deg, #eef8f5 0%, #f5f7fb 330rpx, #f5f7fb 100%);
+    radial-gradient(circle at 50% 0%, rgba(235, 95, 27, 0.16), transparent 280rpx),
+    linear-gradient(180deg, #f6f7fb 0%, #eef2f8 100%);
 }
 
-.mine-profile {
+.profile-card {
   display: flex;
   align-items: center;
   gap: 22rpx;
@@ -13,10 +14,10 @@
 .avatar-btn,
 .avatar,
 .avatar-skeleton {
-  width: 112rpx;
-  height: 112rpx;
+  width: 116rpx;
+  height: 116rpx;
   overflow: hidden;
-  border-radius: 8rpx;
+  border-radius: 30rpx;
 }
 
 .avatar-skeleton {
@@ -30,31 +31,24 @@
 
 .nickname-input {
   width: 100%;
-  min-height: 56rpx;
-  color: #172133;
+  min-height: 58rpx;
+  color: #232323;
   font-size: 38rpx;
-  font-weight: 800;
+  font-weight: 900;
 }
 
-.phone-line {
-  margin-top: 6rpx;
-  color: #667085;
-  font-size: 25rpx;
-}
-
-.profile-edit {
-  min-width: 72rpx;
-  color: #1769e0;
-  font-size: 26rpx;
-  font-weight: 600;
+.edit-btn {
+  min-width: 102rpx;
+  min-height: 62rpx;
+  font-size: 24rpx;
 }
 
 .skeleton-line {
   width: 210rpx;
   height: 24rpx;
   margin-top: 16rpx;
-  border-radius: 8rpx;
   background: #eef2f6;
+  border-radius: 999rpx;
 }
 
 .skeleton-line--wide {
@@ -76,8 +70,8 @@
   align-items: center;
   justify-content: center;
   gap: 8rpx;
-  min-height: 104rpx;
-  border-right: 1rpx solid #edf1f6;
+  min-height: 112rpx;
+  border-right: 1rpx solid #edf0f5;
 }
 
 .stat-item:last-child {
@@ -85,13 +79,13 @@
 }
 
 .stat-value {
-  color: #172133;
-  font-size: 42rpx;
-  font-weight: 800;
+  color: #232323;
+  font-size: 44rpx;
+  font-weight: 900;
 }
 
 .stat-label {
-  color: #667085;
+  color: #8b9098;
   font-size: 24rpx;
 }
 
@@ -102,46 +96,47 @@
 }
 
 .quick-card {
-  min-height: 210rpx;
+  min-height: 214rpx;
   padding: 26rpx;
-  border: 1rpx solid #e6ebf2;
-  border-radius: 8rpx;
   text-align: left;
   background: #ffffff;
+  border: 1rpx solid #e5ebf3;
+  border-radius: 20rpx;
+  box-shadow: 0 12rpx 32rpx rgba(64, 77, 97, 0.08);
 }
 
 .quick-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 66rpx;
-  height: 66rpx;
-  border-radius: 8rpx;
+  width: 68rpx;
+  height: 68rpx;
   color: #ffffff;
+  border-radius: 22rpx;
   font-size: 26rpx;
-  font-weight: 800;
+  font-weight: 900;
 }
 
 .quick-card--album .quick-icon {
-  background: #1769e0;
+  background: #eb5f1b;
 }
 
 .quick-card--device .quick-icon {
-  background: #0b7a6b;
+  background: #2f6f75;
 }
 
 .quick-title {
   display: block;
   margin-top: 22rpx;
-  color: #172133;
+  color: #232323;
   font-size: 31rpx;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .quick-desc {
   display: block;
-  margin-top: 6rpx;
-  color: #667085;
+  margin-top: 8rpx;
+  color: #8b9098;
   font-size: 23rpx;
 }
 
@@ -149,26 +144,11 @@
   overflow: hidden;
 }
 
-.list-cell {
-  min-height: 118rpx;
-}
-
 .cell-title {
-  color: #172133;
+  margin-bottom: 8rpx;
+  color: #232323;
   font-size: 29rpx;
-  font-weight: 700;
-}
-
-.cell-desc {
-  margin-top: 7rpx;
-  color: #7a8797;
-  font-size: 23rpx;
-}
-
-.cell-arrow {
-  color: #98a2b3;
-  font-size: 42rpx;
-  line-height: 1;
+  font-weight: 800;
 }
 
 .bind-phone {

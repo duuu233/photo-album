@@ -34,6 +34,8 @@ Page({
     bluetooth.stopDiscovery()
   },
 
+  noop() {},
+
   async scan() {
     if (this.data.scanning) {
       return

@@ -6,8 +6,7 @@ const defaultAvatarUrl = 'https://mmbiz.qpic.cn/mmbiz/icTdbqWNOwNRna42FI242Lcia0
 Page({
   data: {
     userInfo: null,
-    defaultAvatarUrl,
-    emailInput: ''
+    defaultAvatarUrl
   },
 
   onShow() {
@@ -16,10 +15,7 @@ Page({
 
   async loadUser() {
     const userInfo = await api.getUserProfile()
-    this.setData({
-      userInfo,
-      emailInput: userInfo.email || ''
-    })
+    this.syncUser(userInfo)
   },
 
   async onChooseAvatar(e) {
@@ -31,12 +27,6 @@ Page({
   onNicknameInput(e) {
     this.setData({
       'userInfo.nickName': e.detail.value
-    })
-  },
-
-  onEmailInput(e) {
-    this.setData({
-      emailInput: e.detail.value
     })
   },
 
@@ -59,10 +49,6 @@ Page({
       nickName
     })
 
-    if (this.data.emailInput) {
-      await api.bindEmail(this.data.emailInput)
-    }
-
     wx.showToast({
       title: '已保存',
       icon: 'success'
@@ -84,6 +70,26 @@ Page({
     this.syncUser(userInfo)
   },
 
+  goBindEmail() {
+    wx.navigateTo({
+      url: '/subpackages/settings/bind-email/bind-email'
+    })
+  },
+
+  goChangeEmail() {
+    wx.navigateTo({
+      url: '/subpackages/settings/change-email/change-email'
+    })
+  },
+
+  goEmail() {
+    if (this.data.userInfo && this.data.userInfo.email) {
+      this.goChangeEmail()
+      return
+    }
+    this.goBindEmail()
+  },
+
   async updateProfile(payload) {
     const userInfo = await api.updateUserProfile(payload)
     this.syncUser(userInfo)
@@ -93,8 +99,7 @@ Page({
     app.globalData.userInfo = userInfo
     wx.setStorageSync('userInfo', userInfo)
     this.setData({
-      userInfo,
-      emailInput: userInfo.email || this.data.emailInput
+      userInfo
     })
   }
 })

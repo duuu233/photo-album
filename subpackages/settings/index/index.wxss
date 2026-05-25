@@ -1,7 +1,0 @@
-.settings-list {
-  overflow: hidden;
-}
-
-.logout-btn {
-  margin-top: 24rpx;
-}

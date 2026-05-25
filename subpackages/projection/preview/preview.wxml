@@ -1,4 +1,11 @@
-<view class="page safe-bottom">
+<view class="page preview-page safe-bottom">
+  <view class="page-title">
+    <view>
+      <view class="page-title__main">照片预览</view>
+      <view class="page-title__sub">调整展示方式后投屏到智能相框。</view>
+    </view>
+  </view>
+
   <view class="device-card card" wx:if="{{device}}">
     <view>
       <view class="device-name">{{device.name}}</view>
@@ -7,7 +14,7 @@
     <button class="link-btn" bindtap="chooseDevice">切换</button>
   </view>
   <view class="device-card card" wx:else>
-    <view>未选择设备</view>
+    <view class="device-name">未选择设备</view>
     <button class="link-btn" bindtap="chooseDevice">选择设备</button>
   </view>
 
@@ -15,14 +22,33 @@
     {{images.length}} 张照片，约 {{totalSize}}MB{{enoughMemory ? '，可投屏' : '，设备内存不足'}}
   </view>
 
-  <view class="preview-grid" wx:if="{{images.length}}">
-    <view class="preview-item" wx:for="{{images}}" wx:key="tempFilePath">
-      <image class="preview-img" src="{{item.tempFilePath}}" mode="aspectFill"></image>
-      <button class="remove-btn" data-index="{{index}}" bindtap="removeImage">×</button>
+  <view class="preview-stage card" wx:if="{{activeImage}}">
+    <image wx:if="{{activeImage.tempFilePath || activeImage.url}}" class="main-image {{fitMode}}" src="{{activeImage.tempFilePath || activeImage.url}}" mode="{{fitMode === 'contain' ? 'aspectFit' : 'aspectFill'}}"></image>
+    <view wx:else class="main-image image-placeholder">图片占位</view>
+    <view class="crop-frame"></view>
+  </view>
+
+  <view class="tool-panel card" wx:if="{{activeImage}}">
+    <view class="tool-title">调整图片</view>
+    <view class="tool-row">
+      <button class="tool-btn" bindtap="rotateLeft">↶</button>
+      <button class="tool-btn" bindtap="rotateRight">↷</button>
+      <button class="tool-btn {{fitMode === 'cover' ? 'active' : ''}}" data-mode="cover" bindtap="setFitMode">填充</button>
+      <button class="tool-btn {{fitMode === 'contain' ? 'active' : ''}}" data-mode="contain" bindtap="setFitMode">完整</button>
     </view>
   </view>
 
+  <scroll-view class="thumb-strip" scroll-x wx:if="{{images.length}}">
+    <view class="thumb-track">
+      <view class="thumb {{activeIndex === index ? 'active' : ''}}" wx:for="{{images}}" wx:key="tempFilePath" data-index="{{index}}" bindtap="selectImage">
+        <image wx:if="{{item.tempFilePath || item.url}}" class="thumb-img" src="{{item.tempFilePath || item.url}}" mode="aspectFill"></image>
+        <view wx:else class="thumb-img image-placeholder">图片</view>
+        <button class="remove-btn" data-index="{{index}}" bindtap="removeImage">×</button>
+      </view>
+    </view>
+  </scroll-view>
+
   <view class="empty card" wx:else>暂无待投屏照片</view>
 
-  <button class="primary-btn submit-btn" bindtap="confirmProjection">确认投屏</button>
+  <button class="primary-btn submit-btn" loading="{{projecting}}" bindtap="confirmProjection">{{projecting ? '投屏中' : '确认投屏'}}</button>
 </view>

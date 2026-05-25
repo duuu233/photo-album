@@ -1,38 +1,71 @@
 const api = require('../../../utils/api')
 
+function calcTotalSize(images) {
+  return Number(images.reduce((sum, image) => sum + Number(image.sizeMb || image.size || 0), 0).toFixed(2))
+}
+
 Page({
   data: {
     device: null,
     images: [],
+    activeImage: null,
+    activeIndex: 0,
     totalSize: 0,
-    enoughMemory: true
+    enoughMemory: true,
+    fitMode: 'cover',
+    projecting: false
   },
 
   onLoad() {
     const pending = wx.getStorageSync('pendingProjection') || {}
     const images = pending.images || []
     const device = pending.device || null
-    const totalSize = Number(images.reduce((sum, image) => sum + Number(image.sizeMb || 0), 0).toFixed(2))
-    const enoughMemory = device ? device.usedMemory + totalSize <= device.totalMemory : false
+    this.updateImageState(images, device, 0)
+  },
+
+  updateImageState(images, device, activeIndex) {
+    const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1))
+    const totalSize = calcTotalSize(images)
 
     this.setData({
       device,
       images,
+      activeIndex: safeIndex,
+      activeImage: images[safeIndex] || null,
       totalSize,
-      enoughMemory
+      enoughMemory: device ? device.usedMemory + totalSize <= device.totalMemory : false
     })
+  },
+
+  selectImage(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    this.updateImageState(this.data.images, this.data.device, index)
   },
 
   removeImage(e) {
     const index = Number(e.currentTarget.dataset.index)
     const images = this.data.images.filter((_, itemIndex) => itemIndex !== index)
-    const totalSize = Number(images.reduce((sum, image) => sum + Number(image.sizeMb || 0), 0).toFixed(2))
-    const device = this.data.device
+    const nextIndex = index >= images.length ? images.length - 1 : index
+    this.updateImageState(images, this.data.device, nextIndex)
+  },
 
+  setFitMode(e) {
     this.setData({
-      images,
-      totalSize,
-      enoughMemory: device ? device.usedMemory + totalSize <= device.totalMemory : false
+      fitMode: e.currentTarget.dataset.mode
+    })
+  },
+
+  rotateLeft() {
+    wx.showToast({
+      title: '已预留旋转事件',
+      icon: 'none'
+    })
+  },
+
+  rotateRight() {
+    wx.showToast({
+      title: '已预留旋转事件',
+      icon: 'none'
     })
   },
 
@@ -69,19 +102,39 @@ Page({
       return
     }
 
-    // 真实接口一般先上传文件到对象存储，再把文件 key、设备 ID 和排序提交给后端。
-    await api.uploadProjection({
-      deviceId: this.data.device.id,
-      images: this.data.images
+    this.setData({
+      projecting: true
     })
-    wx.removeStorageSync('pendingProjection')
-    wx.showToast({
-      title: '投屏成功',
-      icon: 'success'
-    })
-    setTimeout(() => {
-      wx.navigateBack()
-    }, 600)
+
+    try {
+      await api.uploadProjection({
+        deviceId: this.data.device.id,
+        images: this.data.images
+      })
+      wx.removeStorageSync('pendingProjection')
+      wx.setStorageSync('lastProjectionResult', {
+        status: 'success',
+        deviceName: this.data.device.name,
+        imageCount: this.data.images.length
+      })
+      wx.redirectTo({
+        url: '/subpackages/projection/result/result?status=success'
+      })
+    } catch (error) {
+      wx.setStorageSync('lastProjectionResult', {
+        status: 'fail',
+        deviceName: this.data.device ? this.data.device.name : '',
+        imageCount: this.data.images.length,
+        message: error.message || '投屏失败'
+      })
+      wx.redirectTo({
+        url: '/subpackages/projection/result/result?status=fail'
+      })
+    } finally {
+      this.setData({
+        projecting: false
+      })
+    }
   },
 
   chooseDevice() {
@@ -98,9 +151,6 @@ Page({
       return
     }
 
-    this.setData({
-      device: selectedDevice,
-      enoughMemory: selectedDevice.usedMemory + this.data.totalSize <= selectedDevice.totalMemory
-    })
+    this.updateImageState(this.data.images, selectedDevice, this.data.activeIndex)
   }
 })

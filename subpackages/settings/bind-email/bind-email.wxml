@@ -1,0 +1,28 @@
+<view class="page safe-bottom">
+  <view class="page-title">
+    <view>
+      <view class="page-title__main">绑定邮箱</view>
+      <view class="page-title__sub">邮箱可用于接收账号和设备安全通知。</view>
+    </view>
+  </view>
+
+  <view class="card form-panel">
+    <view class="form-row">
+      <view class="form-label">邮箱</view>
+      <input class="form-input" type="text" value="{{email}}" placeholder="请输入邮箱" data-name="email" bindinput="updateField" />
+    </view>
+    <view class="form-row code-row">
+      <view class="code-main">
+        <view class="form-label">验证码</view>
+        <input class="form-input" type="number" value="{{code}}" placeholder="请输入验证码" data-name="code" bindinput="updateField" />
+      </view>
+      <button class="secondary-btn code-btn" bindtap="sendCode">获取</button>
+    </view>
+    <view class="form-row">
+      <view class="form-label">登录密码</view>
+      <input class="form-input" password value="{{password}}" placeholder="用于确认本人操作" data-name="password" bindinput="updateField" />
+    </view>
+  </view>
+
+  <button class="primary-btn submit-btn {{canSubmit ? '' : 'disabled'}}" disabled="{{!canSubmit}}" bindtap="submit">完成绑定</button>
+</view>

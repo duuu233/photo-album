@@ -1,17 +1,9 @@
 {
   "pages": [
     "pages/home/home",
-    "pages/wechat-login/wechat-login",
-    "pages/mine/mine",
-    "pages/crop-demo/crop-demo"
+    "pages/mine/mine"
   ],
   "subpackages": [
-    {
-      "root": "subpackages/auth",
-      "pages": [
-        "forgot-password/forgot-password"
-      ]
-    },
     {
       "root": "subpackages/device",
       "pages": [
@@ -32,21 +24,15 @@
       "pages": [
         "preview/preview",
         "records/records",
-        "guide/guide",
         "result/result"
       ]
     },
     {
       "root": "subpackages/settings",
       "pages": [
-        "index/index",
         "profile/profile",
         "bind-email/bind-email",
-        "change-email/change-email",
-        "modify-password/modify-password",
-        "language/language",
-        "about/about",
-        "account/account"
+        "change-email/change-email"
       ]
     }
   ],

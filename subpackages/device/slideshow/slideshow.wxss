@@ -1,0 +1,74 @@
+.setting-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+  padding: 28rpx;
+}
+
+.setting-title {
+  margin-bottom: 8rpx;
+  color: #232323;
+  font-size: 32rpx;
+  font-weight: 850;
+}
+
+.list-panel {
+  overflow: hidden;
+}
+
+.cell-title {
+  margin-bottom: 8rpx;
+  color: #232323;
+  font-size: 29rpx;
+  font-weight: 800;
+}
+
+.picker-value {
+  color: #eb5f1b;
+  font-size: 26rpx;
+  font-weight: 850;
+}
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18rpx;
+}
+
+.mode-card {
+  min-height: 230rpx;
+  padding: 26rpx;
+  text-align: left;
+  border-color: #e5ebf3;
+}
+
+.mode-card.active {
+  border-color: #eb5f1b;
+  box-shadow: 0 16rpx 34rpx rgba(235, 95, 27, 0.16);
+}
+
+.mode-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64rpx;
+  height: 64rpx;
+  margin-bottom: 20rpx;
+  color: #ffffff;
+  background: #2f6f75;
+  border-radius: 20rpx;
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.mode-card.active .mode-icon {
+  background: #eb5f1b;
+}
+
+.mode-title {
+  margin-bottom: 8rpx;
+  color: #232323;
+  font-size: 30rpx;
+  font-weight: 850;
+}

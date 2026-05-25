@@ -1,16 +1,16 @@
 <view class="page mine-page safe-bottom">
-  <view class="mine-profile card" wx:if="{{userInfo}}">
+  <view class="profile-card card" wx:if="{{userInfo}}">
     <button class="avatar-btn" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar">
       <image class="avatar" src="{{userInfo.avatarUrl || defaultAvatarUrl}}" mode="aspectFill"></image>
     </button>
     <view class="profile-main">
       <input class="nickname-input" type="nickname" value="{{userInfo.nickName || '微信用户'}}" bindblur="onNicknameBlur" />
-      <view class="phone-line">{{userInfo.phone || '未绑定手机号'}}</view>
+      <view class="caption">{{userInfo.email || '未绑定邮箱'}} · {{userInfo.phone || '未绑定手机号'}}</view>
     </view>
-    <button class="profile-edit" bindtap="goProfile">编辑</button>
+    <button class="secondary-btn edit-btn" bindtap="goProfile">编辑</button>
   </view>
 
-  <view class="mine-profile mine-profile--loading card" wx:else>
+  <view class="profile-card card" wx:else>
     <view class="avatar-skeleton"></view>
     <view class="profile-main">
       <view class="skeleton-line skeleton-line--wide"></view>
@@ -34,60 +34,42 @@
   </view>
 
   <view class="section">
-    <view class="section-title">
-      <text>常用功能</text>
-    </view>
+    <view class="section-title">常用功能</view>
     <view class="quick-grid">
       <button class="quick-card quick-card--album" bindtap="goAlbum">
-        <text class="quick-icon">相</text>
+        <text class="quick-icon">图</text>
         <text class="quick-title">我的相册</text>
-        <text class="quick-desc">管理投屏照片</text>
+        <text class="quick-desc">管理照片和投屏素材</text>
       </button>
       <button class="quick-card quick-card--device" bindtap="goDevices">
         <text class="quick-icon">框</text>
         <text class="quick-title">我的设备</text>
-        <text class="quick-desc">绑定与播放设置</text>
+        <text class="quick-desc">绑定、删除和轮播设置</text>
       </button>
     </view>
   </view>
 
   <view class="section">
-    <view class="section-title">
-      <text>账户服务</text>
-    </view>
+    <view class="section-title">账户服务</view>
     <view class="card mine-list">
       <button class="list-cell" bindtap="goRecords">
         <view>
           <view class="cell-title">投屏管理</view>
-          <view class="cell-desc">查看成功与失败记录</view>
+          <view class="caption">查看成功与失败记录</view>
         </view>
         <text class="cell-arrow">›</text>
       </button>
-      <button class="list-cell" bindtap="goGuide">
+      <button class="list-cell" bindtap="goProfile">
         <view>
-          <view class="cell-title">操作指南</view>
-          <view class="cell-desc">设备连接与照片投屏说明</view>
-        </view>
-        <text class="cell-arrow">›</text>
-      </button>
-      <button class="list-cell" bindtap="goModifyPassword">
-        <view>
-          <view class="cell-title">修改密码</view>
-          <view class="cell-desc">更新账号登录密码</view>
-        </view>
-        <text class="cell-arrow">›</text>
-      </button>
-      <button class="list-cell" bindtap="goSettings">
-        <view>
-          <view class="cell-title">设置</view>
-          <view class="cell-desc">语言、协议与账号管理</view>
+          <view class="cell-title">个人信息</view>
+          <view class="caption">头像、昵称、邮箱和手机号</view>
         </view>
         <text class="cell-arrow">›</text>
       </button>
     </view>
   </view>
 
-  <button class="bind-phone secondary-btn" open-type="getPhoneNumber" bindgetphonenumber="bindPhone" wx:if="{{userInfo && !userInfo.phone}}">
+  <button class="secondary-btn bind-phone" open-type="getPhoneNumber" bindgetphonenumber="bindPhone" wx:if="{{userInfo && !userInfo.phone}}">
     微信快捷绑定手机号
   </button>
 </view>

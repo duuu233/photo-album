@@ -1,60 +1,103 @@
-<view class="page safe-bottom" wx:if="{{device}}">
+<view class="page detail-page safe-bottom" wx:if="{{device}}">
   <view class="summary card">
-    <view class="summary-head">
-      <view>
+    <view class="device-top">
+      <view class="frame-preview">
+        <view class="frame-screen image-placeholder">图片占位</view>
+      </view>
+      <view class="device-main">
         <view class="device-name">{{device.name}}</view>
         <view class="caption">{{device.deviceNo}} · {{device.lastOnline}}</view>
+        <view class="tag {{device.connected ? '' : 'danger'}} status-tag">
+          <view class="status-dot"></view>
+          {{device.connected ? '已连接' : '未连接'}}
+        </view>
       </view>
-      <text class="tag {{device.connected ? '' : 'danger'}}">{{device.connected ? '已连接' : '未连接'}}</text>
     </view>
+
     <view class="metric-grid">
-      <view>
+      <view class="metric-card">
         <view class="metric-value">{{device.battery}}%</view>
         <view class="caption">设备电量</view>
       </view>
-      <view>
+      <view class="metric-card">
         <view class="metric-value">{{device.usedMemory}}/{{device.totalMemory}}MB</view>
         <view class="caption">设备内存</view>
       </view>
     </view>
+
     <view class="memory-track">
       <view class="memory-bar" style="width: {{memoryPercent}}%;"></view>
     </view>
   </view>
 
-  <view class="section card">
+  <view class="section card list-panel">
     <button class="list-cell" bindtap="renameDevice">
-      <text>设备名称编辑</text>
-      <text class="muted">{{device.name}}</text>
+      <view>
+        <view class="cell-title">设备名称</view>
+        <view class="caption">{{device.name}}</view>
+      </view>
+      <text class="cell-arrow">›</text>
+    </button>
+    <button class="list-cell" bindtap="goSlideshow">
+      <view>
+        <view class="cell-title">轮播设置</view>
+        <view class="caption">{{device.carouselEnabled ? '已开启' : '已关闭'}} · {{device.intervalHours}} 小时切换</view>
+      </view>
+      <text class="cell-arrow">›</text>
     </button>
     <view class="list-cell">
-      <text>开启关闭轮播模式</text>
-      <switch checked="{{device.carouselEnabled}}" bindchange="toggleCarousel" />
-    </view>
-    <view class="list-cell">
-      <text>时后轮播下一张</text>
-      <picker range="{{intervalOptions}}" value="{{intervalIndex}}" bindchange="changeInterval">
-        <text class="muted">{{device.intervalHours}} 小时</text>
-      </picker>
-    </view>
-    <view class="list-cell">
-      <text>轮播方式</text>
-      <radio-group class="radio-group" bindchange="changePlayback">
-        <label><radio value="0" checked="{{device.playbackMode === 'order'}}" />顺序</label>
-        <label><radio value="1" checked="{{device.playbackMode === 'random'}}" />随机</label>
-      </radio-group>
+      <view>
+        <view class="cell-title">轮播开关</view>
+        <view class="caption">快速启用或暂停设备轮播</view>
+      </view>
+      <switch checked="{{device.carouselEnabled}}" color="#eb5f1b" bindchange="toggleCarousel" />
     </view>
   </view>
 
-  <view class="section card">
+  <view class="section card list-panel">
     <button class="list-cell" bindtap="clearCopies">
-      <text>一键清空</text>
-      <text class="muted">保留相册数据</text>
+      <view>
+        <view class="cell-title">一键清空</view>
+        <view class="caption">仅清理设备副本，保留我的相册</view>
+      </view>
+      <text class="cell-arrow">›</text>
     </button>
-    <button class="list-cell danger-cell" bindtap="formatDevice">
-      <text>格式化设备</text>
-      <text>删除设备照片</text>
+    <button class="list-cell" bindtap="formatDevice">
+      <view>
+        <view class="cell-title">格式化设备</view>
+        <view class="caption">清空设备照片和存储占用</view>
+      </view>
+      <text class="danger-text">格式化</text>
     </button>
+    <button class="list-cell danger-cell" bindtap="showDeleteConfirm">
+      <view>
+        <view class="cell-title">删除设备</view>
+        <view class="caption">解除绑定并移除设备记录</view>
+      </view>
+      <text class="danger-text">删除</text>
+    </button>
+  </view>
+
+  <view class="modal-mask" wx:if="{{showClearConfirm}}" bindtap="hideClearConfirm">
+    <view class="modal-panel" catchtap="noop">
+      <view class="modal-title">一键清空</view>
+      <view class="modal-desc">将删除相框设备中的照片副本，但不会删除你的小程序相册记录。</view>
+      <view class="modal-actions">
+        <button class="ghost-btn" bindtap="hideClearConfirm">取消</button>
+        <button class="primary-btn" bindtap="confirmClearCopies">清空</button>
+      </view>
+    </view>
+  </view>
+
+  <view class="modal-mask" wx:if="{{showDeleteConfirm}}" bindtap="hideDeleteConfirm">
+    <view class="modal-panel" catchtap="noop">
+      <view class="modal-title">删除设备</view>
+      <view class="modal-desc">删除后需要重新搜索并绑定该相框，相关投屏记录也会从当前账号移除。</view>
+      <view class="modal-actions">
+        <button class="ghost-btn" bindtap="hideDeleteConfirm">取消</button>
+        <button class="danger-btn" bindtap="confirmDeleteDevice">删除</button>
+      </view>
+    </view>
   </view>
 </view>
 

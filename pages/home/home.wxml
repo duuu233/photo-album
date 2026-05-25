@@ -5,7 +5,6 @@
       <view class="hero-title">智能相框</view>
       <view class="hero-subtitle">把手机里的照片快速投到已绑定的相框设备，适合家庭相册、旅行记录和纪念日展示。</view>
     </view>
-    <button class="guide-chip" bindtap="goGuide">指南</button>
   </view>
 
   <view class="device-panel card" wx:if="{{selectedDevice}}">

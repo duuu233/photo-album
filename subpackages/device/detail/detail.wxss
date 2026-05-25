@@ -2,52 +2,92 @@
   padding: 28rpx;
 }
 
-.summary-head {
+.device-top {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20rpx;
+  gap: 24rpx;
+}
+
+.frame-preview {
+  flex: 0 0 auto;
+  padding: 10rpx;
+  background: #2d3138;
+  border-radius: 22rpx;
+  box-shadow: 0 18rpx 36rpx rgba(35, 35, 35, 0.18);
+}
+
+.frame-screen {
+  width: 140rpx;
+  height: 176rpx;
+  border-radius: 14rpx;
+}
+
+.device-main {
+  flex: 1;
+  min-width: 0;
 }
 
 .device-name {
+  margin-top: 6rpx;
   margin-bottom: 8rpx;
-  font-size: 36rpx;
-  font-weight: 700;
+  color: #232323;
+  font-size: 38rpx;
+  font-weight: 900;
+}
+
+.status-tag {
+  margin-top: 18rpx;
 }
 
 .metric-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20rpx;
-  margin-top: 28rpx;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 18rpx;
+  margin-top: 30rpx;
+}
+
+.metric-card {
+  padding: 22rpx;
+  background: #f7f9fc;
+  border-radius: 18rpx;
 }
 
 .metric-value {
   margin-bottom: 8rpx;
-  font-size: 34rpx;
-  font-weight: 700;
+  color: #232323;
+  font-size: 32rpx;
+  font-weight: 900;
 }
 
 .memory-track {
   height: 14rpx;
-  margin-top: 24rpx;
+  margin-top: 26rpx;
   overflow: hidden;
-  background: #edf1f6;
-  border-radius: 8rpx;
+  background: #edf1f7;
+  border-radius: 999rpx;
 }
 
 .memory-bar {
   height: 100%;
-  background: #1769e0;
+  background: linear-gradient(90deg, #eb5f1b, #ff9c45);
 }
 
-.radio-group {
-  display: flex;
-  gap: 20rpx;
-  color: #475467;
-  font-size: 24rpx;
+.list-panel {
+  overflow: hidden;
 }
 
-.danger-cell {
-  color: #c72e2e;
+.cell-title {
+  margin-bottom: 8rpx;
+  color: #232323;
+  font-size: 29rpx;
+  font-weight: 800;
+}
+
+.danger-text {
+  color: #c7372f;
+  font-size: 26rpx;
+  font-weight: 800;
+}
+
+.danger-cell .cell-title {
+  color: #c7372f;
 }

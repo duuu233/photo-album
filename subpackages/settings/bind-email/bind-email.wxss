@@ -1,0 +1,25 @@
+.form-panel {
+  overflow: hidden;
+}
+
+.code-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 18rpx;
+}
+
+.code-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.code-btn {
+  min-width: 132rpx;
+  min-height: 78rpx;
+  margin-bottom: 0;
+  font-size: 24rpx;
+}
+
+.submit-btn {
+  margin-top: 28rpx;
+}

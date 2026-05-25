@@ -1,0 +1,74 @@
+.result-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 80rpx;
+}
+
+.result-card {
+  width: 100%;
+  padding: 58rpx 34rpx 34rpx;
+  text-align: center;
+}
+
+.result-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 148rpx;
+  height: 148rpx;
+  margin: 0 auto 30rpx;
+  color: #ffffff;
+  background: #eb5f1b;
+  border-radius: 44rpx;
+  font-size: 58rpx;
+  font-weight: 900;
+  box-shadow: 0 18rpx 40rpx rgba(235, 95, 27, 0.2);
+}
+
+.result-icon.success {
+  background: #1d8a5f;
+  box-shadow: 0 18rpx 40rpx rgba(29, 138, 95, 0.2);
+}
+
+.result-icon.fail {
+  background: #c7372f;
+  box-shadow: 0 18rpx 40rpx rgba(199, 55, 47, 0.2);
+}
+
+.result-title {
+  color: #232323;
+  font-size: 42rpx;
+  font-weight: 900;
+}
+
+.result-desc {
+  margin-top: 14rpx;
+  color: #6d747e;
+  font-size: 26rpx;
+  line-height: 1.65;
+}
+
+.result-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18rpx;
+  margin-top: 34rpx;
+}
+
+.result-meta view {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  padding: 22rpx;
+  background: #f7f9fc;
+  border-radius: 18rpx;
+  font-weight: 850;
+}
+
+.result-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18rpx;
+  margin-top: 38rpx;
+}

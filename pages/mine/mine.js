@@ -105,27 +105,9 @@ Page({
     })
   },
 
-  goGuide() {
-    wx.navigateTo({
-      url: '/subpackages/projection/guide/guide'
-    })
-  },
-
-  goSettings() {
-    wx.navigateTo({
-      url: '/subpackages/settings/index/index'
-    })
-  },
-
   goProfile() {
     wx.navigateTo({
       url: '/subpackages/settings/profile/profile'
-    })
-  },
-
-  goModifyPassword() {
-    wx.navigateTo({
-      url: '/subpackages/settings/modify-password/modify-password'
     })
   }
 })

@@ -15,7 +15,9 @@ Page({
     device: null,
     memoryPercent: 0,
     intervalOptions: [1, 2, 4, 8, 24],
-    intervalIndex: 1
+    intervalIndex: 1,
+    showClearConfirm: false,
+    showDeleteConfirm: false
   },
 
   onLoad(options) {
@@ -27,6 +29,8 @@ Page({
   onShow() {
     this.loadDetail()
   },
+
+  noop() {},
 
   async loadDetail() {
     const device = await api.getDeviceDetail(this.data.id)
@@ -108,28 +112,70 @@ Page({
     })
   },
 
+  goSlideshow() {
+    wx.navigateTo({
+      url: `/subpackages/device/slideshow/slideshow?id=${this.data.id}`
+    })
+  },
+
+  showClearConfirm() {
+    this.setData({
+      showClearConfirm: true
+    })
+  },
+
+  hideClearConfirm() {
+    this.setData({
+      showClearConfirm: false
+    })
+  },
+
   clearCopies() {
+    this.showClearConfirm()
+  },
+
+  async confirmClearCopies() {
     if (!this.data.device) {
       return
     }
 
-    wx.showModal({
-      title: '一键清空',
-      content: '仅删除设备中的照片副本，保留我的相册数据。',
-      confirmText: '清空',
-      success: async res => {
-        if (!res.confirm) {
-          return
-        }
-
-        await api.clearDevicePhotoCopies(this.data.id)
-        wx.showToast({
-          title: '已清空',
-          icon: 'success'
-        })
-        this.loadDetail()
-      }
+    await api.clearDevicePhotoCopies(this.data.id)
+    this.setData({
+      showClearConfirm: false
     })
+    wx.showToast({
+      title: '已清空',
+      icon: 'success'
+    })
+    this.loadDetail()
+  },
+
+  showDeleteConfirm() {
+    this.setData({
+      showDeleteConfirm: true
+    })
+  },
+
+  hideDeleteConfirm() {
+    this.setData({
+      showDeleteConfirm: false
+    })
+  },
+
+  async confirmDeleteDevice() {
+    if (!this.data.device) {
+      return
+    }
+
+    await api.deleteDevice(this.data.id)
+    if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === this.data.id) {
+      app.setSelectedDevice(null)
+    }
+    wx.showToast({
+      title: '已删除',
+      icon: 'success'
+    })
+    setTimeout(() => wx.navigateBack(), 500)
   },
 
   formatDevice() {
@@ -139,9 +185,9 @@ Page({
 
     wx.showModal({
       title: '格式化设备',
-      content: '格式化会删除设备详细信息与设备上的照片，请确认是否继续。',
+      content: '格式化会删除设备上的照片数据，请确认是否继续。',
       confirmText: '格式化',
-      confirmColor: '#c72e2e',
+      confirmColor: '#c7372f',
       success: async res => {
         if (!res.confirm) {
           return

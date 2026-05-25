@@ -1,0 +1,48 @@
+<view class="page safe-bottom" wx:if="{{device}}">
+  <view class="page-title">
+    <view>
+      <view class="page-title__main">轮播设置</view>
+      <view class="page-title__sub">{{device.name}} · 设置照片切换节奏和播放顺序。</view>
+    </view>
+  </view>
+
+  <view class="card setting-card">
+    <view>
+      <view class="setting-title">开启轮播</view>
+      <view class="caption">开启后相框会按设定间隔自动切换照片。</view>
+    </view>
+    <switch checked="{{device.carouselEnabled}}" color="#eb5f1b" bindchange="toggleCarousel" />
+  </view>
+
+  <view class="section card list-panel">
+    <view class="list-cell">
+      <view>
+        <view class="cell-title">切换间隔</view>
+        <view class="caption">每隔 {{device.intervalHours}} 小时切换下一张</view>
+      </view>
+      <picker range="{{intervalOptions}}" value="{{intervalIndex}}" bindchange="changeInterval">
+        <view class="picker-value">{{device.intervalHours}} 小时</view>
+      </picker>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">播放方式</view>
+    <view class="mode-grid">
+      <button class="mode-card card {{device.playbackMode === 'order' ? 'active' : ''}}" data-mode="order" bindtap="changePlayback">
+        <view class="mode-icon">1</view>
+        <view class="mode-title">顺序播放</view>
+        <view class="caption">按照上传或相册顺序轮播</view>
+      </button>
+      <button class="mode-card card {{device.playbackMode === 'random' ? 'active' : ''}}" data-mode="random" bindtap="changePlayback">
+        <view class="mode-icon">?</view>
+        <view class="mode-title">随机播放</view>
+        <view class="caption">每次随机展示不同照片</view>
+      </button>
+    </view>
+  </view>
+</view>
+
+<view class="page" wx:else>
+  <view class="empty card">设备不存在</view>
+</view>

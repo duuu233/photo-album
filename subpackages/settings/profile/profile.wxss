@@ -1,32 +1,54 @@
 .profile-card {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 16rpx;
-  padding: 34rpx;
+  gap: 24rpx;
+  padding: 30rpx;
 }
 
-.avatar-btn {
-  width: 132rpx;
-  height: 132rpx;
-  overflow: hidden;
-  border-radius: 8rpx;
-}
-
+.avatar-btn,
 .avatar {
   width: 132rpx;
   height: 132rpx;
+  overflow: hidden;
+  border-radius: 34rpx;
 }
 
-.phone-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.profile-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-name {
+  margin-bottom: 8rpx;
+  color: #232323;
+  font-size: 36rpx;
+  font-weight: 900;
+}
+
+.form-panel {
+  overflow: hidden;
+}
+
+.cell-title {
+  margin-bottom: 8rpx;
+  color: #232323;
+  font-size: 29rpx;
+  font-weight: 800;
+}
+
+.email-action {
+  color: #eb5f1b;
+  font-size: 26rpx;
+  font-weight: 850;
+}
+
+.email-action.warn {
+  color: #b5650f;
 }
 
 .phone-btn {
+  min-width: 132rpx;
   min-height: 64rpx;
-  min-width: 140rpx;
   font-size: 24rpx;
 }
 

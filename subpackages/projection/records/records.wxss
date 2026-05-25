@@ -1,3 +1,28 @@
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8rpx;
+  padding: 8rpx;
+  margin-bottom: 22rpx;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  min-height: 72rpx;
+  color: #6d747e;
+  border-radius: 14rpx;
+  font-size: 26rpx;
+  font-weight: 800;
+}
+
+.tab.active {
+  color: #ffffff;
+  background: #eb5f1b;
+}
+
 .record-card {
   margin-bottom: 18rpx;
   padding: 24rpx;
@@ -5,14 +30,51 @@
 
 .record-main {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20rpx;
-  margin-bottom: 20rpx;
+  align-items: center;
+  gap: 18rpx;
+}
+
+.record-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 74rpx;
+  height: 74rpx;
+  color: #ffffff;
+  background: #1d8a5f;
+  border-radius: 22rpx;
+  font-size: 38rpx;
+  font-weight: 900;
+}
+
+.record-icon.fail {
+  background: #c7372f;
+}
+
+.record-info {
+  flex: 1;
+  min-width: 0;
 }
 
 .record-title {
   margin-bottom: 8rpx;
-  font-size: 32rpx;
-  font-weight: 700;
+  color: #232323;
+  font-size: 31rpx;
+  font-weight: 850;
+}
+
+.record-message {
+  margin-top: 8rpx;
+  color: #555c66;
+  font-size: 24rpx;
+}
+
+.delete-btn {
+  margin-top: 20rpx;
+}
+
+.empty-title {
+  color: #232323;
+  font-size: 34rpx;
+  font-weight: 800;
 }

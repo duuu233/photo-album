@@ -66,9 +66,9 @@ Page({
 
     wx.showModal({
       title: '删除照片',
-      content: '会删除当前用户与设备的绑定关系，并从相册列表移除。',
+      content: '将从小程序相册中移除所选照片记录，设备副本状态会同步更新。',
       confirmText: '删除',
-      confirmColor: '#c72e2e',
+      confirmColor: '#c7372f',
       success: async res => {
         if (!res.confirm) {
           return

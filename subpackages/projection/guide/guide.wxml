@@ -1,9 +1,0 @@
-<view class="page safe-bottom">
-  <view class="guide-card card">
-    <view class="guide-title">投屏流程</view>
-    <view class="step" wx:for="{{steps}}" wx:key="*this">
-      <view class="step-index">{{index + 1}}</view>
-      <view class="step-text">{{item}}</view>
-    </view>
-  </view>
-</view>

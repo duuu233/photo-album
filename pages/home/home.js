@@ -79,12 +79,6 @@ Page({
     })
   },
 
-  goGuide() {
-    wx.navigateTo({
-      url: '/subpackages/projection/guide/guide'
-    })
-  },
-
   async chooseCamera() {
     await app.ensureLogin()
     try {

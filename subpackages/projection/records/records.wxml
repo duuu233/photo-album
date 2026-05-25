@@ -1,16 +1,39 @@
-<view class="page safe-bottom">
-  <view wx:if="{{records.length}}">
-    <view class="record-card card" wx:for="{{records}}" wx:key="id">
-      <view class="record-main">
-        <view>
-          <view class="record-title">{{item.deviceName}} · {{item.imageCount}} 张</view>
-          <view class="caption">{{item.createdAt}}</view>
-        </view>
-        <text class="tag {{item.status === 'success' ? '' : 'danger'}}">{{item.message}}</text>
-      </view>
-      <button class="ghost-btn" data-id="{{item.id}}" bindtap="deleteRecord">删除</button>
+<view class="page records-page safe-bottom">
+  <view class="page-title">
+    <view>
+      <view class="page-title__main">投屏管理</view>
+      <view class="page-title__sub">查看成功和失败的投屏记录。</view>
     </view>
   </view>
 
-  <view class="empty card" wx:else>暂无投屏记录</view>
+  <view class="tabs card">
+    <button class="tab {{filter === 'success' ? 'active' : ''}}" data-filter="success" bindtap="switchFilter">
+      <text>投屏成功</text>
+      <text>{{counts.success}}</text>
+    </button>
+    <button class="tab {{filter === 'fail' ? 'active' : ''}}" data-filter="fail" bindtap="switchFilter">
+      <text>投屏失败</text>
+      <text>{{counts.fail}}</text>
+    </button>
+  </view>
+
+  <view wx:if="{{filteredRecords.length}}">
+    <view class="record-card card" wx:for="{{filteredRecords}}" wx:key="id">
+      <view class="record-main">
+        <view class="record-icon {{item.status === 'success' ? '' : 'fail'}}">{{item.status === 'success' ? '✓' : '!'}}</view>
+        <view class="record-info">
+          <view class="record-title">{{item.deviceName}}</view>
+          <view class="caption">{{item.imageCount}} 张 · {{item.createdAt}}</view>
+          <view class="record-message">{{item.message}}</view>
+        </view>
+        <text class="tag {{item.status === 'success' ? '' : 'danger'}}">{{item.status === 'success' ? '成功' : '失败'}}</text>
+      </view>
+      <button class="ghost-btn delete-btn" data-id="{{item.id}}" bindtap="deleteRecord">删除记录</button>
+    </view>
+  </view>
+
+  <view class="empty card" wx:else>
+    <view class="empty-title">{{filter === 'success' ? '暂无成功记录' : '暂无失败记录'}}</view>
+    <view class="caption">{{filter === 'success' ? '完成一次照片投屏后会显示在这里。' : '投屏失败时会保留原因，方便排查。'}}</view>
+  </view>
 </view>

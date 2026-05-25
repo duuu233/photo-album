@@ -1,0 +1,31 @@
+<view class="page result-page safe-bottom">
+  <view class="result-card card">
+    <view class="result-icon {{status}}">
+      <text wx:if="{{status === 'progress'}}">···</text>
+      <text wx:elif="{{status === 'success'}}">✓</text>
+      <text wx:else>!</text>
+    </view>
+    <view class="result-title">{{title}}</view>
+    <view class="result-desc">{{desc}}</view>
+
+    <view class="result-meta" wx:if="{{result.deviceName}}">
+      <view>
+        <text class="caption">设备</text>
+        <text>{{result.deviceName}}</text>
+      </view>
+      <view>
+        <text class="caption">照片</text>
+        <text>{{result.imageCount}} 张</text>
+      </view>
+    </view>
+
+    <view class="result-actions" wx:if="{{status === 'fail'}}">
+      <button class="ghost-btn" bindtap="goRecords">查看记录</button>
+      <button class="primary-btn" bindtap="retry">重新投屏</button>
+    </view>
+    <view class="result-actions" wx:else>
+      <button class="ghost-btn" bindtap="goRecords">投屏管理</button>
+      <button class="primary-btn" bindtap="backHome">回到首页</button>
+    </view>
+  </view>
+</view>
