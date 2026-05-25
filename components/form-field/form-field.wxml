@@ -1,0 +1,27 @@
+<view class="form-field {{error ? 'form-field--error' : ''}}">
+  <view class="field-head">
+    <text class="field-label">{{label}}</text>
+    <button
+      wx:if="{{rightText}}"
+      class="field-side"
+      disabled="{{rightDisabled}}"
+      bindtap="handleRightTap"
+    >{{rightText}}</button>
+  </view>
+  <view class="input-wrap">
+    <input
+      class="input-control"
+      type="{{type}}"
+      password="{{password}}"
+      maxlength="{{maxlength}}"
+      confirm-type="{{confirmType}}"
+      value="{{value}}"
+      placeholder="{{placeholder}}"
+      placeholder-class="input-placeholder"
+      bindinput="handleInput"
+      bindblur="handleBlur"
+    />
+    <button wx:if="{{clearable && value}}" class="clear-btn" aria-label="清空" bindtap="clearValue">×</button>
+  </view>
+  <view wx:if="{{hint || error}}" class="field-hint">{{error || hint}}</view>
+</view>

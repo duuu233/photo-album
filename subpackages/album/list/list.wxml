@@ -1,0 +1,25 @@
+<view class="page safe-bottom">
+  <view class="toolbar">
+    <button class="secondary-btn" bindtap="chooseForProjection">选择照片投屏</button>
+    <button class="ghost-btn" bindtap="toggleManage">{{manageMode ? '取消' : '管理'}}</button>
+  </view>
+
+  <view class="photo-grid" wx:if="{{photos.length}}">
+    <view class="photo-card tone-{{item.tone}} {{selectedMap[item.id] ? 'selected' : ''}}" wx:for="{{photos}}" wx:key="id" data-id="{{item.id}}" bindtap="toggleSelect">
+      <image wx:if="{{item.url}}" class="photo-img" src="{{item.url}}" mode="aspectFill"></image>
+      <view class="select-dot" wx:if="{{manageMode}}">{{selectedMap[item.id] ? '✓' : ''}}</view>
+      <view class="photo-info">
+        <view>{{item.title}}</view>
+        <view class="photo-caption">{{item.deviceName}} · {{item.createdAt}}</view>
+        <view class="photo-caption">{{item.onDevice ? '设备照片' : '仅相册保留'}} · {{item.size}}MB</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="empty card" wx:else>暂无照片数据</view>
+
+  <view class="bottom-bar" wx:if="{{manageMode}}">
+    <text>已选 {{selectedCount}} 张</text>
+    <button class="danger-btn" bindtap="deleteSelected">删除</button>
+  </view>
+</view>

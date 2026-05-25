@@ -1,0 +1,15 @@
+.language-card {
+  padding: 34rpx;
+}
+
+.language-title {
+  margin-bottom: 10rpx;
+  font-size: 38rpx;
+  font-weight: 700;
+}
+
+.info-row {
+  padding: 24rpx;
+  color: #475467;
+  line-height: 1.7;
+}

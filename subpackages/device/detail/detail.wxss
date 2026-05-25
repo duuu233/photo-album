@@ -1,0 +1,53 @@
+.summary {
+  padding: 28rpx;
+}
+
+.summary-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.device-name {
+  margin-bottom: 8rpx;
+  font-size: 36rpx;
+  font-weight: 700;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20rpx;
+  margin-top: 28rpx;
+}
+
+.metric-value {
+  margin-bottom: 8rpx;
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.memory-track {
+  height: 14rpx;
+  margin-top: 24rpx;
+  overflow: hidden;
+  background: #edf1f6;
+  border-radius: 8rpx;
+}
+
+.memory-bar {
+  height: 100%;
+  background: #1769e0;
+}
+
+.radio-group {
+  display: flex;
+  gap: 20rpx;
+  color: #475467;
+  font-size: 24rpx;
+}
+
+.danger-cell {
+  color: #c72e2e;
+}

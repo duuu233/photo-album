@@ -1,0 +1,89 @@
+<view class="page home-page safe-bottom">
+  <view class="hero">
+    <view class="hero-copy">
+      <view class="hero-kicker">BoltStar</view>
+      <view class="hero-title">智能相框</view>
+      <view class="hero-subtitle">把手机里的照片快速投到已绑定的相框设备，适合家庭相册、旅行记录和纪念日展示。</view>
+    </view>
+    <button class="guide-chip" bindtap="goGuide">指南</button>
+  </view>
+
+  <view class="device-panel card" wx:if="{{selectedDevice}}">
+    <view class="device-head">
+      <view>
+        <view class="device-name">{{selectedDevice.name}}</view>
+        <view class="caption">{{selectedDevice.deviceNo}} · {{selectedDevice.lastOnline}}</view>
+      </view>
+      <view class="tag {{selectedDevice.connected ? '' : 'danger'}}">
+        <view class="status-dot"></view>
+        {{selectedDevice.connected ? '在线' : '离线'}}
+      </view>
+    </view>
+    <view class="memory-meta">
+      <text>内存 {{selectedDevice.usedMemory}}/{{selectedDevice.totalMemory}}MB</text>
+      <text>{{memoryPercent}}%</text>
+    </view>
+    <view class="memory-track">
+      <view class="memory-bar" style="width: {{memoryPercent}}%;"></view>
+    </view>
+    <view class="device-actions">
+      <button class="ghost-btn" bindtap="goDeviceList">切换设备</button>
+      <button class="secondary-btn" bindtap="goBindDevice">绑定新设备</button>
+    </view>
+  </view>
+
+  <view class="empty-device card" wx:else>
+    <view class="empty-visual">+</view>
+    <view class="empty-title">还没有绑定相框</view>
+    <view class="caption">先搜索附近的 BoltStar 相框，绑定后即可开始投屏。</view>
+    <button class="primary-btn" bindtap="goBindDevice">搜索并绑定</button>
+  </view>
+
+  <view class="action-grid">
+    <button class="action-card camera-card" bindtap="chooseCamera">
+      <view class="action-icon">拍</view>
+      <view class="action-title">拍照</view>
+      <view class="caption">调用相机拍摄一张照片</view>
+    </button>
+    <button class="action-card album-card" bindtap="chooseAlbum">
+      <view class="action-icon">图</view>
+      <view class="action-title">相册</view>
+      <view class="caption">从手机相册选择图片</view>
+    </button>
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>最近照片</text>
+      <button class="link-btn" bindtap="goAlbum">查看全部</button>
+    </view>
+    <view class="photo-grid" wx:if="{{recentPhotos.length}}">
+      <view class="photo-card tone-{{item.tone}}" wx:for="{{recentPhotos}}" wx:key="id">
+        <image wx:if="{{item.url}}" class="photo-img" src="{{item.url}}" mode="aspectFill"></image>
+        <view wx:else class="photo-placeholder image-placeholder">图片占位</view>
+        <view class="photo-meta">
+          <text>{{item.title}}</text>
+          <text>{{item.deviceName}}</text>
+        </view>
+      </view>
+    </view>
+    <view class="empty card" wx:else>暂无照片数据</view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>投屏记录</text>
+      <button class="link-btn" bindtap="goRecords">管理</button>
+    </view>
+    <view class="record-list card" wx:if="{{recentRecords.length}}">
+      <view class="record-row" wx:for="{{recentRecords}}" wx:key="id">
+        <view>
+          <view class="record-title">{{item.deviceName}} · {{item.imageCount}} 张</view>
+          <view class="caption">{{item.createdAt}}</view>
+        </view>
+        <text class="tag {{item.status === 'success' ? '' : 'danger'}}">{{item.message}}</text>
+      </view>
+    </view>
+    <view class="empty card" wx:else>暂无投屏记录</view>
+  </view>
+</view>

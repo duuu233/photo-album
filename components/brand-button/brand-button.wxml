@@ -1,0 +1,11 @@
+<button
+  class="brand-button brand-button--{{variant}} brand-button--{{size}} {{block ? 'brand-button--block' : ''}}"
+  loading="{{loading}}"
+  disabled="{{disabled || loading}}"
+  open-type="{{openType}}"
+  bindtap="handleTap"
+  bindgetphonenumber="handlePhoneNumber"
+>
+  <text wx:if="{{icon}}" class="brand-icon">{{icon}}</text>
+  <text>{{text}}</text>
+</button>

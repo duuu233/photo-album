@@ -1,0 +1,146 @@
+.bind-page {
+  background:
+    radial-gradient(circle at 50% 4%, rgba(235, 95, 27, 0.12), transparent 300rpx),
+    linear-gradient(180deg, #f6f7fb 0%, #eef2f8 100%);
+}
+
+.scan-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 44rpx 34rpx 34rpx;
+  text-align: center;
+}
+
+.radar {
+  position: relative;
+  width: 190rpx;
+  height: 190rpx;
+  margin-bottom: 24rpx;
+}
+
+.radar-ring,
+.radar-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+}
+
+.radar-ring {
+  border: 2rpx solid rgba(235, 95, 27, 0.2);
+}
+
+.ring-one {
+  width: 190rpx;
+  height: 190rpx;
+  background: rgba(235, 95, 27, 0.05);
+}
+
+.ring-two {
+  width: 122rpx;
+  height: 122rpx;
+  background: rgba(235, 95, 27, 0.08);
+}
+
+.radar-core {
+  width: 70rpx;
+  height: 70rpx;
+  background: #eb5f1b;
+  box-shadow: 0 0 0 16rpx rgba(235, 95, 27, 0.12);
+}
+
+.is-scanning .ring-one {
+  animation: pulse 1.7s infinite;
+}
+
+.is-scanning .ring-two {
+  animation: pulse 1.7s 0.35s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(0.75);
+  }
+
+  100% {
+    opacity: 0.1;
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+}
+
+.scan-title {
+  color: #232323;
+  font-size: 38rpx;
+  font-weight: 850;
+}
+
+.scan-btn {
+  width: 100%;
+  margin-top: 28rpx;
+}
+
+.fallback-tip {
+  margin-top: 18rpx;
+  padding: 18rpx 22rpx;
+  color: #b5650f;
+  background: #fff3df;
+  border-radius: 18rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+
+.scan-device {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  width: 100%;
+  margin-bottom: 18rpx;
+  padding: 24rpx;
+  text-align: left;
+}
+
+.device-icon {
+  width: 72rpx;
+  height: 86rpx;
+  background: linear-gradient(145deg, #2b3038, #5b626d);
+  border: 8rpx solid #ffffff;
+  border-radius: 14rpx;
+  box-shadow: 0 8rpx 18rpx rgba(35, 35, 35, 0.16);
+}
+
+.device-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.device-name {
+  margin-bottom: 8rpx;
+  color: #232323;
+  font-size: 32rpx;
+  font-weight: 850;
+}
+
+.empty-title {
+  color: #232323;
+  font-size: 32rpx;
+  font-weight: 800;
+}
+
+.help-list {
+  margin: 24rpx 0 30rpx;
+}
+
+.help-item {
+  padding: 16rpx 0;
+  color: #555c66;
+  font-size: 26rpx;
+  line-height: 1.55;
+  border-bottom: 1rpx solid #edf0f5;
+}
+
+.help-item:last-child {
+  border-bottom: 0;
+}

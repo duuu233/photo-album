@@ -1,0 +1,176 @@
+.mine-page {
+  background:
+    linear-gradient(180deg, #eef8f5 0%, #f5f7fb 330rpx, #f5f7fb 100%);
+}
+
+.mine-profile {
+  display: flex;
+  align-items: center;
+  gap: 22rpx;
+  padding: 28rpx;
+}
+
+.avatar-btn,
+.avatar,
+.avatar-skeleton {
+  width: 112rpx;
+  height: 112rpx;
+  overflow: hidden;
+  border-radius: 8rpx;
+}
+
+.avatar-skeleton {
+  background: linear-gradient(90deg, #eef2f6, #f8fafc, #eef2f6);
+}
+
+.profile-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.nickname-input {
+  width: 100%;
+  min-height: 56rpx;
+  color: #172133;
+  font-size: 38rpx;
+  font-weight: 800;
+}
+
+.phone-line {
+  margin-top: 6rpx;
+  color: #667085;
+  font-size: 25rpx;
+}
+
+.profile-edit {
+  min-width: 72rpx;
+  color: #1769e0;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.skeleton-line {
+  width: 210rpx;
+  height: 24rpx;
+  margin-top: 16rpx;
+  border-radius: 8rpx;
+  background: #eef2f6;
+}
+
+.skeleton-line--wide {
+  width: 280rpx;
+  height: 34rpx;
+  margin-top: 0;
+}
+
+.stats-card {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 24rpx;
+  padding: 24rpx 0;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  min-height: 104rpx;
+  border-right: 1rpx solid #edf1f6;
+}
+
+.stat-item:last-child {
+  border-right: 0;
+}
+
+.stat-value {
+  color: #172133;
+  font-size: 42rpx;
+  font-weight: 800;
+}
+
+.stat-label {
+  color: #667085;
+  font-size: 24rpx;
+}
+
+.quick-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18rpx;
+}
+
+.quick-card {
+  min-height: 210rpx;
+  padding: 26rpx;
+  border: 1rpx solid #e6ebf2;
+  border-radius: 8rpx;
+  text-align: left;
+  background: #ffffff;
+}
+
+.quick-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 66rpx;
+  height: 66rpx;
+  border-radius: 8rpx;
+  color: #ffffff;
+  font-size: 26rpx;
+  font-weight: 800;
+}
+
+.quick-card--album .quick-icon {
+  background: #1769e0;
+}
+
+.quick-card--device .quick-icon {
+  background: #0b7a6b;
+}
+
+.quick-title {
+  display: block;
+  margin-top: 22rpx;
+  color: #172133;
+  font-size: 31rpx;
+  font-weight: 800;
+}
+
+.quick-desc {
+  display: block;
+  margin-top: 6rpx;
+  color: #667085;
+  font-size: 23rpx;
+}
+
+.mine-list {
+  overflow: hidden;
+}
+
+.list-cell {
+  min-height: 118rpx;
+}
+
+.cell-title {
+  color: #172133;
+  font-size: 29rpx;
+  font-weight: 700;
+}
+
+.cell-desc {
+  margin-top: 7rpx;
+  color: #7a8797;
+  font-size: 23rpx;
+}
+
+.cell-arrow {
+  color: #98a2b3;
+  font-size: 42rpx;
+  line-height: 1;
+}
+
+.bind-phone {
+  margin-top: 24rpx;
+}

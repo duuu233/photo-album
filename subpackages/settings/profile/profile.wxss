@@ -1,0 +1,35 @@
+.profile-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16rpx;
+  padding: 34rpx;
+}
+
+.avatar-btn {
+  width: 132rpx;
+  height: 132rpx;
+  overflow: hidden;
+  border-radius: 8rpx;
+}
+
+.avatar {
+  width: 132rpx;
+  height: 132rpx;
+}
+
+.phone-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.phone-btn {
+  min-height: 64rpx;
+  min-width: 140rpx;
+  font-size: 24rpx;
+}
+
+.save-btn {
+  margin-top: 24rpx;
+}

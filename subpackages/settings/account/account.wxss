@@ -1,0 +1,14 @@
+.warning {
+  padding: 28rpx;
+}
+
+.warning-title {
+  margin-bottom: 12rpx;
+  color: #c72e2e;
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.delete-btn {
+  margin-top: 24rpx;
+}

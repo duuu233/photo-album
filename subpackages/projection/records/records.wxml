@@ -1,0 +1,16 @@
+<view class="page safe-bottom">
+  <view wx:if="{{records.length}}">
+    <view class="record-card card" wx:for="{{records}}" wx:key="id">
+      <view class="record-main">
+        <view>
+          <view class="record-title">{{item.deviceName}} · {{item.imageCount}} 张</view>
+          <view class="caption">{{item.createdAt}}</view>
+        </view>
+        <text class="tag {{item.status === 'success' ? '' : 'danger'}}">{{item.message}}</text>
+      </view>
+      <button class="ghost-btn" data-id="{{item.id}}" bindtap="deleteRecord">删除</button>
+    </view>
+  </view>
+
+  <view class="empty card" wx:else>暂无投屏记录</view>
+</view>

@@ -1,0 +1,111 @@
+<view class="page safe-bottom crop-page">
+  <view class="editor-card card">
+    <view class="canvas-shell">
+      <canvas
+        id="cropCanvas"
+        type="2d"
+        class="crop-canvas"
+        bindtouchstart="handleTouchStart"
+        catchtouchmove="handleTouchMove"
+        bindtouchend="handleTouchEnd"
+        bindtouchcancel="handleTouchEnd"
+      ></canvas>
+      <view wx:if="{{cropSize}}" class="crop-frame" style="{{frameStyle}}">
+        <view class="grid-line vertical one"></view>
+        <view class="grid-line vertical two"></view>
+        <view class="grid-line horizontal one"></view>
+        <view class="grid-line horizontal two"></view>
+      </view>
+      <view wx:if="{{!ready}}" class="canvas-loading">图片加载中</view>
+    </view>
+    <view class="editor-foot">
+      <text>拖拽移动，双指缩放</text>
+      <text>{{angle}} deg</text>
+    </view>
+  </view>
+
+  <view class="panel card">
+    <view class="control-row">
+      <text class="control-label">缩放</text>
+      <slider
+        class="control-slider"
+        min="{{scaleMin}}"
+        max="{{scaleMax}}"
+        step="1"
+        value="{{scaleValue}}"
+        activeColor="#1769e0"
+        backgroundColor="#d9e0ea"
+        block-size="22"
+        bindchanging="handleScaleChange"
+        bindchange="handleScaleChange"
+      />
+      <text class="control-value">{{scaleValue}}%</text>
+    </view>
+
+    <view class="control-row">
+      <text class="control-label">旋转</text>
+      <slider
+        class="control-slider"
+        min="-180"
+        max="180"
+        step="1"
+        value="{{angle}}"
+        activeColor="#1769e0"
+        backgroundColor="#d9e0ea"
+        block-size="22"
+        bindchanging="handleAngleChange"
+        bindchange="handleAngleChange"
+      />
+      <text class="control-value">{{angle}} deg</text>
+    </view>
+
+    <view class="control-row">
+      <text class="control-label">横移</text>
+      <slider
+        class="control-slider"
+        min="-220"
+        max="220"
+        step="1"
+        value="{{offsetX}}"
+        activeColor="#0b7a6b"
+        backgroundColor="#d9e0ea"
+        block-size="22"
+        bindchanging="handleOffsetXChange"
+        bindchange="handleOffsetXChange"
+      />
+      <text class="control-value">{{offsetX}}</text>
+    </view>
+
+    <view class="control-row">
+      <text class="control-label">纵移</text>
+      <slider
+        class="control-slider"
+        min="-220"
+        max="220"
+        step="1"
+        value="{{offsetY}}"
+        activeColor="#0b7a6b"
+        backgroundColor="#d9e0ea"
+        block-size="22"
+        bindchanging="handleOffsetYChange"
+        bindchange="handleOffsetYChange"
+      />
+      <text class="control-value">{{offsetY}}</text>
+    </view>
+  </view>
+
+  <view class="action-bar">
+    <button class="ghost-btn" bindtap="rotateLeft">左转90°</button>
+    <button class="ghost-btn" bindtap="rotateRight">右转90°</button>
+    <button class="secondary-btn" bindtap="resetTransform">重置</button>
+  </view>
+
+  <button class="primary-btn export-btn" bindtap="exportCrop">生成裁剪图</button>
+
+  <view wx:if="{{previewPath}}" class="preview-card card">
+    <view class="section-title">裁剪结果</view>
+    <image class="preview-image" src="{{previewPath}}" mode="aspectFit"></image>
+  </view>
+
+  <canvas id="exportCanvas" type="2d" class="export-canvas"></canvas>
+</view>

@@ -1,0 +1,52 @@
+.brand-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 88rpx;
+  padding: 0 30rpx;
+  border-radius: 8rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.brand-button--block {
+  width: 100%;
+}
+
+.brand-button--large {
+  min-height: 96rpx;
+  font-size: 32rpx;
+}
+
+.brand-button--primary {
+  color: #ffffff;
+  background: linear-gradient(135deg, #1769e0, #0b7a6b);
+  box-shadow: 0 14rpx 28rpx rgba(23, 105, 224, 0.18);
+}
+
+.brand-button--secondary {
+  color: #1769e0;
+  background: #eaf2ff;
+}
+
+.brand-button--quiet {
+  color: #344054;
+  background: #f2f5f9;
+}
+
+.brand-button--danger {
+  color: #ffffff;
+  background: #d92d20;
+}
+
+.brand-button[disabled] {
+  color: #98a2b3;
+  background: #edf1f6;
+  box-shadow: none;
+}
+
+.brand-icon {
+  margin-right: 12rpx;
+  font-size: 30rpx;
+}

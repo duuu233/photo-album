@@ -1,0 +1,28 @@
+<view class="page safe-bottom">
+  <view class="device-card card" wx:if="{{device}}">
+    <view>
+      <view class="device-name">{{device.name}}</view>
+      <view class="caption">{{device.connected ? '设备已连接' : '设备未连接'}} · 剩余 {{device.totalMemory - device.usedMemory}}MB</view>
+    </view>
+    <button class="link-btn" bindtap="chooseDevice">切换</button>
+  </view>
+  <view class="device-card card" wx:else>
+    <view>未选择设备</view>
+    <button class="link-btn" bindtap="chooseDevice">选择设备</button>
+  </view>
+
+  <view class="notice {{enoughMemory ? '' : 'danger'}}">
+    {{images.length}} 张照片，约 {{totalSize}}MB{{enoughMemory ? '，可投屏' : '，设备内存不足'}}
+  </view>
+
+  <view class="preview-grid" wx:if="{{images.length}}">
+    <view class="preview-item" wx:for="{{images}}" wx:key="tempFilePath">
+      <image class="preview-img" src="{{item.tempFilePath}}" mode="aspectFill"></image>
+      <button class="remove-btn" data-index="{{index}}" bindtap="removeImage">×</button>
+    </view>
+  </view>
+
+  <view class="empty card" wx:else>暂无待投屏照片</view>
+
+  <button class="primary-btn submit-btn" bindtap="confirmProjection">确认投屏</button>
+</view>

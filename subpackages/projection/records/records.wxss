@@ -1,0 +1,18 @@
+.record-card {
+  margin-bottom: 18rpx;
+  padding: 24rpx;
+}
+
+.record-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20rpx;
+  margin-bottom: 20rpx;
+}
+
+.record-title {
+  margin-bottom: 8rpx;
+  font-size: 32rpx;
+  font-weight: 700;
+}

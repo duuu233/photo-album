@@ -1,0 +1,53 @@
+<view class="page safe-bottom">
+  <view class="page-title">
+    <view>
+      <view class="page-title__main">{{selectMode ? '选择相框' : '我的设备'}}</view>
+      <view class="page-title__sub">{{selectMode ? '选择本次投屏要使用的设备' : '管理已绑定的 BoltStar 相框'}}</view>
+    </view>
+    <button class="secondary-btn title-action" bindtap="goBind">绑定</button>
+  </view>
+
+  <view wx:if="{{devices.length}}">
+    <button class="device-card card" wx:for="{{devices}}" wx:key="id" data-id="{{item.id}}" bindtap="selectDevice">
+      <view class="device-top">
+        <view class="device-visual">
+          <view class="device-screen"></view>
+        </view>
+        <view class="device-main">
+          <view class="device-name">{{item.name}}</view>
+          <view class="caption">{{item.deviceNo}}</view>
+        </view>
+        <view class="device-tags">
+          <view class="tag {{item.connected ? '' : 'danger'}}">
+            <view class="status-dot"></view>
+            {{item.connected ? '在线' : '离线'}}
+          </view>
+          <text class="tag warn" wx:if="{{selectedId === item.id}}">当前</text>
+        </view>
+      </view>
+      <view class="metrics">
+        <view>
+          <view class="metric-value">{{item.battery}}%</view>
+          <view class="caption">电量</view>
+        </view>
+        <view>
+          <view class="metric-value">{{item.usedMemory}}/{{item.totalMemory}}MB</view>
+          <view class="caption">内存</view>
+        </view>
+        <view>
+          <view class="metric-value">{{item.playbackMode === 'order' ? '顺序' : '随机'}}</view>
+          <view class="caption">轮播</view>
+        </view>
+      </view>
+      <view class="memory-track">
+        <view class="memory-bar" style="width: {{item.memoryPercent}}%;"></view>
+      </view>
+    </button>
+  </view>
+
+  <view class="empty card" wx:else>
+    <view class="empty-title">暂无设备</view>
+    <view class="caption">请先搜索附近的智能相框。</view>
+    <button class="primary-btn empty-action" bindtap="goBind">搜索并绑定设备</button>
+  </view>
+</view>

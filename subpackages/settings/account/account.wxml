@@ -1,0 +1,7 @@
+<view class="page safe-bottom">
+  <view class="warning card">
+    <view class="warning-title">注销前确认</view>
+    <view class="caption">注销后当前用户的模拟数据会被清除。真实业务中建议加入短信或微信二次确认，并由后端异步处理注销流程。</view>
+  </view>
+  <button class="danger-btn delete-btn" bindtap="deleteAccount">确认注销</button>
+</view>

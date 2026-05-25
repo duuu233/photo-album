@@ -1,0 +1,58 @@
+<view class="page bind-page safe-bottom">
+  <view class="page-title">
+    <view>
+      <view class="page-title__main">绑定设备</view>
+      <view class="page-title__sub">打开相框电源并保持靠近手机，系统会自动搜索附近设备。</view>
+    </view>
+  </view>
+
+  <view class="scan-hero card {{scanning ? 'is-scanning' : ''}}">
+    <view class="radar">
+      <view class="radar-ring ring-one"></view>
+      <view class="radar-ring ring-two"></view>
+      <view class="radar-core"></view>
+    </view>
+    <view class="scan-title">{{scanning ? '搜索设备中' : (devices.length ? '已搜索到设备' : '未搜索到设备')}}</view>
+    <view class="caption">{{scanning ? '正在通过定位与蓝牙发现附近的 BoltStar 相框' : (devices.length ? '选择下方设备完成绑定' : '没有发现可绑定设备，可以检查帮助项后重试')}}</view>
+    <button class="primary-btn scan-btn" loading="{{scanning}}" bindtap="scan">{{scanning ? '搜索中' : '重新搜索'}}</button>
+  </view>
+
+  <view class="fallback-tip" wx:if="{{usedMockFallback}}">
+    当前为开发工具兜底模拟设备，真机请开启蓝牙和定位后重新搜索。
+  </view>
+
+  <view class="section">
+    <view class="section-title">
+      <text>发现的设备</text>
+      <button class="link-btn" bindtap="openHelp">扫描不到怎么办？</button>
+    </view>
+
+    <view wx:if="{{devices.length}}">
+      <button class="scan-device card" wx:for="{{devices}}" wx:key="deviceNo" data-id="{{item.id || item.deviceId}}" bindtap="bindDevice">
+        <view class="device-icon"></view>
+        <view class="device-main">
+          <view class="device-name">{{item.name}}</view>
+          <view class="caption">{{item.deviceNo}} · 信号 {{item.RSSI || '--'}} · {{item.realBluetooth ? '蓝牙发现' : '模拟设备'}}</view>
+        </view>
+        <text class="tag">绑定</text>
+      </button>
+    </view>
+
+    <view class="empty card" wx:elif="{{!scanning}}">
+      <view class="empty-title">未搜索到设备</view>
+      <view class="caption">确认相框已通电，并让手机靠近相框后重试。</view>
+    </view>
+  </view>
+
+  <view class="modal-mask" wx:if="{{showHelp}}" bindtap="closeHelp">
+    <view class="modal-panel" catchtap="noop">
+      <view class="modal-title">扫描不到怎么办？</view>
+      <view class="help-list">
+        <view class="help-item">1. 确认相框已开机并处于可绑定状态。</view>
+        <view class="help-item">2. 打开手机蓝牙、定位权限，并靠近相框。</view>
+        <view class="help-item">3. 如果设备已被他人绑定，请先在原账号删除设备。</view>
+      </view>
+      <button class="primary-btn" bindtap="closeHelp">知道了</button>
+    </view>
+  </view>
+</view>

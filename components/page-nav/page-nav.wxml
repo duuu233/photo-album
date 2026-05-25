@@ -1,0 +1,16 @@
+<view class="page-nav custom-class {{immersive ? 'page-nav--immersive' : ''}}">
+  <view class="nav-row">
+    <button wx:if="{{showBack}}" class="nav-back" aria-label="返回" bindtap="handleBack">
+      <text class="nav-back-icon">‹</text>
+    </button>
+    <view wx:else class="nav-back nav-back--placeholder"></view>
+
+    <view class="nav-copy">
+      <view class="nav-title">{{title}}</view>
+      <view wx:if="{{subtitle}}" class="nav-subtitle">{{subtitle}}</view>
+    </view>
+
+    <button wx:if="{{rightText}}" class="nav-right" bindtap="handleRight">{{rightText}}</button>
+    <view wx:else class="nav-right nav-right--placeholder"></view>
+  </view>
+</view>

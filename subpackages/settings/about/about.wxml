@@ -1,0 +1,13 @@
+<view class="page safe-bottom">
+  <view class="about-head card">
+    <view class="app-name">云相册投屏</view>
+    <view class="caption">Version 1.0.0</view>
+  </view>
+
+  <view class="section card">
+    <view class="info-row" wx:for="{{links}}" wx:key="title">
+      <view class="info-title">{{item.title}}</view>
+      <view class="caption">{{item.value}}</view>
+    </view>
+  </view>
+</view>

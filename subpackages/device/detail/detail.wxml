@@ -1,0 +1,63 @@
+<view class="page safe-bottom" wx:if="{{device}}">
+  <view class="summary card">
+    <view class="summary-head">
+      <view>
+        <view class="device-name">{{device.name}}</view>
+        <view class="caption">{{device.deviceNo}} · {{device.lastOnline}}</view>
+      </view>
+      <text class="tag {{device.connected ? '' : 'danger'}}">{{device.connected ? '已连接' : '未连接'}}</text>
+    </view>
+    <view class="metric-grid">
+      <view>
+        <view class="metric-value">{{device.battery}}%</view>
+        <view class="caption">设备电量</view>
+      </view>
+      <view>
+        <view class="metric-value">{{device.usedMemory}}/{{device.totalMemory}}MB</view>
+        <view class="caption">设备内存</view>
+      </view>
+    </view>
+    <view class="memory-track">
+      <view class="memory-bar" style="width: {{memoryPercent}}%;"></view>
+    </view>
+  </view>
+
+  <view class="section card">
+    <button class="list-cell" bindtap="renameDevice">
+      <text>设备名称编辑</text>
+      <text class="muted">{{device.name}}</text>
+    </button>
+    <view class="list-cell">
+      <text>开启关闭轮播模式</text>
+      <switch checked="{{device.carouselEnabled}}" bindchange="toggleCarousel" />
+    </view>
+    <view class="list-cell">
+      <text>时后轮播下一张</text>
+      <picker range="{{intervalOptions}}" value="{{intervalIndex}}" bindchange="changeInterval">
+        <text class="muted">{{device.intervalHours}} 小时</text>
+      </picker>
+    </view>
+    <view class="list-cell">
+      <text>轮播方式</text>
+      <radio-group class="radio-group" bindchange="changePlayback">
+        <label><radio value="0" checked="{{device.playbackMode === 'order'}}" />顺序</label>
+        <label><radio value="1" checked="{{device.playbackMode === 'random'}}" />随机</label>
+      </radio-group>
+    </view>
+  </view>
+
+  <view class="section card">
+    <button class="list-cell" bindtap="clearCopies">
+      <text>一键清空</text>
+      <text class="muted">保留相册数据</text>
+    </button>
+    <button class="list-cell danger-cell" bindtap="formatDevice">
+      <text>格式化设备</text>
+      <text>删除设备照片</text>
+    </button>
+  </view>
+</view>
+
+<view class="page" wx:else>
+  <view class="empty card">设备不存在</view>
+</view>

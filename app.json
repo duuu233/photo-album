@@ -1,0 +1,87 @@
+{
+  "pages": [
+    "pages/home/home",
+    "pages/wechat-login/wechat-login",
+    "pages/mine/mine",
+    "pages/crop-demo/crop-demo"
+  ],
+  "subpackages": [
+    {
+      "root": "subpackages/auth",
+      "pages": [
+        "forgot-password/forgot-password"
+      ]
+    },
+    {
+      "root": "subpackages/device",
+      "pages": [
+        "list/list",
+        "bind/bind",
+        "detail/detail",
+        "slideshow/slideshow"
+      ]
+    },
+    {
+      "root": "subpackages/album",
+      "pages": [
+        "list/list"
+      ]
+    },
+    {
+      "root": "subpackages/projection",
+      "pages": [
+        "preview/preview",
+        "records/records",
+        "guide/guide",
+        "result/result"
+      ]
+    },
+    {
+      "root": "subpackages/settings",
+      "pages": [
+        "index/index",
+        "profile/profile",
+        "bind-email/bind-email",
+        "change-email/change-email",
+        "modify-password/modify-password",
+        "language/language",
+        "about/about",
+        "account/account"
+      ]
+    }
+  ],
+  "window": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "BoltStar 智能相框",
+    "navigationBarBackgroundColor": "#f2f5fc",
+    "backgroundColor": "#f2f5fc"
+  },
+  "tabBar": {
+    "color": "#8b9098",
+    "selectedColor": "#eb5f1b",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/home/home",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/mine/mine",
+        "text": "我的"
+      }
+    ]
+  },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于搜索并绑定附近的 BoltStar 智能相框"
+    }
+  },
+  "requiredPrivateInfos": [
+    "getLocation"
+  ],
+  "style": "v2",
+  "componentFramework": "glass-easel",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

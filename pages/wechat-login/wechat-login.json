@@ -1,0 +1,7 @@
+{
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "page-nav": "../../components/page-nav/page-nav",
+    "brand-button": "../../components/brand-button/brand-button"
+  }
+}
