@@ -1,0 +1,32 @@
+<view class="login-page safe-bottom">
+  <view class="login-bg-stack" aria-hidden="true">
+    <image class="login-bg login-bg--halo" src="/assets/images/login_bg_image_5130.png" mode="aspectFill"></image>
+    <view class="login-bg__bottom"></view>
+  </view>
+
+  <button class="login-back" hover-class="login-back--hover" aria-label="返回" bindtap="goBack">
+    <image class="login-back__icon" mode="aspectFit" src="data:image/svg+xml;utf8,&lt;svg width='9' height='17' viewBox='0 0 9 17' fill='none' xmlns='http://www.w3.org/2000/svg'&gt;&lt;path d='M8 1L1 8.5L8 16' stroke='%23000000' stroke-opacity='0.9' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/&gt;&lt;/svg&gt;"></image>
+  </button>
+
+  <view class="login-main">
+    <image class="login-logo" src="/assets/images/login_boltstar_logo.png" mode="aspectFit"></image>
+
+    <button class="login-submit {{submitting ? 'login-submit--loading' : ''}}" loading="{{submitting}}" hover-class="login-submit--hover" bindtap="onWechatLogin">
+      <image class="login-submit__icon" mode="aspectFit" src="/assets/images/login-wx-icon.png"></image>
+      <text>微信登录</text>
+    </button>
+  </view>
+
+  <view class="login-agreement">
+    <button class="login-agreement__check {{agreed ? 'login-agreement__check--active' : ''}}" hover-class="login-agreement__check--hover" bindtap="toggleAgreement">
+      <image wx:if="{{!agreed}}" class="login-agreement__icon" mode="aspectFit" src="data:image/svg+xml;utf8,&lt;svg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'&gt;&lt;circle cx='8' cy='8' r='7.5' stroke='%232A2B2B' stroke-opacity='0.6'/&gt;&lt;/svg&gt;"></image>
+      <text wx:else class="login-agreement__tick">✓</text>
+    </button>
+    <view class="login-agreement__text">
+      <text>我已阅读并同意</text>
+      <text class="login-agreement__link" bindtap="openUserAgreement">《用户协议》</text>
+      <text>和</text>
+      <text class="login-agreement__link" bindtap="openPrivacyPolicy">《隐私政策》</text>
+    </view>
+  </view>
+</view>

@@ -1,88 +1,243 @@
-<view class="page home-page safe-bottom">
-  <view class="hero">
-    <view class="hero-copy">
-      <view class="hero-kicker">BoltStar</view>
-      <view class="hero-title">智能相框</view>
-      <view class="hero-subtitle">把手机里的照片快速投到已绑定的相框设备，适合家庭相册、旅行记录和纪念日展示。</view>
-    </view>
+<view class="home-root" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="home-bg">
+    <view class="bg-curve bg-curve-top"></view>
+    <view class="bg-curve bg-curve-bottom"></view>
+    <view class="bg-spark spark-one"></view>
+    <view class="bg-spark spark-two"></view>
+    <view class="bg-spark spark-three"></view>
   </view>
 
-  <view class="device-panel card" wx:if="{{selectedDevice}}">
-    <view class="device-head">
-      <view>
-        <view class="device-name">{{selectedDevice.name}}</view>
-        <view class="caption">{{selectedDevice.deviceNo}} · {{selectedDevice.lastOnline}}</view>
-      </view>
-      <view class="tag {{selectedDevice.connected ? '' : 'danger'}}">
-        <view class="status-dot"></view>
-        {{selectedDevice.connected ? '在线' : '离线'}}
-      </view>
-    </view>
-    <view class="memory-meta">
-      <text>内存 {{selectedDevice.usedMemory}}/{{selectedDevice.totalMemory}}MB</text>
-      <text>{{memoryPercent}}%</text>
-    </view>
-    <view class="memory-track">
-      <view class="memory-bar" style="width: {{memoryPercent}}%;"></view>
-    </view>
-    <view class="device-actions">
-      <button class="ghost-btn" bindtap="goDeviceList">切换设备</button>
-      <button class="secondary-btn" bindtap="goBindDevice">绑定新设备</button>
-    </view>
-  </view>
+  <block wx:if="{{isHomeScene}}">
+    <view class="home-content {{isBoundHome ? 'bound-home' : 'unbound-home'}} {{hasHomeOverlay ? 'content-dimmed' : ''}}">
+      <block wx:if="{{isBoundHome}}">
+        <button class="avatar-btn" hover-class="none" bindtap="goMine">
+          <image wx:if="{{avatarUrl}}" class="avatar-img" src="{{avatarUrl}}" mode="aspectFill"></image>
+          <view wx:else class="avatar-fallback"></view>
+        </button>
+        <button class="add-btn" hover-class="none" bindtap="startBindingScan">
+          <text class="plus-symbol">+</text>
+        </button>
 
-  <view class="empty-device card" wx:else>
-    <view class="empty-visual">+</view>
-    <view class="empty-title">还没有绑定相框</view>
-    <view class="caption">先搜索附近的 BoltStar 相框，绑定后即可开始投屏。</view>
-    <button class="primary-btn" bindtap="goBindDevice">搜索并绑定</button>
-  </view>
+        <view class="hello-title">Hi</view>
+        <view class="hello-subtitle">欢迎使用 <text>BoltStar</text></view>
 
-  <view class="action-grid">
-    <button class="action-card camera-card" bindtap="chooseCamera">
-      <view class="action-icon">拍</view>
-      <view class="action-title">拍照</view>
-      <view class="caption">调用相机拍摄一张照片</view>
-    </button>
-    <button class="action-card album-card" bindtap="chooseAlbum">
-      <view class="action-icon">图</view>
-      <view class="action-title">相册</view>
-      <view class="caption">从手机相册选择图片</view>
-    </button>
-  </view>
-
-  <view class="section">
-    <view class="section-title">
-      <text>最近照片</text>
-      <button class="link-btn" bindtap="goAlbum">查看全部</button>
-    </view>
-    <view class="photo-grid" wx:if="{{recentPhotos.length}}">
-      <view class="photo-card tone-{{item.tone}}" wx:for="{{recentPhotos}}" wx:key="id">
-        <image wx:if="{{item.url}}" class="photo-img" src="{{item.url}}" mode="aspectFill"></image>
-        <view wx:else class="photo-placeholder image-placeholder">图片占位</view>
-        <view class="photo-meta">
-          <text>{{item.title}}</text>
-          <text>{{item.deviceName}}</text>
+        <view class="device-carousel">
+          <view class="device-card">
+            <view class="device-orbit">
+              <view class="orbit-ring ring-one"></view>
+              <view class="orbit-ring ring-two"></view>
+              <view class="orbit-ring ring-three"></view>
+              <view class="orbit-dot dot-a"></view>
+              <view class="orbit-dot dot-b"></view>
+              <view class="orbit-dot dot-c"></view>
+              <view class="bolt-mark">
+                <view class="bolt-cut cut-one"></view>
+                <view class="bolt-cut cut-two"></view>
+              </view>
+            </view>
+            <view class="device-info">
+              <view class="device-title">{{currentDevice.name}}</view>
+              <view class="device-status">
+                <view class="mini-bluetooth">ᛒ</view>
+                <text>{{currentDevice.connected ? '已连接' : '未连接'}}</text>
+              </view>
+              <view class="battery-row">
+                <view class="battery-icon"><view class="battery-fill" style="width: {{batteryWidth}}%;"></view></view>
+                <text>{{currentDevice.battery}}%</text>
+              </view>
+            </view>
+          </view>
+          <view class="device-card side-card"></view>
         </view>
-      </view>
-    </view>
-    <view class="empty card" wx:else>暂无照片数据</view>
-  </view>
-
-  <view class="section">
-    <view class="section-title">
-      <text>投屏记录</text>
-      <button class="link-btn" bindtap="goRecords">管理</button>
-    </view>
-    <view class="record-list card" wx:if="{{recentRecords.length}}">
-      <view class="record-row" wx:for="{{recentRecords}}" wx:key="id">
-        <view>
-          <view class="record-title">{{item.deviceName}} · {{item.imageCount}} 张</view>
-          <view class="caption">{{item.createdAt}}</view>
+        <view class="carousel-dots">
+          <view class="dot active"></view>
+          <view class="dot"></view>
+          <view class="dot"></view>
         </view>
-        <text class="tag {{item.status === 'success' ? '' : 'danger'}}">{{item.message}}</text>
+      </block>
+
+      <block wx:else>
+        <view class="empty-hero-art">
+          <view class="album-stack stack-back"></view>
+          <view class="album-stack stack-mid"></view>
+          <view class="album-device">
+            <view class="album-picture"></view>
+            <view class="album-clip"></view>
+            <view class="tiny-heart"></view>
+            <view class="tiny-bluetooth">ᛒ</view>
+          </view>
+          <view class="plant plant-left"></view>
+          <view class="plant plant-right"></view>
+        </view>
+        <view class="empty-hint">请先绑定相框设备后再投屏照片</view>
+        <button class="bind-pill" hover-class="none" bindtap="showBindNowSheet">
+          <view class="btn-bluetooth">ᛒ</view>
+          <text>绑定设备</text>
+        </button>
+      </block>
+
+      <view class="projection-title">选择投屏方式</view>
+      <view class="projection-grid">
+        <button class="projection-card camera-card" hover-class="none" bindtap="tapCameraEntry">
+          <view class="media-art camera-art">
+            <view class="camera-body"></view>
+            <view class="camera-lens"></view>
+            <view class="camera-flash"></view>
+          </view>
+          <view class="projection-copy">
+            <view class="projection-name">拍照</view>
+            <view class="projection-desc">拍摄照片并投屏</view>
+          </view>
+          <view class="round-arrow orange-arrow">→</view>
+        </button>
+        <button class="projection-card album-card" hover-class="none" bindtap="tapAlbumEntry">
+          <view class="media-art album-art">
+            <view class="photo-board"></view>
+            <view class="photo-mountain"></view>
+            <view class="photo-dot"></view>
+          </view>
+          <view class="projection-copy">
+            <view class="projection-name">相册</view>
+            <view class="projection-desc">选择照片并投屏</view>
+          </view>
+          <view class="round-arrow blue-arrow">→</view>
+        </button>
       </view>
     </view>
-    <view class="empty card" wx:else>暂无投屏记录</view>
-  </view>
+
+    <view class="custom-tabbar {{hasHomeOverlay ? 'content-dimmed' : ''}}">
+      <button class="tab-item active" hover-class="none">
+        <view class="tab-home-icon">
+          <view class="home-roof"></view>
+          <view class="home-body"></view>
+        </view>
+        <text>首页</text>
+      </button>
+      <button class="tab-item" hover-class="none" bindtap="goMine">
+        <view class="tab-user-icon">
+          <view class="user-head"></view>
+          <view class="user-shoulder"></view>
+        </view>
+        <text>我的</text>
+      </button>
+    </view>
+
+    <view wx:if="{{showPromptSheet}}" class="home-mask" catchtouchmove="noop">
+      <view class="bottom-sheet prompt-sheet">
+        <button class="sheet-close" hover-class="none" bindtap="closeHomeSheet">×</button>
+        <view class="prompt-title">{{promptTitle}}</view>
+        <view class="prompt-desc">{{promptDesc}}</view>
+        <button class="primary-action" hover-class="none" bindtap="confirmPrompt">{{promptButton}}</button>
+      </view>
+    </view>
+
+    <view wx:if="{{isMediaSheet}}" class="home-mask" catchtouchmove="noop">
+      <view class="bottom-sheet media-sheet">
+        <view class="media-sheet-title">选择投屏方式</view>
+        <button class="media-option" hover-class="none" bindtap="chooseCamera">
+          <view class="media-art mini camera-art">
+            <view class="camera-body"></view>
+            <view class="camera-lens"></view>
+            <view class="camera-flash"></view>
+          </view>
+          <view class="media-option-copy">
+            <view>拍照</view>
+            <text>调用手机相机拍照</text>
+          </view>
+          <view class="round-arrow orange-arrow">→</view>
+        </button>
+        <button class="media-option" hover-class="none" bindtap="chooseAlbum">
+          <view class="media-art mini album-art">
+            <view class="photo-board"></view>
+            <view class="photo-mountain"></view>
+            <view class="photo-dot"></view>
+          </view>
+          <view class="media-option-copy">
+            <view>相册</view>
+            <text>从手机相册选择照片</text>
+          </view>
+          <view class="round-arrow blue-arrow">→</view>
+        </button>
+        <button class="cancel-action" hover-class="none" bindtap="closeHomeSheet">取消</button>
+      </view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="binding-content {{isScanHelp ? 'content-dimmed' : ''}}">
+      <view class="binding-nav">
+        <button class="back-btn" hover-class="none" bindtap="backFromBinding">←</button>
+        <view class="binding-title">绑定设备</view>
+      </view>
+
+      <view class="radar-wrap {{isBindingScanning ? 'radar-scanning' : ''}}">
+        <view class="radar-ring radar-r1"></view>
+        <view class="radar-ring radar-r2"></view>
+        <view class="radar-ring radar-r3"></view>
+        <view class="radar-ring radar-r4"></view>
+        <view class="radar-core">
+          <text>ᛒ</text>
+        </view>
+        <view wx:if="{{isBindingFound}}" class="scan-badge success">✓</view>
+        <view wx:if="{{isBindingNoDevice || isScanHelp}}" class="scan-badge fail">×</view>
+      </view>
+
+      <block wx:if="{{isBindingFound}}">
+        <view class="nearby-head">
+          <text>附近设备</text>
+          <button class="refresh-btn" hover-class="none" bindtap="rescanDevices"></button>
+        </view>
+        <view class="device-list">
+          <button wx:for="{{nearbyDevices}}" wx:key="id" class="nearby-device {{item.selected ? 'selected' : ''}}" hover-class="none" data-id="{{item.id}}" bindtap="selectNearbyDevice">
+            <view class="nearby-icon {{item.color}}">
+              <view class="small-frame-icon"></view>
+            </view>
+            <text>{{item.name}}</text>
+            <view class="select-circle">{{item.selected ? '✓' : ''}}</view>
+          </button>
+        </view>
+        <button class="primary-action bind-bottom" hover-class="none" bindtap="finishBind">立即绑定</button>
+      </block>
+
+      <block wx:elif="{{isBindingScanning}}">
+        <view class="scan-copy">
+          <view class="scan-title">正在搜索附近设备</view>
+          <view class="scan-desc">请尽量将手机靠近需要添加的设备...</view>
+        </view>
+        <button class="scan-help-link" hover-class="none" bindtap="showScanHelp">扫描不到怎么办?</button>
+        <button class="primary-action bind-bottom" hover-class="none" bindtap="cancelScan">取消扫描</button>
+      </block>
+
+      <block wx:else>
+        <view class="scan-copy no-device-copy">
+          <view class="scan-title">未发现设备</view>
+          <view class="scan-desc">设备连接中断，请检查设备状态后重试</view>
+        </view>
+        <button class="scan-help-link" hover-class="none" bindtap="showScanHelp">扫描不到怎么办?</button>
+        <button class="primary-action bind-bottom" hover-class="none" bindtap="rescanDevices">重新扫描</button>
+      </block>
+    </view>
+
+    <view wx:if="{{isScanHelp}}" class="home-mask scan-help-mask" catchtouchmove="noop">
+      <view class="bottom-sheet scan-help-sheet">
+        <button class="sheet-close" hover-class="none" bindtap="closeScanHelp">×</button>
+        <view class="scan-help-title">扫描不到怎么办?</view>
+        <view class="scan-help-icon">
+          <view class="focus-corner corner-a"></view>
+          <view class="focus-corner corner-b"></view>
+          <view class="focus-corner corner-c"></view>
+          <view class="focus-corner corner-d"></view>
+          <text>×</text>
+        </view>
+        <view class="check-title">请检查:</view>
+        <view class="check-list">
+          <text>1.设备是否有电?</text>
+          <text>2.当前设备是否被占用?</text>
+          <text>3.设备蓝牙是否工作正常，手机蓝牙是否打开</text>
+          <text>4.设备是否与手机距离过远，隔离或有其他遮挡物</text>
+        </view>
+        <button class="primary-action" hover-class="none" bindtap="rescanDevices">重新扫描</button>
+      </view>
+    </view>
+  </block>
 </view>

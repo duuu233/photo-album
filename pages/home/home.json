@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "BoltStar 智能相框"
+  "navigationStyle": "custom",
+  "disableScroll": true,
+  "backgroundColor": "#edf6ff"
 }

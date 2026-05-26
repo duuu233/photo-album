@@ -17,12 +17,6 @@ App({
     wx.setStorageSync('logs', logs)
 
     this.restoreSession()
-    this.ensureLogin().catch(() => {
-      wx.showToast({
-        title: '登录初始化失败',
-        icon: 'none'
-      })
-    })
   },
 
   restoreSession() {
