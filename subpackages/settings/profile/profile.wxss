@@ -1,57 +1,66 @@
+@import "../shared.wxss";
+
 .profile-card {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 24rpx;
-  padding: 30rpx;
+  padding: 42rpx 32rpx;
 }
 
 .avatar-btn,
-.avatar {
-  width: 132rpx;
-  height: 132rpx;
+.avatar-img {
+  width: 136rpx;
+  height: 136rpx;
   overflow: hidden;
-  border-radius: 34rpx;
+  border-radius: 50%;
 }
 
-.profile-text {
-  flex: 1;
-  min-width: 0;
+.avatar-placeholder {
+  background:
+    radial-gradient(circle at 50% 38%, #ffe3cb 0 26rpx, transparent 27rpx),
+    radial-gradient(circle at 50% 94%, #ff873e 0 52rpx, transparent 53rpx),
+    linear-gradient(135deg, #fff6ee, #d7eaff);
 }
 
 .profile-name {
-  margin-bottom: 8rpx;
-  color: #232323;
-  font-size: 36rpx;
-  font-weight: 900;
+  margin-top: 24rpx;
+  color: #2a2d32;
+  font-size: 38rpx;
+  font-weight: 700;
+  line-height: 1;
 }
 
-.form-panel {
-  overflow: hidden;
-}
-
-.cell-title {
-  margin-bottom: 8rpx;
-  color: #232323;
-  font-size: 29rpx;
-  font-weight: 800;
-}
-
-.email-action {
-  color: #eb5f1b;
-  font-size: 26rpx;
-  font-weight: 850;
-}
-
-.email-action.warn {
-  color: #b5650f;
-}
-
-.phone-btn {
-  min-width: 132rpx;
-  min-height: 64rpx;
+.profile-tip {
+  margin-top: 16rpx;
+  color: #858b96;
   font-size: 24rpx;
 }
 
-.save-btn {
-  margin-top: 24rpx;
+.info-card {
+  margin-top: 28rpx;
+}
+
+.row-input {
+  flex: 1;
+  min-width: 0;
+  height: 96rpx;
+  color: #2a2d32;
+  font-size: 28rpx;
+  text-align: right;
+}
+
+.row .row-label {
+  flex: 0 0 150rpx;
+}
+
+.row .row-value {
+  flex: 1;
+  text-align: right;
+}
+
+.save-profile {
+  position: absolute;
+  right: 48rpx;
+  bottom: calc(216rpx + var(--safe-bottom));
+  left: 48rpx;
 }

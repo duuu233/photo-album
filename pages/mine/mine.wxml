@@ -1,75 +1,69 @@
-<view class="page mine-page safe-bottom">
-  <view class="profile-card card" wx:if="{{userInfo}}">
-    <button class="avatar-btn" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar">
-      <image class="avatar" src="{{userInfo.avatarUrl || defaultAvatarUrl}}" mode="aspectFill"></image>
-    </button>
-    <view class="profile-main">
-      <input class="nickname-input" type="nickname" value="{{userInfo.nickName || '微信用户'}}" bindblur="onNicknameBlur" />
-      <view class="caption">{{userInfo.email || '未绑定邮箱'}} · {{userInfo.phone || '未绑定手机号'}}</view>
+<view class="mine-root" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mine-bg">
+    <view class="bg-curve bg-curve-top"></view>
+    <view class="bg-curve bg-curve-bottom"></view>
+    <view class="bg-spark spark-one"></view>
+    <view class="bg-spark spark-two"></view>
+  </view>
+
+  <view class="page-title">我的</view>
+
+  <button class="profile-card" hover-class="none" bindtap="goProfile">
+    <image wx:if="{{avatarUrl}}" class="profile-avatar" src="{{avatarUrl}}" mode="aspectFill"></image>
+    <view wx:else class="profile-avatar avatar-placeholder"></view>
+    <view class="profile-copy">
+      <view class="profile-name">{{nickName}}</view>
+      <view class="profile-id">ID：{{userId}}</view>
     </view>
-    <button class="secondary-btn edit-btn" bindtap="goProfile">编辑</button>
-  </view>
-
-  <view class="profile-card card" wx:else>
-    <view class="avatar-skeleton"></view>
-    <view class="profile-main">
-      <view class="skeleton-line skeleton-line--wide"></view>
-      <view class="skeleton-line"></view>
-    </view>
-  </view>
-
-  <view class="stats-card card">
-    <button class="stat-item" bindtap="goAlbum">
-      <text class="stat-value">{{stats.photoCount}}</text>
-      <text class="stat-label">照片</text>
-    </button>
-    <button class="stat-item" bindtap="goDevices">
-      <text class="stat-value">{{stats.deviceCount}}</text>
-      <text class="stat-label">设备</text>
-    </button>
-    <button class="stat-item" bindtap="goRecords">
-      <text class="stat-value">{{stats.recordCount}}</text>
-      <text class="stat-label">投屏</text>
-    </button>
-  </view>
-
-  <view class="section">
-    <view class="section-title">常用功能</view>
-    <view class="quick-grid">
-      <button class="quick-card quick-card--album" bindtap="goAlbum">
-        <text class="quick-icon">图</text>
-        <text class="quick-title">我的相册</text>
-        <text class="quick-desc">管理照片和投屏素材</text>
-      </button>
-      <button class="quick-card quick-card--device" bindtap="goDevices">
-        <text class="quick-icon">框</text>
-        <text class="quick-title">我的设备</text>
-        <text class="quick-desc">绑定、删除和轮播设置</text>
-      </button>
-    </view>
-  </view>
-
-  <view class="section">
-    <view class="section-title">账户服务</view>
-    <view class="card mine-list">
-      <button class="list-cell" bindtap="goRecords">
-        <view>
-          <view class="cell-title">投屏管理</view>
-          <view class="caption">查看成功与失败记录</view>
-        </view>
-        <text class="cell-arrow">›</text>
-      </button>
-      <button class="list-cell" bindtap="goProfile">
-        <view>
-          <view class="cell-title">个人信息</view>
-          <view class="caption">头像、昵称、邮箱和手机号</view>
-        </view>
-        <text class="cell-arrow">›</text>
-      </button>
-    </view>
-  </view>
-
-  <button class="secondary-btn bind-phone" open-type="getPhoneNumber" bindgetphonenumber="bindPhone" wx:if="{{userInfo && !userInfo.phone}}">
-    微信快捷绑定手机号
+    <view class="chevron">›</view>
   </button>
+
+  <view class="section-title functions-title">常用功能</view>
+  <view class="quick-grid">
+    <button class="quick-card" hover-class="none" bindtap="goAlbum">
+      <view class="quick-icon orange-icon"><view class="icon-picture"></view></view>
+      <view class="quick-title">我的图库</view>
+      <view class="quick-desc">{{photoCount}}张照片</view>
+    </button>
+    <button class="quick-card" hover-class="none" bindtap="goDevices">
+      <view class="quick-icon blue-icon"><view class="icon-device"></view></view>
+      <view class="quick-title">我的设备</view>
+      <view class="quick-desc">{{deviceCount}}个设备</view>
+    </button>
+    <button class="quick-card" hover-class="none" bindtap="goRecords">
+      <view class="quick-icon orange-icon"><view class="icon-project"></view></view>
+      <view class="quick-title">投屏管理</view>
+    </button>
+  </view>
+
+  <view class="section-title help-title">服务与帮助</view>
+  <view class="service-list">
+    <button class="service-row" hover-class="none" bindtap="goGuide">
+      <view class="service-icon blue-icon"><view class="icon-book"></view></view>
+      <text>操作指南</text>
+      <view class="chevron">›</view>
+    </button>
+    <button class="service-row" hover-class="none" bindtap="goSettings">
+      <view class="service-icon blue-icon"><view class="icon-setting"></view></view>
+      <text>设置</text>
+      <view class="chevron">›</view>
+    </button>
+  </view>
+
+  <view class="custom-tabbar">
+    <button class="tab-item" hover-class="none" bindtap="goHome">
+      <view class="tab-home-icon">
+        <view class="home-roof"></view>
+        <view class="home-body"></view>
+      </view>
+      <text>首页</text>
+    </button>
+    <button class="tab-item active" hover-class="none">
+      <view class="tab-user-icon">
+        <view class="user-head"></view>
+        <view class="user-shoulder"></view>
+      </view>
+      <text>我的</text>
+    </button>
+  </view>
 </view>

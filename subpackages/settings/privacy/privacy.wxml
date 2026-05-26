@@ -1,0 +1,27 @@
+<view class="settings-shell" style="--status-bar: {{statusBarHeight}}px;">
+  <view class="nav-bar">
+    <button class="back-btn" hover-class="none" bindtap="goBack">←</button>
+    <view class="nav-title">隐私政策</view>
+  </view>
+
+  <scroll-view class="article-scroll" scroll-y>
+    <view class="glass-card article-card">
+      <view class="article-title">《BoltStar 隐私政策》</view>
+      <view class="date-row">
+        <text>更新日期：2026-5-13</text>
+        <text>生效日期：2026-5-13</text>
+      </view>
+      <view class="article-section-title">前言</view>
+      <view class="article-p">欢迎使用 BoltStar（以下简称“本应用”）。我们深知个人信息对您的重要性，并将以高度审慎的态度保护您的个人信息安全。本政策旨在向您说明我们如何收集、使用、存储、共享和保护您的个人信息。</view>
+      <view class="article-section-title">一、我们收集哪些信息?</view>
+      <view class="article-p">1. 您主动提供的信息</view>
+      <view class="article-list">• 注册 / 登录信息：如手机号、验证码、账号信息等。</view>
+      <view class="article-list">• 您在使用服务时主动上传或填写的内容，例如资料、反馈信息等。</view>
+      <view class="article-p">2. 自动收集的信息</view>
+      <view class="article-list">• 设备信息：设备型号、操作系统版本、唯一设备识别码、网络类型、IP 地址等。</view>
+      <view class="article-list">• 日志信息：使用时长、功能访问路径、异常日志等，用于优化产品体验。</view>
+      <view class="article-section-title">二、我们如何使用这些信息?</view>
+      <view class="article-p">用于提供、维护和优化本应用的核心服务，包括账号安全、设备连接、照片投屏和客户支持。</view>
+    </view>
+  </scroll-view>
+</view>

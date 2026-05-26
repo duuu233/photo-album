@@ -2,20 +2,14 @@ Page({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
-    currentEmail: '123456789@qq.com',
-    email: '',
+    email: '123456789@qq.com',
     code: '',
     password: '',
-    confirmPassword: '',
-    canSubmit: false
+    confirmPassword: ''
   },
 
   onLoad() {
     this.setSystemMetrics()
-    const userInfo = getApp().globalData.userInfo || wx.getStorageSync('userInfo') || {}
-    this.setData({
-      currentEmail: userInfo.email || '123456789@qq.com'
-    })
   },
 
   setSystemMetrics() {
@@ -37,13 +31,6 @@ Page({
   onInput(event) {
     this.setData({
       [event.currentTarget.dataset.field]: event.detail.value
-    }, this.updateSubmitState)
-  },
-
-  updateSubmitState() {
-    const { email, code, password, confirmPassword } = this.data
-    this.setData({
-      canSubmit: Boolean(email && code && password && confirmPassword)
     })
   },
 

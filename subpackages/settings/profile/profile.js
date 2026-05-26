@@ -1,78 +1,75 @@
 const api = require('../../../utils/api')
 
 const app = getApp()
-const defaultAvatarUrl = 'https://mmbiz.qpic.cn/mmbiz/icTdbqWNOwNRna42FI242Lcia07jQodd2FJGIYQfG0LAJGFxM4FbnQP6yfMxBgJ0F3YRqJCJ1aPAK2dQagdusBZg/0'
 
 Page({
   data: {
-    userInfo: null,
-    defaultAvatarUrl
+    statusBarHeight: 20,
+    safeBottom: 0,
+    userInfo: {
+      nickName: '江江江',
+      avatarUrl: '',
+      email: '123456789@qq.com',
+      phone: '123456789'
+    }
+  },
+
+  onLoad() {
+    this.setSystemMetrics()
   },
 
   onShow() {
     this.loadUser()
   },
 
-  async loadUser() {
-    const userInfo = await api.getUserProfile()
-    this.syncUser(userInfo)
-  },
-
-  async onChooseAvatar(e) {
-    await this.updateProfile({
-      avatarUrl: e.detail.avatarUrl
-    })
-  },
-
-  onNicknameInput(e) {
-    this.setData({
-      'userInfo.nickName': e.detail.value
-    })
-  },
-
-  async saveProfile() {
-    if (!this.data.userInfo) {
-      return
-    }
-
-    const nickName = this.data.userInfo.nickName.trim()
-
-    if (!nickName) {
-      wx.showToast({
-        title: '请输入昵称',
-        icon: 'none'
+  setSystemMetrics() {
+    try {
+      const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
+      const safeBottom = Math.max(0, (info.screenHeight || 0) - (info.safeArea ? info.safeArea.bottom : info.windowHeight || 0))
+      this.setData({
+        statusBarHeight: info.statusBarHeight || 20,
+        safeBottom
       })
-      return
+    } catch (error) {
+      this.setData({
+        statusBarHeight: 20,
+        safeBottom: 0
+      })
     }
+  },
 
-    await this.updateProfile({
-      nickName
+  async loadUser() {
+    try {
+      const userInfo = await api.getUserProfile()
+      this.syncUser({
+        nickName: userInfo.nickName || '江江江',
+        avatarUrl: userInfo.avatarUrl || '',
+        email: userInfo.email || '123456789@qq.com',
+        phone: userInfo.phone || '123456789'
+      })
+    } catch (error) {
+      this.syncUser(this.data.userInfo)
+    }
+  },
+
+  onChooseAvatar(event) {
+    this.setData({
+      'userInfo.avatarUrl': event.detail.avatarUrl
     })
+  },
 
+  onNicknameInput(event) {
+    this.setData({
+      'userInfo.nickName': event.detail.value
+    })
+  },
+
+  saveProfile() {
+    app.globalData.userInfo = this.data.userInfo
+    wx.setStorageSync('userInfo', this.data.userInfo)
     wx.showToast({
       title: '已保存',
       icon: 'success'
-    })
-  },
-
-  async bindPhone(e) {
-    if (!e.detail || !e.detail.code) {
-      wx.showToast({
-        title: '未授权手机号',
-        icon: 'none'
-      })
-      return
-    }
-
-    const userInfo = await api.bindPhone({
-      code: e.detail.code
-    })
-    this.syncUser(userInfo)
-  },
-
-  goBindEmail() {
-    wx.navigateTo({
-      url: '/subpackages/settings/bind-email/bind-email'
     })
   },
 
@@ -82,17 +79,8 @@ Page({
     })
   },
 
-  goEmail() {
-    if (this.data.userInfo && this.data.userInfo.email) {
-      this.goChangeEmail()
-      return
-    }
-    this.goBindEmail()
-  },
-
-  async updateProfile(payload) {
-    const userInfo = await api.updateUserProfile(payload)
-    this.syncUser(userInfo)
+  goBack() {
+    wx.navigateBack()
   },
 
   syncUser(userInfo) {

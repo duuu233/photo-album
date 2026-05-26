@@ -1,0 +1,27 @@
+<view class="settings-shell update-shell" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="nav-bar">
+    <button class="back-btn" hover-class="none" bindtap="goBack">←</button>
+    <view class="nav-title">更新BoltStar</view>
+  </view>
+
+  <view class="logo-wrap">
+    <image class="logo-img" src="/assets/images/logo.png" mode="aspectFit"></image>
+    <view wx:if="{{state === 'updating'}}" class="version-text">正在更新...</view>
+    <view wx:elif="{{state === 'available'}}" class="version-text">当前版本1.0.0 · 最新版本1.2.0</view>
+    <view wx:else class="version-text">版本1.0.0</view>
+  </view>
+
+  <block wx:if="{{state === 'updating'}}">
+    <view class="progress-ring">
+      <view class="progress-inner">
+        <view class="progress-number">45<text>%</text></view>
+        <view class="progress-desc">正在下载更新中</view>
+      </view>
+    </view>
+  </block>
+
+  <view wx:else class="about-text">BoltStar是一款帮助你轻松管理和分享照片的应用，连接设备，珍藏生活每一刻。</view>
+
+  <button wx:if="{{state === 'available'}}" class="primary-btn update-btn" hover-class="none" bindtap="startUpdate">立即更新</button>
+  <button wx:if="{{state === 'updating'}}" class="delete-account" hover-class="none">用户注销</button>
+</view>

@@ -1,0 +1,88 @@
+@import "../shared.wxss";
+
+.logo-wrap {
+  position: relative;
+  z-index: 1;
+  margin-top: 276rpx;
+  text-align: center;
+}
+
+.logo-img {
+  width: 246rpx;
+  height: 62rpx;
+}
+
+.version-text {
+  margin-top: 42rpx;
+  color: #808690;
+  font-size: 26rpx;
+  line-height: 1;
+}
+
+.about-text {
+  position: relative;
+  z-index: 1;
+  width: 640rpx;
+  margin: 150rpx auto 0;
+  color: #2a2d32;
+  font-size: 30rpx;
+  line-height: 1.58;
+  text-align: center;
+}
+
+.update-btn {
+  position: absolute;
+  right: 48rpx;
+  bottom: calc(216rpx + var(--safe-bottom));
+  left: 48rpx;
+}
+
+.progress-ring {
+  position: relative;
+  z-index: 1;
+  width: 360rpx;
+  height: 360rpx;
+  margin: 142rpx auto 0;
+  background: conic-gradient(#ff762f 0 45%, #dfe5ee 45% 100%);
+  border-radius: 50%;
+}
+
+.progress-inner {
+  position: absolute;
+  top: 16rpx;
+  right: 16rpx;
+  bottom: 16rpx;
+  left: 16rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #edf6ff;
+  border-radius: 50%;
+}
+
+.progress-number {
+  color: #ff6421;
+  font-size: 74rpx;
+  line-height: 1;
+}
+
+.progress-number text {
+  font-size: 28rpx;
+}
+
+.progress-desc {
+  margin-top: 24rpx;
+  color: #808690;
+  font-size: 24rpx;
+}
+
+.delete-account {
+  position: absolute;
+  right: 48rpx;
+  bottom: calc(70rpx + var(--safe-bottom));
+  left: 48rpx;
+  color: #808690;
+  font-size: 30rpx;
+  text-align: center;
+}

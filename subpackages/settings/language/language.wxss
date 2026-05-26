@@ -1,0 +1,56 @@
+@import "../shared.wxss";
+
+.language-card {
+  margin-top: 28rpx;
+}
+
+.language-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 122rpx;
+  padding: 0 36rpx;
+  text-align: left;
+}
+
+.language-row + .language-row::before {
+  position: absolute;
+  top: 0;
+  right: 36rpx;
+  left: 36rpx;
+  height: 1rpx;
+  background: rgba(207, 214, 224, 0.72);
+  content: "";
+}
+
+.language-row text {
+  color: #2a2d32;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.radio {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52rpx;
+  height: 52rpx;
+  color: #ffffff;
+  border: 2rpx solid #bfc4cc;
+  border-radius: 50%;
+  font-size: 34rpx;
+  font-weight: 800;
+}
+
+.radio.checked {
+  background: #ff7a2e;
+  border-color: #ff7a2e;
+}
+
+.save-language {
+  position: absolute;
+  right: 48rpx;
+  bottom: calc(216rpx + var(--safe-bottom));
+  left: 48rpx;
+}

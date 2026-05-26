@@ -1,34 +1,33 @@
-<view class="page profile-page safe-bottom" wx:if="{{userInfo}}">
-  <view class="profile-card card">
-    <button class="avatar-btn" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar">
-      <image class="avatar" src="{{userInfo.avatarUrl || defaultAvatarUrl}}" mode="aspectFill"></image>
+<view class="settings-shell" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="nav-bar">
+    <button class="back-btn" hover-class="none" bindtap="goBack">←</button>
+    <view class="nav-title">个人信息</view>
+  </view>
+
+  <view class="glass-card profile-card">
+    <button class="avatar-btn" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar" hover-class="none">
+      <image wx:if="{{userInfo.avatarUrl}}" class="avatar-img" src="{{userInfo.avatarUrl}}" mode="aspectFill"></image>
+      <view wx:else class="avatar-img avatar-placeholder"></view>
     </button>
-    <view class="profile-text">
-      <view class="profile-name">{{userInfo.nickName || '微信用户'}}</view>
-      <view class="caption">点击头像可拉取微信头像</view>
+    <view class="profile-name">{{userInfo.nickName || '江江江'}}</view>
+    <view class="profile-tip">点击头像可更换微信头像</view>
+  </view>
+
+  <view class="glass-card info-card">
+    <view class="row">
+      <text class="row-label">昵称</text>
+      <input class="row-input" type="nickname" value="{{userInfo.nickName}}" placeholder="请输入昵称" bindinput="onNicknameInput" />
+    </view>
+    <button class="row" hover-class="none" bindtap="goChangeEmail">
+      <text class="row-label">邮箱</text>
+      <text class="row-value">{{userInfo.email || '123456789@qq.com'}}</text>
+      <view class="chevron">›</view>
+    </button>
+    <view class="row">
+      <text class="row-label">手机号</text>
+      <text class="row-value">{{userInfo.phone || '123456789'}}</text>
     </view>
   </view>
 
-  <view class="section card form-panel">
-    <view class="form-row">
-      <view class="form-label">昵称</view>
-      <input class="form-input" type="nickname" value="{{userInfo.nickName}}" bindinput="onNicknameInput" />
-    </view>
-    <button class="list-cell email-cell" bindtap="goEmail">
-      <view>
-        <view class="cell-title">邮箱</view>
-        <view class="caption">{{userInfo.email || '未绑定邮箱'}}</view>
-      </view>
-      <view class="email-action {{userInfo.email ? '' : 'warn'}}">{{userInfo.email ? '修改' : '去绑定'}}</view>
-    </button>
-    <view class="list-cell">
-      <view>
-        <view class="cell-title">手机号</view>
-        <view class="caption">{{userInfo.phone || '未绑定手机号'}}</view>
-      </view>
-      <button class="secondary-btn phone-btn" open-type="getPhoneNumber" bindgetphonenumber="bindPhone">{{userInfo.phone ? '更新' : '绑定'}}</button>
-    </view>
-  </view>
-
-  <button class="primary-btn save-btn" bindtap="saveProfile">保存</button>
+  <button class="primary-btn save-profile" hover-class="none" bindtap="saveProfile">保存</button>
 </view>

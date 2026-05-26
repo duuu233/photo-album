@@ -1,0 +1,24 @@
+<view class="settings-shell guide-shell" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="nav-bar">
+    <button class="back-btn" hover-class="none" bindtap="goBack">←</button>
+    <view class="nav-title">操作指南</view>
+  </view>
+
+  <view class="search-box">
+    <input placeholder="搜索帮助文档" placeholder-class="search-placeholder" />
+    <view class="search-icon"></view>
+  </view>
+
+  <view class="glass-card guide-card">
+    <view wx:for="{{guides}}" wx:key="id" class="guide-item {{item.open ? 'open' : ''}}">
+      <button class="guide-head" hover-class="none" data-id="{{item.id}}" bindtap="toggleGuide">
+        <view class="question-icon">?</view>
+        <text>{{item.title}}</text>
+        <view class="fold-icon">{{item.open ? '⌃' : '⌄'}}</view>
+      </button>
+      <view wx:if="{{item.open}}" class="guide-body">
+        <text wx:for="{{item.lines}}" wx:for-item="line" wx:key="*this">{{line}}</text>
+      </view>
+    </view>
+  </view>
+</view>

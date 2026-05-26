@@ -1,89 +1,81 @@
 const api = require('../../utils/api')
 
 const app = getApp()
-const defaultAvatarUrl = 'https://mmbiz.qpic.cn/mmbiz/icTdbqWNOwNRna42FI242Lcia07jQodd2FJGIYQfG0LAJGFxM4FbnQP6yfMxBgJ0F3YRqJCJ1aPAK2dQagdusBZg/0'
 
 Page({
   data: {
-    userInfo: null,
-    defaultAvatarUrl,
-    stats: {
-      photoCount: 0,
-      deviceCount: 0,
-      recordCount: 0
-    }
+    statusBarHeight: 20,
+    safeBottom: 0,
+    avatarUrl: '',
+    nickName: '江江江',
+    userId: '123456',
+    photoCount: 102,
+    deviceCount: 3
+  },
+
+  onLoad() {
+    this.setSystemMetrics()
   },
 
   onShow() {
-    this.loadMine()
-  },
-
-  async loadMine() {
-    await app.ensureLogin()
-    const [userInfo, photos, devices, records] = await Promise.all([
-      api.getUserProfile(),
-      api.getAlbumPhotos(),
-      api.getDevices(),
-      api.getProjectionRecords()
-    ])
-
-    app.globalData.userInfo = userInfo
-    wx.setStorageSync('userInfo', userInfo)
-    this.setData({
-      userInfo,
-      stats: {
-        photoCount: photos.length,
-        deviceCount: devices.length,
-        recordCount: records.length
-      }
-    })
-  },
-
-  async onChooseAvatar(e) {
-    const avatarUrl = e.detail.avatarUrl
-    const userInfo = await api.updateUserProfile({
-      avatarUrl
-    })
-    app.globalData.userInfo = userInfo
-    wx.setStorageSync('userInfo', userInfo)
-    this.setData({
-      userInfo
-    })
-  },
-
-  async onNicknameBlur(e) {
-    const nickName = e.detail.value.trim()
-
-    if (!nickName || !this.data.userInfo || nickName === this.data.userInfo.nickName) {
-      return
-    }
-
-    const userInfo = await api.updateUserProfile({
-      nickName
-    })
-    app.globalData.userInfo = userInfo
-    wx.setStorageSync('userInfo', userInfo)
-    this.setData({
-      userInfo
-    })
-  },
-
-  async bindPhone(e) {
-    if (!e.detail || !e.detail.code) {
-      wx.showToast({
-        title: '未授权手机号',
-        icon: 'none'
+    if (wx.hideTabBar) {
+      wx.hideTabBar({
+        animation: false
       })
-      return
     }
+    this.loadUserInfo()
+  },
 
-    const userInfo = await api.bindPhone({
-      code: e.detail.code
+  setSystemMetrics() {
+    try {
+      const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
+      const safeBottom = Math.max(0, (info.screenHeight || 0) - (info.safeArea ? info.safeArea.bottom : info.windowHeight || 0))
+      this.setData({
+        statusBarHeight: info.statusBarHeight || 20,
+        safeBottom
+      })
+    } catch (error) {
+      this.setData({
+        statusBarHeight: 20,
+        safeBottom: 0
+      })
+    }
+  },
+
+  async loadUserInfo() {
+    try {
+      await app.ensureLogin()
+      const [userInfo, photos, devices] = await Promise.all([
+        api.getUserProfile(),
+        api.getAlbumPhotos(),
+        api.getDevices()
+      ])
+      this.setData({
+        avatarUrl: userInfo.avatarUrl || '',
+        nickName: userInfo.nickName || '江江江',
+        userId: userInfo.id || '123456',
+        photoCount: photos.length || 102,
+        deviceCount: devices.length || 3
+      })
+    } catch (error) {
+      this.setData({
+        nickName: '江江江',
+        userId: '123456',
+        photoCount: 102,
+        deviceCount: 3
+      })
+    }
+  },
+
+  goHome() {
+    wx.switchTab({
+      url: '/pages/home/home'
     })
-    app.globalData.userInfo = userInfo
-    wx.setStorageSync('userInfo', userInfo)
-    this.setData({
-      userInfo
+  },
+
+  goProfile() {
+    wx.navigateTo({
+      url: '/subpackages/settings/profile/profile'
     })
   },
 
@@ -105,9 +97,15 @@ Page({
     })
   },
 
-  goProfile() {
+  goGuide() {
     wx.navigateTo({
-      url: '/subpackages/settings/profile/profile'
+      url: '/subpackages/settings/guide/guide'
+    })
+  },
+
+  goSettings() {
+    wx.navigateTo({
+      url: '/subpackages/settings/index/index'
     })
   }
 })
