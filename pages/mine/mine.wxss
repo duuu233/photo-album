@@ -151,8 +151,7 @@
 }
 
 .quick-card {
-  height: 146rpx;
-  padding: 34rpx 8rpx 0;
+  padding: 32rpx 8rpx 28rpx;
   text-align: center;
   background: rgba(255, 255, 255, 0.66);
   border: 2rpx solid rgba(255, 255, 255, 0.88);
@@ -298,12 +297,12 @@
 }
 
 .help-title {
-  top: calc(var(--status-bar) + 660rpx);
+  top: calc(var(--status-bar) + 692rpx);
 }
 
 .service-list {
   position: absolute;
-  top: calc(var(--status-bar) + 708rpx);
+  top: calc(var(--status-bar) + 740rpx);
   left: 48rpx;
   right: 48rpx;
 }
