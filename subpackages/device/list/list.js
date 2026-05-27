@@ -1,4 +1,5 @@
 const api = require('../../../utils/api')
+const system = require('../../../utils/system')
 
 const app = getApp()
 
@@ -11,6 +12,8 @@ function memoryPercent(device) {
 
 Page({
   data: {
+    statusBarHeight: 20,
+    safeBottom: 0,
     devices: [],
     selectedId: '',
     selectMode: false,
@@ -18,6 +21,7 @@ Page({
   },
 
   onLoad(options) {
+    this.setSystemMetrics()
     this.setData({
       selectMode: options.select === '1'
     })
@@ -37,9 +41,28 @@ Page({
     this.setData({
       devices: devices.map(item => Object.assign({}, item, {
         memoryPercent: memoryPercent(item)
+      })).map((item, index, list) => Object.assign({}, item, {
+        canDeleteHint: !item.connected && index === list.length - 1
       })),
       selectedId: selected ? selected.id : '',
       loading: false
+    })
+  },
+
+  setSystemMetrics() {
+    this.setData(system.getLayoutMetrics())
+  },
+
+  goBack() {
+    const pages = getCurrentPages()
+
+    if (pages.length > 1) {
+      wx.navigateBack()
+      return
+    }
+
+    wx.switchTab({
+      url: '/pages/mine/mine'
     })
   },
 
@@ -69,6 +92,81 @@ Page({
   goBind() {
     wx.navigateTo({
       url: '/subpackages/device/bind/bind'
+    })
+  },
+
+  goSlideshow(e) {
+    const id = e.currentTarget.dataset.id
+    wx.navigateTo({
+      url: `/subpackages/device/slideshow/slideshow?id=${id}`
+    })
+  },
+
+  async toggleConnection(e) {
+    const id = e.currentTarget.dataset.id
+    const device = this.data.devices.find(item => item.id === id)
+
+    if (!device) {
+      return
+    }
+
+    await api.updateDevicePlayback(id, {
+      connected: !device.connected,
+      lastOnline: '刚刚'
+    })
+    wx.showToast({
+      title: device.connected ? '已断开' : '已连接',
+      icon: 'none'
+    })
+    this.loadDevices()
+  },
+
+  renameDevice(e) {
+    const id = e.currentTarget.dataset.id
+    const device = this.data.devices.find(item => item.id === id)
+
+    if (!device) {
+      return
+    }
+
+    wx.showModal({
+      title: '编辑设备名称',
+      editable: true,
+      placeholderText: '请输入设备名称',
+      content: device.name,
+      success: async res => {
+        if (!res.confirm || !res.content.trim()) {
+          return
+        }
+
+        const updated = await api.renameDevice(id, res.content.trim())
+        if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === updated.id) {
+          app.setSelectedDevice(updated)
+        }
+        this.loadDevices()
+      }
+    })
+  },
+
+  deleteDevice(e) {
+    const id = e.currentTarget.dataset.id
+
+    wx.showModal({
+      title: '删除设备',
+      content: '删除后将解除与该相框设备的绑定。',
+      confirmText: '删除',
+      confirmColor: '#ff4d4f',
+      success: async res => {
+        if (!res.confirm) {
+          return
+        }
+
+        await api.deleteDevice(id)
+        if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === id) {
+          app.setSelectedDevice(null)
+        }
+        this.loadDevices()
+      }
     })
   }
 })

@@ -58,8 +58,26 @@ function isDevTools() {
   }
 }
 
+function getLayoutMetrics() {
+  try {
+    const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
+    const safeBottom = Math.max(0, (info.screenHeight || 0) - (info.safeArea ? info.safeArea.bottom : info.windowHeight || 0))
+
+    return {
+      statusBarHeight: info.statusBarHeight || 20,
+      safeBottom
+    }
+  } catch (error) {
+    return {
+      statusBarHeight: 20,
+      safeBottom: 0
+    }
+  }
+}
+
 module.exports = {
   LANGUAGE_LABELS,
+  getLayoutMetrics,
   getSystemLanguageInfo,
   normalizeLanguage,
   isDevTools

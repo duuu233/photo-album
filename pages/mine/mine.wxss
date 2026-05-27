@@ -329,6 +329,85 @@
   font-weight: 600;
 }
 
+.dev-fab {
+  position: absolute;
+  right: 30rpx;
+  bottom: calc(180rpx + var(--safe-bottom));
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96rpx;
+  height: 96rpx;
+  color: #ffffff;
+  background: linear-gradient(135deg, #8a93a3, #5b626f);
+  border-radius: 50%;
+  box-shadow: 0 14rpx 30rpx rgba(70, 80, 96, 0.32);
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.dev-mask {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(42, 43, 43, 0.5);
+}
+
+.dev-panel {
+  width: 100%;
+  max-height: 78vh;
+  padding: 32rpx 40rpx calc(40rpx + var(--safe-bottom));
+  background: #ffffff;
+  border-radius: 32rpx 32rpx 0 0;
+}
+
+.dev-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+
+.dev-panel-head text {
+  color: #2a2d32;
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.dev-close {
+  width: 56rpx;
+  height: 56rpx;
+  color: #8b9098;
+  font-size: 44rpx;
+  line-height: 56rpx;
+}
+
+.dev-scroll {
+  max-height: 64vh;
+}
+
+.dev-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 96rpx;
+  padding: 0 20rpx;
+  text-align: left;
+  border-bottom: 1rpx solid #eef1f5;
+}
+
+.dev-row text {
+  flex: 1;
+  color: #2a2d32;
+  font-size: 28rpx;
+}
+
 .custom-tabbar {
   position: absolute;
   left: 50rpx;

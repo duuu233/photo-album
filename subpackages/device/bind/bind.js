@@ -19,6 +19,8 @@ function mergeDevices(realDevices, mockDevices) {
 
 Page({
   data: {
+    statusBarHeight: 20,
+    safeBottom: 0,
     scanning: false,
     devices: [],
     location: null,
@@ -27,7 +29,21 @@ Page({
   },
 
   onLoad() {
+    this.setData(system.getLayoutMetrics())
     this.scan()
+  },
+
+  goBack() {
+    const pages = getCurrentPages()
+
+    if (pages.length > 1) {
+      wx.navigateBack()
+      return
+    }
+
+    wx.switchTab({
+      url: '/pages/home/home'
+    })
   },
 
   onUnload() {

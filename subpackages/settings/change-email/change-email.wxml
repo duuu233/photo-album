@@ -1,32 +1,53 @@
-<view class="settings-shell" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
-  <view class="nav-bar">
-    <button class="back-btn" hover-class="none" bindtap="goBack">←</button>
-    <view class="nav-title">修改邮箱</view>
+<view class="mock-root email-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <view class="mock-bg__curve mock-bg__curve--top"></view>
+    <view class="mock-bg__curve mock-bg__curve--bottom"></view>
+    <view class="mock-bg__spark mock-bg__spark--one"></view>
+    <view class="mock-bg__spark mock-bg__spark--two"></view>
+    <view class="mock-bg__spark mock-bg__spark--three"></view>
   </view>
 
-  <view class="glass-card form-card">
-    <view class="form-row">
-      <text class="form-label">当前邮箱</text>
-      <input class="form-input" disabled value="{{currentEmail}}" />
-    </view>
-    <view class="form-row">
-      <text class="form-label">新邮箱</text>
-      <input class="form-input" value="{{email}}" placeholder="请输入新的邮箱地址" placeholder-class="form-placeholder" data-field="email" bindinput="onInput" />
-    </view>
-    <view class="form-row">
-      <text class="form-label">验证码</text>
-      <input class="form-input code-input" value="{{code}}" placeholder="请输入验证码" placeholder-class="form-placeholder" data-field="code" bindinput="onInput" />
-      <button class="code-btn" hover-class="none" bindtap="sendCode">获取验证码</button>
-    </view>
-    <view class="form-row">
-      <text class="form-label">密码</text>
-      <input class="form-input" password value="{{password}}" placeholder="请输入密码" placeholder-class="form-placeholder" data-field="password" bindinput="onInput" />
-    </view>
-    <view class="form-row">
-      <text class="form-label">确认密码</text>
-      <input class="form-input" password value="{{confirmPassword}}" placeholder="请确认密码" placeholder-class="form-placeholder" data-field="confirmPassword" bindinput="onInput" />
-    </view>
+  <view class="mock-nav">
+    <button class="mock-nav__back" hover-class="none" aria-label="返回" bindtap="goBack">
+      <view class="mock-nav__back-icon"></view>
+    </button>
+    <view class="mock-nav__title">修改邮箱</view>
+    <view></view>
   </view>
 
-  <button class="primary-btn form-submit {{canSubmit ? '' : 'disabled-btn'}}" disabled="{{!canSubmit}}" hover-class="none" bindtap="submit">确认修改</button>
+  <view class="mock-content email-content">
+    <view class="email-form glass-panel">
+      <view class="email-row">
+        <text class="email-label">当前邮箱</text>
+        <text class="current-email">{{currentEmail}}</text>
+      </view>
+      <view class="thin-divider"></view>
+
+      <view class="email-row">
+        <text class="email-label">新邮箱</text>
+        <input class="email-input" type="text" value="{{email}}" placeholder="请输入新的邮箱地址" placeholder-class="email-placeholder" data-field="email" bindinput="onInput" />
+      </view>
+      <view class="thin-divider"></view>
+
+      <view class="email-row">
+        <text class="email-label">验证码</text>
+        <input class="email-input code-input" type="number" value="{{code}}" placeholder="请输入验证码" placeholder-class="email-placeholder" data-field="code" bindinput="onInput" />
+        <button class="code-btn {{codeCountdown ? 'is-counting' : ''}}" disabled="{{codeCountdown > 0}}" hover-class="none" bindtap="sendCode">{{codeButtonText}}</button>
+      </view>
+      <view class="thin-divider"></view>
+
+      <view class="email-row">
+        <text class="email-label">密码</text>
+        <input class="email-input" value="{{password}}" placeholder="请输入密码" placeholder-class="email-placeholder" data-field="password" bindinput="onInput" />
+      </view>
+      <view class="thin-divider"></view>
+
+      <view class="email-row">
+        <text class="email-label">确认密码</text>
+        <input class="email-input" value="{{confirmPassword}}" placeholder="请确认密码" placeholder-class="email-placeholder" data-field="confirmPassword" bindinput="onInput" />
+      </view>
+    </view>
+
+    <button class="settings-primary email-submit {{canSubmit ? '' : 'is-disabled'}}" disabled="{{!canSubmit}}" hover-class="none" bindtap="submit">确认修改</button>
+  </view>
 </view>

@@ -1,4 +1,5 @@
 const api = require('../../../utils/api')
+const system = require('../../../utils/system')
 
 function calcTotalSize(images) {
   return Number(images.reduce((sum, image) => sum + Number(image.sizeMb || image.size || 0), 0).toFixed(2))
@@ -6,17 +7,22 @@ function calcTotalSize(images) {
 
 Page({
   data: {
+    statusBarHeight: 20,
+    safeBottom: 0,
     device: null,
     images: [],
     activeImage: null,
     activeIndex: 0,
+    imageCount: 0,
     totalSize: 0,
     enoughMemory: true,
-    fitMode: 'cover',
+    activeTool: 'crop',
+    rotation: 0,
     projecting: false
   },
 
   onLoad() {
+    this.setData(system.getLayoutMetrics())
     const pending = wx.getStorageSync('pendingProjection') || {}
     const images = pending.images || []
     const device = pending.device || null
@@ -32,40 +38,49 @@ Page({
       images,
       activeIndex: safeIndex,
       activeImage: images[safeIndex] || null,
+      imageCount: images.length,
       totalSize,
       enoughMemory: device ? device.usedMemory + totalSize <= device.totalMemory : false
     })
   },
 
-  selectImage(e) {
-    const index = Number(e.currentTarget.dataset.index)
-    this.updateImageState(this.data.images, this.data.device, index)
-  },
-
-  removeImage(e) {
-    const index = Number(e.currentTarget.dataset.index)
-    const images = this.data.images.filter((_, itemIndex) => itemIndex !== index)
-    const nextIndex = index >= images.length ? images.length - 1 : index
-    this.updateImageState(images, this.data.device, nextIndex)
-  },
-
-  setFitMode(e) {
+  onSwiperChange(e) {
+    const index = e.detail.current
     this.setData({
-      fitMode: e.currentTarget.dataset.mode
+      activeIndex: index,
+      activeImage: this.data.images[index] || null,
+      rotation: 0
     })
   },
 
-  rotateLeft() {
-    wx.showToast({
-      title: '已预留旋转事件',
-      icon: 'none'
+  selectTool(e) {
+    const tool = e.currentTarget.dataset.tool
+
+    if (tool === 'rotate') {
+      this.setData({
+        activeTool: 'rotate',
+        rotation: (this.data.rotation + 90) % 360
+      })
+      return
+    }
+
+    if (tool === 'origin') {
+      this.setData({
+        activeTool: 'origin',
+        rotation: 0
+      })
+      return
+    }
+
+    this.setData({
+      activeTool: 'crop'
     })
   },
 
-  rotateRight() {
+  savePhoto() {
     wx.showToast({
-      title: '已预留旋转事件',
-      icon: 'none'
+      title: '已保存',
+      icon: 'success'
     })
   },
 
@@ -118,7 +133,7 @@ Page({
         imageCount: this.data.images.length
       })
       wx.redirectTo({
-        url: '/subpackages/projection/result/result?status=success'
+        url: '/subpackages/projection/result/result?status=progress'
       })
     } catch (error) {
       wx.setStorageSync('lastProjectionResult', {
@@ -137,20 +152,16 @@ Page({
     }
   },
 
-  chooseDevice() {
-    wx.navigateTo({
-      url: '/subpackages/device/list/list?select=1'
-    })
-  },
+  goBack() {
+    const pages = getCurrentPages()
 
-  onShow() {
-    const app = getApp()
-    const selectedDevice = app.globalData.selectedDevice
-
-    if (!selectedDevice || !this.data.device || selectedDevice.id === this.data.device.id) {
+    if (pages.length > 1) {
+      wx.navigateBack()
       return
     }
 
-    this.updateImageState(this.data.images, selectedDevice, this.data.activeIndex)
+    wx.switchTab({
+      url: '/pages/home/home'
+    })
   }
 })

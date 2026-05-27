@@ -1,7 +1,10 @@
 const api = require('../../../utils/api')
+const system = require('../../../utils/system')
 
 Page({
   data: {
+    statusBarHeight: 20,
+    safeBottom: 0,
     id: '',
     device: null,
     intervalOptions: [1, 2, 4, 8, 24],
@@ -9,6 +12,7 @@ Page({
   },
 
   onLoad(options) {
+    this.setSystemMetrics()
     this.setData({
       id: options.id || ''
     })
@@ -16,6 +20,23 @@ Page({
 
   onShow() {
     this.loadDevice()
+  },
+
+  setSystemMetrics() {
+    this.setData(system.getLayoutMetrics())
+  },
+
+  goBack() {
+    const pages = getCurrentPages()
+
+    if (pages.length > 1) {
+      wx.navigateBack()
+      return
+    }
+
+    wx.navigateTo({
+      url: `/subpackages/device/detail/detail?id=${this.data.id}`
+    })
   },
 
   async loadDevice() {

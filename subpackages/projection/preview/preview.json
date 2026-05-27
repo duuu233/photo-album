@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "照片预览"
+  "navigationStyle": "custom",
+  "disableScroll": true,
+  "backgroundColor": "#edf6ff"
 }

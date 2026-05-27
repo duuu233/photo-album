@@ -1,31 +1,61 @@
-<view class="page result-page safe-bottom">
-  <view class="result-card card">
-    <view class="result-icon {{status}}">
-      <text wx:if="{{status === 'progress'}}">···</text>
-      <text wx:elif="{{status === 'success'}}">✓</text>
-      <text wx:else>!</text>
+<view class="mock-root result-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <view class="mock-bg__curve mock-bg__curve--top"></view>
+    <view class="mock-bg__curve mock-bg__curve--bottom"></view>
+    <view class="mock-bg__spark mock-bg__spark--one"></view>
+    <view class="mock-bg__spark mock-bg__spark--two"></view>
+    <view class="mock-bg__spark mock-bg__spark--three"></view>
+  </view>
+
+  <view class="mock-nav">
+    <button class="mock-nav__back" hover-class="none" aria-label="返回" bindtap="goBack">
+      <view class="mock-nav__back-icon"></view>
+    </button>
+    <view class="mock-nav__title">{{title}}</view>
+    <view></view>
+  </view>
+
+  <view class="result-body">
+    <view class="result-art {{status}}">
+      <view class="art-spark art-spark--a"></view>
+      <view class="art-spark art-spark--b"></view>
+      <view class="art-cloud"></view>
+      <view class="art-photo"></view>
+      <view class="art-badge">
+        <text wx:if="{{status === 'success'}}">✓</text>
+        <text wx:elif="{{status === 'fail'}}">!</text>
+        <view wx:else class="art-spinner"></view>
+      </view>
     </view>
+
     <view class="result-title">{{title}}</view>
     <view class="result-desc">{{desc}}</view>
 
-    <view class="result-meta" wx:if="{{result.deviceName}}">
-      <view>
-        <text class="caption">设备</text>
-        <text>{{result.deviceName}}</text>
+    <view wx:if="{{status === 'progress'}}" class="progress-wrap">
+      <view class="progress-bar">
+        <view class="progress-fill" style="width: {{progressPercent}}%;"></view>
       </view>
-      <view>
-        <text class="caption">照片</text>
-        <text>{{result.imageCount}} 张</text>
-      </view>
+      <text class="progress-count">{{progressCurrent}}/{{progressTotal}}</text>
     </view>
 
-    <view class="result-actions" wx:if="{{status === 'fail'}}">
-      <button class="ghost-btn" bindtap="goRecords">查看记录</button>
-      <button class="primary-btn" bindtap="retry">重新投屏</button>
+    <view wx:else class="info-card glass-panel">
+      <view class="info-row">
+        <view class="info-icon"><view class="frame-logo"></view></view>
+        <text class="info-label">投屏设备</text>
+        <text class="info-value">{{deviceName}}</text>
+      </view>
+      <view class="thin-divider"></view>
+      <button class="info-row" hover-class="none" bindtap="goRecords">
+        <view class="info-icon"><view class="frame-logo"></view></view>
+        <text class="info-label">投屏管理</text>
+        <text class="info-value">{{recordCount}}张</text>
+      </button>
     </view>
-    <view class="result-actions" wx:else>
-      <button class="ghost-btn" bindtap="goRecords">投屏管理</button>
-      <button class="primary-btn" bindtap="backHome">回到首页</button>
-    </view>
+  </view>
+
+  <view wx:if="{{status !== 'progress'}}" class="result-actions">
+    <button wx:if="{{status === 'success'}}" class="result-primary" hover-class="none" bindtap="continueProjection">继续投屏</button>
+    <button wx:else class="result-primary" hover-class="none" bindtap="retry">重新投屏</button>
+    <button class="result-secondary" hover-class="none" bindtap="backHome">返回首页</button>
   </view>
 </view>

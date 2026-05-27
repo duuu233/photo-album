@@ -1,39 +1,65 @@
-<view class="page records-page safe-bottom">
-  <view class="page-title">
-    <view>
-      <view class="page-title__main">投屏管理</view>
-      <view class="page-title__sub">查看成功和失败的投屏记录。</view>
+<view class="mock-root records-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <view class="mock-bg__curve mock-bg__curve--top"></view>
+    <view class="mock-bg__curve mock-bg__curve--bottom"></view>
+    <view class="mock-bg__spark mock-bg__spark--one"></view>
+    <view class="mock-bg__spark mock-bg__spark--two"></view>
+    <view class="mock-bg__spark mock-bg__spark--three"></view>
+  </view>
+
+  <view class="mock-nav">
+    <button class="mock-nav__back" hover-class="none" aria-label="返回" bindtap="goBack">
+      <view class="mock-nav__back-icon"></view>
+    </button>
+    <view class="mock-nav__title">投屏管理</view>
+    <view></view>
+  </view>
+
+  <view class="mock-content records-content">
+    <view class="record-tabs">
+      <button class="record-tab {{filter === 'success' ? 'is-active' : ''}}" hover-class="none" data-filter="success" bindtap="switchFilter">投屏成功</button>
+      <button class="record-tab {{filter === 'fail' ? 'is-active' : ''}}" hover-class="none" data-filter="fail" bindtap="switchFilter">投屏失败</button>
     </view>
-  </view>
 
-  <view class="tabs card">
-    <button class="tab {{filter === 'success' ? 'active' : ''}}" data-filter="success" bindtap="switchFilter">
-      <text>投屏成功</text>
-      <text>{{counts.success}}</text>
-    </button>
-    <button class="tab {{filter === 'fail' ? 'active' : ''}}" data-filter="fail" bindtap="switchFilter">
-      <text>投屏失败</text>
-      <text>{{counts.fail}}</text>
-    </button>
-  </view>
+    <view class="record-count">共 {{filteredRecords.length}} 条记录</view>
 
-  <view wx:if="{{filteredRecords.length}}">
-    <view class="record-card card" wx:for="{{filteredRecords}}" wx:key="id">
-      <view class="record-main">
-        <view class="record-icon {{item.status === 'success' ? '' : 'fail'}}">{{item.status === 'success' ? '✓' : '!'}}</view>
-        <view class="record-info">
-          <view class="record-title">{{item.deviceName}}</view>
-          <view class="caption">{{item.imageCount}} 张 · {{item.createdAt}}</view>
-          <view class="record-message">{{item.message}}</view>
+    <view wx:if="{{filteredRecords.length}}" class="record-list">
+      <view class="record-card glass-panel" wx:for="{{filteredRecords}}" wx:key="id">
+        <view class="thumb thumb-{{item.thumbType}}">
+          <image wx:if="{{item.thumbUrl}}" class="thumb-img" src="{{item.thumbUrl}}" mode="aspectFill"></image>
+          <view wx:else class="thumb-art">
+            <view class="thumb-sky"></view>
+            <view class="thumb-sun"></view>
+            <view class="thumb-ground"></view>
+            <view class="thumb-face"></view>
+          </view>
         </view>
-        <text class="tag {{item.status === 'success' ? '' : 'danger'}}">{{item.status === 'success' ? '成功' : '失败'}}</text>
-      </view>
-      <button class="ghost-btn delete-btn" data-id="{{item.id}}" bindtap="deleteRecord">删除记录</button>
-    </view>
-  </view>
 
-  <view class="empty card" wx:else>
-    <view class="empty-title">{{filter === 'success' ? '暂无成功记录' : '暂无失败记录'}}</view>
-    <view class="caption">{{filter === 'success' ? '完成一次照片投屏后会显示在这里。' : '投屏失败时会保留原因，方便排查。'}}</view>
+        <view class="record-body">
+          <view class="record-head">
+            <view class="record-title">{{item.deviceName}}</view>
+            <view class="record-status {{item.status === 'success' ? 'success' : 'fail'}}">{{item.statusText}}</view>
+          </view>
+          <view class="record-time">
+            <view class="calendar-icon"></view>
+            <text>{{item.createdAt}}</text>
+          </view>
+          <view wx:if="{{item.status === 'fail'}}" class="record-reason">
+            <view class="info-icon">i</view>
+            <text>{{item.message}}</text>
+          </view>
+          <view class="thin-divider"></view>
+          <view class="record-actions">
+            <button class="record-action retry-action" hover-class="none" data-id="{{item.id}}" bindtap="retryProjection">{{item.status === 'success' ? '再次投屏' : '重新投屏'}}</button>
+            <button class="record-action delete-action" hover-class="none" data-id="{{item.id}}" bindtap="deleteRecord">删除</button>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="empty-record glass-panel" wx:else>
+      <view class="empty-record__title">{{filter === 'success' ? '暂无成功记录' : '暂无失败记录'}}</view>
+      <view class="empty-record__desc">{{filter === 'success' ? '完成一次照片投屏后会显示在这里。' : '投屏失败时会保留原因，方便排查。'}}</view>
+    </view>
   </view>
 </view>
