@@ -9,7 +9,7 @@
   </button>
 
   <view class="login-main">
-    <image class="login-logo" src="/assets/images/login_boltstar_logo.png" mode="aspectFit"></image>
+    <image class="login-logo" src="/assets/images/logo.png" mode="aspectFit"></image>
 
     <button class="login-submit {{submitting ? 'login-submit--loading' : ''}}" loading="{{submitting}}" hover-class="login-submit--hover" bindtap="onWechatLogin">
       <image class="login-submit__icon" mode="aspectFit" src="/assets/images/login-wx-icon.png"></image>
