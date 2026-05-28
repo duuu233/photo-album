@@ -16,6 +16,7 @@
     <view wx:else></view>
   </view>
 
+  <!-- 有照片：工具栏（数量+设备筛选）→ 照片网格 → 选中后出现的底部操作栏 -->
   <block wx:if="{{filteredPhotos.length}}">
     <view class="album-toolbar">
       <text class="photo-count">共 {{totalCount}} 张</text>
@@ -24,14 +25,17 @@
           <text>{{currentFilter}}</text>
           <view class="filter-arrow {{showFilterMenu ? 'is-open' : ''}}"></view>
         </button>
+        <!-- 下拉筛选菜单，按设备名过滤照片 -->
         <view class="filter-menu" wx:if="{{showFilterMenu}}">
           <button wx:for="{{filters}}" wx:key="value" class="filter-option {{currentFilter === item.value ? 'is-active' : ''}}" hover-class="none" data-value="{{item.value}}" bindtap="selectFilter">{{item.label}}</button>
         </view>
       </view>
     </view>
 
+    <!-- 照片网格：有选中时加 has-bottom-bar 留出底部栏空间。每个 tile 点击切换选中 -->
     <view class="photo-grid {{selectedCount ? 'has-bottom-bar' : ''}}">
       <view wx:for="{{filteredPhotos}}" wx:key="id" class="photo-tile thumb-{{item.thumbType}}" data-id="{{item.id}}" bindtap="toggleSelect">
+        <!-- 有真实 url 显示图片，否则渲染 CSS 绘制的占位插画 -->
         <image wx:if="{{item.url}}" class="photo-img" src="{{item.url}}" mode="aspectFill"></image>
         <view wx:else class="photo-art">
           <view class="art-sun"></view>
@@ -55,6 +59,7 @@
     </view>
   </block>
 
+  <!-- 无照片空态：引导用户重新投屏 -->
   <view class="album-empty" wx:else>
     <view class="empty-art">
       <view class="empty-frame">
@@ -70,6 +75,7 @@
     <button class="empty-action" hover-class="none" bindtap="chooseForProjection">重新投屏</button>
   </view>
 
+  <!-- 删除确认弹窗：点遮罩关闭，点弹窗内部 catchtap="noop" 阻止冒泡避免误关 -->
   <view class="confirm-mask" wx:if="{{showDeleteConfirm}}" catchtouchmove="noop" bindtap="hideDeleteDialog">
     <view class="confirm-dialog" catchtap="noop">
       <view class="confirm-icon">

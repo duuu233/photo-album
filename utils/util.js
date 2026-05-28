@@ -1,3 +1,4 @@
+// 将 Date 格式化为 "YYYY/MM/DD HH:mm:ss"
 const formatTime = date => {
   const year = date.getFullYear()
   const month = date.getMonth() + 1
@@ -9,6 +10,7 @@ const formatTime = date => {
   return `${[year, month, day].map(formatNumber).join('/')} ${[hour, minute, second].map(formatNumber).join(':')}`
 }
 
+// 个位数补前导零（如 5 → "05"）
 const formatNumber = n => {
   n = n.toString()
   return n[1] ? n : `0${n}`

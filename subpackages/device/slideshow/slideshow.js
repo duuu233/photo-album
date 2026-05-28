@@ -39,6 +39,7 @@ Page({
     })
   },
 
+  // 加载设备并把当前轮播间隔小时数映射为选择器下标（缺省落到第 1 项）
   async loadDevice() {
     const device = await api.getDeviceDetail(this.data.id)
     const intervalIndex = this.data.intervalOptions.indexOf(device ? device.intervalHours : 2)
@@ -57,6 +58,7 @@ Page({
     })
   },
 
+  // 切换轮播间隔：picker 返回下标，转成实际小时数后保存
   async changeInterval(e) {
     const intervalHours = this.data.intervalOptions[Number(e.detail.value)]
     const device = await api.updateDevicePlayback(this.data.id, {
@@ -68,6 +70,7 @@ Page({
     })
   },
 
+  // 切换播放模式（顺序/随机），模式值由按钮 data-mode 提供
   async changePlayback(e) {
     const device = await api.updateDevicePlayback(this.data.id, {
       playbackMode: e.currentTarget.dataset.mode

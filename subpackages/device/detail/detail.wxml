@@ -1,3 +1,4 @@
+<!-- 设备存在才渲染详情，否则走文件底部的“设备不存在”空态 -->
 <view class="mock-root detail-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;" wx:if="{{device}}">
   <view class="mock-bg">
     <view class="mock-bg__curve mock-bg__curve--top"></view>
@@ -110,6 +111,7 @@
     </view>
   </view>
 
+  <!-- 删除确认弹窗：点遮罩关闭，点弹窗内部用 catchtap="noop" 阻止冒泡，避免误关 -->
   <view class="confirm-mask" wx:if="{{showDeleteConfirm}}" catchtouchmove="noop" bindtap="hideDeleteConfirm">
     <view class="confirm-dialog" catchtap="noop">
       <view class="confirm-icon danger-icon">
@@ -126,6 +128,7 @@
     </view>
   </view>
 
+  <!-- 一键清空确认弹窗：交互同上（点遮罩关闭，点弹窗内部不关闭） -->
   <view class="confirm-mask" wx:if="{{showClearConfirm}}" catchtouchmove="noop" bindtap="hideClearConfirm">
     <view class="confirm-dialog" catchtap="noop">
       <view class="confirm-icon clear-icon">

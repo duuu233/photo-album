@@ -1,6 +1,6 @@
 <view class="login-page safe-bottom">
   <view class="login-bg-stack" aria-hidden="true">
-    <image class="login-bg login-bg--halo" src="/assets/images/login_bg_image_5130.png" mode="aspectFill"></image>
+    <image class="login-bg login-bg--halo" src="/assets/images/bg02.png" mode="aspectFill"></image>
     <view class="login-bg__bottom"></view>
   </view>
 
@@ -18,10 +18,11 @@
   </view>
 
   <view class="login-agreement">
-    <button class="login-agreement__check {{agreed ? 'login-agreement__check--active' : ''}}" hover-class="login-agreement__check--hover" bindtap="toggleAgreement">
-      <image wx:if="{{!agreed}}" class="login-agreement__icon" mode="aspectFit" src="data:image/svg+xml;utf8,&lt;svg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'&gt;&lt;circle cx='8' cy='8' r='7.5' stroke='%232A2B2B' stroke-opacity='0.6'/&gt;&lt;/svg&gt;"></image>
-      <text wx:else class="login-agreement__tick">✓</text>
-    </button>
+    <checkbox-group class="login-agreement__check-group" bindchange="onAgreementChange">
+      <label class="login-agreement__check">
+        <checkbox class="login-agreement__checkbox" value="agreed" checked="{{agreed}}" color="#eb5f1b"></checkbox>
+      </label>
+    </checkbox-group>
     <view class="login-agreement__text">
       <text>我已阅读并同意</text>
       <text class="login-agreement__link" bindtap="openUserAgreement">《用户协议》</text>

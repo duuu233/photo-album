@@ -3,6 +3,7 @@ const system = require('../../../utils/system')
 
 const app = getApp()
 
+// 计算设备存储使用百分比，用于列表项进度条
 function memoryPercent(device) {
   if (!device.totalMemory) {
     return 0
@@ -22,6 +23,7 @@ Page({
 
   onLoad(options) {
     this.setSystemMetrics()
+    // select=1 表示“选择设备”模式（从投屏等场景进入，点选即切换并返回）；否则为普通管理列表
     this.setData({
       selectMode: options.select === '1'
     })
@@ -31,6 +33,7 @@ Page({
     this.loadDevices()
   },
 
+  // 加载设备列表，并为每项附加展示用字段（内存百分比、删除提示）
   async loadDevices() {
     this.setData({
       loading: true
@@ -39,6 +42,7 @@ Page({
     const selected = app.globalData.selectedDevice
 
     this.setData({
+      // 先算内存百分比，再标记“可删除提示”仅显示在最后一个离线设备上（引导用户清理）
       devices: devices.map(item => Object.assign({}, item, {
         memoryPercent: memoryPercent(item)
       })).map((item, index, list) => Object.assign({}, item, {
@@ -66,6 +70,7 @@ Page({
     })
   },
 
+  // 点击设备：选择模式下设为当前设备并返回；普通模式下进入设备详情
   selectDevice(e) {
     const id = e.currentTarget.dataset.id
     const device = this.data.devices.find(item => item.id === id)
@@ -102,6 +107,7 @@ Page({
     })
   },
 
+  // 切换设备在线状态（模拟连接/断开）
   async toggleConnection(e) {
     const id = e.currentTarget.dataset.id
     const device = this.data.devices.find(item => item.id === id)

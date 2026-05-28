@@ -1,3 +1,4 @@
+// 品牌风格按钮组件：支持多种样式(variant)、尺寸、图标、加载/禁用态及微信 open-type（如获取手机号）。
 Component({
   properties: {
     text: {
@@ -35,6 +36,7 @@ Component({
   },
 
   methods: {
+    // 点击上报：禁用或加载中时拦截，避免重复触发
     handleTap(e) {
       if (this.data.disabled || this.data.loading) {
         return

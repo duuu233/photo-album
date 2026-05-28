@@ -10,30 +10,7 @@ Page({
     nickName: '江江江',
     userId: '123456',
     photoCount: 102,
-    deviceCount: 3,
-    showDevPanel: false,
-    devPages: [
-      { name: '我的设备', url: '/subpackages/device/list/list' },
-      { name: '设备详情', url: '/subpackages/device/detail/detail?id=frame_room' },
-      { name: '轮播设置', url: '/subpackages/device/slideshow/slideshow?id=frame_room' },
-      { name: '绑定设备', url: '/subpackages/device/bind/bind' },
-      { name: '我的图库', url: '/subpackages/album/list/list' },
-      { name: '照片预览-调整图片', url: '/subpackages/projection/preview/preview' },
-      { name: '投屏管理', url: '/subpackages/projection/records/records' },
-      { name: '投屏中', url: '/subpackages/projection/result/result?status=progress' },
-      { name: '投屏成功', url: '/subpackages/projection/result/result?status=success' },
-      { name: '投屏失败', url: '/subpackages/projection/result/result?status=fail' },
-      { name: '设置', url: '/subpackages/settings/index/index' },
-      { name: '个人信息', url: '/subpackages/settings/profile/profile' },
-      { name: '绑定邮箱', url: '/subpackages/settings/bind-email/bind-email' },
-      { name: '修改邮箱', url: '/subpackages/settings/change-email/change-email' },
-      { name: '忘记密码', url: '/subpackages/settings/forgot-password/forgot-password' },
-      { name: '语种设置', url: '/subpackages/settings/language/language' },
-      { name: '操作指南', url: '/subpackages/settings/guide/guide' },
-      { name: '更新BoltStar', url: '/subpackages/settings/update/update' },
-      { name: '隐私政策', url: '/subpackages/settings/privacy/privacy' },
-      { name: '用户协议', url: '/subpackages/settings/agreement/agreement' }
-    ]
+    deviceCount: 3
   },
 
   onLoad() {
@@ -65,6 +42,7 @@ Page({
     }
   },
 
+  // 并行拉取用户信息、相册照片、设备列表，组装“我的”页头部展示数据
   async loadUserInfo() {
     try {
       await app.ensureLogin()
@@ -73,7 +51,9 @@ Page({
         api.getAlbumPhotos(),
         api.getDevices()
       ])
+      // 仅当 id 为纯数字时展示，否则用占位号（demo 数据兜底）
       const displayUserId = userInfo.id && /^\d+$/.test(String(userInfo.id)) ? userInfo.id : '123456'
+      // 默认昵称“微信用户”视为未设置，回退到占位昵称
       const displayName = userInfo.nickName && userInfo.nickName !== '微信用户' ? userInfo.nickName : '江江江'
       this.setData({
         avatarUrl: userInfo.avatarUrl || '',
@@ -132,20 +112,6 @@ Page({
     wx.navigateTo({
       url: '/subpackages/settings/index/index'
     })
-  },
-
-  toggleDevPanel() {
-    this.setData({
-      showDevPanel: !this.data.showDevPanel
-    })
-  },
-
-  goDev(event) {
-    const url = event.currentTarget.dataset.url
-    this.setData({
-      showDevPanel: false
-    })
-    wx.navigateTo({ url })
   },
 
   noop() {}

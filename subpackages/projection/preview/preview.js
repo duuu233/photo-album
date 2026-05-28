@@ -1,6 +1,7 @@
 const api = require('../../../utils/api')
 const system = require('../../../utils/system')
 
+// 累加所有待投屏图片大小（MB，保留两位），用于判断设备内存是否够用
 function calcTotalSize(images) {
   return Number(images.reduce((sum, image) => sum + Number(image.sizeMb || image.size || 0), 0).toFixed(2))
 }
@@ -23,14 +24,16 @@ Page({
 
   onLoad() {
     this.setData(system.getLayoutMetrics())
+    // 待投屏的设备与图片由上个页面通过 Storage 传入（见首页/相册的 openPreview）
     const pending = wx.getStorageSync('pendingProjection') || {}
     const images = pending.images || []
     const device = pending.device || null
     this.updateImageState(images, device, 0)
   },
 
+  // 统一刷新图片相关状态：当前预览图、总大小，并据此判断设备内存是否足够
   updateImageState(images, device, activeIndex) {
-    const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1))
+    const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1)) // 防止下标越界
     const totalSize = calcTotalSize(images)
 
     this.setData({
@@ -53,6 +56,7 @@ Page({
     })
   },
 
+  // 底部工具切换：旋转每次 +90° 循环，原图重置旋转，其余默认裁剪
   selectTool(e) {
     const tool = e.currentTarget.dataset.tool
 
@@ -84,7 +88,9 @@ Page({
     })
   },
 
+  // 确认投屏：依次校验设备/图片/连接/内存，上传成功或失败都跳转结果页（通过 Storage 传递结果）
   async confirmProjection() {
+    // 逐项前置校验，任一不满足即提示并中断
     if (!this.data.device) {
       wx.showToast({
         title: '请选择设备',
@@ -118,7 +124,7 @@ Page({
     }
 
     this.setData({
-      projecting: true
+      projecting: true // 投屏中，禁用按钮防重复提交
     })
 
     try {
@@ -126,6 +132,7 @@ Page({
         deviceId: this.data.device.id,
         images: this.data.images
       })
+      // 成功：清除待投屏数据，写入结果供结果页读取，并 redirect（不可返回本页）
       wx.removeStorageSync('pendingProjection')
       wx.setStorageSync('lastProjectionResult', {
         status: 'success',
@@ -136,6 +143,7 @@ Page({
         url: '/subpackages/projection/result/result?status=progress'
       })
     } catch (error) {
+      // 失败：同样写入结果（含错误信息）并跳转失败结果页
       wx.setStorageSync('lastProjectionResult', {
         status: 'fail',
         deviceName: this.data.device ? this.data.device.name : '',

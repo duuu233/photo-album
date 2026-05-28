@@ -1,22 +1,25 @@
+<!-- 首页根容器：通过 CSS 变量把状态栏高度/底部安全区传给样式，适配各机型 -->
 <view class="home-root" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
-  <view class="home-bg">
-    <view class="bg-curve bg-curve-top"></view>
-    <view class="bg-curve bg-curve-bottom"></view>
-    <view class="bg-spark spark-one"></view>
-    <view class="bg-spark spark-two"></view>
-    <view class="bg-spark spark-three"></view>
+  <!-- 背景图随当前场景切换，具体路径由 sceneState 派生 -->
+  <view class="home-bg" aria-hidden="true">
+    <image class="home-bg-image" src="{{homeBgImage}}" mode="aspectFill"></image>
   </view>
 
+  <!-- ===== 分支一：首页场景（已绑定 / 未绑定）。isHomeScene 由 sceneState 派生 ===== -->
   <block wx:if="{{isHomeScene}}">
+    <!-- 主内容区：hasHomeOverlay 为真时（有弹层）加 content-dimmed 变暗 -->
     <view class="home-content {{isBoundHome ? 'bound-home' : 'unbound-home'}} {{hasHomeOverlay ? 'content-dimmed' : ''}}">
+      <!-- 已绑定：展示设备卡片（名称/连接状态/电量）+ 轮播指示点 -->
       <block wx:if="{{isBoundHome}}">
-        <button class="avatar-btn" hover-class="none" bindtap="goMine">
-          <image wx:if="{{avatarUrl}}" class="avatar-img" src="{{avatarUrl}}" mode="aspectFill"></image>
-          <view wx:else class="avatar-fallback"></view>
-        </button>
-        <button class="add-btn" hover-class="none" bindtap="startBindingScan">
-          <text class="plus-symbol">+</text>
-        </button>
+        <view class="home-topbar">
+          <button class="avatar-btn" hover-class="none" bindtap="goMine">
+            <image wx:if="{{avatarUrl}}" class="avatar-img" src="{{avatarUrl}}" mode="aspectFill"></image>
+            <view wx:else class="avatar-fallback"></view>
+          </button>
+          <button class="add-btn" hover-class="none" bindtap="startBindingScan">
+            <text class="plus-symbol">+</text>
+          </button>
+        </view>
 
         <view class="hello-title">Hi</view>
         <view class="hello-subtitle">欢迎使用 <text>BoltStar</text></view>
@@ -56,53 +59,44 @@
         </view>
       </block>
 
+      <!-- 未绑定：空态插画 + 绑定设备入口 -->
       <block wx:else>
         <image class="empty-hero-art" src="/assets/images/empty_device_art.png" mode="aspectFit"></image>
         <view class="empty-hint">请先绑定相框设备后再投屏照片</view>
         <button class="bind-pill" hover-class="none" bindtap="showBindNowSheet">
           <view class="btn-bluetooth">ᛒ</view>
-          <text>绑定设备</text>
+          <view class="bind-pill-text">绑定设备</view>
         </button>
       </block>
 
+      <!-- 投屏方式入口（拍照 / 相册），两种场景共用；未绑定时点击会先引导绑定 -->
       <view class="projection-title">选择投屏方式</view>
       <view class="projection-grid">
-        <button class="projection-card camera-card" hover-class="none" bindtap="tapCameraEntry">
+        <view class="projection-card camera-card" hover-class="none" bindtap="tapCameraEntry">
+          <image class="projection-card-bg" src="/assets/images/home-camera-card-bg.png" mode="scaleToFill"></image>
           <image class="media-art camera-art" src="/assets/images/camera_material.png" mode="aspectFit"></image>
           <view class="projection-copy">
             <view class="projection-name">拍照</view>
             <view class="projection-desc">拍摄照片并投屏</view>
           </view>
-          <view class="round-arrow orange-arrow">→</view>
-        </button>
-        <button class="projection-card album-card" hover-class="none" bindtap="tapAlbumEntry">
+          <image class="projection-arrow" src="/assets/images/home-camera-card-right-icon.png" mode="aspectFit"></image>
+        </view>
+        <view class="projection-card album-card" hover-class="none" bindtap="tapAlbumEntry">
+          <image class="projection-card-bg" src="/assets/images/home-album-card-bg.png" mode="scaleToFill"></image>
           <image class="media-art album-art" src="/assets/images/album_material.png" mode="aspectFit"></image>
           <view class="projection-copy">
             <view class="projection-name">相册</view>
             <view class="projection-desc">选择照片并投屏</view>
           </view>
-          <view class="round-arrow blue-arrow">→</view>
-        </button>
+          <image class="projection-arrow" src="/assets/images/home-album-card-right-icon.png" mode="aspectFit"></image>
+        </view>
       </view>
     </view>
 
-    <view class="custom-tabbar {{hasHomeOverlay ? 'content-dimmed' : ''}}">
-      <button class="tab-item active" hover-class="none">
-        <view class="tab-home-icon">
-          <view class="home-roof"></view>
-          <view class="home-body"></view>
-        </view>
-        <text>首页</text>
-      </button>
-      <button class="tab-item" hover-class="none" bindtap="goMine">
-        <view class="tab-user-icon">
-          <view class="user-head"></view>
-          <view class="user-shoulder"></view>
-        </view>
-        <text>我的</text>
-      </button>
-    </view>
+    <!-- 自定义底部导航（首页/我的），替代原生 tabBar -->
+    <custom-tabbar active="home" safe-bottom="{{safeBottom}}" dimmed="{{hasHomeOverlay}}"></custom-tabbar>
 
+    <!-- 弹层①：未绑定/重连提示（标题文案随场景变化）。catchtouchmove 阻止背景滚动穿透 -->
     <view wx:if="{{showPromptSheet}}" class="home-mask" catchtouchmove="noop">
       <view class="bottom-sheet prompt-sheet">
         <button class="sheet-close" hover-class="none" bindtap="closeHomeSheet">×</button>
@@ -112,6 +106,17 @@
       </view>
     </view>
 
+    <!-- 弹层②：离线断网模式 -->
+    <view wx:if="{{isOfflineMode}}" class="home-mask" catchtouchmove="noop">
+      <view class="bottom-sheet prompt-sheet offline-sheet">
+        <button class="sheet-close" hover-class="none" bindtap="closeOfflineMode">×</button>
+        <view class="prompt-title">离线模式</view>
+        <view class="prompt-desc offline-desc">当前网络异常，app进入离线模式无法同步投屏记录与图库</view>
+        <button class="primary-action" hover-class="none" bindtap="closeOfflineMode">我知道了</button>
+      </view>
+    </view>
+
+    <!-- 弹层③：拍照/相册选择（已绑定时点击投屏入口弹出） -->
     <view wx:if="{{isMediaSheet}}" class="home-mask" catchtouchmove="noop">
       <view class="bottom-sheet media-sheet">
         <view class="media-sheet-title">选择投屏方式</view>
@@ -136,6 +141,7 @@
     </view>
   </block>
 
+  <!-- ===== 分支二：绑定设备流程（搜索中 / 已发现 / 未发现），与首页场景互斥 ===== -->
   <block wx:else>
     <view class="binding-content {{isScanHelp ? 'content-dimmed' : ''}}">
       <view class="binding-nav">
@@ -143,12 +149,14 @@
         <view class="binding-title">绑定设备</view>
       </view>
 
+      <!-- 雷达插画随状态切换：已发现 / 未发现（含帮助）/ 搜索中 -->
       <view class="radar-wrap {{isBindingScanning ? 'radar-scanning' : ''}}">
         <image wx:if="{{isBindingFound}}" class="radar-art" src="/assets/images/device_found_art.png" mode="aspectFit"></image>
         <image wx:elif="{{isBindingNoDevice || isScanHelp}}" class="radar-art" src="/assets/images/device_not_found_art.png" mode="aspectFit"></image>
         <image wx:else class="radar-art" src="/assets/images/device_scanning_art.png" mode="aspectFit"></image>
       </view>
 
+      <!-- 已发现设备：列出附近设备供单选，确认后绑定 -->
       <block wx:if="{{isBindingFound}}">
         <view class="nearby-head">
           <text>附近设备</text>
@@ -166,6 +174,7 @@
         <button class="primary-action bind-bottom" hover-class="none" bindtap="finishBind">立即绑定</button>
       </block>
 
+      <!-- 搜索中：提示靠近设备，可取消或查看帮助 -->
       <block wx:elif="{{isBindingScanning}}">
         <view class="scan-copy">
           <view class="scan-title">正在搜索附近设备</view>
@@ -175,6 +184,7 @@
         <button class="primary-action bind-bottom" hover-class="none" bindtap="cancelScan">取消扫描</button>
       </block>
 
+      <!-- 未发现设备：提示重试，可重新扫描或查看帮助 -->
       <block wx:else>
         <view class="scan-copy no-device-copy">
           <view class="scan-title">未发现设备</view>
@@ -185,6 +195,7 @@
       </block>
     </view>
 
+    <!-- 弹层④：「扫描不到怎么办」排查清单 -->
     <view wx:if="{{isScanHelp}}" class="home-mask scan-help-mask" catchtouchmove="noop">
       <view class="bottom-sheet scan-help-sheet">
         <button class="sheet-close" hover-class="none" bindtap="closeScanHelp">×</button>

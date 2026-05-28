@@ -1,3 +1,4 @@
+// 用户曾拒绝授权后，引导其跳转到小程序设置页手动开启；返回最新的授权结果
 function showOpenSettingModal(content) {
   return new Promise(resolve => {
     wx.showModal({
@@ -26,6 +27,8 @@ function showOpenSettingModal(content) {
   })
 }
 
+// 确保某项权限已授权：已授权直接通过；未授权先弹系统授权；曾被拒则引导去设置页
+// 始终 resolve 布尔值（不会 reject），调用方只需判断 true/false
 function authorize(scope, deniedText) {
   return new Promise(resolve => {
     wx.getSetting({
@@ -40,6 +43,7 @@ function authorize(scope, deniedText) {
           success() {
             resolve(true)
           },
+          // 拒绝后 wx.authorize 不会再次弹窗，只能走 openSetting 让用户手动开启
           async fail() {
             const authSetting = await showOpenSettingModal(deniedText)
             resolve(Boolean(authSetting && authSetting[scope]))

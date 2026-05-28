@@ -6,6 +6,7 @@ const THUMB_TYPES = {
   fail: ['dog', 'white-dog']
 }
 
+// 补全投屏记录的展示字段。groupIndex 为同状态内的序号，用于在该状态的缩略图集合中循环取图
 function normalizeRecord(item, index, groupIndex) {
   const status = item.status === 'success' ? 'success' : 'fail'
   const thumbs = THUMB_TYPES[status]
@@ -58,8 +59,10 @@ Page({
     })
   },
 
+  // 加载投屏记录：补全展示字段并分别统计成功/失败数量供顶部标签使用
   async loadRecords() {
     const sourceRecords = await api.getProjectionRecords()
+    // 分状态计数，作为 groupIndex 传入以便每条记录拿到不同缩略图
     const groupCounts = {
       success: 0,
       fail: 0

@@ -1,3 +1,4 @@
+// 旧版微信无 wx.chooseMedia 时的降级方案，使用已废弃的 wx.chooseImage
 function chooseImageByLegacy(sourceType, count) {
   return new Promise((resolve, reject) => {
     wx.chooseImage({
@@ -17,6 +18,7 @@ function chooseImageByLegacy(sourceType, count) {
   })
 }
 
+// 统一的选图入口：新版用 wx.chooseMedia，旧版自动降级；返回结构统一为业务字段
 function chooseMedia(sourceType, count) {
   if (!wx.chooseMedia) {
     return chooseImageByLegacy(sourceType, count)
@@ -32,6 +34,7 @@ function chooseMedia(sourceType, count) {
         const images = res.tempFiles.map((file, index) => ({
           tempFilePath: file.tempFilePath,
           name: `照片 ${index + 1}`,
+          // 字节转 MB 并保留两位，拿不到大小时兜底 2.5MB（供投屏估算内存占用）
           sizeMb: Number(((file.size || 0) / 1024 / 1024).toFixed(2)) || 2.5,
           width: file.width || 0,
           height: file.height || 0
@@ -44,10 +47,12 @@ function chooseMedia(sourceType, count) {
 }
 
 module.exports = {
+  // 拍照：仅相机来源，单张
   chooseFromCamera() {
     return chooseMedia(['camera'], 1)
   },
 
+  // 从相册选择：最多 9 张
   chooseFromAlbum() {
     return chooseMedia(['album'], 9)
   }

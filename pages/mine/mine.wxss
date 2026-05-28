@@ -1,6 +1,9 @@
 .mine-root {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
+  padding: calc(var(--status-bar) + 32rpx) 48rpx calc(170rpx + var(--safe-bottom));
   overflow: hidden;
   color: #2a2d32;
   background:
@@ -58,10 +61,8 @@
 }
 
 .page-title {
-  position: absolute;
-  top: calc(var(--status-bar) + 32rpx);
-  left: 0;
-  right: 0;
+  position: relative;
+  z-index: 1;
   color: #111111;
   font-size: 34rpx;
   font-weight: 700;
@@ -70,13 +71,13 @@
 }
 
 .profile-card {
-  position: absolute;
-  top: calc(var(--status-bar) + 110rpx);
-  left: 48rpx;
-  right: 48rpx;
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
+  width: 100%;
   height: 178rpx;
+  margin-top: 42rpx;
   padding: 0 34rpx 0 48rpx;
   text-align: left;
   background: rgba(255, 255, 255, 0.72);
@@ -128,8 +129,8 @@
 }
 
 .section-title {
-  position: absolute;
-  left: 48rpx;
+  position: relative;
+  z-index: 1;
   color: #2a2d32;
   font-size: 32rpx;
   font-weight: 700;
@@ -137,17 +138,16 @@
 }
 
 .functions-title {
-  top: calc(var(--status-bar) + 382rpx);
+  margin-top: 92rpx;
 }
 
 .quick-grid {
-  position: absolute;
-  top: calc(var(--status-bar) + 430rpx);
-  left: 48rpx;
-  right: 48rpx;
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 22rpx;
+  margin-top: 18rpx;
 }
 
 .quick-card {
@@ -297,14 +297,13 @@
 }
 
 .help-title {
-  top: calc(var(--status-bar) + 692rpx);
+  margin-top: 86rpx;
 }
 
 .service-list {
-  position: absolute;
-  top: calc(var(--status-bar) + 740rpx);
-  left: 48rpx;
-  right: 48rpx;
+  position: relative;
+  z-index: 1;
+  margin-top: 18rpx;
 }
 
 .service-row {
@@ -328,157 +327,3 @@
   font-weight: 600;
 }
 
-.dev-fab {
-  position: absolute;
-  right: 30rpx;
-  bottom: calc(180rpx + var(--safe-bottom));
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 96rpx;
-  height: 96rpx;
-  color: #ffffff;
-  background: linear-gradient(135deg, #8a93a3, #5b626f);
-  border-radius: 50%;
-  box-shadow: 0 14rpx 30rpx rgba(70, 80, 96, 0.32);
-  font-size: 28rpx;
-  font-weight: 700;
-}
-
-.dev-mask {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 40;
-  display: flex;
-  align-items: flex-end;
-  background: rgba(42, 43, 43, 0.5);
-}
-
-.dev-panel {
-  width: 100%;
-  max-height: 78vh;
-  padding: 32rpx 40rpx calc(40rpx + var(--safe-bottom));
-  background: #ffffff;
-  border-radius: 32rpx 32rpx 0 0;
-}
-
-.dev-panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16rpx;
-}
-
-.dev-panel-head text {
-  color: #2a2d32;
-  font-size: 32rpx;
-  font-weight: 700;
-}
-
-.dev-close {
-  width: 56rpx;
-  height: 56rpx;
-  color: #8b9098;
-  font-size: 44rpx;
-  line-height: 56rpx;
-}
-
-.dev-scroll {
-  max-height: 64vh;
-}
-
-.dev-row {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 96rpx;
-  padding: 0 20rpx;
-  text-align: left;
-  border-bottom: 1rpx solid #eef1f5;
-}
-
-.dev-row text {
-  flex: 1;
-  color: #2a2d32;
-  font-size: 28rpx;
-}
-
-.custom-tabbar {
-  position: absolute;
-  left: 50rpx;
-  right: 50rpx;
-  bottom: calc(26rpx + var(--safe-bottom));
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  height: 112rpx;
-  background: rgba(255, 255, 255, 0.74);
-  border-radius: 999rpx;
-  box-shadow: 0 18rpx 50rpx rgba(126, 150, 184, 0.14);
-}
-
-.tab-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4rpx;
-  color: #777d86;
-  font-size: 24rpx;
-}
-
-.tab-item.active {
-  color: #ff6421;
-}
-
-.tab-home-icon,
-.tab-user-icon {
-  position: relative;
-  width: 44rpx;
-  height: 44rpx;
-}
-
-.home-roof {
-  position: absolute;
-  top: 4rpx;
-  left: 7rpx;
-  width: 30rpx;
-  height: 30rpx;
-  background: currentColor;
-  border-radius: 5rpx;
-  transform: rotate(45deg);
-}
-
-.home-body {
-  position: absolute;
-  bottom: 2rpx;
-  left: 10rpx;
-  width: 24rpx;
-  height: 28rpx;
-  background: currentColor;
-  border-radius: 4rpx;
-}
-
-.user-head {
-  position: absolute;
-  top: 2rpx;
-  left: 13rpx;
-  width: 18rpx;
-  height: 18rpx;
-  border: 5rpx solid currentColor;
-  border-radius: 50%;
-}
-
-.user-shoulder {
-  position: absolute;
-  bottom: 2rpx;
-  left: 7rpx;
-  width: 30rpx;
-  height: 22rpx;
-  border: 5rpx solid currentColor;
-  border-bottom: 0;
-  border-radius: 28rpx 28rpx 0 0;
-}

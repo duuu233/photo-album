@@ -3,10 +3,13 @@ const media = require('../../utils/media')
 
 const app = getApp()
 
+// 首页是一个“场景状态机”：同一个页面通过切换 scene 来展示未绑定/已绑定/搜索设备/帮助等不同 UI。
+// 所有弹层、空态都由当前 scene 派生（见 sceneState），切换界面只需调用 setScene。
 const SCENES = {
   UNBOUND: 'unbound',
   UNBOUND_BIND_NOW: 'unboundBindNow',
   UNBOUND_RECONNECT: 'unboundReconnect',
+  OFFLINE: 'offline',
   BOUND: 'bound',
   MEDIA_SHEET: 'mediaSheet',
   BINDING_SCANNING: 'bindingScanning',
@@ -15,6 +18,7 @@ const SCENES = {
   SCAN_HELP: 'scanHelp'
 }
 
+// 场景别名表：允许通过页面 query（英文 key 或设计稿中文名）直接定位到某个场景，便于设计走查/调试
 const SCENE_ALIASES = {
   unbound: SCENES.UNBOUND,
   '首页-未绑定设备': SCENES.UNBOUND,
@@ -22,6 +26,9 @@ const SCENE_ALIASES = {
   '首页-未绑定设备-立即绑定': SCENES.UNBOUND_BIND_NOW,
   unboundReconnect: SCENES.UNBOUND_RECONNECT,
   '首页-未绑定设备-重新连接': SCENES.UNBOUND_RECONNECT,
+  offline: SCENES.OFFLINE,
+  offlineMode: SCENES.OFFLINE,
+  '首页-离线断网模式': SCENES.OFFLINE,
   bound: SCENES.BOUND,
   '首页-已绑定设备': SCENES.BOUND,
   mediaSheet: SCENES.MEDIA_SHEET,
@@ -65,6 +72,7 @@ const NEARBY_DEVICES = [
   }
 ]
 
+// 把电量限制在 0~100 的整数范围内，非法值兜底 30
 function clampBattery(value) {
   const number = Number(value)
   if (Number.isNaN(number)) {
@@ -73,10 +81,36 @@ function clampBattery(value) {
   return Math.max(0, Math.min(100, Math.round(number)))
 }
 
+// 把传入的场景标识（可能是别名）解析为标准场景，无法识别时回到未绑定首页
 function normalizeScene(scene) {
   return SCENE_ALIASES[scene] || SCENES.UNBOUND
 }
 
+function getHomeBgImage(scene) {
+  const useBg02 = scene === SCENES.UNBOUND ||
+    scene === SCENES.UNBOUND_BIND_NOW ||
+    scene === SCENES.UNBOUND_RECONNECT ||
+    scene === SCENES.OFFLINE ||
+    scene === SCENES.BOUND ||
+    scene === SCENES.MEDIA_SHEET
+
+  return `/assets/images/${useBg02 ? 'bg02' : 'bg01'}.png`
+}
+
+function isNetworkError(error) {
+  if (!error) {
+    return false
+  }
+
+  const message = `${error.message || ''} ${error.errMsg || ''}`.toLowerCase()
+  return error.code === 'NETWORK_ERROR' ||
+    message.indexOf('network') > -1 ||
+    message.indexOf('timeout') > -1 ||
+    message.indexOf('request:fail') > -1 ||
+    message.indexOf('网络') > -1
+}
+
+// 将接口返回的设备裁剪为首页展示所需字段（connected 默认 true）
 function normalizeDevice(device) {
   if (!device) {
     return null
@@ -90,9 +124,15 @@ function normalizeDevice(device) {
   }
 }
 
+// 由当前 scene 派生出 WXML 用到的一组布尔/文案标记，集中在此避免模板里写复杂判断。
+// setScene 时会把这些标记一起 setData，模板直接用 isBoundHome、showPromptSheet 等控制显隐。
 function sceneState(scene) {
   const isBoundHome = scene === SCENES.BOUND || scene === SCENES.MEDIA_SHEET
-  const isUnboundHome = scene === SCENES.UNBOUND || scene === SCENES.UNBOUND_BIND_NOW || scene === SCENES.UNBOUND_RECONNECT
+  const isOfflineMode = scene === SCENES.OFFLINE
+  const isUnboundHome = scene === SCENES.UNBOUND ||
+    scene === SCENES.UNBOUND_BIND_NOW ||
+    scene === SCENES.UNBOUND_RECONNECT ||
+    isOfflineMode
   const showPromptSheet = scene === SCENES.UNBOUND_BIND_NOW || scene === SCENES.UNBOUND_RECONNECT
   const isBindingScanning = scene === SCENES.BINDING_SCANNING
   const isBindingNoDevice = scene === SCENES.BINDING_NO_DEVICE
@@ -103,13 +143,15 @@ function sceneState(scene) {
     isHomeScene: isBoundHome || isUnboundHome,
     isBoundHome,
     isUnboundHome,
-    hasHomeOverlay: showPromptSheet || scene === SCENES.MEDIA_SHEET,
+    hasHomeOverlay: showPromptSheet || isOfflineMode || scene === SCENES.MEDIA_SHEET,
     showPromptSheet,
     isMediaSheet: scene === SCENES.MEDIA_SHEET,
+    isOfflineMode,
     isBindingScanning,
     isBindingNoDevice,
     isBindingFound,
     isScanHelp,
+    homeBgImage: getHomeBgImage(scene),
     promptTitle: scene === SCENES.UNBOUND_RECONNECT ? '设备连接失败' : '暂未绑定设备',
     promptDesc: scene === SCENES.UNBOUND_RECONNECT ? '当前设备未连接，APP需先连接设备后再投屏' : '当前暂无可投屏设备，请先绑定相框设备',
     promptButton: scene === SCENES.UNBOUND_RECONNECT ? '重新连接' : '立即绑定'
@@ -127,34 +169,56 @@ Page({
     batteryWidth: DEFAULT_DEVICE.battery,
     nearbyDevices: NEARBY_DEVICES,
     sceneFromQuery: false,
+    networkOffline: false,
     ...sceneState(SCENES.UNBOUND)
   },
 
   onLoad(options = {}) {
-    this.scanTimer = null
+    this.scanTimer = null // 模拟扫描的定时器句柄，离开页面时需清除
+    this.networkStatusHandler = this.handleNetworkStatusChange.bind(this)
     this.setSystemMetrics()
 
+    // 若带 scene 参数进入（设计走查/调试），直接定位到指定场景并跳过自动加载
     if (options.scene) {
       this.setScene(normalizeScene(decodeURIComponent(options.scene)), {
         sceneFromQuery: true
       })
     }
+
+    if (wx.onNetworkStatusChange) {
+      wx.onNetworkStatusChange(this.networkStatusHandler)
+    }
+
+    if (!options.scene) {
+      this.checkNetworkStatus()
+    }
   },
 
   onShow() {
+    // 使用自定义底部导航，隐藏原生 tabBar
     if (wx.hideTabBar) {
       wx.hideTabBar({
         animation: false
       })
     }
 
+    // 仅在非“指定场景”进入时才按真实设备状态刷新首页，避免覆盖调试场景
     if (!this.data.sceneFromQuery) {
+      if (this.data.networkOffline) {
+        this.checkNetworkStatus()
+        return
+      }
+
       this.loadHomeState()
     }
   },
 
   onUnload() {
     this.clearScanTimer()
+
+    if (wx.offNetworkStatusChange && this.networkStatusHandler) {
+      wx.offNetworkStatusChange(this.networkStatusHandler)
+    }
   },
 
   setSystemMetrics() {
@@ -174,11 +238,13 @@ Page({
     }
   },
 
+  // 拉取设备列表确定首页处于已绑定还是未绑定场景；失败则兜底为未绑定
   async loadHomeState() {
     try {
       await app.ensureLogin()
       const devices = await api.getDevices()
       const cached = app.globalData.selectedDevice
+      // 优先沿用上次选中的设备，没有则取列表第一个
       const selected = devices.find(item => cached && item.id === cached.id) || devices[0]
       const currentDevice = normalizeDevice(selected)
 
@@ -196,6 +262,11 @@ Page({
         hasDevice: !!currentDevice
       })
     } catch (error) {
+      if (isNetworkError(error)) {
+        this.showOfflineMode()
+        return
+      }
+
       this.setData({
         currentDevice: DEFAULT_DEVICE,
         batteryWidth: DEFAULT_DEVICE.battery,
@@ -207,6 +278,49 @@ Page({
     }
   },
 
+  checkNetworkStatus() {
+    if (!wx.getNetworkType) {
+      return
+    }
+
+    wx.getNetworkType({
+      success: res => {
+        if (res.networkType === 'none') {
+          this.showOfflineMode()
+          return
+        }
+
+        if (this.data.networkOffline) {
+          this.setData({
+            networkOffline: false
+          })
+
+          if (!this.data.sceneFromQuery) {
+            this.loadHomeState()
+          }
+        }
+      }
+    })
+  },
+
+  handleNetworkStatusChange(res) {
+    if (!res.isConnected || res.networkType === 'none') {
+      this.showOfflineMode()
+      return
+    }
+
+    const wasOffline = this.data.networkOffline || this.data.scene === SCENES.OFFLINE
+    this.setData({
+      networkOffline: false
+    })
+
+    if (wasOffline && !this.data.sceneFromQuery) {
+      this.loadHomeState()
+    }
+  },
+
+  // 切换场景的统一入口：写入 scene、派生标记，并维护 hasDevice。
+  // hasDevice 取值优先级：extra 显式传入 > 已有值 > 该场景隐含的已绑定状态。
   setScene(scene, extra = {}) {
     const previewHasDevice = scene === SCENES.BOUND || scene === SCENES.MEDIA_SHEET
     const nextHasDevice = Object.prototype.hasOwnProperty.call(extra, 'hasDevice') ? extra.hasDevice : this.data.hasDevice || previewHasDevice
@@ -234,7 +348,19 @@ Page({
     this.setScene(SCENES.UNBOUND_RECONNECT)
   },
 
+  showOfflineMode() {
+    this.clearScanTimer()
+    this.setScene(SCENES.OFFLINE, {
+      hasDevice: this.data.hasDevice,
+      networkOffline: true
+    })
+  },
+
   closeHomeSheet() {
+    this.setScene(this.data.hasDevice ? SCENES.BOUND : SCENES.UNBOUND)
+  },
+
+  closeOfflineMode() {
     this.setScene(this.data.hasDevice ? SCENES.BOUND : SCENES.UNBOUND)
   },
 
@@ -242,6 +368,7 @@ Page({
     this.startBindingScan()
   },
 
+  // 模拟蓝牙搜索：进入“搜索中”场景，1.2s 后切到“已发现设备”并默认选中第一个
   startBindingScan() {
     this.clearScanTimer()
     this.setScene(SCENES.BINDING_SCANNING)
@@ -308,6 +435,7 @@ Page({
     this.setScene(SCENES.BOUND)
   },
 
+  // 点击拍照入口：未绑定设备时先引导绑定，否则弹出拍照/相册选择层
   tapCameraEntry() {
     if (!this.data.isBoundHome) {
       this.showBindNowSheet()
@@ -330,6 +458,7 @@ Page({
       const images = await media.chooseFromCamera()
       this.openPreview(images)
     } catch (error) {
+      // 用户主动取消选择不算错误，静默返回
       if (error && error.errMsg && error.errMsg.indexOf('cancel') > -1) {
         return
       }
@@ -356,6 +485,7 @@ Page({
     }
   },
 
+  // 选好照片后跳转投屏预览页：通过 Storage 传递待投屏的设备与图片（避免超长 URL 参数）
   openPreview(images) {
     if (!images || !images.length) {
       return

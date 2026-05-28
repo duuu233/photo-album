@@ -32,10 +32,12 @@ Page({
   onLoad(options) {
     this.setData(system.getLayoutMetrics())
 
+    // 状态由 URL 参数决定，结果详情（设备名/张数）从预览页写入的 Storage 读取
     const status = options.status || 'progress'
     const result = wx.getStorageSync('lastProjectionResult') || {}
     this.applyStatus(status, result)
 
+    // 进度态会模拟一个上传进度，结束后自动切到成功
     if (status === 'progress') {
       this.startProgress(result)
     }
@@ -56,6 +58,7 @@ Page({
     })
   },
 
+  // 模拟投屏进度：每 280ms 上传一张，到达总数后置 100% 并稍后切换到成功态
   startProgress(result) {
     const total = result.imageCount || 12
     this.setData({
@@ -67,6 +70,7 @@ Page({
     this.progressTimer = setInterval(() => {
       const next = this.data.progressCurrent + 1
 
+      // 到达最后一张：停定时器、补满进度条，短暂停顿后展示成功页
       if (next >= total) {
         this.clearProgress()
         this.setData({

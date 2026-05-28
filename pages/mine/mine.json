@@ -1,5 +1,8 @@
 {
   "navigationStyle": "custom",
   "disableScroll": true,
-  "backgroundColor": "#edf6ff"
+  "backgroundColor": "#edf6ff",
+  "usingComponents": {
+    "custom-tabbar": "/components/custom-tabbar/custom-tabbar"
+  }
 }

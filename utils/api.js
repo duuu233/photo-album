@@ -1,3 +1,5 @@
+// 业务接口集中定义层：每个方法对应一个后端接口，统一通过 request.js 发起。
+// 第三个参数为请求选项，常用：loading 显示加载、auth:false 免登录、showError:false 静默错误。
 const http = require('./request')
 
 module.exports = {

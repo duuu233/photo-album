@@ -1,4 +1,6 @@
-const STORE_KEY = 'mockPhotoAlbumDb'
+// 本地模拟后端：用一份存在 Storage 里的“数据库”模拟全部接口，无需真实服务端即可联调。
+// 入口是底部的 handle(options)，按 url/method 路由到对应处理函数；config.useMock 控制是否启用。
+const STORE_KEY = 'mockPhotoAlbumDb' // 模拟数据库在本地缓存中的键名
 
 const DEFAULT_USER = {
   id: 'u_mock_001',
@@ -156,6 +158,7 @@ const RECORD_SEED = [
   }
 ]
 
+// 深拷贝，避免返回的数据被外部修改后污染内存中的 store
 function clone(data) {
   return JSON.parse(JSON.stringify(data))
 }
@@ -166,6 +169,7 @@ function nowText() {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+// 读取模拟数据库；首次使用或版本不符时用种子数据初始化并写回
 function readStore() {
   const store = wx.getStorageSync(STORE_KEY)
 
@@ -188,6 +192,7 @@ function writeStore(store) {
   wx.setStorageSync(STORE_KEY, store)
 }
 
+// 模拟网络延迟返回成功数据（返回拷贝，防止外部改动影响 store）
 function delay(data, timeout = 220) {
   return new Promise(resolve => {
     setTimeout(() => resolve(clone(data)), timeout)
@@ -424,6 +429,7 @@ function deleteAlbumPhotos(data) {
   })
 }
 
+// 模拟投屏：校验设备在线与内存，成功则写入照片并更新已用内存，同时记录一条投屏记录
 function uploadProjection(data) {
   const store = readStore()
   const device = getDeviceById(store, data.deviceId)
@@ -432,6 +438,7 @@ function uploadProjection(data) {
     return fail('设备不存在', 404)
   }
 
+  // 设备离线：写一条失败记录后返回错误（便于用户在记录页看到失败原因）
   if (!device.connected) {
     store.records.unshift({
       id: `r_${Date.now()}`,
@@ -446,6 +453,7 @@ function uploadProjection(data) {
     return fail('设备未连接')
   }
 
+  // 估算本次上传总大小，超过设备剩余容量则拒绝
   const estimatedSize = data.images.reduce((sum, image) => sum + Number(image.sizeMb || image.size || 2.5), 0)
 
   if (device.usedMemory + estimatedSize > device.totalMemory) {
@@ -492,12 +500,13 @@ function deleteAccount() {
   })
 }
 
+// 模拟接口路由总入口：按 path + method 匹配到对应处理函数，未匹配则返回 404
 function handle(options) {
   const store = readStore()
   const url = options.url
   const method = options.method
   const data = options.data || {}
-  const path = url.split('?')[0]
+  const path = url.split('?')[0] // 去掉查询串只保留路径用于匹配
 
   if (path === '/auth/wechat-login' && method === 'POST') return loginByWechat(data)
   if (path === '/auth/phone' && method === 'POST') return bindPhone(data)

@@ -50,37 +50,5 @@
     </button>
   </view>
 
-  <!-- 临时调试入口：方便检查各页面样式布局，后续可删除 -->
-  <button class="dev-fab" hover-class="none" bindtap="toggleDevPanel">调试</button>
-  <view wx:if="{{showDevPanel}}" class="dev-mask" bindtap="toggleDevPanel" catchtouchmove="noop">
-    <view class="dev-panel" catchtap="noop">
-      <view class="dev-panel-head">
-        <text>页面调试入口（临时）</text>
-        <button class="dev-close" hover-class="none" bindtap="toggleDevPanel">×</button>
-      </view>
-      <scroll-view scroll-y class="dev-scroll">
-        <button wx:for="{{devPages}}" wx:key="url" class="dev-row" hover-class="none" data-url="{{item.url}}" bindtap="goDev">
-          <text>{{item.name}}</text>
-          <view class="chevron">›</view>
-        </button>
-      </scroll-view>
-    </view>
-  </view>
-
-  <view class="custom-tabbar">
-    <button class="tab-item" hover-class="none" bindtap="goHome">
-      <view class="tab-home-icon">
-        <view class="home-roof"></view>
-        <view class="home-body"></view>
-      </view>
-      <text>首页</text>
-    </button>
-    <button class="tab-item active" hover-class="none">
-      <view class="tab-user-icon">
-        <view class="user-head"></view>
-        <view class="user-shoulder"></view>
-      </view>
-      <text>我的</text>
-    </button>
-  </view>
+  <custom-tabbar active="mine" safe-bottom="{{safeBottom}}"></custom-tabbar>
 </view>

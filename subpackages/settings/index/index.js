@@ -1,3 +1,7 @@
+const api = require('../../../utils/api')
+
+const app = getApp()
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -68,6 +72,7 @@ Page({
     })
   },
 
+  // 退出登录与注销共用一个确认弹窗，靠 dialogType 区分（'logout' / 'delete'）
   showLogout() {
     this.setData({
       dialogType: 'logout',
@@ -92,12 +97,31 @@ Page({
     })
   },
 
-  confirmDialog() {
+  // 弹窗确认：按 dialogType 执行退出或注销，两者都清本地会话并重启到登录页
+  async confirmDialog() {
+    const dialogType = this.data.dialogType
     this.closeDialog()
-    wx.showToast({
-      title: '静态页面占位',
-      icon: 'none'
-    })
+
+    if (dialogType === 'logout') {
+      try {
+        await api.logout()
+      } catch (error) {
+        // 即使后端/网络登出失败，本地会话仍需清除，故忽略此异常
+      }
+      app.clearSession()
+      wx.reLaunch({
+        url: '/pages/login/login'
+      })
+      return
+    }
+
+    if (dialogType === 'delete') {
+      await api.deleteAccount()
+      app.clearSession()
+      wx.reLaunch({
+        url: '/pages/login/login'
+      })
+    }
   },
 
   noop() {}

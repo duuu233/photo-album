@@ -44,6 +44,7 @@ Page({
     }
   },
 
+  // 折叠面板：点击的项切换展开/收起，其余保持不变（可多个同时展开）
   toggleGuide(event) {
     const id = event.currentTarget.dataset.id
     this.setData({

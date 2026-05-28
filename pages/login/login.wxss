@@ -1,13 +1,32 @@
 .login-page {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
+  padding: 108rpx 52rpx calc(34rpx + env(safe-area-inset-bottom));
   overflow: hidden;
   color: #2a2b2b;
   background:
-    radial-gradient(circle at 88% 18%, rgba(255, 236, 214, 0.98) 0, rgba(255, 236, 214, 0.58) 130rpx, transparent 330rpx),
-    radial-gradient(circle at 5% 6%, rgba(211, 229, 255, 0.96) 0, rgba(211, 229, 255, 0.6) 300rpx, transparent 620rpx),
+    radial-gradient(
+      circle at 88% 18%,
+      rgba(255, 236, 214, 0.98) 0,
+      rgba(255, 236, 214, 0.58) 130rpx,
+      transparent 330rpx
+    ),
+    radial-gradient(
+      circle at 5% 6%,
+      rgba(211, 229, 255, 0.96) 0,
+      rgba(211, 229, 255, 0.6) 300rpx,
+      transparent 620rpx
+    ),
     linear-gradient(180deg, #edf5ff 0%, #f6f8fb 78%, #f3f4f6 100%);
-  font-family: "Source Han Sans CN", "PingFang SC", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  font-family:
+    'Source Han Sans CN',
+    'PingFang SC',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Helvetica Neue',
+    sans-serif;
 }
 
 .login-bg-stack,
@@ -48,25 +67,32 @@
   right: 0;
   bottom: 0;
   height: 368rpx;
-  background: linear-gradient(180deg, rgba(245, 247, 250, 0) 0%, rgba(247, 248, 250, 0.9) 34%, #f5f6f8 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(245, 247, 250, 0) 0%,
+    rgba(247, 248, 250, 0.9) 34%,
+    #f5f6f8 100%
+  );
 }
 
 .login-main {
   position: relative;
   z-index: 1;
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 268rpx;
 }
 
 .login-back {
-  position: absolute;
-  top: 108rpx;
-  left: 20rpx;
+  position: relative;
   z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 68rpx;
   height: 68rpx;
+  margin-left: -32rpx;
   border-radius: 50%;
 }
 
@@ -80,21 +106,17 @@
 }
 
 .login-logo {
-  position: absolute;
-  top: 444rpx;
-  left: 202rpx;
   width: 348rpx;
   height: 72rpx;
+  margin-bottom: 232rpx;
 }
 
 .login-submit {
-  position: absolute;
-  top: 748rpx;
-  left: 52rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 646rpx;
+
+  width: 646rpx !important;
   height: 128rpx;
   color: #ffffff;
   background: linear-gradient(90deg, #ff7d31 0%, #f35b16 100%);
@@ -103,7 +125,7 @@
   font-size: 36rpx;
   font-weight: 500;
   letter-spacing: 4rpx;
-  line-height: 52rpx;
+  line-height: 128rpx;
 }
 
 .login-submit__icon {
@@ -127,14 +149,23 @@
 }
 
 .login-agreement {
-  position: absolute;
-  top: 936rpx;
-  left: 114rpx;
+  position: relative;
   z-index: 2;
   display: flex;
   align-items: center;
-  width: 524rpx;
+  align-self: center;
+  width: 100%;
+  max-width: 524rpx;
   min-height: 42rpx;
+  margin-top: 58rpx;
+}
+
+.login-agreement__check-group {
+  display: flex;
+  flex: 0 0 auto;
+  width: 42rpx;
+  height: 42rpx;
+  margin-right: 12rpx;
 }
 
 .login-agreement__check {
@@ -144,28 +175,37 @@
   justify-content: center;
   width: 42rpx;
   height: 42rpx;
-  margin-right: 12rpx;
   border-radius: 50%;
 }
 
-.login-agreement__check--active {
+.login-agreement__checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42rpx;
+  height: 42rpx;
+  line-height: 42rpx;
+}
+
+.login-agreement__checkbox .wx-checkbox-input {
+  width: 32rpx;
+  height: 32rpx;
+  margin: 0;
+  border: 1rpx solid rgba(42, 43, 43, 0.6);
+  border-radius: 50%;
+  background: transparent;
+}
+
+.login-agreement__checkbox .wx-checkbox-input.wx-checkbox-input-checked {
+  border-color: #eb5f1b;
   background: #eb5f1b;
 }
 
-.login-agreement__check--hover {
-  opacity: 0.68;
-}
-
-.login-agreement__icon {
-  width: 32rpx;
-  height: 32rpx;
-}
-
-.login-agreement__tick {
+.login-agreement__checkbox .wx-checkbox-input.wx-checkbox-input-checked::before {
   color: #ffffff;
-  font-size: 25rpx;
+  font-size: 24rpx;
   font-weight: 700;
-  line-height: 42rpx;
+  transform: translate(-50%, -50%) scale(0.72);
 }
 
 .login-agreement__text {

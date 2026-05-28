@@ -1,0 +1,10 @@
+<view class="custom-tabbar {{dimmed ? 'content-dimmed' : ''}}" style="--safe-bottom: {{safeBottom}}px;">
+  <button class="tab-item {{active === 'home' ? 'active' : ''}}" hover-class="none" bindtap="switchToHome">
+    <image class="tab-icon" src="{{active === 'home' ? '/assets/images/tabbar-home02.svg' : '/assets/images/tabbar-home01.svg'}}" mode="aspectFit"></image>
+    <text>首页</text>
+  </button>
+  <button class="tab-item {{active === 'mine' ? 'active' : ''}}" hover-class="none" bindtap="switchToMine">
+    <image class="tab-icon" src="{{active === 'mine' ? '/assets/images/tabbar-mine02.svg' : '/assets/images/tabbar-mine01.svg'}}" mode="aspectFit"></image>
+    <text>我的</text>
+  </button>
+</view>

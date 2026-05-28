@@ -28,6 +28,7 @@ Page({
     }
   },
 
+  // 通用输入处理：用 data-field 指定要更新的字段，多个输入框共用此方法
   onInput(event) {
     this.setData({
       [event.currentTarget.dataset.field]: event.detail.value

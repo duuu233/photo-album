@@ -3,6 +3,7 @@ const system = require('../../../utils/system')
 
 const app = getApp()
 
+// 计算设备存储使用百分比（已用/总量），上限 100，用于进度条展示
 function memoryPercent(device) {
   if (!device || !device.totalMemory) {
     return 0
@@ -58,9 +59,12 @@ Page({
     })
   },
 
+  // 拉取设备详情并派生出页面展示字段（含轮播间隔下标、设备编号、内存文案等）
   async loadDetail() {
     const device = await api.getDeviceDetail(this.data.id)
+    // 把当前间隔小时数映射到选择器下标，缺省落到第 1 项（2 小时）
     const intervalIndex = this.data.intervalOptions.indexOf(device ? device.intervalHours : 2)
+    // 设备编号取末 6 位数字作为展示码
     const digitId = device && device.deviceNo ? String(device.deviceNo).replace(/\D/g, '').slice(-6) : ''
 
     this.setData({
@@ -75,6 +79,7 @@ Page({
     })
   },
 
+  // 通过可输入的系统弹窗重命名设备，重命名后若是当前选中设备需同步更新全局
   async renameDevice() {
     if (!this.data.device) {
       return
@@ -87,7 +92,7 @@ Page({
       content: this.data.device.name,
       success: async res => {
         if (!res.confirm || !res.content.trim()) {
-          return
+          return // 取消或输入为空则不处理
         }
 
         const device = await api.renameDevice(this.data.id, res.content.trim())
@@ -115,6 +120,7 @@ Page({
     })
   },
 
+  // 切换播放模式：单选值 '0' 为顺序，其余为随机
   async changePlayback(e) {
     if (!this.data.device) {
       return
@@ -129,6 +135,7 @@ Page({
     })
   },
 
+  // 切换轮播间隔：picker 返回的是 intervalOptions 的下标，需转换为实际小时数
   async changeInterval(e) {
     if (!this.data.device) {
       return
@@ -194,6 +201,7 @@ Page({
     })
   },
 
+  // 删除设备：若删除的是当前选中设备，需清空全局选中状态
   async confirmDeleteDevice() {
     if (!this.data.device) {
       return

@@ -7,6 +7,7 @@ Page({
 
   onLoad(options = {}) {
     this.setSystemMetrics()
+    // 页面状态由 query 决定：latest 已是最新 / available 有新版本 / updating 升级中
     this.setData({
       state: options.state || 'latest'
     })

@@ -1,6 +1,7 @@
 const api = require('../../../utils/api')
 const system = require('../../../utils/system')
 
+// 简单邮箱格式校验：xxx@xxx.xxx
 function isEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 }
@@ -39,12 +40,14 @@ Page({
     })
   },
 
+  // 通用输入：data-field 指定字段，更新后回调重算提交按钮可用性
   onInput(event) {
     this.setData({
       [event.currentTarget.dataset.field]: event.detail.value
     }, this.updateSubmitState)
   },
 
+  // 四项均填写且两次密码一致才允许提交
   updateSubmitState() {
     const { email, code, password, confirmPassword } = this.data
     this.setData({
@@ -68,6 +71,7 @@ Page({
     })
   },
 
+  // 发送验证码后启动 30 秒倒计时，期间禁用按钮防止重复发送
   startCodeCountdown() {
     this.clearCodeTimer()
     this.setData({
@@ -118,6 +122,7 @@ Page({
     }
 
     await api.changeEmail(this.data.email)
+    // 成功后把新邮箱合并回用户信息并同步到内存与缓存
     const app = getApp()
     const userInfo = Object.assign({}, app.globalData.userInfo || wx.getStorageSync('userInfo') || {}, {
       email: this.data.email

@@ -35,7 +35,6 @@
         "profile/profile",
         "bind-email/bind-email",
         "change-email/change-email",
-        "forgot-password/forgot-password",
         "language/language",
         "guide/guide",
         "update/update",
