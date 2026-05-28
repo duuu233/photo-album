@@ -1,8 +1,10 @@
 {
   "navigationStyle": "custom",
+  "navigationBarTitleText": "首页",
   "disableScroll": true,
   "backgroundColor": "#edf6ff",
   "usingComponents": {
-    "custom-tabbar": "/components/custom-tabbar/custom-tabbar"
+    "custom-tabbar": "/components/custom-tabbar/custom-tabbar",
+    "page-nav": "/components/page-nav/page-nav"
   }
 }

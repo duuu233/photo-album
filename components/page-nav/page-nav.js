@@ -1,13 +1,8 @@
-// 通用自定义导航栏组件：标题/副标题、返回按钮、右侧操作；immersive 控制是否沉浸式。
 Component({
   externalClasses: ['custom-class'],
 
   properties: {
     title: {
-      type: String,
-      value: ''
-    },
-    subtitle: {
       type: String,
       value: ''
     },
@@ -19,15 +14,61 @@ Component({
       type: String,
       value: ''
     },
+    customBack: {
+      type: Boolean,
+      value: false
+    },
     immersive: {
       type: Boolean,
       value: false
     }
   },
 
+  data: {
+    statusBarHeight: 20,
+    navHeight: 64,
+    rowTop: 6,
+    rowHeight: 32,
+    capsuleSpace: 96
+  },
+
+  lifetimes: {
+    attached() {
+      try {
+        const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
+        const statusBarHeight = info.statusBarHeight || 20
+        const menu = wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null
+        const hasMenu = menu && menu.width && menu.height && menu.top
+        const rowTop = hasMenu ? Math.max(0, menu.top - statusBarHeight) : 6
+        const rowHeight = hasMenu ? menu.height : 32
+        const capsuleSpace = hasMenu ? Math.max(72, (info.windowWidth || 375) - menu.left) : 96
+
+        this.setData({
+          statusBarHeight,
+          navHeight: statusBarHeight + rowTop * 2 + rowHeight,
+          rowTop,
+          rowHeight,
+          capsuleSpace
+        })
+      } catch (error) {
+        this.setData({
+          statusBarHeight: 20,
+          navHeight: 64,
+          rowTop: 6,
+          rowHeight: 32,
+          capsuleSpace: 96
+        })
+      }
+    }
+  },
+
   methods: {
-    // 返回：有上级页面则正常返回，否则兜底回首页（防止栈底无处可退）
     handleBack() {
+      if (this.data.customBack) {
+        this.triggerEvent('backtap')
+        return
+      }
+
       const pages = getCurrentPages()
 
       if (pages.length > 1) {

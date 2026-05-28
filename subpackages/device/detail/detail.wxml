@@ -8,13 +8,7 @@
     <view class="mock-bg__spark mock-bg__spark--three"></view>
   </view>
 
-  <view class="mock-nav">
-    <button class="mock-nav__back" hover-class="none" aria-label="返回" bindtap="goBack">
-      <view class="mock-nav__back-icon"></view>
-    </button>
-    <view class="mock-nav__title">设备详情</view>
-    <view></view>
-  </view>
+  <page-nav title="设备详情"></page-nav>
 
   <view class="mock-content detail-content">
     <view class="device-summary glass-panel">
@@ -147,5 +141,6 @@
 </view>
 
 <view class="mock-root empty-detail" wx:else>
+  <page-nav title="设备详情"></page-nav>
   <view class="empty-state glass-panel">设备不存在</view>
 </view>

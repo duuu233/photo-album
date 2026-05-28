@@ -24,9 +24,11 @@ Page({
   onLoad(options) {
     this.setSystemMetrics()
     // select=1 表示“选择设备”模式（从投屏等场景进入，点选即切换并返回）；否则为普通管理列表
+    const selectMode = options.select === '1'
     this.setData({
-      selectMode: options.select === '1'
+      selectMode
     })
+
   },
 
   onShow() {

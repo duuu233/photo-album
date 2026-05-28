@@ -7,13 +7,7 @@
     <view class="mock-bg__spark mock-bg__spark--three"></view>
   </view>
 
-  <view class="mock-nav">
-    <button class="mock-nav__back" hover-class="none" aria-label="返回" bindtap="goBack">
-      <view class="mock-nav__back-icon"></view>
-    </button>
-    <view class="mock-nav__title">{{selectMode ? '选择相框' : '我的设备'}}</view>
-    <button class="mock-nav__right mock-nav__add" hover-class="none" aria-label="添加设备" bindtap="goBind"></button>
-  </view>
+  <page-nav title="{{selectMode ? '选择相框' : '我的设备'}}" right-text="+" bind:righttap="goBind"></page-nav>
 
   <view class="mock-content device-content">
     <view wx:if="{{devices.length}}" class="device-list">

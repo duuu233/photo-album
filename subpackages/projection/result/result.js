@@ -56,6 +56,7 @@ Page({
       deviceName: result.deviceName || '房间相册',
       recordCount: result.recordCount || result.imageCount || 12
     })
+
   },
 
   // 模拟投屏进度：每 280ms 上传一张，到达总数后置 100% 并稍后切换到成功态

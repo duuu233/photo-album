@@ -7,15 +7,9 @@
     <view class="mock-bg__spark mock-bg__spark--three"></view>
   </view>
 
-  <view class="bind-content {{showHelp ? 'content-dimmed' : ''}}">
-    <view class="mock-nav">
-      <button class="mock-nav__back" hover-class="none" aria-label="返回" bindtap="goBack">
-        <view class="mock-nav__back-icon"></view>
-      </button>
-      <view class="mock-nav__title">绑定设备</view>
-      <view></view>
-    </view>
+  <page-nav title="绑定设备"></page-nav>
 
+  <view class="bind-content {{showHelp ? 'content-dimmed' : ''}}">
     <view class="radar-wrap {{scanning ? 'radar-scanning' : ''}}">
       <image wx:if="{{!scanning && devices.length}}" class="radar-art" src="/assets/images/device_found_art.png" mode="aspectFit"></image>
       <image wx:elif="{{!scanning && !devices.length}}" class="radar-art" src="/assets/images/device_not_found_art.png" mode="aspectFit"></image>

@@ -4,14 +4,13 @@
     <view class="login-bg__bottom"></view>
   </view>
 
-  <button class="login-back" hover-class="login-back--hover" aria-label="返回" bindtap="goBack">
-    <image class="login-back__icon" mode="aspectFit" src="data:image/svg+xml;utf8,&lt;svg width='9' height='17' viewBox='0 0 9 17' fill='none' xmlns='http://www.w3.org/2000/svg'&gt;&lt;path d='M8 1L1 8.5L8 16' stroke='%23000000' stroke-opacity='0.9' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/&gt;&lt;/svg&gt;"></image>
-  </button>
+  <page-nav title="登录"></page-nav>
 
   <view class="login-main">
     <image class="login-logo" src="/assets/images/logo.png" mode="aspectFit"></image>
 
-    <button class="login-submit {{submitting ? 'login-submit--loading' : ''}}" loading="{{submitting}}" hover-class="login-submit--hover" bindtap="onWechatLogin">
+    <button class="login-submit {{submitting ? 'login-submit--loading' : ''}}" loading="{{submitting}}"
+      hover-class="login-submit--hover" bindtap="onWechatLogin">
       <image class="login-submit__icon" mode="aspectFit" src="/assets/images/login-wx-icon.png"></image>
       <text>微信登录</text>
     </button>

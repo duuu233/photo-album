@@ -1,9 +1,7 @@
 .mine-root {
   position: relative;
-  display: flex;
-  flex-direction: column;
   min-height: 100vh;
-  padding: calc(var(--status-bar) + 32rpx) 48rpx calc(170rpx + var(--safe-bottom));
+  padding-bottom: calc(170rpx + var(--safe-bottom));
   overflow: hidden;
   color: #2a2d32;
   background:
@@ -75,9 +73,9 @@
   z-index: 1;
   display: flex;
   align-items: center;
-  width: 100%;
+  width: auto;
   height: 178rpx;
-  margin-top: 42rpx;
+  margin: 42rpx 48rpx 0;
   padding: 0 34rpx 0 48rpx;
   text-align: left;
   background: rgba(255, 255, 255, 0.72);
@@ -138,7 +136,7 @@
 }
 
 .functions-title {
-  margin-top: 92rpx;
+  margin: 92rpx 48rpx 0;
 }
 
 .quick-grid {
@@ -147,7 +145,7 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 22rpx;
-  margin-top: 18rpx;
+  margin: 18rpx 48rpx 0;
 }
 
 .quick-card {
@@ -226,7 +224,7 @@
   height: 8rpx;
   background: currentColor;
   border-radius: 50%;
-  content: "";
+  content: '';
 }
 
 .icon-picture::after {
@@ -238,7 +236,7 @@
   border-left: 4rpx solid currentColor;
   border-bottom: 4rpx solid currentColor;
   transform: skewX(-24deg);
-  content: "";
+  content: '';
 }
 
 .icon-device::after {
@@ -249,7 +247,7 @@
   height: 10rpx;
   border-right: 3rpx solid currentColor;
   border-bottom: 3rpx solid currentColor;
-  content: "";
+  content: '';
 }
 
 .icon-project::after {
@@ -260,7 +258,7 @@
   height: 6rpx;
   border: 4rpx solid currentColor;
   border-radius: 4rpx;
-  content: "";
+  content: '';
 }
 
 .icon-book {
@@ -276,7 +274,7 @@
   width: 0;
   height: 22rpx;
   border-left: 3rpx solid currentColor;
-  content: "";
+  content: '';
 }
 
 .icon-setting {
@@ -293,17 +291,17 @@
   height: 6rpx;
   border: 3rpx solid currentColor;
   border-radius: 50%;
-  content: "";
+  content: '';
 }
 
 .help-title {
-  margin-top: 86rpx;
+  margin: 86rpx 48rpx 0;
 }
 
 .service-list {
   position: relative;
   z-index: 1;
-  margin-top: 18rpx;
+  margin: 18rpx 48rpx 0;
 }
 
 .service-row {
@@ -326,4 +324,3 @@
   font-size: 30rpx;
   font-weight: 600;
 }
-

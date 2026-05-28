@@ -1,8 +1,5 @@
 <view class="settings-shell" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
-  <view class="nav-bar">
-    <button class="back-btn" hover-class="none" bindtap="goBack">←</button>
-    <view class="nav-title">设置</view>
-  </view>
+  <page-nav title="设置"></page-nav>
 
   <view class="glass-card first-card">
     <button class="setting-row" hover-class="none" bindtap="goLanguage">

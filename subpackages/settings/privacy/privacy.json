@@ -1,4 +1,8 @@
 {
   "navigationStyle": "custom",
+  "navigationBarTitleText": "隐私政策",
+  "usingComponents": {
+    "page-nav": "/components/page-nav/page-nav"
+  },
   "backgroundColor": "#edf6ff"
 }

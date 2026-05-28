@@ -7,14 +7,7 @@
     <view class="mock-bg__spark mock-bg__spark--three"></view>
   </view>
 
-  <view class="album-nav">
-    <button class="mock-nav__back" hover-class="none" aria-label="返回" bindtap="goBack">
-      <view class="mock-nav__back-icon"></view>
-    </button>
-    <view class="album-title">我的图库</view>
-    <button wx:if="{{filteredPhotos.length}}" class="select-all-btn" hover-class="none" bindtap="toggleSelectAll">全选</button>
-    <view wx:else></view>
-  </view>
+  <page-nav title="我的图库" right-text="{{filteredPhotos.length ? '全选' : ''}}" bind:righttap="toggleSelectAll"></page-nav>
 
   <!-- 有照片：工具栏（数量+设备筛选）→ 照片网格 → 选中后出现的底部操作栏 -->
   <block wx:if="{{filteredPhotos.length}}">

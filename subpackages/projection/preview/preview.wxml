@@ -7,13 +7,7 @@
     <view class="mock-bg__spark mock-bg__spark--three"></view>
   </view>
 
-  <view class="mock-nav">
-    <button class="mock-nav__back" hover-class="none" aria-label="返回" bindtap="goBack">
-      <view class="mock-nav__back-icon"></view>
-    </button>
-    <view class="mock-nav__title">照片预览</view>
-    <button class="preview-save" hover-class="none" bindtap="savePhoto">保存</button>
-  </view>
+  <page-nav title="照片预览" right-text="保存" bind:righttap="savePhoto"></page-nav>
 
   <view class="preview-counter" wx:if="{{imageCount}}">
     <text class="counter-current">{{activeIndex + 1}}</text>/{{imageCount}}

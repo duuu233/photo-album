@@ -1,5 +1,9 @@
 {
   "navigationStyle": "custom",
+  "navigationBarTitleText": "投屏结果",
+  "usingComponents": {
+    "page-nav": "/components/page-nav/page-nav"
+  },
   "disableScroll": true,
   "backgroundColor": "#edf6ff"
 }

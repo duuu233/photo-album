@@ -5,10 +5,13 @@
     <image class="home-bg-image" src="{{homeBgImage}}" mode="aspectFill"></image>
   </view>
 
+  <page-nav title="{{navTitle}}" show-back="{{showNavBack}}" custom-back="{{showNavBack}}" bind:backtap="backFromBinding"></page-nav>
+
   <!-- ===== 分支一：首页场景（已绑定 / 未绑定）。isHomeScene 由 sceneState 派生 ===== -->
   <block wx:if="{{isHomeScene}}">
     <!-- 主内容区：hasHomeOverlay 为真时（有弹层）加 content-dimmed 变暗 -->
-    <view class="home-content {{isBoundHome ? 'bound-home' : 'unbound-home'}} {{hasHomeOverlay ? 'content-dimmed' : ''}}">
+    <view
+      class="home-content {{isBoundHome ? 'bound-home' : 'unbound-home'}} {{hasHomeOverlay ? 'content-dimmed' : ''}}">
       <!-- 已绑定：展示设备卡片（名称/连接状态/电量）+ 轮播指示点 -->
       <block wx:if="{{isBoundHome}}">
         <view class="home-topbar">
@@ -45,7 +48,9 @@
                 <text>{{currentDevice.connected ? '已连接' : '未连接'}}</text>
               </view>
               <view class="battery-row">
-                <view class="battery-icon"><view class="battery-fill" style="width: {{batteryWidth}}%;"></view></view>
+                <view class="battery-icon">
+                  <view class="battery-fill" style="width: {{batteryWidth}}%;"></view>
+                </view>
                 <text>{{currentDevice.battery}}%</text>
               </view>
             </view>
@@ -76,19 +81,27 @@
           <image class="projection-card-bg" src="/assets/images/home-camera-card-bg.png" mode="scaleToFill"></image>
           <image class="media-art camera-art" src="/assets/images/camera_material.png" mode="aspectFit"></image>
           <view class="projection-copy">
-            <view class="projection-name">拍照</view>
-            <view class="projection-desc">拍摄照片并投屏</view>
+            <view>
+              <view class="projection-name">拍照</view>
+              <view class="projection-desc">拍摄照片并投屏</view>
+            </view>
+            <image class="projection-arrow" src="/assets/images/home-camera-card-right-icon.png" mode="aspectFit">
+            </image>
           </view>
-          <image class="projection-arrow" src="/assets/images/home-camera-card-right-icon.png" mode="aspectFit"></image>
+
         </view>
         <view class="projection-card album-card" hover-class="none" bindtap="tapAlbumEntry">
           <image class="projection-card-bg" src="/assets/images/home-album-card-bg.png" mode="scaleToFill"></image>
           <image class="media-art album-art" src="/assets/images/album_material.png" mode="aspectFit"></image>
           <view class="projection-copy">
-            <view class="projection-name">相册</view>
-            <view class="projection-desc">选择照片并投屏</view>
+            <view>
+              <view class="projection-name">相册</view>
+              <view class="projection-desc">选择照片并投屏</view>
+            </view>
+            <image class="projection-arrow" src="/assets/images/home-album-card-right-icon.png" mode="aspectFit">
+            </image>
           </view>
-          <image class="projection-arrow" src="/assets/images/home-album-card-right-icon.png" mode="aspectFit"></image>
+
         </view>
       </view>
     </view>
@@ -144,15 +157,12 @@
   <!-- ===== 分支二：绑定设备流程（搜索中 / 已发现 / 未发现），与首页场景互斥 ===== -->
   <block wx:else>
     <view class="binding-content {{isScanHelp ? 'content-dimmed' : ''}}">
-      <view class="binding-nav">
-        <button class="back-btn" hover-class="none" bindtap="backFromBinding">←</button>
-        <view class="binding-title">绑定设备</view>
-      </view>
-
       <!-- 雷达插画随状态切换：已发现 / 未发现（含帮助）/ 搜索中 -->
       <view class="radar-wrap {{isBindingScanning ? 'radar-scanning' : ''}}">
-        <image wx:if="{{isBindingFound}}" class="radar-art" src="/assets/images/device_found_art.png" mode="aspectFit"></image>
-        <image wx:elif="{{isBindingNoDevice || isScanHelp}}" class="radar-art" src="/assets/images/device_not_found_art.png" mode="aspectFit"></image>
+        <image wx:if="{{isBindingFound}}" class="radar-art" src="/assets/images/device_found_art.png" mode="aspectFit">
+        </image>
+        <image wx:elif="{{isBindingNoDevice || isScanHelp}}" class="radar-art"
+          src="/assets/images/device_not_found_art.png" mode="aspectFit"></image>
         <image wx:else class="radar-art" src="/assets/images/device_scanning_art.png" mode="aspectFit"></image>
       </view>
 
@@ -163,7 +173,8 @@
           <button class="refresh-btn" hover-class="none" bindtap="rescanDevices"></button>
         </view>
         <view class="device-list">
-          <button wx:for="{{nearbyDevices}}" wx:key="id" class="nearby-device {{item.selected ? 'selected' : ''}}" hover-class="none" data-id="{{item.id}}" bindtap="selectNearbyDevice">
+          <button wx:for="{{nearbyDevices}}" wx:key="id" class="nearby-device {{item.selected ? 'selected' : ''}}"
+            hover-class="none" data-id="{{item.id}}" bindtap="selectNearbyDevice">
             <view class="nearby-icon {{item.color}}">
               <view class="small-frame-icon"></view>
             </view>

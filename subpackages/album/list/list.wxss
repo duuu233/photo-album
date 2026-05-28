@@ -40,7 +40,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 18rpx;
   padding: 14rpx 46rpx 22rpx;
+}
+
+.album-toolbar .select-all-btn {
+  flex: 0 0 auto;
+  margin-left: auto;
+  margin-right: 6rpx;
 }
 
 .photo-count {

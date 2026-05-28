@@ -1,8 +1,5 @@
 <view class="settings-shell update-shell" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
-  <view class="nav-bar">
-    <button class="back-btn" hover-class="none" bindtap="goBack">←</button>
-    <view class="nav-title">更新BoltStar</view>
-  </view>
+  <page-nav title="更新BoltStar"></page-nav>
 
   <view class="logo-wrap">
     <image class="logo-img" src="/assets/images/logo.png" mode="aspectFit"></image>

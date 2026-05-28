@@ -7,13 +7,7 @@
     <view class="mock-bg__spark mock-bg__spark--three"></view>
   </view>
 
-  <view class="mock-nav">
-    <button class="mock-nav__back" hover-class="none" aria-label="返回" bindtap="goBack">
-      <view class="mock-nav__back-icon"></view>
-    </button>
-    <view class="mock-nav__title">{{title}}</view>
-    <view></view>
-  </view>
+  <page-nav title="{{title}}"></page-nav>
 
   <view class="result-body">
     <view class="result-art {{status}}">

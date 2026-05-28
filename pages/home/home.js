@@ -97,6 +97,17 @@ function getHomeBgImage(scene) {
   return `/assets/images/${useBg02 ? 'bg02' : 'bg01'}.png`
 }
 
+function isBindingScene(scene) {
+  return scene === SCENES.BINDING_SCANNING ||
+    scene === SCENES.BINDING_NO_DEVICE ||
+    scene === SCENES.DEVICE_FOUND ||
+    scene === SCENES.SCAN_HELP
+}
+
+function getNavigationTitle(scene) {
+  return isBindingScene(scene) ? '绑定设备' : '首页'
+}
+
 function isNetworkError(error) {
   if (!error) {
     return false
@@ -138,6 +149,7 @@ function sceneState(scene) {
   const isBindingNoDevice = scene === SCENES.BINDING_NO_DEVICE
   const isBindingFound = scene === SCENES.DEVICE_FOUND
   const isScanHelp = scene === SCENES.SCAN_HELP
+  const showNavBack = isBindingScene(scene)
 
   return {
     isHomeScene: isBoundHome || isUnboundHome,
@@ -151,6 +163,7 @@ function sceneState(scene) {
     isBindingNoDevice,
     isBindingFound,
     isScanHelp,
+    showNavBack,
     homeBgImage: getHomeBgImage(scene),
     promptTitle: scene === SCENES.UNBOUND_RECONNECT ? '设备连接失败' : '暂未绑定设备',
     promptDesc: scene === SCENES.UNBOUND_RECONNECT ? '当前设备未连接，APP需先连接设备后再投屏' : '当前暂无可投屏设备，请先绑定相框设备',
@@ -163,6 +176,7 @@ Page({
     scene: SCENES.UNBOUND,
     statusBarHeight: 20,
     safeBottom: 0,
+    navTitle: getNavigationTitle(SCENES.UNBOUND),
     avatarUrl: '',
     currentDevice: DEFAULT_DEVICE,
     hasDevice: false,
@@ -327,6 +341,7 @@ Page({
 
     this.setData({
       scene,
+      navTitle: getNavigationTitle(scene),
       ...sceneState(scene),
       hasDevice: nextHasDevice,
       ...extra

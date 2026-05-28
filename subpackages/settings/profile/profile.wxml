@@ -7,13 +7,7 @@
     <view class="mock-bg__spark mock-bg__spark--three"></view>
   </view>
 
-  <view class="mock-nav">
-    <button class="mock-nav__back" hover-class="none" aria-label="返回" bindtap="goBack">
-      <view class="mock-nav__back-icon"></view>
-    </button>
-    <view class="mock-nav__title">个人信息</view>
-    <view></view>
-  </view>
+  <page-nav title="个人信息"></page-nav>
 
   <view class="mock-content profile-content">
     <view class="profile-form glass-panel">

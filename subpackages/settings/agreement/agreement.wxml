@@ -1,8 +1,5 @@
 <view class="settings-shell" style="--status-bar: {{statusBarHeight}}px;">
-  <view class="nav-bar">
-    <button class="back-btn" hover-class="none" bindtap="goBack">←</button>
-    <view class="nav-title">用户协议</view>
-  </view>
+  <page-nav title="用户协议"></page-nav>
 
   <scroll-view class="article-scroll" scroll-y>
     <view class="glass-card article-card">

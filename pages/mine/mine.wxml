@@ -6,7 +6,7 @@
     <view class="bg-spark spark-two"></view>
   </view>
 
-  <view class="page-title">我的</view>
+  <page-nav title="我的" show-back="{{false}}"></page-nav>
 
   <button class="profile-card" hover-class="none" bindtap="goProfile">
     <image wx:if="{{avatarUrl}}" class="profile-avatar" src="{{avatarUrl}}" mode="aspectFill"></image>

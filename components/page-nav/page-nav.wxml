@@ -1,16 +1,16 @@
-<view class="page-nav custom-class {{immersive ? 'page-nav--immersive' : ''}}">
+<view
+  class="page-nav custom-class {{immersive ? 'page-nav--immersive' : ''}}"
+  style="--nav-status: {{statusBarHeight}}px; --nav-height: {{navHeight}}px; --nav-row-top: {{rowTop}}px; --nav-row-height: {{rowHeight}}px; --nav-capsule-space: {{capsuleSpace}}px;"
+>
   <view class="nav-row">
-    <button wx:if="{{showBack}}" class="nav-back" aria-label="返回" bindtap="handleBack">
-      <text class="nav-back-icon">‹</text>
+    <button wx:if="{{showBack}}" class="nav-btn nav-back" hover-class="nav-btn--hover" aria-label="返回" bindtap="handleBack">
+      <view class="nav-back-icon"></view>
     </button>
-    <view wx:else class="nav-back nav-back--placeholder"></view>
+    <view wx:else class="nav-btn nav-placeholder"></view>
 
-    <view class="nav-copy">
-      <view class="nav-title">{{title}}</view>
-      <view wx:if="{{subtitle}}" class="nav-subtitle">{{subtitle}}</view>
-    </view>
+    <view class="nav-title">{{title}}</view>
 
-    <button wx:if="{{rightText}}" class="nav-right" bindtap="handleRight">{{rightText}}</button>
-    <view wx:else class="nav-right nav-right--placeholder"></view>
+    <button wx:if="{{rightText}}" class="nav-right {{rightText === '+' ? 'nav-right--icon' : ''}}" hover-class="nav-btn--hover" bindtap="handleRight">{{rightText}}</button>
+    <view wx:else class="nav-right nav-placeholder"></view>
   </view>
 </view>

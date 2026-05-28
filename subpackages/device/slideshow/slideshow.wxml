@@ -7,13 +7,7 @@
     <view class="mock-bg__spark mock-bg__spark--three"></view>
   </view>
 
-  <view class="mock-nav">
-    <button class="mock-nav__back" hover-class="none" aria-label="返回" bindtap="goBack">
-      <view class="mock-nav__back-icon"></view>
-    </button>
-    <view class="mock-nav__title">轮播设置</view>
-    <view></view>
-  </view>
+  <page-nav title="轮播设置"></page-nav>
 
   <view class="mock-content slideshow-content">
     <view class="slideshow-card glass-panel">
@@ -43,5 +37,6 @@
 </view>
 
 <view class="mock-root empty-slideshow" wx:else>
+  <page-nav title="轮播设置"></page-nav>
   <view class="empty-state glass-panel">设备不存在</view>
 </view>

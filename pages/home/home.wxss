@@ -1,6 +1,7 @@
 .home-root {
   position: relative;
   min-height: 100vh;
+  overflow: hidden;
   overflow-x: hidden;
   color: #2a2d32;
 }
@@ -25,13 +26,18 @@
 .binding-content {
   position: relative;
   z-index: 1;
-  min-height: 100vh;
+  min-height: calc(100vh - var(--status-bar) - 88rpx);
 }
 
 .home-content {
   display: flex;
   flex-direction: column;
-  /* padding: calc(var(--status-bar) + 26rpx) 48rpx calc(170rpx + var(--safe-bottom)); */
+  padding-bottom: calc(170rpx + var(--safe-bottom));
+}
+
+.binding-content {
+  height: calc(100vh - var(--status-bar) - 88rpx);
+  min-height: 0;
 }
 
 button {
@@ -44,7 +50,6 @@ button {
 
 .avatar-btn,
 .add-btn,
-.back-btn,
 .refresh-btn,
 .sheet-close {
   display: flex;
@@ -57,6 +62,7 @@ button {
   align-items: center;
   justify-content: space-between;
   min-height: 72rpx;
+  padding: 0 48rpx;
 }
 
 .avatar-btn {
@@ -100,6 +106,7 @@ button {
 
 .hello-title {
   margin-top: 100rpx;
+  padding: 0 48rpx;
   font-size: 82rpx;
   font-weight: 500;
   line-height: 1;
@@ -108,6 +115,7 @@ button {
 
 .hello-subtitle {
   margin-top: 24rpx;
+  padding: 0 48rpx;
   color: #545963;
   font-size: 40rpx;
   line-height: 1;
@@ -125,6 +133,7 @@ button {
   width: 100%;
   height: 372rpx;
   margin-top: 50rpx;
+  padding-left: 48rpx;
   overflow: visible;
 }
 
@@ -411,8 +420,8 @@ button {
   top: 0;
   left: 0;
   z-index: -1;
-  width: 366rpx;
-  height: 358rpx;
+  width: 100%;
+  height: 100%;
 }
 
 .media-art {
@@ -424,7 +433,11 @@ button {
 
 .projection-copy {
   z-index: 2;
+  padding: 46rpx 36rpx 0 36rpx;
+
   display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .projection-name {
@@ -625,38 +638,9 @@ button {
   font-weight: 700;
 }
 
-.binding-nav {
-  position: absolute;
-  top: calc(var(--status-bar) + 28rpx);
-  left: 0;
-  width: 100%;
-  height: 88rpx;
-}
-
-.back-btn {
-  position: absolute;
-  left: 44rpx;
-  top: 0;
-  width: 64rpx;
-  height: 64rpx;
-  color: #565d67;
-  background: rgba(255, 255, 255, 0.42);
-  border: 2rpx solid rgba(255, 255, 255, 0.88);
-  border-radius: 50%;
-  font-size: 38rpx;
-}
-
-.binding-title {
-  color: #000000;
-  font-size: 34rpx;
-  font-weight: 700;
-  line-height: 64rpx;
-  text-align: center;
-}
-
 .radar-wrap {
   position: absolute;
-  top: calc(var(--status-bar) + 112rpx);
+  top: 24rpx;
   left: 50%;
   width: 500rpx;
   height: 500rpx;
@@ -688,14 +672,14 @@ button {
 
 .scan-copy {
   position: absolute;
-  top: calc(var(--status-bar) + 574rpx);
+  top: 486rpx;
   left: 0;
   width: 100%;
   text-align: center;
 }
 
 .no-device-copy {
-  top: calc(var(--status-bar) + 568rpx);
+  top: 480rpx;
 }
 
 .scan-title {
@@ -732,7 +716,7 @@ button {
 
 .nearby-head {
   position: absolute;
-  top: calc(var(--status-bar) + 670rpx);
+  top: 582rpx;
   left: 48rpx;
   right: 48rpx;
   display: flex;
@@ -775,7 +759,7 @@ button {
 
 .device-list {
   position: absolute;
-  top: calc(var(--status-bar) + 728rpx);
+  top: 640rpx;
   left: 48rpx;
   right: 48rpx;
 }

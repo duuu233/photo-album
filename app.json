@@ -44,6 +44,7 @@
     }
   ],
   "window": {
+    "navigationStyle": "custom",
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "BoltStar 智能相框",
     "navigationBarBackgroundColor": "#f2f5fc",

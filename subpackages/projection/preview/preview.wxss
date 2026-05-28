@@ -3,8 +3,16 @@
   flex-direction: column;
 }
 
+.preview-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  min-height: 84rpx;
+  padding: 20rpx 46rpx 0;
+}
+
 .preview-save {
-  justify-self: end;
   min-width: 72rpx;
   height: 64rpx;
   color: #ff5f1f;
