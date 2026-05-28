@@ -14,7 +14,7 @@
   </view>
 
   <view class="glass-card setting-list">
-    <button class="setting-row" hover-class="none" bindtap="goChangeEmail">
+    <button class="setting-row" hover-class="none" bindtap="copyContact">
       <view class="setting-icon blue-icon"><view class="icon-mail"></view></view>
       <text class="row-label">联系方式</text>
       <text class="row-value">{{contact}}</text>

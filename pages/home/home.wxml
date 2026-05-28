@@ -57,18 +57,7 @@
       </block>
 
       <block wx:else>
-        <view class="empty-hero-art">
-          <view class="album-stack stack-back"></view>
-          <view class="album-stack stack-mid"></view>
-          <view class="album-device">
-            <view class="album-picture"></view>
-            <view class="album-clip"></view>
-            <view class="tiny-heart"></view>
-            <view class="tiny-bluetooth">ᛒ</view>
-          </view>
-          <view class="plant plant-left"></view>
-          <view class="plant plant-right"></view>
-        </view>
+        <image class="empty-hero-art" src="/assets/images/empty_device_art.png" mode="aspectFit"></image>
         <view class="empty-hint">请先绑定相框设备后再投屏照片</view>
         <button class="bind-pill" hover-class="none" bindtap="showBindNowSheet">
           <view class="btn-bluetooth">ᛒ</view>
@@ -79,11 +68,7 @@
       <view class="projection-title">选择投屏方式</view>
       <view class="projection-grid">
         <button class="projection-card camera-card" hover-class="none" bindtap="tapCameraEntry">
-          <view class="media-art camera-art">
-            <view class="camera-body"></view>
-            <view class="camera-lens"></view>
-            <view class="camera-flash"></view>
-          </view>
+          <image class="media-art camera-art" src="/assets/images/camera_material.png" mode="aspectFit"></image>
           <view class="projection-copy">
             <view class="projection-name">拍照</view>
             <view class="projection-desc">拍摄照片并投屏</view>
@@ -91,11 +76,7 @@
           <view class="round-arrow orange-arrow">→</view>
         </button>
         <button class="projection-card album-card" hover-class="none" bindtap="tapAlbumEntry">
-          <view class="media-art album-art">
-            <view class="photo-board"></view>
-            <view class="photo-mountain"></view>
-            <view class="photo-dot"></view>
-          </view>
+          <image class="media-art album-art" src="/assets/images/album_material.png" mode="aspectFit"></image>
           <view class="projection-copy">
             <view class="projection-name">相册</view>
             <view class="projection-desc">选择照片并投屏</view>
@@ -135,11 +116,7 @@
       <view class="bottom-sheet media-sheet">
         <view class="media-sheet-title">选择投屏方式</view>
         <button class="media-option" hover-class="none" bindtap="chooseCamera">
-          <view class="media-art mini camera-art">
-            <view class="camera-body"></view>
-            <view class="camera-lens"></view>
-            <view class="camera-flash"></view>
-          </view>
+          <image class="media-art mini camera-art" src="/assets/images/camera_material.png" mode="aspectFit"></image>
           <view class="media-option-copy">
             <view>拍照</view>
             <text>调用手机相机拍照</text>
@@ -147,11 +124,7 @@
           <view class="round-arrow orange-arrow">→</view>
         </button>
         <button class="media-option" hover-class="none" bindtap="chooseAlbum">
-          <view class="media-art mini album-art">
-            <view class="photo-board"></view>
-            <view class="photo-mountain"></view>
-            <view class="photo-dot"></view>
-          </view>
+          <image class="media-art mini album-art" src="/assets/images/album_material.png" mode="aspectFit"></image>
           <view class="media-option-copy">
             <view>相册</view>
             <text>从手机相册选择照片</text>
@@ -171,15 +144,9 @@
       </view>
 
       <view class="radar-wrap {{isBindingScanning ? 'radar-scanning' : ''}}">
-        <view class="radar-ring radar-r1"></view>
-        <view class="radar-ring radar-r2"></view>
-        <view class="radar-ring radar-r3"></view>
-        <view class="radar-ring radar-r4"></view>
-        <view class="radar-core">
-          <text>ᛒ</text>
-        </view>
-        <view wx:if="{{isBindingFound}}" class="scan-badge success">✓</view>
-        <view wx:if="{{isBindingNoDevice || isScanHelp}}" class="scan-badge fail">×</view>
+        <image wx:if="{{isBindingFound}}" class="radar-art" src="/assets/images/device_found_art.png" mode="aspectFit"></image>
+        <image wx:elif="{{isBindingNoDevice || isScanHelp}}" class="radar-art" src="/assets/images/device_not_found_art.png" mode="aspectFit"></image>
+        <image wx:else class="radar-art" src="/assets/images/device_scanning_art.png" mode="aspectFit"></image>
       </view>
 
       <block wx:if="{{isBindingFound}}">
@@ -222,13 +189,7 @@
       <view class="bottom-sheet scan-help-sheet">
         <button class="sheet-close" hover-class="none" bindtap="closeScanHelp">×</button>
         <view class="scan-help-title">扫描不到怎么办?</view>
-        <view class="scan-help-icon">
-          <view class="focus-corner corner-a"></view>
-          <view class="focus-corner corner-b"></view>
-          <view class="focus-corner corner-c"></view>
-          <view class="focus-corner corner-d"></view>
-          <text>×</text>
-        </view>
+        <image class="scan-help-icon" src="/assets/images/scan_help_art.png" mode="aspectFit"></image>
         <view class="check-title">请检查:</view>
         <view class="check-list">
           <text>1.设备是否有电?</text>

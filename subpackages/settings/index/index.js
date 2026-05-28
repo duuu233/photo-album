@@ -38,9 +38,15 @@ Page({
     })
   },
 
-  goChangeEmail() {
-    wx.navigateTo({
-      url: '/subpackages/settings/change-email/change-email'
+  copyContact() {
+    wx.setClipboardData({
+      data: this.data.contact,
+      success() {
+        wx.showToast({
+          title: '已复制联系方式',
+          icon: 'none'
+        })
+      }
     })
   },
 

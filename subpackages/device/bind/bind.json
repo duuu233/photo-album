@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "绑定设备"
+  "navigationStyle": "custom",
+  "disableScroll": true,
+  "backgroundColor": "#edf6ff"
 }

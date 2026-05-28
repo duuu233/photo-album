@@ -1,28 +1,52 @@
-<view class="page safe-bottom">
-  <view class="page-title">
-    <view>
-      <view class="page-title__main">绑定邮箱</view>
-      <view class="page-title__sub">邮箱可用于接收账号和设备安全通知。</view>
-    </view>
+<view class="mock-root email-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <view class="mock-bg__curve mock-bg__curve--top"></view>
+    <view class="mock-bg__curve mock-bg__curve--bottom"></view>
+    <view class="mock-bg__spark mock-bg__spark--one"></view>
+    <view class="mock-bg__spark mock-bg__spark--two"></view>
+    <view class="mock-bg__spark mock-bg__spark--three"></view>
   </view>
 
-  <view class="card form-panel">
-    <view class="form-row">
-      <view class="form-label">邮箱</view>
-      <input class="form-input" type="text" value="{{email}}" placeholder="请输入邮箱" data-name="email" bindinput="updateField" />
-    </view>
-    <view class="form-row code-row">
-      <view class="code-main">
-        <view class="form-label">验证码</view>
-        <input class="form-input" type="number" value="{{code}}" placeholder="请输入验证码" data-name="code" bindinput="updateField" />
+  <view class="mock-nav">
+    <button class="mock-nav__back" hover-class="none" aria-label="返回" bindtap="goBack">
+      <view class="mock-nav__back-icon"></view>
+    </button>
+    <view class="mock-nav__title">绑定邮箱</view>
+    <view></view>
+  </view>
+
+  <view class="mock-content email-content">
+    <view class="email-form glass-panel">
+      <view class="email-row">
+        <text class="email-label">邮箱</text>
+        <input class="email-input" type="text" value="{{email}}" placeholder="请输入邮箱地址" placeholder-class="email-placeholder" data-field="email" bindinput="onInput" />
       </view>
-      <button class="secondary-btn code-btn" bindtap="sendCode">获取</button>
-    </view>
-    <view class="form-row">
-      <view class="form-label">登录密码</view>
-      <input class="form-input" password value="{{password}}" placeholder="用于确认本人操作" data-name="password" bindinput="updateField" />
-    </view>
-  </view>
+      <view class="thin-divider"></view>
 
-  <button class="primary-btn submit-btn {{canSubmit ? '' : 'disabled'}}" disabled="{{!canSubmit}}" bindtap="submit">完成绑定</button>
+      <view class="email-row">
+        <text class="email-label">验证码</text>
+        <input class="email-input code-input" type="number" value="{{code}}" placeholder="请输入验证码" placeholder-class="email-placeholder" data-field="code" bindinput="onInput" />
+        <button class="code-btn {{codeCountdown ? 'is-counting' : ''}}" disabled="{{codeCountdown > 0}}" hover-class="none" bindtap="sendCode">{{codeButtonText}}</button>
+      </view>
+      <view class="thin-divider"></view>
+
+      <view class="email-row">
+        <text class="email-label">密码</text>
+        <input class="email-input" value="{{password}}" placeholder="请输入密码" placeholder-class="email-placeholder" data-field="password" bindinput="onInput" />
+      </view>
+      <view class="thin-divider"></view>
+
+      <view class="email-row">
+        <text class="email-label">确认密码</text>
+        <input class="email-input" value="{{confirmPassword}}" placeholder="请确认密码" placeholder-class="email-placeholder" data-field="confirmPassword" bindinput="onInput" />
+      </view>
+    </view>
+
+    <view class="email-tip">
+      <view class="tip-icon">i</view>
+      <text>绑定邮箱可以用于app登录</text>
+    </view>
+
+    <button class="settings-primary email-submit {{canSubmit ? '' : 'is-disabled'}}" disabled="{{!canSubmit}}" hover-class="none" bindtap="submit">确认绑定</button>
+  </view>
 </view>

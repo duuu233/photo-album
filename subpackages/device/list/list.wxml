@@ -1,53 +1,75 @@
-<view class="page safe-bottom">
-  <view class="page-title">
-    <view>
-      <view class="page-title__main">{{selectMode ? '选择相框' : '我的设备'}}</view>
-      <view class="page-title__sub">{{selectMode ? '选择本次投屏要使用的设备' : '管理已绑定的 BoltStar 相框'}}</view>
-    </view>
-    <button class="secondary-btn title-action" bindtap="goBind">绑定</button>
+<view class="mock-root device-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <view class="mock-bg__curve mock-bg__curve--top"></view>
+    <view class="mock-bg__curve mock-bg__curve--bottom"></view>
+    <view class="mock-bg__spark mock-bg__spark--one"></view>
+    <view class="mock-bg__spark mock-bg__spark--two"></view>
+    <view class="mock-bg__spark mock-bg__spark--three"></view>
   </view>
 
-  <view wx:if="{{devices.length}}">
-    <button class="device-card card" wx:for="{{devices}}" wx:key="id" data-id="{{item.id}}" bindtap="selectDevice">
-      <view class="device-top">
-        <view class="device-visual">
-          <view class="device-screen"></view>
-        </view>
-        <view class="device-main">
-          <view class="device-name">{{item.name}}</view>
-          <view class="caption">{{item.deviceNo}}</view>
-        </view>
-        <view class="device-tags">
-          <view class="tag {{item.connected ? '' : 'danger'}}">
-            <view class="status-dot"></view>
-            {{item.connected ? '在线' : '离线'}}
-          </view>
-          <text class="tag warn" wx:if="{{selectedId === item.id}}">当前</text>
-        </view>
-      </view>
-      <view class="metrics">
-        <view>
-          <view class="metric-value">{{item.battery}}%</view>
-          <view class="caption">电量</view>
-        </view>
-        <view>
-          <view class="metric-value">{{item.usedMemory}}/{{item.totalMemory}}MB</view>
-          <view class="caption">内存</view>
-        </view>
-        <view>
-          <view class="metric-value">{{item.playbackMode === 'order' ? '顺序' : '随机'}}</view>
-          <view class="caption">轮播</view>
-        </view>
-      </view>
-      <view class="memory-track">
-        <view class="memory-bar" style="width: {{item.memoryPercent}}%;"></view>
-      </view>
+  <view class="mock-nav">
+    <button class="mock-nav__back" hover-class="none" aria-label="返回" bindtap="goBack">
+      <view class="mock-nav__back-icon"></view>
     </button>
+    <view class="mock-nav__title">{{selectMode ? '选择相框' : '我的设备'}}</view>
+    <button class="mock-nav__right mock-nav__add" hover-class="none" aria-label="添加设备" bindtap="goBind"></button>
   </view>
 
-  <view class="empty card" wx:else>
-    <view class="empty-title">暂无设备</view>
-    <view class="caption">请先搜索附近的智能相框。</view>
-    <button class="primary-btn empty-action" bindtap="goBind">搜索并绑定设备</button>
+  <view class="mock-content device-content">
+    <view wx:if="{{devices.length}}" class="device-list">
+      <view class="device-card glass-panel {{item.connected ? '' : 'is-offline'}}" wx:for="{{devices}}" wx:key="id" wx:for-index="index" data-id="{{item.id}}" bindtap="selectDevice">
+        <view class="device-card__main">
+          <view class="device-logo">
+            <view class="frame-logo"></view>
+          </view>
+
+          <view class="device-copy">
+            <view class="device-name-row">
+              <text class="device-name">{{item.name}}</text>
+              <button class="edit-name-btn" hover-class="none" catchtap="renameDevice" data-id="{{item.id}}" aria-label="编辑设备名称">
+                <view class="edit-name-icon"></view>
+              </button>
+            </view>
+            <view class="device-meta">
+              <view class="connection {{item.connected ? 'is-connected' : ''}}">
+                <view class="ui-bluetooth"></view>
+                <text>{{item.connected ? '已连接' : '未连接'}}</text>
+              </view>
+              <view wx:if="{{item.connected}}" class="battery-meta">
+                <view class="ui-battery"><view class="ui-battery__fill" style="width: {{item.battery}}%;"></view></view>
+                <text>{{item.battery}}%</text>
+              </view>
+            </view>
+          </view>
+
+          <view class="device-chevron">
+            <view class="ui-chevron"></view>
+          </view>
+        </view>
+
+        <button wx:if="{{item.canDeleteHint}}" class="device-delete-hint" hover-class="none" data-id="{{item.id}}" catchtap="deleteDevice">删除</button>
+
+        <view class="device-actions">
+          <button class="device-action" hover-class="none" data-id="{{item.id}}" catchtap="goSlideshow">
+            <view class="action-frame-icon"></view>
+            <text>轮播设置</text>
+          </button>
+          <view class="device-action-divider"></view>
+          <button class="device-action connection-action {{item.connected ? 'disconnect' : 'connect'}}" hover-class="none" data-id="{{item.id}}" catchtap="toggleConnection">
+            <view class="ui-bluetooth"></view>
+            <text>{{item.connected ? '断开' : '连接'}}</text>
+          </button>
+        </view>
+      </view>
+    </view>
+
+    <view class="empty-device glass-panel" wx:else>
+      <view class="empty-device__art">
+        <view class="frame-logo"></view>
+      </view>
+      <view class="empty-device__title">暂无设备</view>
+      <view class="empty-device__desc">请先搜索并绑定附近的智能相框。</view>
+      <button class="empty-device__btn" hover-class="none" bindtap="goBind">添加设备</button>
+    </view>
   </view>
 </view>

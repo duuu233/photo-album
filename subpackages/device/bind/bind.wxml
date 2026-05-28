@@ -1,58 +1,76 @@
-<view class="page bind-page safe-bottom">
-  <view class="page-title">
-    <view>
-      <view class="page-title__main">绑定设备</view>
-      <view class="page-title__sub">打开相框电源并保持靠近手机，系统会自动搜索附近设备。</view>
-    </view>
+<view class="mock-root bind-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <view class="mock-bg__curve mock-bg__curve--top"></view>
+    <view class="mock-bg__curve mock-bg__curve--bottom"></view>
+    <view class="mock-bg__spark mock-bg__spark--one"></view>
+    <view class="mock-bg__spark mock-bg__spark--two"></view>
+    <view class="mock-bg__spark mock-bg__spark--three"></view>
   </view>
 
-  <view class="scan-hero card {{scanning ? 'is-scanning' : ''}}">
-    <view class="radar">
-      <view class="radar-ring ring-one"></view>
-      <view class="radar-ring ring-two"></view>
-      <view class="radar-core"></view>
-    </view>
-    <view class="scan-title">{{scanning ? '搜索设备中' : (devices.length ? '已搜索到设备' : '未搜索到设备')}}</view>
-    <view class="caption">{{scanning ? '正在通过定位与蓝牙发现附近的 BoltStar 相框' : (devices.length ? '选择下方设备完成绑定' : '没有发现可绑定设备，可以检查帮助项后重试')}}</view>
-    <button class="primary-btn scan-btn" loading="{{scanning}}" bindtap="scan">{{scanning ? '搜索中' : '重新搜索'}}</button>
-  </view>
-
-  <view class="fallback-tip" wx:if="{{usedMockFallback}}">
-    当前为开发工具兜底模拟设备，真机请开启蓝牙和定位后重新搜索。
-  </view>
-
-  <view class="section">
-    <view class="section-title">
-      <text>发现的设备</text>
-      <button class="link-btn" bindtap="openHelp">扫描不到怎么办？</button>
-    </view>
-
-    <view wx:if="{{devices.length}}">
-      <button class="scan-device card" wx:for="{{devices}}" wx:key="deviceNo" data-id="{{item.id || item.deviceId}}" bindtap="bindDevice">
-        <view class="device-icon"></view>
-        <view class="device-main">
-          <view class="device-name">{{item.name}}</view>
-          <view class="caption">{{item.deviceNo}} · 信号 {{item.RSSI || '--'}} · {{item.realBluetooth ? '蓝牙发现' : '模拟设备'}}</view>
-        </view>
-        <text class="tag">绑定</text>
+  <view class="bind-content {{showHelp ? 'content-dimmed' : ''}}">
+    <view class="mock-nav">
+      <button class="mock-nav__back" hover-class="none" aria-label="返回" bindtap="goBack">
+        <view class="mock-nav__back-icon"></view>
       </button>
+      <view class="mock-nav__title">绑定设备</view>
+      <view></view>
     </view>
 
-    <view class="empty card" wx:elif="{{!scanning}}">
-      <view class="empty-title">未搜索到设备</view>
-      <view class="caption">确认相框已通电，并让手机靠近相框后重试。</view>
+    <view class="radar-wrap {{scanning ? 'radar-scanning' : ''}}">
+      <image wx:if="{{!scanning && devices.length}}" class="radar-art" src="/assets/images/device_found_art.png" mode="aspectFit"></image>
+      <image wx:elif="{{!scanning && !devices.length}}" class="radar-art" src="/assets/images/device_not_found_art.png" mode="aspectFit"></image>
+      <image wx:else class="radar-art" src="/assets/images/device_scanning_art.png" mode="aspectFit"></image>
     </view>
+
+    <block wx:if="{{!scanning && devices.length}}">
+      <view class="nearby-head">
+        <text>附近设备</text>
+        <button class="refresh-btn" hover-class="none" aria-label="重新搜索" bindtap="scan"></button>
+      </view>
+      <scroll-view scroll-y class="device-list">
+        <button class="nearby-device" wx:for="{{devices}}" wx:key="deviceNo" hover-class="none" data-id="{{item.id || item.deviceId}}" bindtap="bindDevice">
+          <view class="nearby-icon"><view class="small-frame-icon"></view></view>
+          <view class="nearby-copy">
+            <text class="nearby-name">{{item.name}}</text>
+            <text class="nearby-sub">{{item.deviceNo}} · 信号 {{item.RSSI || '--'}}</text>
+          </view>
+          <view class="bind-tag">绑定</view>
+        </button>
+      </scroll-view>
+      <view wx:if="{{usedMockFallback}}" class="fallback-tip">当前为开发工具兜底模拟设备，真机请开启蓝牙和定位后重新搜索。</view>
+    </block>
+
+    <block wx:elif="{{scanning}}">
+      <view class="scan-copy">
+        <view class="scan-title">正在搜索附近设备</view>
+        <view class="scan-desc">请尽量将手机靠近需要添加的设备...</view>
+      </view>
+      <button class="scan-help-link" hover-class="none" bindtap="openHelp">扫描不到怎么办?</button>
+    </block>
+
+    <block wx:else>
+      <view class="scan-copy">
+        <view class="scan-title">未发现设备</view>
+        <view class="scan-desc">设备连接中断，请检查设备状态后重试</view>
+      </view>
+      <button class="scan-help-link" hover-class="none" bindtap="openHelp">扫描不到怎么办?</button>
+      <button class="primary-action bind-bottom" hover-class="none" bindtap="scan">重新扫描</button>
+    </block>
   </view>
 
-  <view class="modal-mask" wx:if="{{showHelp}}" bindtap="closeHelp">
-    <view class="modal-panel" catchtap="noop">
-      <view class="modal-title">扫描不到怎么办？</view>
-      <view class="help-list">
-        <view class="help-item">1. 确认相框已开机并处于可绑定状态。</view>
-        <view class="help-item">2. 打开手机蓝牙、定位权限，并靠近相框。</view>
-        <view class="help-item">3. 如果设备已被他人绑定，请先在原账号删除设备。</view>
+  <view wx:if="{{showHelp}}" class="bind-mask" catchtouchmove="noop" bindtap="closeHelp">
+    <view class="scan-help-sheet" catchtap="noop">
+      <button class="sheet-close" hover-class="none" bindtap="closeHelp">×</button>
+      <view class="scan-help-title">扫描不到怎么办?</view>
+      <image class="scan-help-icon" src="/assets/images/scan_help_art.png" mode="aspectFit"></image>
+      <view class="check-title">请检查:</view>
+      <view class="check-list">
+        <text>1.设备是否有电?</text>
+        <text>2.当前设备是否被占用?</text>
+        <text>3.设备蓝牙是否工作正常，手机蓝牙是否打开</text>
+        <text>4.设备是否与手机距离过远，隔离或有其他遮挡物</text>
       </view>
-      <button class="primary-btn" bindtap="closeHelp">知道了</button>
+      <button class="primary-action" hover-class="none" bindtap="scan">重新扫描</button>
     </view>
   </view>
 </view>

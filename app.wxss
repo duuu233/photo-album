@@ -303,3 +303,241 @@ input {
   gap: 18rpx;
   margin-top: 30rpx;
 }
+
+.mock-root {
+  position: relative;
+  min-height: 100vh;
+  overflow-x: hidden;
+  color: #25282d;
+  background:
+    radial-gradient(circle at 88% 22%, rgba(255, 190, 126, 0.34), rgba(255, 190, 126, 0) 260rpx),
+    radial-gradient(circle at 8% 2%, rgba(190, 221, 255, 0.8), rgba(190, 221, 255, 0) 540rpx),
+    linear-gradient(180deg, #f5f9ff 0%, #edf6ff 100%);
+}
+
+.mock-bg {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.mock-bg__curve {
+  position: absolute;
+  border: 2rpx solid rgba(255, 255, 255, 0.58);
+  border-radius: 50%;
+}
+
+.mock-bg__curve--top {
+  top: -330rpx;
+  left: -210rpx;
+  width: 840rpx;
+  height: 580rpx;
+}
+
+.mock-bg__curve--bottom {
+  right: -150rpx;
+  bottom: -246rpx;
+  width: 550rpx;
+  height: 550rpx;
+}
+
+.mock-bg__spark {
+  position: absolute;
+  width: 8rpx;
+  height: 8rpx;
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 50%;
+  box-shadow: 0 0 20rpx rgba(255, 198, 130, 0.76);
+}
+
+.mock-bg__spark--one {
+  top: 126rpx;
+  right: 116rpx;
+}
+
+.mock-bg__spark--two {
+  top: 178rpx;
+  left: 138rpx;
+}
+
+.mock-bg__spark--three {
+  right: 156rpx;
+  bottom: 82rpx;
+  opacity: 0.72;
+}
+
+.mock-nav {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 72rpx 1fr 72rpx;
+  align-items: center;
+  min-height: 64rpx;
+  padding: calc(var(--status-bar, 20px) + 28rpx) 44rpx 26rpx;
+}
+
+.mock-nav__title {
+  overflow: hidden;
+  color: #111111;
+  font-size: 34rpx;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mock-nav__back,
+.mock-nav__right {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+}
+
+.mock-nav__back {
+  background: rgba(255, 255, 255, 0.62);
+  border: 1rpx solid rgba(255, 255, 255, 0.86);
+}
+
+.mock-nav__right {
+  justify-self: end;
+}
+
+.mock-nav__back-icon {
+  width: 18rpx;
+  height: 18rpx;
+  border-bottom: 3rpx solid #7d8792;
+  border-left: 3rpx solid #7d8792;
+  transform: rotate(45deg);
+}
+
+.mock-nav__add {
+  background: linear-gradient(180deg, #ff9140 0%, #ff6a20 100%);
+  box-shadow: 0 12rpx 24rpx rgba(255, 102, 31, 0.18);
+}
+
+.mock-nav__add::before,
+.mock-nav__add::after {
+  position: absolute;
+  width: 24rpx;
+  height: 4rpx;
+  background: #ffffff;
+  border-radius: 999rpx;
+  content: "";
+}
+
+.mock-nav__add::after {
+  transform: rotate(90deg);
+}
+
+.mock-content {
+  position: relative;
+  z-index: 1;
+  padding: 0 46rpx calc(42rpx + var(--safe-bottom, 0px));
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.72);
+  border: 2rpx solid rgba(255, 255, 255, 0.86);
+  border-radius: 34rpx;
+  box-shadow: 0 24rpx 54rpx rgba(121, 145, 178, 0.13);
+}
+
+.thin-divider {
+  height: 1rpx;
+  background: rgba(218, 222, 228, 0.95);
+}
+
+.ui-chevron {
+  width: 16rpx;
+  height: 16rpx;
+  border-top: 3rpx solid currentColor;
+  border-right: 3rpx solid currentColor;
+  transform: rotate(45deg);
+}
+
+.ui-bluetooth {
+  position: relative;
+  width: 20rpx;
+  height: 20rpx;
+  color: currentColor;
+}
+
+.ui-bluetooth::before {
+  position: absolute;
+  top: 1rpx;
+  left: 8rpx;
+  width: 3rpx;
+  height: 18rpx;
+  background: currentColor;
+  border-radius: 999rpx;
+  content: "";
+}
+
+.ui-bluetooth::after {
+  position: absolute;
+  top: 1rpx;
+  left: 4rpx;
+  width: 11rpx;
+  height: 11rpx;
+  border-top: 3rpx solid currentColor;
+  border-right: 3rpx solid currentColor;
+  transform: rotate(45deg);
+  content: "";
+}
+
+.ui-battery {
+  position: relative;
+  width: 32rpx;
+  height: 18rpx;
+  padding: 3rpx;
+  border: 2rpx solid currentColor;
+  border-radius: 3rpx;
+}
+
+.ui-battery::after {
+  position: absolute;
+  top: 4rpx;
+  right: -6rpx;
+  width: 4rpx;
+  height: 8rpx;
+  background: currentColor;
+  border-radius: 0 2rpx 2rpx 0;
+  content: "";
+}
+
+.ui-battery__fill {
+  display: block;
+  height: 100%;
+  background: #52b862;
+  border-radius: 2rpx;
+}
+
+.frame-logo {
+  position: relative;
+  width: 48rpx;
+  height: 40rpx;
+  color: currentColor;
+  border: 4rpx solid currentColor;
+  border-radius: 4rpx;
+}
+
+.frame-logo::before {
+  position: absolute;
+  right: 4rpx;
+  bottom: -13rpx;
+  left: 4rpx;
+  height: 5rpx;
+  border: 4rpx solid currentColor;
+  border-top: 0;
+  border-radius: 0 0 4rpx 4rpx;
+  content: "";
+}

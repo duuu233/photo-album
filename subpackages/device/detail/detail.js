@@ -1,4 +1,5 @@
 const api = require('../../../utils/api')
+const system = require('../../../utils/system')
 
 const app = getApp()
 
@@ -11,9 +12,16 @@ function memoryPercent(device) {
 
 Page({
   data: {
+    statusBarHeight: 20,
+    safeBottom: 0,
     id: '',
     device: null,
     memoryPercent: 0,
+    deviceCode: '',
+    memoryText: '',
+    macAddress: '',
+    firmwareVersion: '1.2.0',
+    playbackLabel: '',
     intervalOptions: [1, 2, 4, 8, 24],
     intervalIndex: 1,
     showClearConfirm: false,
@@ -21,6 +29,7 @@ Page({
   },
 
   onLoad(options) {
+    this.setSystemMetrics()
     this.setData({
       id: options.id || ''
     })
@@ -32,13 +41,36 @@ Page({
 
   noop() {},
 
+  setSystemMetrics() {
+    this.setData(system.getLayoutMetrics())
+  },
+
+  goBack() {
+    const pages = getCurrentPages()
+
+    if (pages.length > 1) {
+      wx.navigateBack()
+      return
+    }
+
+    wx.navigateTo({
+      url: '/subpackages/device/list/list'
+    })
+  },
+
   async loadDetail() {
     const device = await api.getDeviceDetail(this.data.id)
     const intervalIndex = this.data.intervalOptions.indexOf(device ? device.intervalHours : 2)
+    const digitId = device && device.deviceNo ? String(device.deviceNo).replace(/\D/g, '').slice(-6) : ''
 
     this.setData({
       device,
       memoryPercent: memoryPercent(device),
+      deviceCode: digitId || '123456',
+      memoryText: device ? `${device.usedMemory}/${device.totalMemory}` : '',
+      macAddress: device && device.macAddress ? device.macAddress : '123456',
+      firmwareVersion: device && device.firmwareVersion ? device.firmwareVersion : '1.2.0',
+      playbackLabel: device && device.playbackMode === 'random' ? '随机轮播' : '顺序轮播',
       intervalIndex: intervalIndex > -1 ? intervalIndex : 1
     })
   },

@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "投屏结果"
+  "navigationStyle": "custom",
+  "disableScroll": true,
+  "backgroundColor": "#edf6ff"
 }

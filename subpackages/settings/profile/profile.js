@@ -1,4 +1,5 @@
 const api = require('../../../utils/api')
+const system = require('../../../utils/system')
 
 const app = getApp()
 
@@ -7,9 +8,10 @@ Page({
     statusBarHeight: 20,
     safeBottom: 0,
     userInfo: {
+      id: '123456',
       nickName: '江江江',
       avatarUrl: '',
-      email: '123456789@qq.com',
+      email: '',
       phone: '123456789'
     }
   },
@@ -23,28 +25,18 @@ Page({
   },
 
   setSystemMetrics() {
-    try {
-      const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
-      const safeBottom = Math.max(0, (info.screenHeight || 0) - (info.safeArea ? info.safeArea.bottom : info.windowHeight || 0))
-      this.setData({
-        statusBarHeight: info.statusBarHeight || 20,
-        safeBottom
-      })
-    } catch (error) {
-      this.setData({
-        statusBarHeight: 20,
-        safeBottom: 0
-      })
-    }
+    this.setData(system.getLayoutMetrics())
   },
 
   async loadUser() {
     try {
       const userInfo = await api.getUserProfile()
+      const displayId = userInfo.id && /^\d+$/.test(String(userInfo.id)) ? userInfo.id : '123456'
       this.syncUser({
+        id: displayId,
         nickName: userInfo.nickName || '江江江',
         avatarUrl: userInfo.avatarUrl || '',
-        email: userInfo.email || '123456789@qq.com',
+        email: userInfo.email || '',
         phone: userInfo.phone || '123456789'
       })
     } catch (error) {
@@ -64,18 +56,18 @@ Page({
     })
   },
 
-  saveProfile() {
-    app.globalData.userInfo = this.data.userInfo
-    wx.setStorageSync('userInfo', this.data.userInfo)
+  async saveProfile() {
+    const userInfo = await api.updateUserProfile(this.data.userInfo)
+    this.syncUser(Object.assign({}, this.data.userInfo, userInfo))
     wx.showToast({
       title: '已保存',
       icon: 'success'
     })
   },
 
-  goChangeEmail() {
+  goEmail() {
     wx.navigateTo({
-      url: '/subpackages/settings/change-email/change-email'
+      url: this.data.userInfo.email ? '/subpackages/settings/change-email/change-email' : '/subpackages/settings/bind-email/bind-email'
     })
   },
 

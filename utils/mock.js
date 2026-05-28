@@ -12,28 +12,47 @@ const DEFAULT_USER = {
 const DEVICE_SEED = [
   {
     id: 'd_living_001',
-    name: '客厅相框',
-    deviceNo: 'FRAME-2026-001',
+    name: '房间相册',
+    deviceNo: 'FRAME-123456',
+    macAddress: '123456',
+    firmwareVersion: '1.2.0',
     connected: true,
-    battery: 86,
-    totalMemory: 512,
-    usedMemory: 318,
+    battery: 80,
+    totalMemory: 100,
+    usedMemory: 68,
     playbackMode: 'order',
     carouselEnabled: true,
-    intervalHours: 2,
+    intervalHours: 24,
     lastOnline: '刚刚'
   },
   {
     id: 'd_bedroom_002',
-    name: '卧室相框',
+    name: '客厅相册',
     deviceNo: 'FRAME-2026-002',
+    macAddress: '123456',
+    firmwareVersion: '1.2.0',
     connected: false,
-    battery: 42,
-    totalMemory: 512,
-    usedMemory: 450,
+    battery: 0,
+    totalMemory: 100,
+    usedMemory: 38,
     playbackMode: 'random',
     carouselEnabled: false,
-    intervalHours: 4,
+    intervalHours: 24,
+    lastOnline: '今天 08:30'
+  },
+  {
+    id: 'd_study_003',
+    name: '书房厅相册',
+    deviceNo: 'FRAME-2026-003',
+    macAddress: '123456',
+    firmwareVersion: '1.2.0',
+    connected: false,
+    battery: 0,
+    totalMemory: 100,
+    usedMemory: 12,
+    playbackMode: 'order',
+    carouselEnabled: false,
+    intervalHours: 24,
     lastOnline: '今天 08:30'
   }
 ]
@@ -42,7 +61,7 @@ const PHOTO_SEED = [
   {
     id: 'p_001',
     deviceId: 'd_living_001',
-    deviceName: '客厅相框',
+    deviceName: '房间相册',
     title: '家庭相册 01',
     url: '',
     tone: 'blue',
@@ -55,7 +74,7 @@ const PHOTO_SEED = [
   {
     id: 'p_002',
     deviceId: 'd_living_001',
-    deviceName: '客厅相框',
+    deviceName: '房间相册',
     title: '旅行相册 02',
     url: '',
     tone: 'amber',
@@ -68,7 +87,7 @@ const PHOTO_SEED = [
   {
     id: 'p_003',
     deviceId: 'd_bedroom_002',
-    deviceName: '卧室相框',
+    deviceName: '客厅相册',
     title: '纪念日 03',
     url: '',
     tone: 'rose',
@@ -84,20 +103,56 @@ const RECORD_SEED = [
   {
     id: 'r_001',
     deviceId: 'd_living_001',
-    deviceName: '客厅相框',
-    imageCount: 3,
+    deviceName: '房间相框',
+    imageCount: 1,
     status: 'success',
-    createdAt: '2026-05-12 09:22',
+    createdAt: '2026-05-19 12:20',
     message: '投屏成功'
   },
   {
     id: 'r_002',
+    deviceId: 'd_living_001',
+    deviceName: '房间相框',
+    imageCount: 1,
+    status: 'success',
+    createdAt: '2026-05-19 12:20',
+    message: '投屏成功'
+  },
+  {
+    id: 'r_003',
+    deviceId: 'd_living_001',
+    deviceName: '房间相框',
+    imageCount: 1,
+    status: 'success',
+    createdAt: '2026-05-19 12:20',
+    message: '投屏成功'
+  },
+  {
+    id: 'r_004',
+    deviceId: 'd_living_001',
+    deviceName: '房间相框',
+    imageCount: 1,
+    status: 'success',
+    createdAt: '2026-05-19 12:20',
+    message: '投屏成功'
+  },
+  {
+    id: 'r_005',
     deviceId: 'd_bedroom_002',
-    deviceName: '卧室相框',
+    deviceName: '房间相框',
     imageCount: 1,
     status: 'fail',
-    createdAt: '2026-05-11 20:10',
-    message: '设备未连接'
+    createdAt: '2026-05-19 12:20',
+    message: '设备已离线'
+  },
+  {
+    id: 'r_006',
+    deviceId: 'd_bedroom_002',
+    deviceName: '房间相框',
+    imageCount: 1,
+    status: 'fail',
+    createdAt: '2026-05-19 12:20',
+    message: '蓝牙连接中断'
   }
 ]
 

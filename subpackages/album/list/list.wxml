@@ -1,36 +1,88 @@
-<view class="page album-page safe-bottom">
-  <view class="page-title">
-    <view>
-      <view class="page-title__main">我的相册</view>
-      <view class="page-title__sub">查看已投屏照片，或继续选择新照片投到相框。</view>
-    </view>
+<view class="mock-root album-root" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <view class="mock-bg__curve mock-bg__curve--top"></view>
+    <view class="mock-bg__curve mock-bg__curve--bottom"></view>
+    <view class="mock-bg__spark mock-bg__spark--one"></view>
+    <view class="mock-bg__spark mock-bg__spark--two"></view>
+    <view class="mock-bg__spark mock-bg__spark--three"></view>
   </view>
 
-  <view class="toolbar">
-    <button class="primary-btn" bindtap="chooseForProjection">选择照片投屏</button>
-    <button class="ghost-btn" bindtap="toggleManage">{{manageMode ? '取消' : '管理'}}</button>
+  <view class="album-nav">
+    <button class="mock-nav__back" hover-class="none" aria-label="返回" bindtap="goBack">
+      <view class="mock-nav__back-icon"></view>
+    </button>
+    <view class="album-title">我的图库</view>
+    <button wx:if="{{filteredPhotos.length}}" class="select-all-btn" hover-class="none" bindtap="toggleSelectAll">全选</button>
+    <view wx:else></view>
   </view>
 
-  <view class="photo-grid" wx:if="{{photos.length}}">
-    <view class="photo-card tone-{{item.tone}} {{selectedMap[item.id] ? 'selected' : ''}}" wx:for="{{photos}}" wx:key="id" data-id="{{item.id}}" bindtap="toggleSelect">
-      <image wx:if="{{item.url}}" class="photo-img" src="{{item.url}}" mode="aspectFill"></image>
-      <view wx:else class="photo-placeholder image-placeholder">图片占位</view>
-      <view class="select-dot" wx:if="{{manageMode}}">{{selectedMap[item.id] ? '✓' : ''}}</view>
-      <view class="photo-info">
-        <view class="photo-title">{{item.title}}</view>
-        <view class="photo-caption">{{item.deviceName}} · {{item.createdAt}}</view>
-        <view class="photo-caption">{{item.onDevice ? '设备照片' : '仅相册保留'}} · {{item.size}}MB</view>
+  <block wx:if="{{filteredPhotos.length}}">
+    <view class="album-toolbar">
+      <text class="photo-count">共 {{totalCount}} 张</text>
+      <view class="filter-wrap">
+        <button class="filter-btn" hover-class="none" bindtap="toggleFilterMenu">
+          <text>{{currentFilter}}</text>
+          <view class="filter-arrow {{showFilterMenu ? 'is-open' : ''}}"></view>
+        </button>
+        <view class="filter-menu" wx:if="{{showFilterMenu}}">
+          <button wx:for="{{filters}}" wx:key="value" class="filter-option {{currentFilter === item.value ? 'is-active' : ''}}" hover-class="none" data-value="{{item.value}}" bindtap="selectFilter">{{item.label}}</button>
+        </view>
       </view>
     </view>
+
+    <view class="photo-grid {{selectedCount ? 'has-bottom-bar' : ''}}">
+      <view wx:for="{{filteredPhotos}}" wx:key="id" class="photo-tile thumb-{{item.thumbType}}" data-id="{{item.id}}" bindtap="toggleSelect">
+        <image wx:if="{{item.url}}" class="photo-img" src="{{item.url}}" mode="aspectFill"></image>
+        <view wx:else class="photo-art">
+          <view class="art-sun"></view>
+          <view class="art-cloud"></view>
+          <view class="art-face"></view>
+          <view class="art-body"></view>
+          <view class="art-ground"></view>
+        </view>
+        <view class="select-circle {{selectedMap[item.id] ? 'is-selected' : ''}}">
+          <view wx:if="{{selectedMap[item.id]}}" class="check-mark"></view>
+        </view>
+      </view>
+    </view>
+
+    <view class="album-bottom-bar" wx:if="{{selectedCount}}">
+      <button class="delete-selected-btn" hover-class="none" aria-label="删除照片" bindtap="showDeleteDialog">
+        <view class="trash-line"></view>
+      </button>
+      <view class="selected-copy">已选 <text>{{selectedCount}}</text> 张</view>
+      <button class="project-btn" hover-class="none" bindtap="projectSelected">投屏</button>
+    </view>
+  </block>
+
+  <view class="album-empty" wx:else>
+    <view class="empty-art">
+      <view class="empty-frame">
+        <view class="empty-picture-icon"></view>
+      </view>
+      <view class="empty-warning">!</view>
+      <view class="empty-base"></view>
+      <view class="empty-spark spark-a"></view>
+      <view class="empty-spark spark-b"></view>
+    </view>
+    <view class="empty-title">当前没有可查看的设备照片</view>
+    <view class="empty-desc">你可以重新投屏照片到设备</view>
+    <button class="empty-action" hover-class="none" bindtap="chooseForProjection">重新投屏</button>
   </view>
 
-  <view class="empty card" wx:else>
-    <view class="empty-title">暂无照片</view>
-    <view class="caption">从手机相册选择照片，投屏后会在这里留下记录。</view>
-  </view>
-
-  <view class="bottom-bar" wx:if="{{manageMode}}">
-    <text>已选 {{selectedCount}} 张</text>
-    <button class="danger-btn" bindtap="deleteSelected">删除</button>
+  <view class="confirm-mask" wx:if="{{showDeleteConfirm}}" catchtouchmove="noop" bindtap="hideDeleteDialog">
+    <view class="confirm-dialog" catchtap="noop">
+      <view class="confirm-icon">
+        <view class="picture-icon"></view>
+      </view>
+      <view class="confirm-copy">
+        <view class="confirm-title">删除照片</view>
+        <view class="confirm-desc">确认删除已选的{{selectedCount}}张照片吗？删除后将从当前设备图库中移除，且无法恢复</view>
+      </view>
+      <view class="confirm-actions">
+        <button class="confirm-cancel" hover-class="none" bindtap="hideDeleteDialog">取消</button>
+        <button class="confirm-primary" hover-class="none" bindtap="confirmDeleteSelected">确认</button>
+      </view>
+    </view>
   </view>
 </view>
