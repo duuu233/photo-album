@@ -29,26 +29,33 @@
         <view class="hello-title">Hi</view>
         <view class="hello-subtitle">欢迎使用 <text>BoltStar</text></view>
 
-        <view class="device-carousel">
-            <image class="device-orbit" src="/assets/images/home-icon02.png" mode="aspectFill"></image>
-            <view class="device-info">
-              <view class="device-title">{{currentDevice.name}}</view>
-              <view class="device-status">
-                    <image class="mini-bluetooth" src="/assets/images/bluetooth-icon.png" mode="aspectFill"></image>
-                <text>{{currentDevice.connected ? '已连接' : '未连接'}}</text>
-              </view>
-              <view class="battery-row">
-                <view class="battery-icon">
-                  <view class="battery-fill" style="width: {{batteryWidth}}%;"></view>
+        <!-- 设备轮播：左右滑动切换已绑定的多台设备，change 时同步当前设备与指示点 -->
+        <swiper
+          class="device-swiper"
+          current="{{currentDeviceIndex}}"
+          circular="{{deviceList.length > 1}}"
+          bindchange="onDeviceChange">
+          <swiper-item class="device-swiper-item" wx:for="{{deviceList}}" wx:key="id">
+            <view class="device-carousel">
+                <image class="device-orbit" src="/assets/images/home-icon02.png" mode="aspectFill"></image>
+                <view class="device-info">
+                  <view class="device-title">{{item.name}}</view>
+                  <view class="device-status">
+                        <image class="mini-bluetooth" src="/assets/images/bluetooth-icon.png" mode="aspectFill"></image>
+                    <text>{{item.connected ? '已连接' : '未连接'}}</text>
+                  </view>
+                  <view class="battery-row">
+                    <view class="battery-icon">
+                      <view class="battery-fill" style="width: {{item.battery}}%;"></view>
+                    </view>
+                    <text>{{item.battery}}%</text>
+                  </view>
                 </view>
-                <text>{{currentDevice.battery}}%</text>
-              </view>
             </view>
-        </view>
+          </swiper-item>
+        </swiper>
         <view class="carousel-dots">
-          <view class="dot active"></view>
-          <view class="dot"></view>
-          <view class="dot"></view>
+          <view class="dot {{index === currentDeviceIndex ? 'active' : ''}}" wx:for="{{deviceList}}" wx:key="id"></view>
         </view>
         
       </block>

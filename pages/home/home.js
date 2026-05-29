@@ -191,6 +191,8 @@ Page({
     navTitle: getNavigationTitle(SCENES.UNBOUND),
     avatarUrl: '/assets/images/mine-header.png',
     currentDevice: DEFAULT_DEVICE,
+    deviceList: [DEFAULT_DEVICE],
+    currentDeviceIndex: 0,
     hasDevice: false,
     batteryWidth: DEFAULT_DEVICE.battery,
     nearbyDevices: NEARBY_DEVICES,
@@ -285,8 +287,18 @@ Page({
         app.setSelectedDevice(selected)
       }
 
+      // 轮播展示全部已绑定设备；找出当前选中设备在列表中的位置作为初始页
+      const deviceList = devices.map(normalizeDevice).filter(Boolean)
+      const list = deviceList.length ? deviceList : [DEFAULT_DEVICE]
+      const currentDeviceIndex = Math.max(
+        0,
+        list.findIndex(item => currentDevice && item.id === currentDevice.id)
+      )
+
       this.setData({
         currentDevice: currentDevice || DEFAULT_DEVICE,
+        deviceList: list,
+        currentDeviceIndex,
         batteryWidth: currentDevice
           ? currentDevice.battery
           : DEFAULT_DEVICE.battery,
@@ -474,10 +486,28 @@ Page({
 
     this.setData({
       currentDevice,
+      deviceList: [currentDevice],
+      currentDeviceIndex: 0,
       batteryWidth: currentDevice.battery,
       hasDevice: true
     })
     this.setScene(SCENES.BOUND)
+  },
+
+  // 轮播切换：同步当前设备与电量，供拍照/投屏等逻辑沿用 currentDevice
+  onDeviceChange(event) {
+    const index = event.detail.current
+    const device = this.data.deviceList[index] || this.data.currentDevice
+
+    if (device && device.id) {
+      app.setSelectedDevice(device)
+    }
+
+    this.setData({
+      currentDeviceIndex: index,
+      currentDevice: device,
+      batteryWidth: device.battery
+    })
   },
 
   // 点击拍照入口：未绑定设备时先引导绑定，否则弹出拍照/相册选择层
