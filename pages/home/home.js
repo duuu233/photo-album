@@ -55,19 +55,19 @@ const NEARBY_DEVICES = [
   {
     id: 'living',
     name: '客厅相框',
-    color: 'orange',
+    icon: '/assets/images/device-list-icon01.png',
     selected: true
   },
   {
     id: 'bedroom',
     name: '卧室相框',
-    color: 'green',
+    icon: '/assets/images/device-list-icon02.png',
     selected: false
   },
   {
     id: 'study',
     name: '书房相框',
-    color: 'blue',
+    icon: '/assets/images/device-list-icon03.png',
     selected: false
   }
 ]

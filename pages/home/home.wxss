@@ -634,6 +634,11 @@ button {
 }
 
 .scan-help-link {
+  position: absolute;
+  left: 48rpx;
+  right: 48rpx;
+  /* 紧贴底部按钮上方：按钮底距 + 按钮高度 112rpx + 间距 24rpx */
+  bottom: calc(48rpx + var(--safe-bottom) + 112rpx + 24rpx);
   color: #ff6421;
   font-size: 26rpx;
   text-align: center;
@@ -648,13 +653,10 @@ button {
 }
 
 .nearby-head {
-  position: absolute;
-  top: 582rpx;
-  left: 48rpx;
-  right: 48rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 20rpx;
 }
 
 .nearby-head text {
@@ -665,36 +667,14 @@ button {
 
 .refresh-btn {
   position: relative;
-  width: 44rpx;
-  height: 44rpx;
+  width: 56rpx;
+  height: 56rpx;
 }
 
-.refresh-btn::before,
-.refresh-btn::after {
-  position: absolute;
-  width: 34rpx;
-  height: 34rpx;
-  border: 4rpx solid #ff6421;
-  border-left-color: transparent;
-  border-radius: 50%;
-  content: '';
+.device-container-box {
+  margin: 0 48rpx 0 48rpx;
 }
-
-.refresh-btn::after {
-  width: 0;
-  height: 0;
-  right: 1rpx;
-  bottom: 2rpx;
-  border: 9rpx solid transparent;
-  border-top-color: #ff6421;
-  transform: rotate(-35deg);
-}
-
 .device-list {
-  position: absolute;
-  top: 640rpx;
-  left: 48rpx;
-  right: 48rpx;
 }
 
 .nearby-device {
@@ -707,7 +687,7 @@ button {
   text-align: left;
   background: rgba(255, 255, 255, 0.54);
   border: 2rpx solid rgba(255, 255, 255, 0.86);
-  border-radius: 20rpx;
+  border-radius: 28rpx;
 }
 
 .nearby-device.selected {
@@ -716,59 +696,9 @@ button {
 }
 
 .nearby-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: 96rpx;
   height: 96rpx;
-  margin-right: 52rpx;
-  border-radius: 24rpx;
-}
-
-.nearby-icon.orange {
-  color: #ff6421;
-  background: rgba(255, 100, 33, 0.08);
-}
-
-.nearby-icon.green {
-  color: #28b365;
-  background: rgba(40, 179, 101, 0.1);
-}
-
-.nearby-icon.blue {
-  color: #287dff;
-  background: rgba(40, 125, 255, 0.08);
-}
-
-.small-frame-icon {
-  position: relative;
-  width: 44rpx;
-  height: 30rpx;
-  border: 5rpx solid currentColor;
-  border-radius: 4rpx;
-}
-
-.small-frame-icon::before {
-  position: absolute;
-  right: -16rpx;
-  top: 4rpx;
-  width: 12rpx;
-  height: 16rpx;
-  border: 5rpx solid currentColor;
-  border-left: 0;
-  border-radius: 0 4rpx 4rpx 0;
-  content: '';
-}
-
-.small-frame-icon::after {
-  position: absolute;
-  left: -4rpx;
-  bottom: -22rpx;
-  width: 50rpx;
-  height: 8rpx;
-  border: 5rpx solid currentColor;
-  border-radius: 4rpx;
-  content: '';
+  margin-right: 36rpx;
 }
 
 .nearby-device > text {
@@ -784,16 +714,22 @@ button {
   justify-content: center;
   width: 52rpx;
   height: 52rpx;
-  color: #ffffff;
-  border: 3rpx solid #b9bec6;
-  border-radius: 50%;
+  /* color: #ffffff; */
+  /* border: 3rpx solid #b9bec6; */
+  /* border-radius: 50%;
   font-size: 34rpx;
-  font-weight: 800;
+  font-weight: 800; */
 }
 
 .nearby-device.selected .select-circle {
-  background: #ff8239;
-  border-color: #ff8239;
+  /* background: #ff8239;
+  border-color: #ff8239; */
+}
+
+/* 选中态用图片替代时去掉描边/背景，只显示图标 */
+image.select-circle {
+  background: transparent;
+  border: 0;
 }
 
 .scan-help-sheet {

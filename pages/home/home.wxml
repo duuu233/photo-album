@@ -173,20 +173,22 @@
 
       <!-- 已发现设备：列出附近设备供单选，确认后绑定 -->
       <block wx:if="{{isBindingFound}}">
+      <view class="device-container-box"> 
         <view class="nearby-head">
           <text>附近设备</text>
-          <view class="refresh-btn" hover-class="none" bindtap="rescanDevices"></view>
+            <image  class="refresh-btn" src="/assets/images/refresh-icon.png" mode="aspectFit"></image>
+         
         </view>
         <view class="device-list">
           <view wx:for="{{nearbyDevices}}" wx:key="id" class="nearby-device {{item.selected ? 'selected' : ''}}"
             hover-class="none" data-id="{{item.id}}" bindtap="selectNearbyDevice">
-            <view class="nearby-icon {{item.color}}">
-              <view class="small-frame-icon"></view>
-            </view>
+            <image class="nearby-icon" src="{{item.icon}}" mode="aspectFit"></image>
             <text>{{item.name}}</text>
-            <view class="select-circle">{{item.selected ? '✓' : ''}}</view>
+            <image wx:if="{{item.selected}}" class="select-circle" src="/assets/images/selected-icon.png" mode="aspectFit"></image>
+            <view wx:else class="select-circle"></view>
           </view>
         </view>
+      </view>
         <view class="primary-action bind-bottom" hover-class="none" bindtap="finishBind">立即绑定</view>
       </block>
 
