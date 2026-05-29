@@ -37,6 +37,7 @@
           bindchange="onDeviceChange">
           <swiper-item class="device-swiper-item" wx:for="{{deviceList}}" wx:key="id">
             <view class="device-carousel">
+                <image class="device-carousel-bg" src="/assets/images/home-bg01.png" mode="aspectFill"></image>
                 <image class="device-orbit" src="/assets/images/home-icon02.png" mode="aspectFill"></image>
                 <view class="device-info">
                   <view class="device-title">{{item.name}}</view>
@@ -130,20 +131,28 @@
       <view class="bottom-sheet media-sheet">
         <view class="media-sheet-title">选择投屏方式</view>
         <view class="media-option" hover-class="none" bindtap="chooseCamera">
-          <image class="media-art mini camera-art" src="/assets/images/camera_material.png" mode="aspectFit"></image>
+        <view class="media-option-left"> 
+
+          <image class="media-art mini camera-art" src="/assets/images/home-media-mini01.png" mode="aspectFit"></image>
           <view class="media-option-copy">
             <view>拍照</view>
             <text>调用手机相机拍照</text>
           </view>
-          <view class="round-arrow orange-arrow">→</view>
+        
+        </view>
+        
+          <image class="round-arrow " src="/assets/images/home-camera-card-right-icon.png" mode="aspectFit"></image>
         </view>
         <view class="media-option" hover-class="none" bindtap="chooseAlbum">
-          <image class="media-art mini album-art" src="/assets/images/album_material.png" mode="aspectFit"></image>
+          <view class="media-option-left">
+          <image class="media-art mini album-art" src="/assets/images/home-media-mini02.png" mode="aspectFit"></image>
           <view class="media-option-copy">
             <view>相册</view>
             <text>从手机相册选择照片</text>
           </view>
-          <view class="round-arrow blue-arrow">→</view>
+            </view>
+          <image class="round-arrow " src="/assets/images/home-album-card-right-icon.png" mode="aspectFit"></image>
+         
         </view>
         <view class="cancel-action" hover-class="none" bindtap="closeHomeSheet">取消</view>
       </view>
@@ -159,7 +168,7 @@
         </image>
         <image wx:elif="{{isBindingNoDevice || isScanHelp}}" class="radar-art"
           src="/assets/images/device_not_found_art.png" mode="aspectFit"></image>
-        <image wx:else class="radar-art" src="/assets/images/device_scanning_art.png" mode="aspectFit"></image>
+        <image wx:else class="radar-art" src="/assets/images/search-devices.gif" mode="aspectFit"></image>
       </view>
 
       <!-- 已发现设备：列出附近设备供单选，确认后绑定 -->

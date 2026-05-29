@@ -67,12 +67,23 @@
   opacity: 0.58;
 }
 
-.nav-back-icon {
-  width: 20rpx;
-  height: 20rpx;
-  border-bottom: 4rpx solid currentColor;
-  border-left: 4rpx solid currentColor;
-  transform: rotate(45deg);
+/* 返回按钮：圆形底图 + 箭头叠加居中 */
+.nav-back {
+  position: relative;
+}
+
+.nav-back-round {
+  width: 56rpx;
+  height: 56rpx;
+}
+
+.nav-back-arrow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24rpx;
+  height: 24rpx;
+  transform: translate(-50%, -50%);
 }
 
 .nav-title {

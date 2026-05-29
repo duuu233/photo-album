@@ -143,20 +143,36 @@ button {
 .device-carousel {
   position: relative;
   display: flex;
-  width: 654rpx;
-  height: 372rpx;
+  width: 702rpx;
+  height: 420rpx;
   margin: 0 auto;
 
   justify-content: space-around;
   align-items: center;
-  background-color: #ffffff42;
-  border: 1rpx solid #ffffff4f;
+  /* overflow: hidden; */
+  /* border: 1rpx solid #ffffff4f;
   border-radius: 60rpx;
   fill: linear-gradient(326deg, rgba(255, 255, 255, 0.26) 6.29%, #fff 97.85%);
   stroke-width: 1px;
   stroke: rgba(255, 255, 255, 0.31);
   filter: drop-shadow(0 4px 12px rgba(44, 63, 97, 0.03));
-  backdrop-filter: blur(10.550000190734863px);
+  backdrop-filter: blur(10.550000190734863px); */
+}
+
+/* 卡片背景图：用 image 标签铺满，置于内容下方 */
+.device-carousel-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.device-carousel .device-orbit,
+.device-carousel .device-info {
+  position: relative;
+  z-index: 1;
 }
 
 .device-card {
@@ -373,7 +389,6 @@ button {
   z-index: 2;
   width: 132rpx;
   height: 132rpx;
-  margin: 40rpx 0 0 50rpx;
 }
 
 .projection-copy {
@@ -401,24 +416,8 @@ button {
 }
 
 .round-arrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72rpx;
-  height: 72rpx;
-  background: rgba(255, 255, 255, 0.94);
-  border-radius: 50%;
-  box-shadow: 0 16rpx 26rpx rgba(96, 126, 166, 0.12);
-  font-size: 40rpx;
-  line-height: 1;
-}
-
-.orange-arrow {
-  color: #ff6421;
-}
-
-.blue-arrow {
-  color: #287dff;
+  width: 118rpx;
+  height: 118rpx;
 }
 
 .projection-arrow {
@@ -512,11 +511,10 @@ button {
 }
 
 .media-sheet-title {
-  margin-bottom: 34rpx;
-  color: #2a2d32;
+  margin-bottom: 46rpx;
+  color: #2a2b2b;
   font-size: 40rpx;
   font-weight: 700;
-  line-height: 1;
 }
 
 .media-option {
@@ -524,33 +522,37 @@ button {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 124rpx;
-  margin-bottom: 22rpx;
-  padding: 0 28rpx;
-  text-align: left;
+  height: 128rpx;
+  margin-bottom: 20rpx;
+  padding: 0 24rpx;
+  justify-content: space-between;
   background: #f8f9fb;
-  border-radius: 18rpx;
+  border-radius: 28rpx;
 }
-
+.media-option-left {
+  display: flex;
+  align-items: center;
+}
 .media-art.mini {
   position: relative;
-  top: auto;
-  left: auto;
-  flex: 0 0 96rpx;
-  width: 96rpx;
+
+  width: 98rpx;
   height: 96rpx;
-  margin-right: 20rpx;
 }
 
 .media-option-copy {
-  flex: 1;
+  height: 100%;
+  display: flex;
+  /* align-items: center; */
+  justify-content: center;
+  flex-direction: column;
+  padding-left: 28rpx;
 }
 
 .media-option-copy view {
   color: #2a2d32;
   font-size: 32rpx;
   font-weight: 700;
-  line-height: 1;
 }
 
 .media-option-copy text {
@@ -559,11 +561,6 @@ button {
   color: #858b96;
   font-size: 22rpx;
   line-height: 1;
-}
-
-.media-option .round-arrow {
-  position: static;
-  flex: 0 0 72rpx;
 }
 
 .cancel-action {
@@ -585,12 +582,9 @@ button {
 }
 
 .radar-wrap {
-  position: absolute;
-  top: 24rpx;
-  left: 50%;
   width: 500rpx;
   height: 500rpx;
-  transform: translateX(-50%);
+  margin: 56rpx auto 18rpx auto;
 }
 
 .radar-art {
@@ -617,9 +611,6 @@ button {
 }
 
 .scan-copy {
-  position: absolute;
-  top: 486rpx;
-  left: 0;
   width: 100%;
   text-align: center;
 }
@@ -643,10 +634,6 @@ button {
 }
 
 .scan-help-link {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(150rpx + var(--safe-bottom));
   color: #ff6421;
   font-size: 26rpx;
   text-align: center;

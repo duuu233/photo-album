@@ -22,11 +22,25 @@
     "miniprogram": {
       "list": [
         {
+          "name": "首页-绑定设备-正在搜索附近设备",
+          "pathName": "pages/home/home",
+          "query": "scene=bindingScanning",
+          "scene": null,
+          "launchMode": "default"
+        },
+        {
+          "name": "'首页-已绑定设备-拍照or相册':",
+          "pathName": "pages/home/home",
+          "query": "scene=mediaSheet",
+          "launchMode": "default",
+          "scene": null
+        },
+        {
           "name": "首页-已绑定设备",
           "pathName": "pages/home/home",
           "query": "scene=bound",
-          "scene": null,
-          "launchMode": "default"
+          "launchMode": "default",
+          "scene": null
         },
         {
           "name": "首页-未绑定设备-立即绑定",

@@ -3,14 +3,15 @@
   style="--nav-status: {{statusBarHeight}}px; --nav-height: {{navHeight}}px; --nav-row-top: {{rowTop}}px; --nav-row-height: {{rowHeight}}px; --nav-capsule-space: {{capsuleSpace}}px;"
 >
   <view class="nav-row">
-    <button wx:if="{{showBack}}" class="nav-btn nav-back" hover-class="nav-btn--hover" aria-label="返回" bindtap="handleBack">
-      <view class="nav-back-icon"></view>
-    </button>
+    <view wx:if="{{showBack}}" class="nav-btn nav-back" hover-class="nav-btn--hover" aria-label="返回" bindtap="handleBack">
+      <image class="nav-back-round" src="/assets/images/return-round-icon.png" mode="aspectFit"></image>
+      <image class="nav-back-arrow" src="/assets/images/return-arrow-icon.png" mode="aspectFit"></image>
+    </view>
     <view wx:else class="nav-btn nav-placeholder"></view>
 
     <view class="nav-title">{{title}}</view>
 
-    <button wx:if="{{rightText}}" class="nav-right {{rightText === '+' ? 'nav-right--icon' : ''}}" hover-class="nav-btn--hover" bindtap="handleRight">{{rightText}}</button>
+    <view wx:if="{{rightText}}" class="nav-right {{rightText === '+' ? 'nav-right--icon' : ''}}" hover-class="nav-btn--hover" bindtap="handleRight">{{rightText}}</view>
     <view wx:else class="nav-right nav-placeholder"></view>
   </view>
 </view>
