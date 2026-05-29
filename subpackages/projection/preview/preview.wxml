@@ -1,10 +1,6 @@
 <view class="mock-root preview-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
-    <view class="mock-bg__curve mock-bg__curve--top"></view>
-    <view class="mock-bg__curve mock-bg__curve--bottom"></view>
-    <view class="mock-bg__spark mock-bg__spark--one"></view>
-    <view class="mock-bg__spark mock-bg__spark--two"></view>
-    <view class="mock-bg__spark mock-bg__spark--three"></view>
+    <image class="mock-bg__image" src="/assets/images/bg02.png" mode="aspectFill"></image>
   </view>
 
   <page-nav title="照片预览" right-text="保存" bind:righttap="savePhoto"></page-nav>

@@ -1,11 +1,7 @@
 <!-- 设备存在才渲染详情，否则走文件底部的“设备不存在”空态 -->
 <view class="mock-root detail-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;" wx:if="{{device}}">
   <view class="mock-bg">
-    <view class="mock-bg__curve mock-bg__curve--top"></view>
-    <view class="mock-bg__curve mock-bg__curve--bottom"></view>
-    <view class="mock-bg__spark mock-bg__spark--one"></view>
-    <view class="mock-bg__spark mock-bg__spark--two"></view>
-    <view class="mock-bg__spark mock-bg__spark--three"></view>
+    <image class="mock-bg__image" src="/assets/images/bg02.png" mode="aspectFill"></image>
   </view>
 
   <page-nav title="设备详情"></page-nav>

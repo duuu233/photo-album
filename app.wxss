@@ -325,49 +325,10 @@ input {
   pointer-events: none;
 }
 
-.mock-bg__curve {
-  position: absolute;
-  border: 2rpx solid rgba(255, 255, 255, 0.58);
-  border-radius: 50%;
-}
-
-.mock-bg__curve--top {
-  top: -330rpx;
-  left: -210rpx;
-  width: 840rpx;
-  height: 580rpx;
-}
-
-.mock-bg__curve--bottom {
-  right: -150rpx;
-  bottom: -246rpx;
-  width: 550rpx;
-  height: 550rpx;
-}
-
-.mock-bg__spark {
-  position: absolute;
-  width: 8rpx;
-  height: 8rpx;
-  background: rgba(255, 255, 255, 0.94);
-  border-radius: 50%;
-  box-shadow: 0 0 20rpx rgba(255, 198, 130, 0.76);
-}
-
-.mock-bg__spark--one {
-  top: 126rpx;
-  right: 116rpx;
-}
-
-.mock-bg__spark--two {
-  top: 178rpx;
-  left: 138rpx;
-}
-
-.mock-bg__spark--three {
-  right: 156rpx;
-  bottom: 82rpx;
-  opacity: 0.72;
+/* 背景图：铺满整个 mock-bg 层 */
+.mock-bg__image {
+  width: 100%;
+  height: 100%;
 }
 
 .mock-nav {

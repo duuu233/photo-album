@@ -1,5 +1,5 @@
 .profile-content {
-  padding-top: 8rpx;
+  padding-top: 72rpx;
 }
 
 .profile-form {
@@ -95,8 +95,10 @@
   height: 4rpx;
   background: #33373d;
   border-radius: 50%;
-  box-shadow: 13rpx 0 0 #33373d, 7rpx 9rpx 0 -1rpx #ff7f6b;
-  content: "";
+  box-shadow:
+    13rpx 0 0 #33373d,
+    7rpx 9rpx 0 -1rpx #ff7f6b;
+  content: '';
 }
 
 .avatar-cap {
@@ -116,7 +118,7 @@
   height: 5rpx;
   background: #f4a23a;
   border-radius: 999rpx;
-  content: "";
+  content: '';
 }
 
 .nickname-input {
@@ -150,7 +152,7 @@
   height: 9rpx;
   background: #777e88;
   border-radius: 2rpx;
-  content: "";
+  content: '';
 }
 
 .settings-primary {
