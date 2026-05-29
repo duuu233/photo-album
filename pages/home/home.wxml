@@ -15,36 +15,26 @@
       <!-- 已绑定：展示设备卡片（名称/连接状态/电量）+ 轮播指示点 -->
       <block wx:if="{{isBoundHome}}">
         <view class="home-topbar">
-          <button class="avatar-btn" hover-class="none" bindtap="goMine">
+          <view class="avatar-btn" hover-class="none" bindtap="goMine">
             <image wx:if="{{avatarUrl}}" class="avatar-img" src="{{avatarUrl}}" mode="aspectFill"></image>
-            <view wx:else class="avatar-fallback"></view>
-          </button>
-          <button class="add-btn" hover-class="none" bindtap="startBindingScan">
-            <text class="plus-symbol">+</text>
-          </button>
+          
+          </view>
+          <view class="add-btn" hover-class="none" bindtap="startBindingScan">
+          <image class="avatar-img" src="/assets/images/home-add-icon.png" mode="aspectFill"></image>
+            
+            
+          </view>
         </view>
 
         <view class="hello-title">Hi</view>
         <view class="hello-subtitle">欢迎使用 <text>BoltStar</text></view>
 
         <view class="device-carousel">
-          <view class="device-card">
-            <view class="device-orbit">
-              <view class="orbit-ring ring-one"></view>
-              <view class="orbit-ring ring-two"></view>
-              <view class="orbit-ring ring-three"></view>
-              <view class="orbit-dot dot-a"></view>
-              <view class="orbit-dot dot-b"></view>
-              <view class="orbit-dot dot-c"></view>
-              <view class="bolt-mark">
-                <view class="bolt-cut cut-one"></view>
-                <view class="bolt-cut cut-two"></view>
-              </view>
-            </view>
+            <image class="device-orbit" src="/assets/images/home-icon02.png" mode="aspectFill"></image>
             <view class="device-info">
               <view class="device-title">{{currentDevice.name}}</view>
               <view class="device-status">
-                <view class="mini-bluetooth">ᛒ</view>
+                    <image class="mini-bluetooth" src="/assets/images/bluetooth-icon.png" mode="aspectFill"></image>
                 <text>{{currentDevice.connected ? '已连接' : '未连接'}}</text>
               </view>
               <view class="battery-row">
@@ -54,24 +44,23 @@
                 <text>{{currentDevice.battery}}%</text>
               </view>
             </view>
-          </view>
-          <view class="device-card side-card"></view>
         </view>
         <view class="carousel-dots">
           <view class="dot active"></view>
           <view class="dot"></view>
           <view class="dot"></view>
         </view>
+        
       </block>
 
       <!-- 未绑定：空态插画 + 绑定设备入口 -->
       <block wx:else>
         <image class="empty-hero-art" src="/assets/images/empty_device_art.png" mode="aspectFit"></image>
         <view class="empty-hint">请先绑定相框设备后再投屏照片</view>
-        <button class="bind-pill" hover-class="none" bindtap="showBindNowSheet">
+        <view class="bind-pill" hover-class="none" bindtap="showBindNowSheet">
           <view class="btn-bluetooth">ᛒ</view>
           <view class="bind-pill-text">绑定设备</view>
-        </button>
+        </view>
       </block>
 
       <!-- 投屏方式入口（拍照 / 相册），两种场景共用；未绑定时点击会先引导绑定 -->
@@ -112,20 +101,20 @@
     <!-- 弹层①：未绑定/重连提示（标题文案随场景变化）。catchtouchmove 阻止背景滚动穿透 -->
     <view wx:if="{{showPromptSheet}}" class="home-mask" catchtouchmove="noop">
       <view class="bottom-sheet prompt-sheet">
-        <button class="sheet-close" hover-class="none" bindtap="closeHomeSheet">×</button>
+        <view class="sheet-close" hover-class="none" bindtap="closeHomeSheet">×</view>
         <view class="prompt-title">{{promptTitle}}</view>
         <view class="prompt-desc">{{promptDesc}}</view>
-        <button class="primary-action" hover-class="none" bindtap="confirmPrompt">{{promptButton}}</button>
+        <view class="primary-action" hover-class="none" bindtap="confirmPrompt">{{promptview}}</view>
       </view>
     </view>
 
     <!-- 弹层②：离线断网模式 -->
     <view wx:if="{{isOfflineMode}}" class="home-mask" catchtouchmove="noop">
       <view class="bottom-sheet prompt-sheet offline-sheet">
-        <button class="sheet-close" hover-class="none" bindtap="closeOfflineMode">×</button>
+        <view class="sheet-close" hover-class="none" bindtap="closeOfflineMode">×</view>
         <view class="prompt-title">离线模式</view>
         <view class="prompt-desc offline-desc">当前网络异常，app进入离线模式无法同步投屏记录与图库</view>
-        <button class="primary-action" hover-class="none" bindtap="closeOfflineMode">我知道了</button>
+        <view class="primary-action" hover-class="none" bindtap="closeOfflineMode">我知道了</view>
       </view>
     </view>
 
@@ -133,23 +122,23 @@
     <view wx:if="{{isMediaSheet}}" class="home-mask" catchtouchmove="noop">
       <view class="bottom-sheet media-sheet">
         <view class="media-sheet-title">选择投屏方式</view>
-        <button class="media-option" hover-class="none" bindtap="chooseCamera">
+        <view class="media-option" hover-class="none" bindtap="chooseCamera">
           <image class="media-art mini camera-art" src="/assets/images/camera_material.png" mode="aspectFit"></image>
           <view class="media-option-copy">
             <view>拍照</view>
             <text>调用手机相机拍照</text>
           </view>
           <view class="round-arrow orange-arrow">→</view>
-        </button>
-        <button class="media-option" hover-class="none" bindtap="chooseAlbum">
+        </view>
+        <view class="media-option" hover-class="none" bindtap="chooseAlbum">
           <image class="media-art mini album-art" src="/assets/images/album_material.png" mode="aspectFit"></image>
           <view class="media-option-copy">
             <view>相册</view>
             <text>从手机相册选择照片</text>
           </view>
           <view class="round-arrow blue-arrow">→</view>
-        </button>
-        <button class="cancel-action" hover-class="none" bindtap="closeHomeSheet">取消</button>
+        </view>
+        <view class="cancel-action" hover-class="none" bindtap="closeHomeSheet">取消</view>
       </view>
     </view>
   </block>
@@ -170,19 +159,19 @@
       <block wx:if="{{isBindingFound}}">
         <view class="nearby-head">
           <text>附近设备</text>
-          <button class="refresh-btn" hover-class="none" bindtap="rescanDevices"></button>
+          <view class="refresh-btn" hover-class="none" bindtap="rescanDevices"></view>
         </view>
         <view class="device-list">
-          <button wx:for="{{nearbyDevices}}" wx:key="id" class="nearby-device {{item.selected ? 'selected' : ''}}"
+          <view wx:for="{{nearbyDevices}}" wx:key="id" class="nearby-device {{item.selected ? 'selected' : ''}}"
             hover-class="none" data-id="{{item.id}}" bindtap="selectNearbyDevice">
             <view class="nearby-icon {{item.color}}">
               <view class="small-frame-icon"></view>
             </view>
             <text>{{item.name}}</text>
             <view class="select-circle">{{item.selected ? '✓' : ''}}</view>
-          </button>
+          </view>
         </view>
-        <button class="primary-action bind-bottom" hover-class="none" bindtap="finishBind">立即绑定</button>
+        <view class="primary-action bind-bottom" hover-class="none" bindtap="finishBind">立即绑定</view>
       </block>
 
       <!-- 搜索中：提示靠近设备，可取消或查看帮助 -->
@@ -191,8 +180,8 @@
           <view class="scan-title">正在搜索附近设备</view>
           <view class="scan-desc">请尽量将手机靠近需要添加的设备...</view>
         </view>
-        <button class="scan-help-link" hover-class="none" bindtap="showScanHelp">扫描不到怎么办?</button>
-        <button class="primary-action bind-bottom" hover-class="none" bindtap="cancelScan">取消扫描</button>
+        <view class="scan-help-link" hover-class="none" bindtap="showScanHelp">扫描不到怎么办?</view>
+        <view class="primary-action bind-bottom" hover-class="none" bindtap="cancelScan">取消扫描</view>
       </block>
 
       <!-- 未发现设备：提示重试，可重新扫描或查看帮助 -->
@@ -201,15 +190,15 @@
           <view class="scan-title">未发现设备</view>
           <view class="scan-desc">设备连接中断，请检查设备状态后重试</view>
         </view>
-        <button class="scan-help-link" hover-class="none" bindtap="showScanHelp">扫描不到怎么办?</button>
-        <button class="primary-action bind-bottom" hover-class="none" bindtap="rescanDevices">重新扫描</button>
+        <view class="scan-help-link" hover-class="none" bindtap="showScanHelp">扫描不到怎么办?</view>
+        <view class="primary-action bind-bottom" hover-class="none" bindtap="rescanDevices">重新扫描</view>
       </block>
     </view>
 
     <!-- 弹层④：「扫描不到怎么办」排查清单 -->
     <view wx:if="{{isScanHelp}}" class="home-mask scan-help-mask" catchtouchmove="noop">
       <view class="bottom-sheet scan-help-sheet">
-        <button class="sheet-close" hover-class="none" bindtap="closeScanHelp">×</button>
+        <view class="sheet-close" hover-class="none" bindtap="closeScanHelp">×</view>
         <view class="scan-help-title">扫描不到怎么办?</view>
         <image class="scan-help-icon" src="/assets/images/scan_help_art.png" mode="aspectFit"></image>
         <view class="check-title">请检查:</view>
@@ -219,7 +208,7 @@
           <text>3.设备蓝牙是否工作正常，手机蓝牙是否打开</text>
           <text>4.设备是否与手机距离过远，隔离或有其他遮挡物</text>
         </view>
-        <button class="primary-action" hover-class="none" bindtap="rescanDevices">重新扫描</button>
+        <view class="primary-action" hover-class="none" bindtap="rescanDevices">重新扫描</view>
       </view>
     </view>
   </block>

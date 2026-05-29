@@ -87,7 +87,8 @@ function normalizeScene(scene) {
 }
 
 function getHomeBgImage(scene) {
-  const useBg02 = scene === SCENES.UNBOUND ||
+  const useBg02 =
+    scene === SCENES.UNBOUND ||
     scene === SCENES.UNBOUND_BIND_NOW ||
     scene === SCENES.UNBOUND_RECONNECT ||
     scene === SCENES.OFFLINE ||
@@ -98,10 +99,12 @@ function getHomeBgImage(scene) {
 }
 
 function isBindingScene(scene) {
-  return scene === SCENES.BINDING_SCANNING ||
+  return (
+    scene === SCENES.BINDING_SCANNING ||
     scene === SCENES.BINDING_NO_DEVICE ||
     scene === SCENES.DEVICE_FOUND ||
     scene === SCENES.SCAN_HELP
+  )
 }
 
 function getNavigationTitle(scene) {
@@ -114,11 +117,13 @@ function isNetworkError(error) {
   }
 
   const message = `${error.message || ''} ${error.errMsg || ''}`.toLowerCase()
-  return error.code === 'NETWORK_ERROR' ||
+  return (
+    error.code === 'NETWORK_ERROR' ||
     message.indexOf('network') > -1 ||
     message.indexOf('timeout') > -1 ||
     message.indexOf('request:fail') > -1 ||
     message.indexOf('网络') > -1
+  )
 }
 
 // 将接口返回的设备裁剪为首页展示所需字段（connected 默认 true）
@@ -140,11 +145,13 @@ function normalizeDevice(device) {
 function sceneState(scene) {
   const isBoundHome = scene === SCENES.BOUND || scene === SCENES.MEDIA_SHEET
   const isOfflineMode = scene === SCENES.OFFLINE
-  const isUnboundHome = scene === SCENES.UNBOUND ||
+  const isUnboundHome =
+    scene === SCENES.UNBOUND ||
     scene === SCENES.UNBOUND_BIND_NOW ||
     scene === SCENES.UNBOUND_RECONNECT ||
     isOfflineMode
-  const showPromptSheet = scene === SCENES.UNBOUND_BIND_NOW || scene === SCENES.UNBOUND_RECONNECT
+  const showPromptSheet =
+    scene === SCENES.UNBOUND_BIND_NOW || scene === SCENES.UNBOUND_RECONNECT
   const isBindingScanning = scene === SCENES.BINDING_SCANNING
   const isBindingNoDevice = scene === SCENES.BINDING_NO_DEVICE
   const isBindingFound = scene === SCENES.DEVICE_FOUND
@@ -155,7 +162,8 @@ function sceneState(scene) {
     isHomeScene: isBoundHome || isUnboundHome,
     isBoundHome,
     isUnboundHome,
-    hasHomeOverlay: showPromptSheet || isOfflineMode || scene === SCENES.MEDIA_SHEET,
+    hasHomeOverlay:
+      showPromptSheet || isOfflineMode || scene === SCENES.MEDIA_SHEET,
     showPromptSheet,
     isMediaSheet: scene === SCENES.MEDIA_SHEET,
     isOfflineMode,
@@ -165,8 +173,12 @@ function sceneState(scene) {
     isScanHelp,
     showNavBack,
     homeBgImage: getHomeBgImage(scene),
-    promptTitle: scene === SCENES.UNBOUND_RECONNECT ? '设备连接失败' : '暂未绑定设备',
-    promptDesc: scene === SCENES.UNBOUND_RECONNECT ? '当前设备未连接，APP需先连接设备后再投屏' : '当前暂无可投屏设备，请先绑定相框设备',
+    promptTitle:
+      scene === SCENES.UNBOUND_RECONNECT ? '设备连接失败' : '暂未绑定设备',
+    promptDesc:
+      scene === SCENES.UNBOUND_RECONNECT
+        ? '当前设备未连接，APP需先连接设备后再投屏'
+        : '当前暂无可投屏设备，请先绑定相框设备',
     promptButton: scene === SCENES.UNBOUND_RECONNECT ? '重新连接' : '立即绑定'
   }
 }
@@ -177,7 +189,7 @@ Page({
     statusBarHeight: 20,
     safeBottom: 0,
     navTitle: getNavigationTitle(SCENES.UNBOUND),
-    avatarUrl: '',
+    avatarUrl: '/assets/images/mine-header.png',
     currentDevice: DEFAULT_DEVICE,
     hasDevice: false,
     batteryWidth: DEFAULT_DEVICE.battery,
@@ -237,8 +249,14 @@ Page({
 
   setSystemMetrics() {
     try {
-      const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
-      const bottomInset = Math.max(0, (info.screenHeight || 0) - (info.safeArea ? info.safeArea.bottom : info.windowHeight || 0))
+      const info = wx.getWindowInfo
+        ? wx.getWindowInfo()
+        : wx.getSystemInfoSync()
+      const bottomInset = Math.max(
+        0,
+        (info.screenHeight || 0) -
+          (info.safeArea ? info.safeArea.bottom : info.windowHeight || 0)
+      )
 
       this.setData({
         statusBarHeight: info.statusBarHeight || 20,
@@ -259,7 +277,8 @@ Page({
       const devices = await api.getDevices()
       const cached = app.globalData.selectedDevice
       // 优先沿用上次选中的设备，没有则取列表第一个
-      const selected = devices.find(item => cached && item.id === cached.id) || devices[0]
+      const selected =
+        devices.find(item => cached && item.id === cached.id) || devices[0]
       const currentDevice = normalizeDevice(selected)
 
       if (selected) {
@@ -268,7 +287,9 @@ Page({
 
       this.setData({
         currentDevice: currentDevice || DEFAULT_DEVICE,
-        batteryWidth: currentDevice ? currentDevice.battery : DEFAULT_DEVICE.battery,
+        batteryWidth: currentDevice
+          ? currentDevice.battery
+          : DEFAULT_DEVICE.battery,
         hasDevice: !!currentDevice
       })
 
@@ -323,7 +344,8 @@ Page({
       return
     }
 
-    const wasOffline = this.data.networkOffline || this.data.scene === SCENES.OFFLINE
+    const wasOffline =
+      this.data.networkOffline || this.data.scene === SCENES.OFFLINE
     this.setData({
       networkOffline: false
     })
@@ -336,8 +358,14 @@ Page({
   // 切换场景的统一入口：写入 scene、派生标记，并维护 hasDevice。
   // hasDevice 取值优先级：extra 显式传入 > 已有值 > 该场景隐含的已绑定状态。
   setScene(scene, extra = {}) {
-    const previewHasDevice = scene === SCENES.BOUND || scene === SCENES.MEDIA_SHEET
-    const nextHasDevice = Object.prototype.hasOwnProperty.call(extra, 'hasDevice') ? extra.hasDevice : this.data.hasDevice || previewHasDevice
+    const previewHasDevice =
+      scene === SCENES.BOUND || scene === SCENES.MEDIA_SHEET
+    const nextHasDevice = Object.prototype.hasOwnProperty.call(
+      extra,
+      'hasDevice'
+    )
+      ? extra.hasDevice
+      : this.data.hasDevice || previewHasDevice
 
     this.setData({
       scene,
@@ -434,7 +462,9 @@ Page({
   },
 
   finishBind() {
-    const selected = this.data.nearbyDevices.find(item => item.selected) || this.data.nearbyDevices[0]
+    const selected =
+      this.data.nearbyDevices.find(item => item.selected) ||
+      this.data.nearbyDevices[0]
     const currentDevice = {
       id: selected.id,
       name: selected.name,

@@ -62,7 +62,7 @@ button {
   align-items: center;
   justify-content: space-between;
   min-height: 72rpx;
-  padding: 0 48rpx;
+  padding: 10rpx 48rpx 0 48rpx;
 }
 
 .avatar-btn {
@@ -105,16 +105,17 @@ button {
 }
 
 .hello-title {
-  margin-top: 100rpx;
+  margin-top: 70rpx;
   padding: 0 48rpx;
   font-size: 82rpx;
   font-weight: 500;
   line-height: 1;
   letter-spacing: 0;
+  color: #2a2b2b;
 }
 
 .hello-subtitle {
-  margin-top: 24rpx;
+  margin-top: 18rpx;
   padding: 0 48rpx;
   color: #545963;
   font-size: 40rpx;
@@ -130,23 +131,26 @@ button {
 .device-carousel {
   position: relative;
   display: flex;
-  width: 100%;
+  width: 654rpx;
   height: 372rpx;
-  margin-top: 50rpx;
-  padding-left: 48rpx;
-  overflow: visible;
+  margin: 46rpx 48rpx 0 48rpx;
+
+  justify-content: space-around;
+  align-items: center;
+  background-color: #ffffff42;
+  border: 1rpx solid #ffffff4f;
+  border-radius: 60rpx;
+  fill: linear-gradient(326deg, rgba(255, 255, 255, 0.26) 6.29%, #fff 97.85%);
+  stroke-width: 1px;
+  stroke: rgba(255, 255, 255, 0.31);
+  filter: drop-shadow(0 4px 12px rgba(44, 63, 97, 0.03));
+  backdrop-filter: blur(10.550000190734863px);
 }
 
 .device-card {
   position: relative;
-  flex: 0 0 654rpx;
-  width: 654rpx;
-  height: 372rpx;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.74);
-  border: 2rpx solid rgba(255, 255, 255, 0.88);
-  border-radius: 60rpx;
-  box-shadow: 0 30rpx 60rpx rgba(130, 155, 190, 0.14);
+  display: flex;
+  align-items: center;
 }
 
 .side-card {
@@ -155,66 +159,8 @@ button {
 }
 
 .device-orbit {
-  position: absolute;
-  top: 42rpx;
-  left: 42rpx;
-  width: 288rpx;
-  height: 288rpx;
-}
-
-.orbit-ring {
-  position: absolute;
-  border: 2rpx solid rgba(255, 122, 46, 0.08);
-  border-radius: 50%;
-}
-
-.ring-one {
-  top: 38rpx;
-  right: 38rpx;
-  bottom: 38rpx;
-  left: 38rpx;
-}
-
-.ring-two {
-  top: 14rpx;
-  right: 14rpx;
-  bottom: 14rpx;
-  left: 14rpx;
-}
-
-.ring-three {
-  top: -12rpx;
-  right: -12rpx;
-  bottom: -12rpx;
-  left: -12rpx;
-}
-
-.orbit-dot {
-  position: absolute;
-  background: linear-gradient(180deg, #ffcba9, #ffa16d);
-  border-radius: 50%;
-  box-shadow: 0 12rpx 24rpx rgba(255, 122, 46, 0.18);
-}
-
-.dot-a {
-  top: 0;
-  right: 48rpx;
-  width: 26rpx;
-  height: 26rpx;
-}
-
-.dot-b {
-  left: 14rpx;
-  bottom: 64rpx;
-  width: 32rpx;
-  height: 32rpx;
-}
-
-.dot-c {
-  right: 6rpx;
-  bottom: 36rpx;
-  width: 14rpx;
-  height: 14rpx;
+  width: 286rpx;
+  height: 286rpx;
 }
 
 .bolt-mark {
@@ -251,18 +197,13 @@ button {
 }
 
 .device-info {
-  position: absolute;
-  top: 116rpx;
-  left: 390rpx;
-  right: 28rpx;
 }
 
 .device-title {
-  margin-bottom: 26rpx;
+  margin-bottom: 18rpx;
   color: #2a2d32;
   font-size: 40rpx;
   font-weight: 700;
-  line-height: 1;
 }
 
 .device-status,
@@ -272,7 +213,6 @@ button {
   gap: 14rpx;
   color: #777e88;
   font-size: 24rpx;
-  line-height: 1;
 }
 
 .device-status {
@@ -280,15 +220,8 @@ button {
 }
 
 .mini-bluetooth {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28rpx;
+  width: 22rpx;
   height: 28rpx;
-  color: #ffffff;
-  background: #5b9bff;
-  border-radius: 50%;
-  font-size: 22rpx;
 }
 
 .battery-icon {
@@ -337,7 +270,7 @@ button {
   align-self: center;
   width: 480rpx;
   height: 380rpx;
-  margin-top: 190rpx;
+  margin-top: 100rpx;
 }
 
 .empty-hint {
@@ -433,7 +366,8 @@ button {
 
 .projection-copy {
   z-index: 2;
-  padding: 46rpx 36rpx 0 36rpx;
+  /* padding-right 要在原来基础 - 23px 即46rpx */
+  padding: 28rpx 27rpx 0 50rpx;
 
   display: flex;
   align-items: center;
@@ -477,8 +411,8 @@ button {
 
 .projection-arrow {
   z-index: 1;
-  width: 72rpx;
-  height: 72rpx;
+  width: 118rpx;
+  height: 118rpx;
 }
 
 .home-mask {
