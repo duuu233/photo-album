@@ -22,11 +22,18 @@
     "miniprogram": {
       "list": [
         {
+          "name": "我的",
+          "pathName": "pages/mine/mine",
+          "query": "",
+          "scene": null,
+          "launchMode": "default"
+        },
+        {
           "name": "1",
           "pathName": "pages/home/home",
           "query": "scene=scanHelp",
-          "scene": null,
-          "launchMode": "default"
+          "launchMode": "default",
+          "scene": null
         },
         {
           "name": "首页-绑定设备-正在搜索附近设备",

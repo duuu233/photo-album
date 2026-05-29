@@ -11,7 +11,7 @@
 
   <view class="mock-content profile-content">
     <view class="profile-form glass-panel">
-      <button class="profile-row avatar-row" hover-class="none" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar">
+      <view class="profile-row avatar-row" hover-class="none" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar">
         <text class="profile-label">头像</text>
         <view class="profile-value avatar-value">
           <image wx:if="{{userInfo.avatarUrl}}" class="profile-avatar" src="{{userInfo.avatarUrl}}" mode="aspectFill"></image>
@@ -22,7 +22,7 @@
           </view>
           <view class="ui-chevron"></view>
         </view>
-      </button>
+      </view>
       <view class="thin-divider"></view>
 
       <view class="profile-row">
@@ -40,15 +40,15 @@
       </view>
       <view class="thin-divider"></view>
 
-      <button class="profile-row" hover-class="none" bindtap="goEmail">
+      <view class="profile-row" hover-class="none" bindtap="goEmail">
         <text class="profile-label">邮箱</text>
         <view class="profile-value email-value">
           <text class="{{userInfo.email ? 'profile-text' : 'profile-placeholder-text'}}">{{userInfo.email || '暂未绑定'}}</text>
           <view class="ui-chevron"></view>
         </view>
-      </button>
+      </view>
     </view>
 
-    <button class="settings-primary profile-submit" hover-class="none" bindtap="saveProfile">保存资料</button>
+    <view class="settings-primary profile-submit" hover-class="none" bindtap="saveProfile">保存资料</view>
   </view>
 </view>

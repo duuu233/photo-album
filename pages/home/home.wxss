@@ -390,7 +390,9 @@ button {
   width: 132rpx;
   height: 132rpx;
 }
-
+.projection-grid .media-art {
+  margin: 46rpx 0 0 46rpx;
+}
 .projection-copy {
   z-index: 2;
   /* padding-right 要在原来基础 - 23px 即46rpx */
