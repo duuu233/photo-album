@@ -3,7 +3,7 @@
     <image class="mock-bg__image" src="/assets/images/bg02.png" mode="aspectFill"></image>
   </view>
 
-  <page-nav title="{{title}}"></page-nav>
+  <page-nav title="{{title}}"></page-nav> 
 
   <view class="result-body">
     <view class="result-art {{status}}">

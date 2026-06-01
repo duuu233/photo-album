@@ -3,33 +3,29 @@
   flex-direction: column;
 }
 
-.preview-actions {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  justify-content: flex-end;
-  min-height: 84rpx;
-  padding: 20rpx 46rpx 0;
-}
-
-.preview-save {
-  min-width: 72rpx;
-  height: 64rpx;
-  color: #ff5f1f;
-  font-size: 30rpx;
-  font-weight: 600;
-  line-height: 64rpx;
-  text-align: right;
-}
-
 .preview-counter {
   position: relative;
   z-index: 1;
-  margin-top: 4rpx;
+  min-height: 48rpx;
+  margin: 4rpx 46rpx 0;
   color: #8b9098;
   font-size: 30rpx;
   font-weight: 600;
+  line-height: 48rpx;
   text-align: center;
+}
+
+/* 保存按钮：放在计数行内，靠右并与图片右边缘对齐 */
+.preview-save {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 48rpx;
+  padding-left: 24rpx;
+  color: #ff5f1f;
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 48rpx;
 }
 
 .counter-current {
@@ -53,7 +49,7 @@
   height: 760rpx;
   overflow: hidden;
   background: #e6ecf4;
-  border-radius: 32rpx;
+  border-radius: 40rpx;
 }
 
 .photo-img {
@@ -122,10 +118,11 @@
   justify-content: space-around;
   margin: 28rpx 46rpx 0;
   padding: 28rpx 0;
-  background: rgba(255, 255, 255, 0.82);
+
+  background: rgba(255, 255, 255, 0.4);
   border: 2rpx solid rgba(255, 255, 255, 0.86);
-  border-radius: 28rpx;
-  box-shadow: 0 18rpx 42rpx rgba(127, 151, 184, 0.12);
+  border-radius: 40rpx;
+  box-shadow: 0 24rpx 54rpx rgba(121, 145, 178, 0.13);
 }
 
 .tool {
@@ -145,74 +142,6 @@
   position: relative;
   width: 44rpx;
   height: 44rpx;
-}
-
-.tool-crop::before,
-.tool-crop::after {
-  position: absolute;
-  width: 30rpx;
-  height: 30rpx;
-  border: 4rpx solid currentColor;
-  content: "";
-}
-
-.tool-crop::before {
-  top: 2rpx;
-  left: 2rpx;
-  border-right: 0;
-  border-bottom: 0;
-}
-
-.tool-crop::after {
-  right: 2rpx;
-  bottom: 2rpx;
-  border-left: 0;
-  border-top: 0;
-}
-
-.tool-rotate {
-  border: 4rpx solid currentColor;
-  border-radius: 50%;
-  border-top-color: transparent;
-}
-
-.tool-rotate::after {
-  position: absolute;
-  top: -3rpx;
-  right: -2rpx;
-  width: 0;
-  height: 0;
-  border: 8rpx solid transparent;
-  border-left-color: currentColor;
-  content: "";
-}
-
-.tool-origin {
-  border: 4rpx solid currentColor;
-  border-radius: 6rpx;
-}
-
-.tool-origin::before {
-  position: absolute;
-  right: 5rpx;
-  bottom: 5rpx;
-  left: 5rpx;
-  height: 12rpx;
-  border-left: 4rpx solid currentColor;
-  border-bottom: 4rpx solid currentColor;
-  transform: skewX(-22deg);
-  content: "";
-}
-
-.tool-origin::after {
-  position: absolute;
-  top: 8rpx;
-  left: 9rpx;
-  width: 8rpx;
-  height: 8rpx;
-  background: currentColor;
-  border-radius: 50%;
-  content: "";
 }
 
 .preview-submit {

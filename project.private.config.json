@@ -22,11 +22,18 @@
     "miniprogram": {
       "list": [
         {
+          "name": "预览",
+          "pathName": "subpackages/projection/preview/preview",
+          "query": "",
+          "scene": null,
+          "launchMode": "default"
+        },
+        {
           "name": "设备详情",
           "pathName": "subpackages/device/detail/detail",
           "query": "id=d_living_001",
-          "scene": null,
-          "launchMode": "default"
+          "launchMode": "default",
+          "scene": null
         },
         {
           "name": "我的设备",

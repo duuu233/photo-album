@@ -1,12 +1,13 @@
 <view class="mock-root preview-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
-    <image class="mock-bg__image" src="/assets/images/bg02.png" mode="aspectFill"></image>
+    <image class="mock-bg__image" src="/assets/images/bg01.png" mode="aspectFill"></image>
   </view>
 
-  <page-nav title="照片预览" right-text="保存" bind:righttap="savePhoto"></page-nav>
+  <page-nav title="照片预览"></page-nav>
 
   <view class="preview-counter" wx:if="{{imageCount}}">
     <text class="counter-current">{{activeIndex + 1}}</text>/{{imageCount}}
+    <view class="preview-save" hover-class="none" bindtap="savePhoto">保存</view>
   </view>
 
   <view class="preview-stage">
@@ -28,19 +29,19 @@
   </view>
 
   <view class="tool-bar">
-    <button class="tool {{activeTool === 'crop' ? 'is-active' : ''}}" hover-class="none" data-tool="crop" bindtap="selectTool">
-      <view class="tool-icon tool-crop"></view>
+    <view class="tool {{activeTool === 'crop' ? 'is-active' : ''}}" hover-class="none" data-tool="crop" bindtap="selectTool">
+      <image class="tool-icon" src="/assets/images/preview-icon01.png" mode="aspectFit"></image>
       <text>裁剪</text>
-    </button>
-    <button class="tool {{activeTool === 'rotate' ? 'is-active' : ''}}" hover-class="none" data-tool="rotate" bindtap="selectTool">
-      <view class="tool-icon tool-rotate"></view>
+    </view>
+    <view class="tool {{activeTool === 'rotate' ? 'is-active' : ''}}" hover-class="none" data-tool="rotate" bindtap="selectTool">
+      <image class="tool-icon" src="/assets/images/preview-icon02.png" mode="aspectFit"></image>
       <text>旋转</text>
-    </button>
-    <button class="tool {{activeTool === 'origin' ? 'is-active' : ''}}" hover-class="none" data-tool="origin" bindtap="selectTool">
-      <view class="tool-icon tool-origin"></view>
+    </view>
+    <view class="tool {{activeTool === 'origin' ? 'is-active' : ''}}" hover-class="none" data-tool="origin" bindtap="selectTool">
+      <image class="tool-icon" src="/assets/images/preview-icon03.png" mode="aspectFit"></image>
       <text>原图</text>
-    </button>
+    </view>
   </view>
 
-  <button class="preview-submit" loading="{{projecting}}" hover-class="none" bindtap="confirmProjection">{{projecting ? '投屏中' : '开始投屏'}}</button>
+  <view class="preview-submit" loading="{{projecting}}" hover-class="none" bindtap="confirmProjection">{{projecting ? '投屏中' : '开始投屏'}}</view>
 </view>
