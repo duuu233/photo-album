@@ -157,3 +157,9 @@
   font-size: 34rpx;
   font-weight: 700;
 }
+
+/* 编辑态：投屏按钮置灰不可点 */
+.preview-submit.is-disabled {
+  background: #c8ccd2;
+  box-shadow: none;
+}

@@ -7,7 +7,7 @@
 
   <view class="preview-counter" wx:if="{{imageCount}}">
     <text class="counter-current">{{activeIndex + 1}}</text>/{{imageCount}}
-    <view class="preview-save" hover-class="none" bindtap="savePhoto">保存</view>
+    <view class="preview-save" wx:if="{{editing}}" hover-class="none" bindtap="savePhoto">保存</view>
   </view>
 
   <view class="preview-stage">
@@ -30,18 +30,18 @@
 
   <view class="tool-bar">
     <view class="tool {{activeTool === 'crop' ? 'is-active' : ''}}" hover-class="none" data-tool="crop" bindtap="selectTool">
-      <image class="tool-icon" src="/assets/images/preview-icon01.png" mode="aspectFit"></image>
+      <image class="tool-icon" src="{{activeTool === 'crop' ? '/assets/images/preview-icon01-selected.png' : '/assets/images/preview-icon01.png'}}" mode="aspectFit"></image>
       <text>裁剪</text>
     </view>
     <view class="tool {{activeTool === 'rotate' ? 'is-active' : ''}}" hover-class="none" data-tool="rotate" bindtap="selectTool">
-      <image class="tool-icon" src="/assets/images/preview-icon02.png" mode="aspectFit"></image>
+      <image class="tool-icon" src="{{activeTool === 'rotate' ? '/assets/images/preview-icon02-selected.png' : '/assets/images/preview-icon02.png'}}" mode="aspectFit"></image>
       <text>旋转</text>
     </view>
-    <view class="tool {{activeTool === 'origin' ? 'is-active' : ''}}" hover-class="none" data-tool="origin" bindtap="selectTool">
+    <view class="tool" hover-class="none" data-tool="origin" bindtap="selectTool">
       <image class="tool-icon" src="/assets/images/preview-icon03.png" mode="aspectFit"></image>
       <text>原图</text>
     </view>
   </view>
 
-  <view class="preview-submit" loading="{{projecting}}" hover-class="none" bindtap="confirmProjection">{{projecting ? '投屏中' : '开始投屏'}}</view>
+  <view class="preview-submit {{editing ? 'is-disabled' : ''}}" hover-class="none" bindtap="confirmProjection">{{projecting ? '投屏中' : '开始投屏'}}</view>
 </view>
