@@ -11,7 +11,7 @@
       <view class="record-tabs__indicator"></view>
       <view class="record-tab {{filter === 'success' ? 'is-active' : ''}}" hover-class="none" data-filter="success" bindtap="switchFilter">投屏成功</view>
       <view class="record-tab {{filter === 'fail' ? 'is-active' : ''}}" hover-class="none" data-filter="fail" bindtap="switchFilter">投屏失败</view>
-    <view>
+    </view>
 
     <view class="record-count">共 {{filteredRecords.length}} 条记录</view>
 
@@ -43,6 +43,8 @@
           <view class="thin-divider"></view>
           <view class="record-actions">
             <view class="record-action retry-action" hover-class="none" data-id="{{item.id}}" bindtap="retryProjection">{{item.status === 'success' ? '再次投屏' : '重新投屏'}}</view>
+            <view class="line-action"></view>
+
             <view class="record-action delete-action" hover-class="none" data-id="{{item.id}}" bindtap="deleteRecord">删除</view>
           </view>
         </view>

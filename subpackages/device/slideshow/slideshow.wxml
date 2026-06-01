@@ -1,6 +1,6 @@
 <view class="mock-root slideshow-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;" wx:if="{{device}}">
   <view class="mock-bg">
-    <image class="mock-bg__image" src="/assets/images/bg02.png" mode="aspectFill"></image>
+    <image class="mock-bg__image" src="/assets/images/bg01.png" mode="aspectFill"></image>
   </view>
 
   <page-nav title="轮播设置"></page-nav>
@@ -20,14 +20,14 @@
       <view class="thin-divider"></view>
 
       <view class="mode-title">轮播方式</view>
-      <button class="mode-option {{device.playbackMode === 'order' ? 'is-active' : ''}}" hover-class="none" data-mode="order" bindtap="changePlayback">
+      <view class="mode-option {{device.playbackMode === 'order' ? 'is-active' : ''}}" hover-class="none" data-mode="order" bindtap="changePlayback">
         <view class="radio-dot"><view></view></view>
         <text>顺序轮播</text>
-      </button>
-      <button class="mode-option {{device.playbackMode === 'random' ? 'is-active' : ''}}" hover-class="none" data-mode="random" bindtap="changePlayback">
+      </view>
+      <view class="mode-option {{device.playbackMode === 'random' ? 'is-active' : ''}}" hover-class="none" data-mode="random" bindtap="changePlayback">
         <view class="radio-dot"><view></view></view>
         <text>随机轮播</text>
-      </button>
+      </view>
     </view>
   </view>
 </view>

@@ -1,7 +1,7 @@
 <!-- 设备存在才渲染详情，否则走文件底部的“设备不存在”空态 -->
 <view class="mock-root detail-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;" wx:if="{{device}}">
   <view class="mock-bg">
-    <image class="mock-bg__image" src="/assets/images/bg02.png" mode="aspectFill"></image>
+    <image class="mock-bg__image" src="/assets/images/bg01.png" mode="aspectFill"></image>
   </view>
 
   <page-nav title="设备详情"></page-nav>
@@ -9,13 +9,18 @@
   <view class="mock-content detail-content">
     <view class="device-summary glass-panel">
       <view class="summary-icon">
-        <view class="frame-logo"></view>
-      </view>
+        <image class="summary-icon__img" src="/assets/images/device-list-icon01.png" mode="aspectFit"></image>
+      </view> 
       <view class="summary-copy">
-        <view class="summary-title">{{device.name}}</view>
+        <view class="summary-name-row">
+          <view class="summary-title">{{device.name}}</view>
+          <view class="edit-name-btn" hover-class="none" catchtap="renameDevice" aria-label="编辑设备名称">
+            <image class="edit-name-icon" src="/assets/images/edit-icon01.png" mode="aspectFit"></image>
+          </view>
+        </view>
         <view class="summary-meta">
           <view class="connection {{device.connected ? 'is-connected' : ''}}">
-            <view class="ui-bluetooth"></view>
+            <image class="meta-bt-icon" src="{{device.connected ? '/assets/images/bluetooth-icon.png' : '/assets/images/bluetooth-icon-not.png'}}" mode="aspectFit"></image>
             <text>{{device.connected ? '已连接' : '未连接'}}</text>
           </view>
           <view class="battery-meta">
@@ -27,21 +32,21 @@
     </view>
 
     <view class="detail-list glass-panel">
-      <button class="detail-row" hover-class="none" bindtap="goSlideshow">
+      <view class="detail-row" hover-class="none" bindtap="goSlideshow">
         <view class="row-left">
-          <view class="row-icon row-icon-photo"></view>
+          <image class="row-icon" src="/assets/images/device-detail-icon01.png" mode="aspectFit"></image>
           <text>轮播设置</text>
         </view>
         <view class="row-right">
           <text>{{playbackLabel}}</text>
           <view class="ui-chevron"></view>
         </view>
-      </button>
+      </view>
       <view class="thin-divider"></view>
 
       <view class="detail-row">
         <view class="row-left">
-          <view class="row-icon row-icon-id">ID</view>
+          <image class="row-icon" src="/assets/images/device-detail-icon02.png" mode="aspectFit"></image>
           <text>设备ID</text>
         </view>
         <view class="row-value">{{deviceCode}}</view>
@@ -50,25 +55,18 @@
 
       <view class="detail-row">
         <view class="row-left">
-          <view class="row-icon row-icon-memory"></view>
+          <image class="row-icon" src="/assets/images/device-detail-icon03.png" mode="aspectFit"></image>
           <text>设备内存</text>
         </view>
         <view class="row-value">{{memoryText}}</view>
       </view>
       <view class="thin-divider"></view>
 
-      <view class="detail-row">
-        <view class="row-left">
-          <view class="row-icon row-icon-mac"></view>
-          <text>MAC地址</text>
-        </view>
-        <view class="row-value">{{macAddress}}</view>
-      </view>
-      <view class="thin-divider"></view>
+
 
       <view class="detail-row">
         <view class="row-left">
-          <view class="row-icon row-icon-ota"></view>
+          <image class="row-icon" src="/assets/images/device-detail-icon04.png" mode="aspectFit"></image>
           <text>OTA升级</text>
         </view>
         <view class="row-value">版本{{firmwareVersion}}</view>
@@ -76,28 +74,28 @@
     </view>
 
     <view class="detail-list action-list glass-panel">
-      <button class="detail-row action-row clear-row" hover-class="none" bindtap="clearCopies">
+      <view class="detail-row action-row clear-row" hover-class="none" bindtap="clearCopies">
         <view class="row-left">
-          <view class="row-icon row-icon-clear"></view>
+          <image class="row-icon" src="/assets/images/device-detail-icon05.png" mode="aspectFit"></image>
           <text>一键清空</text>
         </view>
         <view class="row-right">
           <text>清空设备本地所有照片</text>
           <view class="ui-chevron"></view>
         </view>
-      </button>
+      </view>
       <view class="thin-divider"></view>
 
-      <button class="detail-row action-row delete-row" hover-class="none" bindtap="showDeleteConfirm">
+      <view class="detail-row action-row delete-row" hover-class="none" bindtap="showDeleteConfirm">
         <view class="row-left">
-          <view class="row-icon row-icon-delete"></view>
+          <image class="row-icon" src="/assets/images/device-detail-icon06.png" mode="aspectFit"></image>
           <text>删除设备</text>
         </view>
         <view class="row-right">
           <text>删除后将无法恢复</text>
           <view class="ui-chevron"></view>
         </view>
-      </button>
+      </view>
     </view>
   </view>
 
@@ -105,15 +103,15 @@
   <view class="confirm-mask" wx:if="{{showDeleteConfirm}}" catchtouchmove="noop" bindtap="hideDeleteConfirm">
     <view class="confirm-dialog" catchtap="noop">
       <view class="confirm-icon danger-icon">
-        <view class="trash-icon"></view>
+        <image class="trash-icon" src="/assets/images/device-detail-icon06.png" mode="aspectFit"></image>
       </view>
       <view class="confirm-copy">
         <view class="confirm-title">删除设备</view>
         <view class="confirm-desc">删除后将解除与该相框设备的绑定，后续使用需重新添加设备。</view>
       </view>
       <view class="confirm-actions">
-        <button class="confirm-cancel" hover-class="none" bindtap="hideDeleteConfirm">取消</button>
-        <button class="confirm-primary" hover-class="none" bindtap="confirmDeleteDevice">确认</button>
+        <view class="confirm-cancel" hover-class="none" bindtap="hideDeleteConfirm">取消</view>
+        <view class="confirm-primary" hover-class="none" bindtap="confirmDeleteDevice">确认</view>
       </view>
     </view>
   </view>
@@ -122,15 +120,15 @@
   <view class="confirm-mask" wx:if="{{showClearConfirm}}" catchtouchmove="noop" bindtap="hideClearConfirm">
     <view class="confirm-dialog" catchtap="noop">
       <view class="confirm-icon clear-icon">
-        <view class="broom-icon"></view>
+        <image class="broom-icon" src="/assets/images/device-detail-icon05.png" mode="aspectFit"></image>
       </view>
       <view class="confirm-copy">
         <view class="confirm-title">一键清空</view>
         <view class="confirm-desc">将清空设备内所有照片，请谨慎选择是否继续？</view>
       </view>
       <view class="confirm-actions">
-        <button class="confirm-cancel" hover-class="none" bindtap="hideClearConfirm">取消</button>
-        <button class="confirm-primary" hover-class="none" bindtap="confirmClearCopies">确认</button>
+        <view class="confirm-cancel" hover-class="none" bindtap="hideClearConfirm">取消</view>
+        <view class="confirm-primary" hover-class="none" bindtap="confirmClearCopies">确认</view>
       </view>
     </view>
   </view>

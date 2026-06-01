@@ -320,7 +320,8 @@
   justify-content: flex-end;
   gap: 54rpx;
   min-height: 42rpx;
-  padding-top: 14rpx;
+  margin-top: 14rpx;
+  align-items: center;
 }
 
 .record-action {
@@ -334,7 +335,11 @@
 .retry-action {
   color: #ff6a20;
 }
-
+.line-action {
+  background: rgba(42, 43, 43, 0.1);
+  width: 1rpx;
+  height: 30rpx;
+}
 .delete-action {
   color: #8b9098;
 }

@@ -1,28 +1,34 @@
 <view class="mock-root device-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
-    <image class="mock-bg__image" src="/assets/images/bg02.png" mode="aspectFill"></image>
+    <image class="mock-bg__image" src="/assets/images/bg01.png" mode="aspectFill"></image>
   </view>
 
-  <page-nav title="{{selectMode ? '选择相框' : '我的设备'}}" right-text="+" bind:righttap="goBind"></page-nav>
+  <page-nav title="{{selectMode ? '选择相框' : '我的设备'}}"></page-nav>
 
   <view class="mock-content device-content">
+    <view class="device-toolbar">
+      <view class="device-add-btn" hover-class="device-add-btn--hover" aria-label="添加设备" bindtap="goBind">
+        <image class="device-add-btn__icon" src="/assets/images/home-add-icon.png" mode="aspectFit"></image>
+      </view>
+    </view>
+
     <view wx:if="{{devices.length}}" class="device-list">
       <view class="device-card glass-panel {{item.connected ? '' : 'is-offline'}}" wx:for="{{devices}}" wx:key="id" wx:for-index="index" data-id="{{item.id}}" bindtap="selectDevice">
         <view class="device-card__main">
-          <view class="device-logo">
-            <view class="frame-logo"></view>
+          <view class="device-logo {{item.connected ? 'device-logo-is-connected' : ''}}">
+            <image class="device-logo__icon" src="{{item.connected ? '/assets/images/device-list-icon04.png' : '/assets/images/device-list-icon05.png'}}" mode="aspectFit"></image>
           </view>
 
           <view class="device-copy">
             <view class="device-name-row">
               <text class="device-name">{{item.name}}</text>
-              <button class="edit-name-btn" hover-class="none" catchtap="renameDevice" data-id="{{item.id}}" aria-label="编辑设备名称">
-                <view class="edit-name-icon"></view>
-              </button>
+              <view class="edit-name-btn" hover-class="none" catchtap="renameDevice" data-id="{{item.id}}" aria-label="编辑设备名称">
+                <image class="edit-name-icon" src="/assets/images/edit-icon01.png" mode="aspectFit"></image>
+              </view>
             </view>
             <view class="device-meta">
               <view class="connection {{item.connected ? 'is-connected' : ''}}">
-                <view class="ui-bluetooth"></view>
+                <image class="meta-bt-icon" src="{{item.connected ? '/assets/images/bluetooth-icon.png' : '/assets/images/bluetooth-icon-not.png'}}" mode="aspectFit"></image>
                 <text>{{item.connected ? '已连接' : '未连接'}}</text>
               </view>
               <view wx:if="{{item.connected}}" class="battery-meta">
@@ -37,18 +43,18 @@
           </view>
         </view>
 
-        <button wx:if="{{item.canDeleteHint}}" class="device-delete-hint" hover-class="none" data-id="{{item.id}}" catchtap="deleteDevice">删除</button>
+        <view wx:if="{{item.canDeleteHint}}" class="device-delete-hint" hover-class="none" data-id="{{item.id}}" catchtap="deleteDevice">删除</view>
 
         <view class="device-actions">
-          <button class="device-action" hover-class="none" data-id="{{item.id}}" catchtap="goSlideshow">
-            <view class="action-frame-icon"></view>
+          <view class="device-action" hover-class="none" data-id="{{item.id}}" catchtap="goSlideshow">
+            <image class="action-frame-icon" src="/assets/images/carousel-settings-icon01.png" mode="aspectFit"></image>
             <text>轮播设置</text>
-          </button>
+          </view>
           <view class="device-action-divider"></view>
-          <button class="device-action connection-action {{item.connected ? 'disconnect' : 'connect'}}" hover-class="none" data-id="{{item.id}}" catchtap="toggleConnection">
-            <view class="ui-bluetooth"></view>
+          <view class="device-action connection-action {{item.connected ? 'disconnect' : 'connect'}}" hover-class="none" data-id="{{item.id}}" catchtap="toggleConnection">
+            <image class="action-bt-icon" src="{{item.connected ? '/assets/images/disconnect-icon01.png' : '/assets/images/bluetooth-connection.png'}}" mode="aspectFit"></image>
             <text>{{item.connected ? '断开' : '连接'}}</text>
-          </button>
+          </view>
         </view>
       </view>
     </view>
@@ -59,7 +65,7 @@
       </view>
       <view class="empty-device__title">暂无设备</view>
       <view class="empty-device__desc">请先搜索并绑定附近的智能相框。</view>
-      <button class="empty-device__btn" hover-class="none" bindtap="goBind">添加设备</button>
+      <view class="empty-device__btn" hover-class="none" bindtap="goBind">添加设备</view>
     </view>
   </view>
 </view>

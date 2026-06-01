@@ -418,7 +418,7 @@ input {
 }
 
 .glass-panel {
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.4);
   border: 2rpx solid rgba(255, 255, 255, 0.86);
   border-radius: 28rpx;
   box-shadow: 0 24rpx 54rpx rgba(121, 145, 178, 0.13);

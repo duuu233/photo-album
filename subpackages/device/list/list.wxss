@@ -1,14 +1,31 @@
+/* 顶部添加按钮：右对齐到与下方卡片相同的内容边缘 */
 .device-toolbar {
-  position: relative;
-  z-index: 1;
   display: flex;
   justify-content: flex-end;
-  min-height: 88rpx;
-  padding: 24rpx 46rpx 0;
+  margin-bottom: 24rpx;
+}
+
+.device-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  box-shadow: 0 12rpx 24rpx rgba(255, 102, 31, 0.18);
+}
+
+.device-add-btn__icon {
+  width: 100%;
+  height: 100%;
+}
+
+.device-add-btn--hover {
+  opacity: 0.82;
 }
 
 .device-content {
-  padding-top: 8rpx;
+  padding-top: 40rpx;
 }
 
 .device-list {
@@ -21,11 +38,20 @@
   position: relative;
   overflow: hidden;
   padding-top: 48rpx;
+  fill: rgba(255, 255, 255, 0.4);
+  stroke-width: 1px;
+  stroke: #fff;
+  backdrop-filter: blur(5px);
+  border-radius: 40rpx 40rpx 40rpx 40rpx;
 }
 
 .device-card:not(.is-offline) {
-  background: linear-gradient(180deg, rgba(255, 245, 237, 0.94) 0%, rgba(255, 255, 255, 0.82) 60%);
-  border-color: rgba(255, 214, 188, 0.8);
+  /* background: linear-gradient(
+    180deg,
+    rgba(255, 245, 237, 0.94) 0%,
+    rgba(255, 255, 255, 0.82) 60%
+  );
+  border-color: rgba(255, 214, 188, 0.8); */
 }
 
 .device-card__main {
@@ -39,18 +65,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  /* width: 92rpx;
+  height: 92rpx; */
+  padding: 20rpx;
+  border-radius: 16px;
+  border-radius: 16px;
+  background: rgba(42, 43, 43, 0.04);
+}
+.device-logo-is-connected {
+  background: rgba(255, 175, 139, 0.1);
+}
+.device-logo__icon {
   width: 92rpx;
   height: 92rpx;
-  color: #ffffff;
-  background: linear-gradient(180deg, #ff9140 0%, #ff6a20 100%);
-  border-radius: 24rpx;
-  box-shadow: 0 12rpx 24rpx rgba(255, 106, 32, 0.22);
-}
-
-.is-offline .device-logo {
-  color: #9aa7b8;
-  background: rgba(154, 167, 184, 0.14);
-  box-shadow: none;
 }
 
 .device-copy {
@@ -85,22 +112,8 @@
 }
 
 .edit-name-icon {
-  position: relative;
-  width: 24rpx;
-  height: 24rpx;
-  border-bottom: 3rpx solid #7d858f;
-  transform: rotate(-45deg);
-}
-
-.edit-name-icon::before {
-  position: absolute;
-  right: -6rpx;
-  bottom: -3rpx;
-  width: 9rpx;
-  height: 9rpx;
-  background: #7d858f;
-  border-radius: 2rpx;
-  content: "";
+  width: 36rpx;
+  height: 36rpx;
 }
 
 .device-meta {
@@ -133,6 +146,12 @@
   color: #737b86;
 }
 
+.meta-bt-icon {
+  flex: 0 0 auto;
+  width: 22rpx;
+  height: 28rpx;
+}
+
 .device-chevron {
   display: flex;
   align-items: center;
@@ -147,7 +166,7 @@
   top: 148rpx;
   min-width: 64rpx;
   min-height: 44rpx;
-  color: rgba(255, 255, 255, 0.72);
+  color: #9ba2ad;
   font-size: 24rpx;
   line-height: 44rpx;
   text-align: center;
@@ -160,6 +179,15 @@
   height: 84rpx;
   margin-top: 34rpx;
   background: rgba(255, 255, 255, 0.54);
+  border-radius: 40rpx;
+  border: 1px solid rgba(255, 255, 255, 0.31);
+  background: linear-gradient(
+    88deg,
+    rgba(255, 255, 255, 0.38) 2.41%,
+    rgba(255, 255, 255, 0.55) 96.27%
+  );
+  box-shadow: 0 4px 12.1px 0 rgba(44, 63, 97, 0.03);
+  backdrop-filter: blur(7.949999809265137px);
 }
 
 .device-action {
@@ -179,41 +207,23 @@
 }
 
 .connection-action.disconnect {
-  color: #ff5f1f;
+  color: #eb5f1b;
 }
 
 .connection-action.connect {
-  color: #287dff;
+  color: #2079fc;
 }
 
 .action-frame-icon {
-  position: relative;
+  flex: 0 0 auto;
+  width: 32rpx;
+  height: 30rpx;
+}
+
+.action-bt-icon {
+  flex: 0 0 auto;
   width: 28rpx;
-  height: 22rpx;
-  border: 3rpx solid currentColor;
-  border-radius: 3rpx;
-}
-
-.action-frame-icon::before {
-  position: absolute;
-  top: 4rpx;
-  left: -9rpx;
-  width: 4rpx;
-  height: 12rpx;
-  border: 2rpx solid currentColor;
-  border-radius: 2rpx;
-  content: "";
-}
-
-.action-frame-icon::after {
-  position: absolute;
-  right: -9rpx;
-  top: 4rpx;
-  width: 4rpx;
-  height: 12rpx;
-  border: 2rpx solid currentColor;
-  border-radius: 2rpx;
-  content: "";
+  height: 28rpx;
 }
 
 .empty-device {

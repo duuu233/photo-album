@@ -22,11 +22,25 @@
     "miniprogram": {
       "list": [
         {
+          "name": "设备详情",
+          "pathName": "subpackages/device/detail/detail",
+          "query": "id=d_living_001",
+          "scene": null,
+          "launchMode": "default"
+        },
+        {
+          "name": "我的设备",
+          "pathName": "subpackages/device/list/list",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
+        },
+        {
           "name": "投屏",
           "pathName": "subpackages/projection/records/records",
           "query": "",
-          "scene": null,
-          "launchMode": "default"
+          "launchMode": "default",
+          "scene": null
         },
         {
           "name": "绑定邮箱",
