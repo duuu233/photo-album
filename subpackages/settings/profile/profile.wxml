@@ -1,6 +1,6 @@
 <view class="mock-root profile-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
-    <image class="mock-bg__image" src="/assets/images/bg02.png" mode="aspectFill"></image>
+    <image class="mock-bg__image" src="/assets/images/bg01.png" mode="aspectFill"></image>
   </view>
 
   <page-nav title="个人信息"></page-nav>
@@ -25,7 +25,7 @@
         <text class="profile-label">昵称</text>
         <view class="profile-value name-value">
           <input class="nickname-input" type="nickname" value="{{userInfo.nickName}}" placeholder="请输入昵称" placeholder-class="profile-placeholder" bindinput="onNicknameInput" />
-          <view class="edit-name-icon"></view>
+          <image class="edit-name-icon" src="/assets/images/edit-icon01.png" mode="aspectFit"></image>
         </view>
       </view>
       <view class="thin-divider"></view>

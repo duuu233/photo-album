@@ -22,11 +22,39 @@
     "miniprogram": {
       "list": [
         {
-          "name": "我的",
-          "pathName": "pages/mine/mine",
+          "name": "投屏",
+          "pathName": "subpackages/projection/records/records",
           "query": "",
           "scene": null,
           "launchMode": "default"
+        },
+        {
+          "name": "绑定邮箱",
+          "pathName": "subpackages/settings/bind-email/bind-email",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
+        },
+        {
+          "name": "个人信息",
+          "pathName": "subpackages/settings/profile/profile",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
+        },
+        {
+          "name": "我的图库",
+          "pathName": "subpackages/album/list/list",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
+        },
+        {
+          "name": "我的",
+          "pathName": "pages/mine/mine",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
         },
         {
           "name": "1",

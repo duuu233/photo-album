@@ -1,11 +1,20 @@
 .records-content {
-  padding-top: 8rpx;
+  padding-top: 78rpx;
+}
+
+.filter-success .records-tint {
+  opacity: 1;
+  background-color: rgba(53, 184, 86, 0.05);
+}
+
+.filter-fail .records-tint {
+  opacity: 1;
+  background-color: rgba(255, 72, 72, 0.06);
 }
 
 .record-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8rpx;
+  position: relative;
+  display: flex;
   height: 82rpx;
   padding: 8rpx;
   background: rgba(255, 255, 255, 0.84);
@@ -13,20 +22,47 @@
   box-shadow: 0 16rpx 38rpx rgba(126, 150, 184, 0.08);
 }
 
+/* 滑动指示器：切换时平移并过渡背景色（白 -> 橙） */
+.record-tabs__indicator {
+  position: absolute;
+  top: 8rpx;
+  bottom: 8rpx;
+  left: 8rpx;
+  z-index: 0;
+  width: calc(50% - 8rpx);
+  border-radius: 999rpx;
+  background-color: #ff6a20;
+  box-shadow: 0 10rpx 24rpx rgba(255, 106, 32, 0.32);
+  transition:
+    transform 0.36s cubic-bezier(0.22, 0.61, 0.36, 1),
+    background-color 0.36s ease,
+    box-shadow 0.36s ease;
+}
+
+.filter-fail .record-tabs__indicator {
+  transform: translateX(100%);
+  background-color: #ff4350;
+  box-shadow: 0 10rpx 24rpx rgba(255, 67, 80, 0.32);
+}
+
 .record-tab {
+  position: relative;
+  z-index: 1;
   display: flex;
+  flex: 1;
   align-items: center;
   justify-content: center;
   min-height: 66rpx;
   color: #858b94;
+  background: transparent;
   border-radius: 999rpx;
   font-size: 28rpx;
-  font-weight: 700;
+  font-weight: 500;
+  transition: color 0.32s ease;
 }
 
 .record-tab.is-active {
   color: #ffffff;
-  background: linear-gradient(180deg, #ff9140 0%, #ff6a20 100%);
 }
 
 .record-count {
@@ -46,6 +82,19 @@
   display: flex;
   min-height: 206rpx;
   padding: 26rpx 28rpx;
+  animation: record-card-in 0.38s ease both;
+}
+
+/* 切换标签后列表重新渲染，卡片淡入上移，配合标签切换动画 */
+@keyframes record-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(16rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .thumb {
@@ -67,7 +116,13 @@
 .thumb-art {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(180deg, #8ccfff 0%, #d9f7ff 52%, #77ce72 53%, #e7f8bb 100%);
+  background: linear-gradient(
+    180deg,
+    #8ccfff 0%,
+    #d9f7ff 52%,
+    #77ce72 53%,
+    #e7f8bb 100%
+  );
 }
 
 .thumb-sky,
@@ -133,7 +188,7 @@
   border-radius: 6rpx;
   transform: rotate(45deg);
   box-shadow: 41rpx -41rpx 0 0 #fff7ef;
-  content: "";
+  content: '';
 }
 
 .thumb-cat .thumb-face::after,
@@ -147,8 +202,10 @@
   height: 8rpx;
   background: #33373d;
   border-radius: 50%;
-  box-shadow: 26rpx 0 0 #33373d, 13rpx 16rpx 0 -1rpx #ff8b6b;
-  content: "";
+  box-shadow:
+    26rpx 0 0 #33373d,
+    13rpx 16rpx 0 -1rpx #ff8b6b;
+  content: '';
 }
 
 .thumb-dog .thumb-face {
@@ -206,8 +263,8 @@
   overflow: hidden;
   color: #2a2d32;
   font-size: 30rpx;
-  font-weight: 700;
-  line-height: 1.2;
+  font-weight: 500;
+
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -218,7 +275,7 @@
   padding: 0 14rpx;
   border-radius: 999rpx;
   font-size: 22rpx;
-  font-weight: 700;
+  font-weight: 500;
   line-height: 36rpx;
 }
 
@@ -245,37 +302,13 @@
 
 .record-reason {
   margin-top: 10rpx;
+  color: #ef5b50;
 }
 
-.calendar-icon {
-  position: relative;
-  width: 22rpx;
-  height: 22rpx;
-  border: 2rpx solid currentColor;
-  border-radius: 4rpx;
-}
-
-.calendar-icon::before {
-  position: absolute;
-  top: 5rpx;
-  left: 0;
-  width: 100%;
-  height: 2rpx;
-  background: currentColor;
-  content: "";
-}
-
-.info-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22rpx;
-  height: 22rpx;
-  border: 2rpx solid currentColor;
-  border-radius: 50%;
-  font-size: 16rpx;
-  font-weight: 700;
-  line-height: 1;
+.record-icon {
+  flex: 0 0 auto;
+  width: 24rpx;
+  height: 24rpx;
 }
 
 .record-card .thin-divider {
@@ -314,7 +347,7 @@
 .empty-record__title {
   color: #2a2d32;
   font-size: 32rpx;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .empty-record__desc {

@@ -24,14 +24,13 @@
 }
 
 .select-all-btn {
-  justify-self: end;
   min-width: 88rpx;
   min-height: 64rpx;
   color: #ff5f1f;
   font-size: 28rpx;
   font-weight: 600;
   line-height: 64rpx;
-  text-align: right;
+  text-align: left;
 }
 
 .album-toolbar {
@@ -44,10 +43,14 @@
   padding: 14rpx 46rpx 22rpx;
 }
 
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+}
+
 .album-toolbar .select-all-btn {
   flex: 0 0 auto;
-  margin-left: auto;
-  margin-right: 6rpx;
 }
 
 .photo-count {
@@ -175,7 +178,11 @@
 
 .thumb-tree .photo-art {
   background:
-    radial-gradient(circle at 88% 10%, rgba(255, 255, 255, 0.8) 0 12rpx, transparent 13rpx),
+    radial-gradient(
+      circle at 88% 10%,
+      rgba(255, 255, 255, 0.8) 0 12rpx,
+      transparent 13rpx
+    ),
     radial-gradient(circle at 18% 22%, #a8dd48 0 38rpx, transparent 39rpx),
     radial-gradient(circle at 52% 4%, #7fc638 0 66rpx, transparent 67rpx),
     linear-gradient(135deg, #72c7ff 0%, #bdeaff 100%);
@@ -183,7 +190,12 @@
 
 .thumb-kite .photo-art {
   background:
-    linear-gradient(32deg, transparent 0 48%, rgba(255, 255, 255, 0.75) 49% 51%, transparent 52%),
+    linear-gradient(
+      32deg,
+      transparent 0 48%,
+      rgba(255, 255, 255, 0.75) 49% 51%,
+      transparent 52%
+    ),
     radial-gradient(circle at 26% 66%, #d9aa87 0 30rpx, transparent 31rpx),
     linear-gradient(180deg, #8fb6cc, #e6d8c8);
 }
@@ -227,8 +239,10 @@
   height: 6rpx;
   background: #33373d;
   border-radius: 50%;
-  box-shadow: 21rpx 0 0 #33373d, 10rpx 13rpx 0 -1rpx #ff8a78;
-  content: "";
+  box-shadow:
+    21rpx 0 0 #33373d,
+    10rpx 13rpx 0 -1rpx #ff8a78;
+  content: '';
 }
 
 .thumb-dogs .art-body {
@@ -244,7 +258,11 @@
 .thumb-portrait .photo-art,
 .thumb-flower .photo-art {
   background:
-    radial-gradient(circle at 44% 22%, rgba(255, 255, 255, 0.78) 0 18rpx, transparent 19rpx),
+    radial-gradient(
+      circle at 44% 22%,
+      rgba(255, 255, 255, 0.78) 0 18rpx,
+      transparent 19rpx
+    ),
     linear-gradient(135deg, #eab78f 0%, #f7e7c7 46%, #9ac17a 100%);
 }
 
@@ -262,8 +280,18 @@
 
 .thumb-mountain .photo-art {
   background:
-    linear-gradient(135deg, transparent 0 50%, #d4c29f 51% 64%, transparent 65%),
-    linear-gradient(160deg, transparent 0 46%, #8fa7bd 47% 72%, transparent 73%),
+    linear-gradient(
+      135deg,
+      transparent 0 50%,
+      #d4c29f 51% 64%,
+      transparent 65%
+    ),
+    linear-gradient(
+      160deg,
+      transparent 0 46%,
+      #8fa7bd 47% 72%,
+      transparent 73%
+    ),
     linear-gradient(180deg, #9dc6e8 0%, #e7eef4 48%, #c7a577 100%);
 }
 
@@ -275,7 +303,13 @@
 }
 
 .thumb-beach .photo-art {
-  background: linear-gradient(180deg, #f7c4a8 0%, #83d0ee 48%, #245c8c 49%, #fbdbc6 100%);
+  background: linear-gradient(
+    180deg,
+    #f7c4a8 0%,
+    #83d0ee 48%,
+    #245c8c 49%,
+    #fbdbc6 100%
+  );
 }
 
 .thumb-beach .art-body,
@@ -317,7 +351,7 @@
   border-radius: 4rpx;
   box-shadow: 30rpx -30rpx 0 0 #e69b47;
   transform: rotate(45deg);
-  content: "";
+  content: '';
 }
 
 .thumb-puppy .photo-art {
@@ -347,7 +381,13 @@
 }
 
 .thumb-sea .photo-art {
-  background: linear-gradient(180deg, #79b9d3 0%, #dfeff3 52%, #35718a 53%, #b8b894 100%);
+  background: linear-gradient(
+    180deg,
+    #79b9d3 0%,
+    #dfeff3 52%,
+    #35718a 53%,
+    #b8b894 100%
+  );
 }
 
 .thumb-sea .art-body {
@@ -358,7 +398,11 @@
 
 .thumb-sunset .photo-art {
   background:
-    radial-gradient(circle at 76% 58%, rgba(255, 220, 90, 0.84) 0 30rpx, transparent 31rpx),
+    radial-gradient(
+      circle at 76% 58%,
+      rgba(255, 220, 90, 0.84) 0 30rpx,
+      transparent 31rpx
+    ),
     linear-gradient(135deg, #436f40 0%, #ffc45d 100%);
 }
 
@@ -382,16 +426,13 @@
 }
 
 .select-circle.is-selected {
-  background: #ff7a3d;
-  border-color: #ffffff;
+  background: transparent;
+  border-color: transparent;
 }
 
-.check-mark {
-  width: 17rpx;
-  height: 10rpx;
-  border-bottom: 5rpx solid #ffffff;
-  border-left: 5rpx solid #ffffff;
-  transform: rotate(-45deg) translate(1rpx, -2rpx);
+.select-icon {
+  width: 42rpx;
+  height: 42rpx;
 }
 
 .album-bottom-bar {
@@ -421,34 +462,10 @@
   box-shadow: 0 10rpx 26rpx rgba(126, 150, 184, 0.15);
 }
 
-.trash-line {
+.trash-icon {
   position: relative;
-  width: 36rpx;
-  height: 36rpx;
-}
-
-.trash-line::before {
-  position: absolute;
-  left: 9rpx;
-  top: 13rpx;
-  width: 18rpx;
-  height: 19rpx;
-  border: 4rpx solid currentColor;
-  border-top: 0;
-  border-radius: 0 0 4rpx 4rpx;
-  content: "";
-}
-
-.trash-line::after {
-  position: absolute;
-  left: 7rpx;
-  top: 5rpx;
-  width: 22rpx;
-  height: 4rpx;
-  background: currentColor;
-  border-radius: 999rpx;
-  box-shadow: 7rpx -5rpx 0 -1rpx currentColor;
-  content: "";
+  width: 48rpx;
+  height: 48rpx;
 }
 
 .selected-copy {
@@ -524,7 +541,7 @@
   height: 12rpx;
   background: #b9ccf0;
   border-radius: 50%;
-  content: "";
+  content: '';
 }
 
 .empty-picture-icon::after {
@@ -536,7 +553,7 @@
   border-left: 5rpx solid #b9ccf0;
   border-bottom: 5rpx solid #b9ccf0;
   transform: skewX(-28deg);
-  content: "";
+  content: '';
 }
 
 .empty-warning {
@@ -660,7 +677,7 @@
   height: 7rpx;
   background: currentColor;
   border-radius: 50%;
-  content: "";
+  content: '';
 }
 
 .picture-icon::after {
@@ -672,7 +689,7 @@
   border-left: 4rpx solid currentColor;
   border-bottom: 4rpx solid currentColor;
   transform: skewX(-24deg);
-  content: "";
+  content: '';
 }
 
 .confirm-copy {

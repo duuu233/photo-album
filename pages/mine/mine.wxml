@@ -1,10 +1,5 @@
 <view class="mine-root" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
-  <view class="mine-bg">
-    <view class="bg-curve bg-curve-top"></view>
-    <view class="bg-curve bg-curve-bottom"></view>
-    <view class="bg-spark spark-one"></view>
-    <view class="bg-spark spark-two"></view>
-  </view>
+  <image class="mine-bg" src="/assets/images/bg01.png" mode="aspectFill"></image>
 
   <page-nav title="我的" show-back="{{false}}"></page-nav>
 

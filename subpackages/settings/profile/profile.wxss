@@ -1,10 +1,10 @@
 .profile-content {
-  padding-top: 72rpx;
+  padding-top: 78rpx;
 }
 
 .profile-form {
   overflow: hidden;
-  padding: 0 38rpx;
+  padding: 0 40rpx;
 }
 
 .profile-row {
@@ -136,23 +136,9 @@
 }
 
 .edit-name-icon {
-  position: relative;
-  flex: 0 0 auto;
-  width: 26rpx;
-  height: 26rpx;
-  border-bottom: 3rpx solid #777e88;
-  transform: rotate(-45deg);
-}
-
-.edit-name-icon::before {
-  position: absolute;
-  right: -6rpx;
-  bottom: -3rpx;
-  width: 9rpx;
-  height: 9rpx;
-  background: #777e88;
-  border-radius: 2rpx;
-  content: '';
+  margin-top: 12rpx;
+  width: 28rpx;
+  height: 28rpx;
 }
 
 .settings-primary {

@@ -27,45 +27,6 @@
   pointer-events: none;
 }
 
-.bg-curve {
-  position: absolute;
-  border: 2rpx solid rgba(255, 255, 255, 0.66);
-  border-radius: 50%;
-}
-
-.bg-curve-top {
-  top: -330rpx;
-  left: -210rpx;
-  width: 840rpx;
-  height: 580rpx;
-}
-
-.bg-curve-bottom {
-  right: -140rpx;
-  bottom: -250rpx;
-  width: 520rpx;
-  height: 520rpx;
-}
-
-.bg-spark {
-  position: absolute;
-  width: 9rpx;
-  height: 9rpx;
-  background: rgba(255, 255, 255, 0.94);
-  border-radius: 50%;
-  box-shadow: 0 0 22rpx rgba(255, 195, 127, 0.72);
-}
-
-.spark-one {
-  top: 130rpx;
-  right: 116rpx;
-}
-
-.spark-two {
-  top: 214rpx;
-  left: 86rpx;
-}
-
 .page-title {
   position: relative;
   z-index: 1;
@@ -154,7 +115,7 @@
 }
 
 .functions-title {
-  margin: 92rpx 48rpx 0;
+  margin: 92rpx 48rpx 24rpx 48rpx;
 }
 
 .quick-grid {
@@ -167,13 +128,23 @@
 
 .quick-card {
   position: relative;
-  width: 252rpx;
-  height: 344rpx;
+  width: 204rpx;
+  height: 296rpx;
 
   display: flex;
   align-items: center;
   justify-content: center;
   flex-direction: column;
+
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.31);
+  background: linear-gradient(
+    326deg,
+    rgba(255, 255, 255, 0.24) 6.29%,
+    rgba(255, 255, 255, 0.43) 97.85%
+  );
+  box-shadow: 0 4px 12px 0 rgba(44, 63, 97, 0.03);
+  backdrop-filter: blur(10.550000190734863px);
 }
 
 /* 卡片背景图：铺满卡片，置于内容下方 */

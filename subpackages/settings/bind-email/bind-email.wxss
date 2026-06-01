@@ -1,10 +1,10 @@
 .email-content {
-  padding-top: 8rpx;
+  padding-top: 78rpx;
 }
 
 .email-form {
   overflow: hidden;
-  padding: 0 38rpx;
+  padding: 0 40rpx;
 }
 
 .email-row {

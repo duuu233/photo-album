@@ -3,20 +3,23 @@
     <image class="mock-bg__image" src="/assets/images/bg02.png" mode="aspectFill"></image>
   </view>
 
-  <page-nav title="我的图库" right-text="{{filteredPhotos.length ? '全选' : ''}}" bind:righttap="toggleSelectAll"></page-nav>
+  <page-nav title="我的图库"></page-nav>
 
   <!-- 有照片：工具栏（数量+设备筛选）→ 照片网格 → 选中后出现的底部操作栏 -->
   <block wx:if="{{filteredPhotos.length}}">
     <view class="album-toolbar">
-      <text class="photo-count">共 {{totalCount}} 张</text>
+      <view class="toolbar-left">
+        <view class="select-all-btn" hover-class="none" bindtap="toggleSelectAll">全选</view>
+        <text class="photo-count">共 {{totalCount}} 张</text>
+      </view>
       <view class="filter-wrap">
-        <button class="filter-btn" hover-class="none" bindtap="toggleFilterMenu">
+        <view class="filter-btn" hover-class="none" bindtap="toggleFilterMenu">
           <text>{{currentFilter}}</text>
           <view class="filter-arrow {{showFilterMenu ? 'is-open' : ''}}"></view>
-        </button>
+        </view>
         <!-- 下拉筛选菜单，按设备名过滤照片 -->
         <view class="filter-menu" wx:if="{{showFilterMenu}}">
-          <button wx:for="{{filters}}" wx:key="value" class="filter-option {{currentFilter === item.value ? 'is-active' : ''}}" hover-class="none" data-value="{{item.value}}" bindtap="selectFilter">{{item.label}}</button>
+          <view wx:for="{{filters}}" wx:key="value" class="filter-option {{currentFilter === item.value ? 'is-active' : ''}}" hover-class="none" data-value="{{item.value}}" bindtap="selectFilter">{{item.label}}</view>
         </view>
       </view>
     </view>
@@ -34,17 +37,17 @@
           <view class="art-ground"></view>
         </view>
         <view class="select-circle {{selectedMap[item.id] ? 'is-selected' : ''}}">
-          <view wx:if="{{selectedMap[item.id]}}" class="check-mark"></view>
+          <image wx:if="{{selectedMap[item.id]}}" class="select-icon" src="/assets/images/selected-icon.png" mode="aspectFit"></image>
         </view>
       </view>
     </view>
 
     <view class="album-bottom-bar" wx:if="{{selectedCount}}">
-      <button class="delete-selected-btn" hover-class="none" aria-label="删除照片" bindtap="showDeleteDialog">
-        <view class="trash-line"></view>
-      </button>
+      <view class="delete-selected-btn" hover-class="none" aria-label="删除照片" bindtap="showDeleteDialog">
+        <image class="trash-icon" src="/assets/images/del-icon.png" mode="aspectFit"></image>
+      </view>
       <view class="selected-copy">已选 <text>{{selectedCount}}</text> 张</view>
-      <button class="project-btn" hover-class="none" bindtap="projectSelected">投屏</button>
+      <view class="project-btn" hover-class="none" bindtap="projectSelected">投屏</view>
     </view>
   </block>
 
@@ -61,7 +64,7 @@
     </view>
     <view class="empty-title">当前没有可查看的设备照片</view>
     <view class="empty-desc">你可以重新投屏照片到设备</view>
-    <button class="empty-action" hover-class="none" bindtap="chooseForProjection">重新投屏</button>
+    <view class="empty-action" hover-class="none" bindtap="chooseForProjection">重新投屏</view>
   </view>
 
   <!-- 删除确认弹窗：点遮罩关闭，点弹窗内部 catchtap="noop" 阻止冒泡避免误关 -->
@@ -75,8 +78,8 @@
         <view class="confirm-desc">确认删除已选的{{selectedCount}}张照片吗？删除后将从当前设备图库中移除，且无法恢复</view>
       </view>
       <view class="confirm-actions">
-        <button class="confirm-cancel" hover-class="none" bindtap="hideDeleteDialog">取消</button>
-        <button class="confirm-primary" hover-class="none" bindtap="confirmDeleteSelected">确认</button>
+        <view class="confirm-cancel" hover-class="none" bindtap="hideDeleteDialog">取消</view>
+        <view class="confirm-primary" hover-class="none" bindtap="confirmDeleteSelected">确认</view>
       </view>
     </view>
   </view>

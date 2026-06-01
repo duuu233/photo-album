@@ -1,6 +1,6 @@
 <view class="mock-root email-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
-    <image class="mock-bg__image" src="/assets/images/bg02.png" mode="aspectFill"></image>
+    <image class="mock-bg__image" src="/assets/images/bg01.png" mode="aspectFill"></image>
   </view>
 
   <page-nav title="绑定邮箱"></page-nav>
@@ -16,7 +16,7 @@
       <view class="email-row">
         <text class="email-label">验证码</text>
         <input class="email-input code-input" type="number" value="{{code}}" placeholder="请输入验证码" placeholder-class="email-placeholder" data-field="code" bindinput="onInput" />
-        <button class="code-btn {{codeCountdown ? 'is-counting' : ''}}" disabled="{{codeCountdown > 0}}" hover-class="none" bindtap="sendCode">{{codeButtonText}}</button>
+        <view class="code-btn {{codeCountdown ? 'is-counting' : ''}}" disabled="{{codeCountdown > 0}}" hover-class="none" bindtap="sendCode">{{codeButtonText}}</view>
       </view>
       <view class="thin-divider"></view>
 
@@ -37,6 +37,6 @@
       <text>绑定邮箱可以用于app登录</text>
     </view>
 
-    <button class="settings-primary email-submit {{canSubmit ? '' : 'is-disabled'}}" disabled="{{!canSubmit}}" hover-class="none" bindtap="submit">确认绑定</button>
+    <view class="settings-primary email-submit {{canSubmit ? '' : 'is-disabled'}}" disabled="{{!canSubmit}}" hover-class="none" bindtap="submit">确认绑定</view>
   </view>
 </view>

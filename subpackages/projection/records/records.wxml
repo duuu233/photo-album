@@ -1,15 +1,17 @@
-<view class="mock-root records-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+<view class="mock-root records-page filter-{{filter}}" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
-    <image class="mock-bg__image" src="/assets/images/bg02.png" mode="aspectFill"></image>
+    <image class="mock-bg__image" src="/assets/images/bg01.png" mode="aspectFill"></image>
+    <view class="records-tint"></view>
   </view>
 
   <page-nav title="投屏管理"></page-nav>
 
   <view class="mock-content records-content">
     <view class="record-tabs">
-      <button class="record-tab {{filter === 'success' ? 'is-active' : ''}}" hover-class="none" data-filter="success" bindtap="switchFilter">投屏成功</button>
-      <button class="record-tab {{filter === 'fail' ? 'is-active' : ''}}" hover-class="none" data-filter="fail" bindtap="switchFilter">投屏失败</button>
-    </view>
+      <view class="record-tabs__indicator"></view>
+      <view class="record-tab {{filter === 'success' ? 'is-active' : ''}}" hover-class="none" data-filter="success" bindtap="switchFilter">投屏成功</view>
+      <view class="record-tab {{filter === 'fail' ? 'is-active' : ''}}" hover-class="none" data-filter="fail" bindtap="switchFilter">投屏失败</view>
+    <view>
 
     <view class="record-count">共 {{filteredRecords.length}} 条记录</view>
 
@@ -31,17 +33,17 @@
             <view class="record-status {{item.status === 'success' ? 'success' : 'fail'}}">{{item.statusText}}</view>
           </view>
           <view class="record-time">
-            <view class="calendar-icon"></view>
+            <image class="record-icon date-icon" src="/assets/images/date-icon01.png" mode="aspectFit"></image>
             <text>{{item.createdAt}}</text>
           </view>
           <view wx:if="{{item.status === 'fail'}}" class="record-reason">
-            <view class="info-icon">i</view>
+            <image class="record-icon warning-icon" src="/assets/images/warning-icon01.png" mode="aspectFit"></image>
             <text>{{item.message}}</text>
           </view>
           <view class="thin-divider"></view>
           <view class="record-actions">
-            <button class="record-action retry-action" hover-class="none" data-id="{{item.id}}" bindtap="retryProjection">{{item.status === 'success' ? '再次投屏' : '重新投屏'}}</button>
-            <button class="record-action delete-action" hover-class="none" data-id="{{item.id}}" bindtap="deleteRecord">删除</button>
+            <view class="record-action retry-action" hover-class="none" data-id="{{item.id}}" bindtap="retryProjection">{{item.status === 'success' ? '再次投屏' : '重新投屏'}}</view>
+            <view class="record-action delete-action" hover-class="none" data-id="{{item.id}}" bindtap="deleteRecord">删除</view>
           </view>
         </view>
       </view>
