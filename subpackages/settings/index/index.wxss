@@ -1,7 +1,7 @@
-@import "../shared.wxss";
+@import '../shared.wxss';
 
 .first-card {
-  margin-top: 28rpx;
+  margin-top: 68rpx;
 }
 
 .setting-list {
@@ -24,7 +24,7 @@
   left: 36rpx;
   height: 1rpx;
   background: rgba(207, 214, 224, 0.72);
-  content: "";
+  content: '';
 }
 
 .setting-icon {
@@ -32,9 +32,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 48rpx;
-  width: 48rpx;
-  height: 48rpx;
+  padding: 12rpx;
   margin-right: 28rpx;
   border-radius: 50%;
 }
@@ -57,136 +55,15 @@
   background: rgba(40, 125, 255, 0.1);
 }
 
-.icon-language,
-.icon-mail,
-.icon-shield,
-.icon-doc,
-.icon-update {
-  position: relative;
-  width: 26rpx;
-  height: 26rpx;
-}
-
-.icon-language::before {
-  position: absolute;
-  top: 4rpx;
-  left: 5rpx;
-  color: currentColor;
-  font-size: 24rpx;
-  font-weight: 800;
-  line-height: 1;
-  content: "A";
-}
-
-.icon-language::after {
-  position: absolute;
-  right: 2rpx;
-  bottom: 3rpx;
-  width: 24rpx;
-  height: 3rpx;
-  background: currentColor;
-  content: "";
-}
-
-.icon-mail {
-  border: 3rpx solid currentColor;
-  border-radius: 4rpx;
-}
-
-.icon-mail::after {
-  position: absolute;
-  top: 5rpx;
-  left: 3rpx;
-  width: 16rpx;
-  height: 10rpx;
-  border-right: 3rpx solid currentColor;
-  border-bottom: 3rpx solid currentColor;
-  transform: rotate(45deg);
-  content: "";
-}
-
-.icon-shield {
-  border: 4rpx solid currentColor;
-  border-radius: 14rpx 14rpx 18rpx 18rpx;
-}
-
-.icon-shield::after {
-  position: absolute;
-  top: 7rpx;
-  left: 7rpx;
-  width: 10rpx;
-  height: 6rpx;
-  border-left: 3rpx solid currentColor;
-  border-bottom: 3rpx solid currentColor;
-  transform: rotate(-45deg);
-  content: "";
-}
-
-.icon-doc {
-  border: 3rpx solid currentColor;
-  border-radius: 4rpx;
-}
-
-.icon-doc::before,
-.icon-doc::after {
-  position: absolute;
-  left: 5rpx;
-  width: 14rpx;
-  height: 3rpx;
-  background: currentColor;
-  content: "";
-}
-
-.icon-doc::before {
-  top: 7rpx;
-}
-
-.icon-doc::after {
-  bottom: 7rpx;
-}
-
-.icon-update {
-  border: 3rpx solid currentColor;
-  border-radius: 50%;
-}
-
-.icon-update::after {
-  position: absolute;
-  right: -2rpx;
-  bottom: 0;
-  width: 0;
-  height: 0;
-  border: 7rpx solid transparent;
-  border-left-color: currentColor;
-  content: "";
+.setting-icon__img {
+  width: 40rpx;
+  height: 40rpx;
 }
 
 .copy-icon {
-  position: relative;
-  width: 24rpx;
-  height: 24rpx;
-  margin-right: 10rpx;
-}
-
-.copy-icon::before,
-.copy-icon::after {
-  position: absolute;
-  width: 14rpx;
-  height: 14rpx;
-  border: 3rpx solid #ff6421;
-  border-radius: 3rpx;
-  content: "";
-}
-
-.copy-icon::before {
-  top: 6rpx;
-  left: 2rpx;
-}
-
-.copy-icon::after {
-  top: 1rpx;
-  right: 2rpx;
-  background: rgba(255, 255, 255, 0.6);
+  width: 32rpx;
+  height: 32rpx;
+  /* margin-right: 10rpx; */
 }
 
 .outline-logout {
@@ -198,11 +75,14 @@
   align-items: center;
   justify-content: center;
   height: 112rpx;
-  color: #ff6421;
-  border: 2rpx solid #ff6421;
-  border-radius: 999rpx;
+  color: #eb5f1b;
   font-size: 34rpx;
   font-weight: 700;
+  border-radius: 62px;
+  border: 1px solid #eb5f1b;
+  background: rgba(251, 242, 238, 0.8);
+  box-shadow: 0 4px 12px 0 rgba(44, 63, 97, 0.03);
+  backdrop-filter: blur(7.949999809265137px);
 }
 
 .delete-account {

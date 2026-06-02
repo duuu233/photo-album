@@ -4,18 +4,6 @@
   padding-bottom: calc(170rpx + var(--safe-bottom));
   overflow: hidden;
   color: #2a2d32;
-  background:
-    radial-gradient(
-      circle at 92% 26%,
-      rgba(255, 184, 118, 0.42),
-      rgba(255, 184, 118, 0) 250rpx
-    ),
-    radial-gradient(
-      circle at 6% 5%,
-      rgba(184, 218, 255, 0.78),
-      rgba(184, 218, 255, 0) 540rpx
-    ),
-    linear-gradient(180deg, #f4f9ff 0%, #edf6ff 100%);
 }
 
 .mine-bg {

@@ -1,7 +1,10 @@
 <view class="mine-root" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
-  <image class="mine-bg" src="/assets/images/bg01.png" mode="aspectFill"></image>
+  <view class="mock-bg">
+    <image class="mock-bg__image" src="/assets/images/bg01.png" mode="aspectFill"></image>
+  </view>
 
-  <page-nav title="我的" show-back="{{false}}"></page-nav>
+ 
+  <page-nav title="我的" show-back="{{false}}"></page-nav> 
 
   <view class="profile-card" hover-class="none" bindtap="goProfile">
     <image class="profile-card-bg" src="/assets/images/mine-header-bg01.png" mode="aspectFill"></image>

@@ -1,4 +1,4 @@
-@import "../shared.wxss";
+@import '../shared.wxss';
 
 .language-card {
   margin-top: 28rpx;
@@ -21,7 +21,7 @@
   left: 36rpx;
   height: 1rpx;
   background: rgba(207, 214, 224, 0.72);
-  content: "";
+  content: '';
 }
 
 .language-row text {

@@ -3,33 +3,6 @@
   min-height: 100vh;
   overflow: hidden;
   color: #2a2d32;
-  background:
-    radial-gradient(circle at 92% 26%, rgba(255, 184, 118, 0.42), rgba(255, 184, 118, 0) 250rpx),
-    radial-gradient(circle at 6% 5%, rgba(184, 218, 255, 0.78), rgba(184, 218, 255, 0) 540rpx),
-    linear-gradient(180deg, #f4f9ff 0%, #edf6ff 100%);
-}
-
-.settings-shell::before,
-.settings-shell::after {
-  position: absolute;
-  border: 2rpx solid rgba(255, 255, 255, 0.66);
-  border-radius: 50%;
-  content: "";
-  pointer-events: none;
-}
-
-.settings-shell::before {
-  top: -330rpx;
-  left: -210rpx;
-  width: 840rpx;
-  height: 580rpx;
-}
-
-.settings-shell::after {
-  right: -140rpx;
-  bottom: -250rpx;
-  width: 520rpx;
-  height: 520rpx;
 }
 
 .nav-bar {
@@ -70,7 +43,7 @@
 .glass-card {
   position: relative;
   z-index: 1;
-  margin: 24rpx 48rpx 0;
+  margin: 68rpx 48rpx 0;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.72);
   border: 2rpx solid rgba(255, 255, 255, 0.88);
@@ -116,7 +89,7 @@
   left: 36rpx;
   height: 1rpx;
   background: rgba(207, 214, 224, 0.72);
-  content: "";
+  content: '';
 }
 
 .row-label {

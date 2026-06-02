@@ -1,50 +1,52 @@
 <view class="settings-shell" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <page-nav title="设置"></page-nav>
-
+   <view class="mock-bg">
+    <image class="mock-bg__image" src="/assets/images/bg01.png" mode="aspectFill"></image>
+  </view>
   <view class="glass-card first-card">
-    <button class="setting-row" hover-class="none" bindtap="goLanguage">
-      <view class="setting-icon orange-icon"><view class="icon-language"></view></view>
+    <view class="setting-row" hover-class="none" bindtap="goLanguage">
+      <view class="setting-icon orange-icon"><image class="setting-icon__img" src="/assets/images/set-icon01.png" mode="aspectFit"></image></view>
       <text class="row-label">语种设置</text>
       <text class="row-value">简中</text>
       <view class="chevron">›</view>
-    </button>
+    </view>
   </view>
 
   <view class="glass-card setting-list">
-    <button class="setting-row" hover-class="none" bindtap="copyContact">
-      <view class="setting-icon blue-icon"><view class="icon-mail"></view></view>
+    <view class="setting-row" hover-class="none" bindtap="copyContact">
+      <view class="setting-icon blue-icon"><image class="setting-icon__img" src="/assets/images/set-icon02.png" mode="aspectFit"></image></view>
       <text class="row-label">联系方式</text>
       <text class="row-value">{{contact}}</text>
-      <view class="copy-icon"></view>
-    </button>
-    <button class="setting-row" hover-class="none" bindtap="goPrivacy">
-      <view class="setting-icon blue-icon"><view class="icon-shield"></view></view>
+      <image class="copy-icon" src="/assets/images/copy-icon01.png" mode="aspectFit"></image>
+    </view>
+    <view class="setting-row" hover-class="none" bindtap="goPrivacy">
+      <view class="setting-icon blue-icon"><image class="setting-icon__img" src="/assets/images/set-icon03.png" mode="aspectFit"></image></view>
       <text class="row-label">隐私政策</text>
       <view class="chevron">›</view>
-    </button>
-    <button class="setting-row" hover-class="none" bindtap="goAgreement">
-      <view class="setting-icon blue-icon"><view class="icon-doc"></view></view>
+    </view>
+    <view class="setting-row" hover-class="none" bindtap="goAgreement">
+      <view class="setting-icon blue-icon"><image class="setting-icon__img" src="/assets/images/set-icon04.png" mode="aspectFit"></image></view>
       <text class="row-label">用户协议</text>
       <view class="chevron">›</view>
-    </button>
-    <button class="setting-row" hover-class="none" bindtap="goUpdate">
-      <view class="setting-icon blue-icon"><view class="icon-update"></view></view>
+    </view>
+    <!-- <view class="setting-row" hover-class="none" bindtap="goUpdate">
+      <view class="setting-icon blue-icon"><image class="setting-icon__img" src="/assets/images/set-icon05.png" mode="aspectFit"></image></view>
       <text class="row-label">更新BoltStar</text>
       <text class="row-value">版本1.0.0</text>
       <view class="chevron">›</view>
-    </button>
+    </view> -->
   </view>
 
-  <button class="outline-logout" hover-class="none" bindtap="showLogout">退出登录</button>
-  <button class="delete-account" hover-class="none" bindtap="showDelete">用户注销</button>
+  <view class="outline-logout" hover-class="none" bindtap="showLogout">退出登录</view>
+  <view class="delete-account" hover-class="none" bindtap="showDelete">用户注销</view>
 
   <view wx:if="{{dialogType}}" class="modal-mask" catchtouchmove="noop">
     <view class="dialog">
       <view class="dialog-title">{{dialogTitle}}</view>
       <view class="dialog-desc">{{dialogDesc}}</view>
       <view class="dialog-actions">
-        <button class="dialog-btn cancel-btn" hover-class="none" bindtap="closeDialog">取消</button>
-        <button class="dialog-btn confirm-btn" hover-class="none" bindtap="confirmDialog">确定</button>
+        <view class="dialog-btn cancel-btn" hover-class="none" bindtap="closeDialog">取消</view>
+        <view class="dialog-btn confirm-btn" hover-class="none" bindtap="confirmDialog">确定</view>
       </view>
     </view>
   </view>

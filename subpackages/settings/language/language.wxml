@@ -1,12 +1,14 @@
 <view class="settings-shell" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <page-nav title="语种设置"></page-nav>
-
+   <view class="mock-bg">
+    <image class="mock-bg__image" src="/assets/images/bg01.png" mode="aspectFill"></image>
+  </view>
   <view class="glass-card language-card">
-    <button wx:for="{{languages}}" wx:key="value" class="language-row" hover-class="none" data-value="{{item.value}}" bindtap="selectLanguage">
+    <view wx:for="{{languages}}" wx:key="value" class="language-row" hover-class="none" data-value="{{item.value}}" bindtap="selectLanguage">
       <text>{{item.label}}</text>
       <view class="radio {{item.value === selected ? 'checked' : ''}}">{{item.value === selected ? '✓' : ''}}</view>
-    </button>
-  </view>
+    </view>
+  </view> 
 
-  <button class="primary-btn save-language" hover-class="none" bindtap="saveLanguage">保存设置</button>
+  <view class="primary-btn save-language" hover-class="none" bindtap="saveLanguage">保存设置</view>
 </view>

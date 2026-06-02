@@ -22,11 +22,18 @@
     "miniprogram": {
       "list": [
         {
-          "name": "操作指南",
-          "pathName": "subpackages/settings/guide/guide",
+          "name": "设置",
+          "pathName": "subpackages/settings/index/index",
           "query": "",
           "scene": null,
           "launchMode": "default"
+        },
+        {
+          "name": "操作指南",
+          "pathName": "subpackages/settings/guide/guide",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
         },
         {
           "name": "投屏结果",

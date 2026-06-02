@@ -1,4 +1,8 @@
 <view class="settings-shell guide-shell" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <image class="mock-bg__image" src="/assets/images/bg01.png" mode="aspectFill"></image>
+  </view>
+
   <page-nav title="操作指南"></page-nav>
 
   <view class="search-box">
@@ -8,11 +12,11 @@
 
   <view class="glass-card guide-card">
     <view wx:for="{{guides}}" wx:key="id" class="guide-item {{item.open ? 'open' : ''}}">
-      <button class="guide-head" hover-class="none" data-id="{{item.id}}" bindtap="toggleGuide">
+      <view class="guide-head" hover-class="none" data-id="{{item.id}}" bindtap="toggleGuide">
         <image class="question-icon" src="/assets/images/why-icon01.png" mode="aspectFit"></image>
         <text>{{item.title}}</text>
         <view class="fold-icon"></view>
-      </button>
+      </view>
       <view wx:if="{{item.open}}" class="guide-body">
         <text wx:for="{{item.lines}}" wx:for-item="line" wx:key="*this">{{line}}</text>
       </view>
