@@ -32,7 +32,7 @@
                 <text>{{item.connected ? '已连接' : '未连接'}}</text>
               </view>
               <view wx:if="{{item.connected}}" class="battery-meta">
-                <view class="ui-battery"><view class="ui-battery__fill" style="width: {{item.battery}}%;"></view></view>
+                <image class="battery-level-icon" src="{{item.batteryIcon}}" mode="aspectFit"></image>
                 <text>{{item.battery}}%</text>
               </view>
             </view>

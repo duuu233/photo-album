@@ -1,5 +1,6 @@
 const api = require('../../../utils/api')
 const system = require('../../../utils/system')
+const batteryUtil = require('../../../utils/battery')
 
 const app = getApp()
 
@@ -18,6 +19,7 @@ Page({
     id: '',
     device: null,
     memoryPercent: 0,
+    batteryIcon: batteryUtil.getBatteryIcon(batteryUtil.DEFAULT_BATTERY),
     deviceCode: '',
     memoryText: '',
     macAddress: '',
@@ -70,6 +72,7 @@ Page({
     this.setData({
       device,
       memoryPercent: memoryPercent(device),
+      batteryIcon: batteryUtil.getBatteryIcon(device ? device.battery : batteryUtil.DEFAULT_BATTERY),
       deviceCode: digitId || '123456',
       memoryText: device ? `${device.usedMemory}/${device.totalMemory}` : '',
       macAddress: device && device.macAddress ? device.macAddress : '123456',

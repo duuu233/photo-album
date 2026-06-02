@@ -46,9 +46,7 @@
                     <text>{{item.connected ? '已连接' : '未连接'}}</text>
                   </view>
                   <view class="battery-row">
-                    <view class="battery-icon">
-                      <view class="battery-fill" style="width: {{item.battery}}%;"></view>
-                    </view>
+                    <image class="battery-level-icon" src="{{item.batteryIcon}}" mode="aspectFit"></image>
                     <text>{{item.battery}}%</text>
                   </view>
                 </view>

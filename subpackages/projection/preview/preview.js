@@ -17,7 +17,7 @@ Page({
     imageCount: 0,
     totalSize: 0,
     enoughMemory: true,
-    activeTool: '',
+    activeTool: 'origin',
     editing: false,
     rotation: 0,
     projecting: false
@@ -54,7 +54,7 @@ Page({
     this.setData({
       activeIndex: index,
       activeImage: this.data.images[index] || null,
-      activeTool: '',
+      activeTool: 'origin',
       editing: false,
       rotation: 0
     })
@@ -98,7 +98,7 @@ Page({
           return
         }
         this.setData({
-          activeTool: '',
+          activeTool: 'origin',
           editing: false,
           rotation: 0
         })

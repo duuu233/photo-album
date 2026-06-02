@@ -495,6 +495,13 @@ input {
   border-radius: 2rpx;
 }
 
+/* 电量等级图标（BatteryLevel/battery-{n}.png，原图 51x20，按比例展示） */
+.battery-level-icon {
+  flex: 0 0 auto;
+  width: 46rpx;
+  height: 18rpx;
+}
+
 .frame-logo {
   position: relative;
   width: 48rpx;

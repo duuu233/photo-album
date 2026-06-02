@@ -22,11 +22,25 @@
     "miniprogram": {
       "list": [
         {
-          "name": "预览",
-          "pathName": "subpackages/projection/preview/preview",
+          "name": "操作指南",
+          "pathName": "subpackages/settings/guide/guide",
           "query": "",
           "scene": null,
           "launchMode": "default"
+        },
+        {
+          "name": "投屏结果",
+          "pathName": "subpackages/projection/result/result",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
+        },
+        {
+          "name": "预览",
+          "pathName": "subpackages/projection/preview/preview",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
         },
         {
           "name": "设备详情",

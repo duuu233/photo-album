@@ -6,7 +6,8 @@
   <page-nav title="照片预览"></page-nav>
 
   <view class="preview-counter" wx:if="{{imageCount}}">
-    <text class="counter-current">{{activeIndex + 1}}</text>/{{imageCount}}
+  <view class="preview-imageCount">   {{activeIndex + 1}}/{{imageCount}}  </view>
+  
     <view class="preview-save" wx:if="{{editing}}" hover-class="none" bindtap="savePhoto">保存</view>
   </view>
 
@@ -37,8 +38,8 @@
       <image class="tool-icon" src="{{activeTool === 'rotate' ? '/assets/images/preview-icon02-selected.png' : '/assets/images/preview-icon02.png'}}" mode="aspectFit"></image>
       <text>旋转</text>
     </view>
-    <view class="tool" hover-class="none" data-tool="origin" bindtap="selectTool">
-      <image class="tool-icon" src="/assets/images/preview-icon03.png" mode="aspectFit"></image>
+    <view class="tool {{activeTool === 'origin' ? 'is-active' : ''}}" hover-class="none" data-tool="origin" bindtap="selectTool">
+      <image class="tool-icon" src="{{activeTool === 'origin' ? '/assets/images/preview-icon03-selected.png' : '/assets/images/preview-icon03.png'}}" mode="aspectFit"></image>
       <text>原图</text>
     </view>
   </view>

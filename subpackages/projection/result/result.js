@@ -15,6 +15,13 @@ const STATUS_TEXT = {
   }
 }
 
+// 不同投屏状态对应的插画图片
+const STATUS_ART = {
+  progress: '/assets/images/upload-icon01.png',
+  fail: '/assets/images/upload-icon02.png',
+  success: '/assets/images/upload-icon03.png'
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -22,6 +29,7 @@ Page({
     status: 'progress',
     title: '投屏中',
     desc: STATUS_TEXT.progress.desc,
+    artImage: STATUS_ART.progress,
     deviceName: '房间相册',
     recordCount: 12,
     progressCurrent: 0,
@@ -53,10 +61,10 @@ Page({
       status,
       title: text.title,
       desc: text.desc,
+      artImage: STATUS_ART[status] || STATUS_ART.progress,
       deviceName: result.deviceName || '房间相册',
       recordCount: result.recordCount || result.imageCount || 12
     })
-
   },
 
   // 模拟投屏进度：每 280ms 上传一张，到达总数后置 100% 并稍后切换到成功态

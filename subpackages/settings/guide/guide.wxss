@@ -1,4 +1,4 @@
-@import "../shared.wxss";
+@import '../shared.wxss';
 
 .search-box {
   position: relative;
@@ -25,24 +25,10 @@
 
 .search-icon {
   position: absolute;
-  top: 27rpx;
+  top: 32rpx;
   right: 38rpx;
   width: 32rpx;
   height: 32rpx;
-  border: 4rpx solid #c0c5cc;
-  border-radius: 50%;
-}
-
-.search-icon::after {
-  position: absolute;
-  right: -11rpx;
-  bottom: -8rpx;
-  width: 16rpx;
-  height: 4rpx;
-  background: #c0c5cc;
-  border-radius: 999rpx;
-  transform: rotate(45deg);
-  content: "";
 }
 
 .guide-card {
@@ -63,19 +49,10 @@
 }
 
 .question-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   flex: 0 0 32rpx;
   width: 32rpx;
   height: 32rpx;
   margin-right: 16rpx;
-  color: #ffffff;
-  background: #ff7a2e;
-  border-radius: 50%;
-  font-size: 24rpx;
-  font-weight: 800;
-  line-height: 1;
 }
 
 .guide-head text {
@@ -86,8 +63,28 @@
 }
 
 .fold-icon {
-  color: #7c838d;
-  font-size: 32rpx;
+  position: relative;
+  flex: 0 0 auto;
+  width: 32rpx;
+  height: 32rpx;
+}
+
+/* 折叠箭头用伪元素绘制：默认朝下，展开时朝上 */
+.fold-icon::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14rpx;
+  height: 14rpx;
+  border-top: 3rpx solid #2a2b2b99;
+  border-right: 3rpx solid #2a2b2b99;
+  transform: translate(-50%, -70%) rotate(135deg);
+  transition: transform 0.2s ease;
+  content: '';
+}
+
+.guide-item.open .fold-icon::after {
+  transform: translate(-50%, -30%) rotate(-45deg);
 }
 
 .guide-body {

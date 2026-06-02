@@ -1,22 +1,12 @@
 <view class="mock-root result-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
-    <image class="mock-bg__image" src="/assets/images/bg02.png" mode="aspectFill"></image>
+    <image class="mock-bg__image" src="/assets/images/bg01.png" mode="aspectFill"></image>
   </view>
 
   <page-nav title="{{title}}"></page-nav> 
 
   <view class="result-body">
-    <view class="result-art {{status}}">
-      <view class="art-spark art-spark--a"></view>
-      <view class="art-spark art-spark--b"></view>
-      <view class="art-cloud"></view>
-      <view class="art-photo"></view>
-      <view class="art-badge">
-        <text wx:if="{{status === 'success'}}">✓</text>
-        <text wx:elif="{{status === 'fail'}}">!</text>
-        <view wx:else class="art-spinner"></view>
-      </view>
-    </view>
+    <image class="result-art {{status}}" src="{{artImage}}" mode="aspectFit"></image>
 
     <view class="result-title">{{title}}</view>
     <view class="result-desc">{{desc}}</view>
@@ -30,22 +20,23 @@
 
     <view wx:else class="info-card glass-panel">
       <view class="info-row">
-        <view class="info-icon"><view class="frame-logo"></view></view>
+        <view class="info-icon"><image class="info-icon__img" src="/assets/images/projection-result-icon01.png" mode="aspectFit"></image></view>
         <text class="info-label">投屏设备</text>
         <text class="info-value">{{deviceName}}</text>
       </view>
       <view class="thin-divider"></view>
-      <button class="info-row" hover-class="none" bindtap="goRecords">
-        <view class="info-icon"><view class="frame-logo"></view></view>
+      <view class="info-row" hover-class="none" bindtap="goRecords">
+        <view class="info-icon"><image class="info-icon__img" src="/assets/images/projection-result-icon02.png" mode="aspectFit"></image></view>
         <text class="info-label">投屏管理</text>
         <text class="info-value">{{recordCount}}张</text>
-      </button>
+        <view class="ui-chevron info-arrow"></view>
+      </view>
     </view>
   </view>
 
   <view wx:if="{{status !== 'progress'}}" class="result-actions">
-    <button wx:if="{{status === 'success'}}" class="result-primary" hover-class="none" bindtap="continueProjection">继续投屏</button>
-    <button wx:else class="result-primary" hover-class="none" bindtap="retry">重新投屏</button>
-    <button class="result-secondary" hover-class="none" bindtap="backHome">返回首页</button>
+    <view wx:if="{{status === 'success'}}" class="result-primary" hover-class="none" bindtap="continueProjection">继续投屏</view>
+    <view wx:else class="result-primary" hover-class="none" bindtap="retry">重新投屏</view>
+    <view class="result-secondary" hover-class="none" bindtap="backHome">返回首页</view>
   </view>
 </view>

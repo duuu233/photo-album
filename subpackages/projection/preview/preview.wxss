@@ -143,8 +143,16 @@
   width: 44rpx;
   height: 44rpx;
 }
-
+.preview-imageCount {
+  color: rgba(42, 43, 43, 0.8);
+  border-radius: 62px;
+  background: rgba(42, 43, 43, 0.08);
+  display: inline-block;
+  padding: 4rpx 30rpx;
+}
 .preview-submit {
+  position: relative;
+  z-index: 9;
   display: flex;
   align-items: center;
   justify-content: center;

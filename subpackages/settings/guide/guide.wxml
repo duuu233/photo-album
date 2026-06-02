@@ -3,15 +3,15 @@
 
   <view class="search-box">
     <input placeholder="搜索帮助文档" placeholder-class="search-placeholder" />
-    <view class="search-icon"></view>
+    <image class="search-icon" src="/assets/images/search-icon01.png" mode="aspectFit"></image>
   </view>
 
   <view class="glass-card guide-card">
     <view wx:for="{{guides}}" wx:key="id" class="guide-item {{item.open ? 'open' : ''}}">
       <button class="guide-head" hover-class="none" data-id="{{item.id}}" bindtap="toggleGuide">
-        <view class="question-icon">?</view>
+        <image class="question-icon" src="/assets/images/why-icon01.png" mode="aspectFit"></image>
         <text>{{item.title}}</text>
-        <view class="fold-icon">{{item.open ? '⌃' : '⌄'}}</view>
+        <view class="fold-icon"></view>
       </button>
       <view wx:if="{{item.open}}" class="guide-body">
         <text wx:for="{{item.lines}}" wx:for-item="line" wx:key="*this">{{line}}</text>

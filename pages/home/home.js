@@ -1,5 +1,6 @@
 const api = require('../../utils/api')
 const media = require('../../utils/media')
+const batteryUtil = require('../../utils/battery')
 
 const app = getApp()
 
@@ -48,7 +49,8 @@ const DEFAULT_DEVICE = {
   id: 'frame_room',
   name: '房间相册',
   connected: true,
-  battery: 30
+  battery: 30,
+  batteryIcon: batteryUtil.getBatteryIcon(30)
 }
 
 const NEARBY_DEVICES = [
@@ -136,7 +138,8 @@ function normalizeDevice(device) {
     id: device.id || DEFAULT_DEVICE.id,
     name: device.displayName || '房间相册',
     connected: device.connected !== false,
-    battery
+    battery,
+    batteryIcon: batteryUtil.getBatteryIcon(battery)
   }
 }
 
@@ -481,7 +484,8 @@ Page({
       id: selected.id,
       name: selected.name,
       connected: true,
-      battery: 30
+      battery: 30,
+      batteryIcon: batteryUtil.getBatteryIcon(30)
     }
 
     this.setData({

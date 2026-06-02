@@ -252,30 +252,6 @@ button {
   height: 28rpx;
 }
 
-.battery-icon {
-  position: relative;
-  width: 40rpx;
-  height: 20rpx;
-  border: 2rpx solid #8a8f97;
-  border-radius: 4rpx;
-}
-
-.battery-icon::after {
-  position: absolute;
-  top: 5rpx;
-  right: -8rpx;
-  width: 6rpx;
-  height: 8rpx;
-  background: #8a8f97;
-  border-radius: 0 2rpx 2rpx 0;
-  content: '';
-}
-
-.battery-fill {
-  height: 100%;
-  background: #ff6a25;
-}
-
 .carousel-dots {
   display: flex;
   align-self: center;

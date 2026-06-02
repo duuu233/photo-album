@@ -24,7 +24,7 @@
             <text>{{device.connected ? '已连接' : '未连接'}}</text>
           </view>
           <view class="battery-meta">
-            <view class="ui-battery"><view class="ui-battery__fill" style="width: {{device.battery}}%;"></view></view>
+            <image class="battery-level-icon" src="{{batteryIcon}}" mode="aspectFit"></image>
             <text>{{device.battery}}%</text>
           </view>
         </view>
