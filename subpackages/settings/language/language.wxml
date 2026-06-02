@@ -6,7 +6,8 @@
   <view class="glass-card language-card">
     <view wx:for="{{languages}}" wx:key="value" class="language-row" hover-class="none" data-value="{{item.value}}" bindtap="selectLanguage">
       <text>{{item.label}}</text>
-      <view class="radio {{item.value === selected ? 'checked' : ''}}">{{item.value === selected ? '✓' : ''}}</view>
+      <image wx:if="{{item.value === selected}}" class="radio-icon" src="/assets/images/selected-icon.png" mode="aspectFit"></image>
+      <view wx:else class="radio"></view>
     </view>
   </view> 
 

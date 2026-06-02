@@ -1,7 +1,7 @@
 @import '../shared.wxss';
 
 .language-card {
-  margin-top: 28rpx;
+  margin-top: 68rpx;
 }
 
 .language-row {
@@ -43,9 +43,9 @@
   font-weight: 800;
 }
 
-.radio.checked {
-  background: #ff7a2e;
-  border-color: #ff7a2e;
+.radio-icon {
+  width: 52rpx;
+  height: 52rpx;
 }
 
 .save-language {
