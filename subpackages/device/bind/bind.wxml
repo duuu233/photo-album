@@ -22,12 +22,11 @@
           <view class="nearby-icon"><view class="small-frame-icon"></view></view>
           <view class="nearby-copy">
             <text class="nearby-name">{{item.name}}</text>
-            <text class="nearby-sub">{{item.deviceNo}} · 信号 {{item.RSSI || '--'}}</text>
+            <text class="nearby-sub">{{item.screen ? item.screen + ' · ' : ''}}{{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.RSSI || '--'}}</text>
           </view>
           <view class="bind-tag">绑定</view>
         </button>
       </scroll-view>
-      <view wx:if="{{usedMockFallback}}" class="fallback-tip">当前为开发工具兜底模拟设备，真机请开启蓝牙和定位后重新搜索。</view>
     </block>
 
     <block wx:elif="{{scanning}}">

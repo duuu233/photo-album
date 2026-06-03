@@ -1,5 +1,11 @@
+const protocol = require('./frame-protocol')
+
 // 保存当前的“发现设备”监听回调引用，停止搜索时用它来精确解绑（off 需要传入同一函数引用）
 let foundHandler = null
+
+// 不再按广播名（EF6/EPF 等）过滤：真机广播名不确定，过滤反而会漏掉真实设备。
+// 扫描阶段把搜到的真实设备全列出来，能否绑定由“连接时是否存在 FF00 主服务”判定（见 device-ble.js）。
+// 屏幕类型/电量若广播包带了厂商数据就顺带解析出来（frame-protocol.parseAdvertising）。
 
 // 检测当前微信运行环境是否具备完整的蓝牙搜索能力
 function canUseBluetooth() {
@@ -38,14 +44,22 @@ function stopDiscovery() {
 
 // 将系统返回的原始蓝牙设备结构裁剪为业务统一字段（取广播服务 UUID 作为设备编号兜底）
 function normalizeDevice(device) {
-  const name = device.name || device.localName || '未知相框'
-  const serviceId = device.advertisServiceUUIDs && device.advertisServiceUUIDs[0]
+  // 无名设备用 deviceId 末段兜底展示，方便靠信号强度认出自己的设备
+  const shortId = String(device.deviceId || '').replace(/[:-]/g, '').slice(-4)
+  const name = device.name || device.localName || (shortId ? `设备 ${shortId}` : '未命名设备')
+  // 优先用广播包里的厂商数据拿到权威的屏幕类型/电量/设备ID（6.10.7），解析不到再留空
+  const ad = protocol.parseAdvertising(device.advertisData) || {}
 
   return {
     id: device.deviceId,
     deviceId: device.deviceId,
     name,
-    deviceNo: serviceId || device.deviceId,
+    // 设备编号优先用广播里的 Device_ID，兜底用蓝牙 deviceId
+    deviceNo: ad.deviceId || device.deviceId,
+    model: ad.model || '',
+    screen: ad.screen || '',
+    screenType: ad.screenType || 0,
+    battery: ad.battery,
     RSSI: device.RSSI || 0,
     localName: device.localName || '',
     advertisServiceUUIDs: device.advertisServiceUUIDs || [],
@@ -78,7 +92,7 @@ function discoverDevices(options) {
       resolve(devices)
     }
 
-    // 每次发现设备的回调：累积到 foundMap，搜索期间不立即返回
+    // 每次发现设备的回调：累积到 foundMap，搜索期间不立即返回。不做名字过滤，能搜到就收。
     foundHandler = res => {
       const devices = res.devices || []
       devices.forEach(device => {
@@ -92,12 +106,14 @@ function discoverDevices(options) {
     // 注意：必须先注册监听再开始搜索，否则可能漏掉最早广播的设备
     wx.onBluetoothDeviceFound(foundHandler)
     wx.startBluetoothDevicesDiscovery({
-      allowDuplicatesKey: false,
+      // 允许重复上报：设备名/电量常在后续广播包才带上，开重复上报可持续刷新展示信息
+      allowDuplicatesKey: true,
       interval: 0,
       success() {
-        // 搜索成功开启后，等待 timeout 再统一汇总结果（把 map 转成数组）
+        // 搜索成功开启后，等待 timeout 再统一汇总结果；按信号强度排序，离得近的设备排在前面
         timer = setTimeout(() => {
-          finish(Object.keys(foundMap).map(id => foundMap[id]))
+          const list = Object.keys(foundMap).map(id => foundMap[id]).sort((a, b) => b.RSSI - a.RSSI)
+          finish(list)
         }, timeout)
       },
       fail(error) {

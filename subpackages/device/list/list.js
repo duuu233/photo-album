@@ -48,7 +48,9 @@ Page({
       // 先算内存百分比，再标记“可删除提示”仅显示在最后一个离线设备上（引导用户清理）
       devices: devices.map(item => Object.assign({}, item, {
         memoryPercent: memoryPercent(item),
-        batteryIcon: batteryUtil.getBatteryIcon(item.battery)
+        batteryIcon: batteryUtil.getBatteryIcon(item.battery),
+        // 电量未知（蓝牙未读到）时不展示百分比，避免出现 null%
+        batteryText: typeof item.battery === 'number' ? `${item.battery}%` : ''
       })).map((item, index, list) => Object.assign({}, item, {
         canDeleteHint: !item.connected && index === list.length - 1
       })),

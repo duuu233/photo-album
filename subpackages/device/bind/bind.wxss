@@ -191,16 +191,6 @@
   font-weight: 700;
 }
 
-.fallback-tip {
-  margin: 6rpx 48rpx 0;
-  padding: 18rpx 22rpx;
-  color: #b5650f;
-  background: rgba(255, 243, 223, 0.92);
-  border-radius: 18rpx;
-  font-size: 22rpx;
-  line-height: 1.55;
-}
-
 .primary-action {
   display: flex;
   align-items: center;

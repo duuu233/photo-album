@@ -3,7 +3,7 @@
   "projectname": "photo-album",
   "setting": {
     "compileHotReLoad": true,
-    "urlCheck": true,
+    "urlCheck": false,
     "coverView": true,
     "lazyloadPlaceholderEnable": false,
     "skylineRenderEnable": false,
@@ -16,7 +16,7 @@
     "showES6CompileOption": false,
     "checkInvalidKey": true,
     "ignoreDevUnusedFiles": true,
-    "bigPackageSizeSupport": false
+    "bigPackageSizeSupport": true
   },
   "condition": {
     "miniprogram": {

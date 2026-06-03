@@ -71,13 +71,6 @@ module.exports = {
     return http.get(`/devices/${deviceId}`)
   },
 
-  scanBluetoothDevices() {
-    return http.get('/devices/scan', null, {
-      loading: true,
-      loadingText: '搜索中'
-    })
-  },
-
   bindDevice(device) {
     return http.post('/devices/bind', {
       device

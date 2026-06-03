@@ -25,7 +25,7 @@
           </view>
           <view class="battery-meta">
             <image class="battery-level-icon" src="{{batteryIcon}}" mode="aspectFit"></image>
-            <text>{{device.battery}}%</text>
+            <text>{{batteryText}}</text>
           </view>
         </view>
       </view>

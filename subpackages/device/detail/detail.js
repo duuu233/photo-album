@@ -23,7 +23,8 @@ Page({
     deviceCode: '',
     memoryText: '',
     macAddress: '',
-    firmwareVersion: '1.2.0',
+    firmwareVersion: '--',
+    batteryText: '--',
     playbackLabel: '',
     intervalOptions: [1, 2, 4, 8, 24],
     intervalIndex: 1,
@@ -66,17 +67,19 @@ Page({
     const device = await api.getDeviceDetail(this.data.id)
     // 把当前间隔小时数映射到选择器下标，缺省落到第 1 项（2 小时）
     const intervalIndex = this.data.intervalOptions.indexOf(device ? device.intervalHours : 2)
-    // 设备编号取末 6 位数字作为展示码
+    // 设备编号取末 6 位数字作为展示码；真实数据缺失时用 -- 占位（不再用假的 123456）
     const digitId = device && device.deviceNo ? String(device.deviceNo).replace(/\D/g, '').slice(-6) : ''
+    const hasBattery = device && typeof device.battery === 'number'
 
     this.setData({
       device,
       memoryPercent: memoryPercent(device),
-      batteryIcon: batteryUtil.getBatteryIcon(device ? device.battery : batteryUtil.DEFAULT_BATTERY),
-      deviceCode: digitId || '123456',
-      memoryText: device ? `${device.usedMemory}/${device.totalMemory}` : '',
-      macAddress: device && device.macAddress ? device.macAddress : '123456',
-      firmwareVersion: device && device.firmwareVersion ? device.firmwareVersion : '1.2.0',
+      batteryIcon: batteryUtil.getBatteryIcon(hasBattery ? device.battery : batteryUtil.DEFAULT_BATTERY),
+      batteryText: hasBattery ? `${device.battery}%` : '--',
+      deviceCode: digitId || '--',
+      memoryText: device && device.totalMemory ? `${device.usedMemory}/${device.totalMemory}` : '--',
+      macAddress: device && device.macAddress ? device.macAddress : '--',
+      firmwareVersion: device && device.firmwareVersion ? device.firmwareVersion : '--',
       playbackLabel: device && device.playbackMode === 'random' ? '随机轮播' : '顺序轮播',
       intervalIndex: intervalIndex > -1 ? intervalIndex : 1
     })

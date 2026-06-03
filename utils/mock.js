@@ -11,53 +11,9 @@ const DEFAULT_USER = {
   language: 'zh-Hans'
 }
 
-const DEVICE_SEED = [
-  {
-    id: 'd_living_001',
-    name: '房间相册',
-    deviceNo: 'FRAME-123456',
-    macAddress: '123456',
-    firmwareVersion: '1.2.0',
-    connected: true,
-    battery: 80,
-    totalMemory: 100,
-    usedMemory: 68,
-    playbackMode: 'order',
-    carouselEnabled: true,
-    intervalHours: 24,
-    lastOnline: '刚刚'
-  },
-  {
-    id: 'd_bedroom_002',
-    name: '客厅相册',
-    deviceNo: 'FRAME-2026-002',
-    macAddress: '123456',
-    firmwareVersion: '1.2.0',
-    connected: false,
-    battery: 0,
-    totalMemory: 100,
-    usedMemory: 38,
-    playbackMode: 'random',
-    carouselEnabled: false,
-    intervalHours: 24,
-    lastOnline: '今天 08:30'
-  },
-  {
-    id: 'd_study_003',
-    name: '书房厅相册',
-    deviceNo: 'FRAME-2026-003',
-    macAddress: '123456',
-    firmwareVersion: '1.2.0',
-    connected: false,
-    battery: 0,
-    totalMemory: 100,
-    usedMemory: 12,
-    playbackMode: 'order',
-    carouselEnabled: false,
-    intervalHours: 24,
-    lastOnline: '今天 08:30'
-  }
-]
+// 纯蓝牙无后端：设备列表只保存用户真实绑定过的相框，初始为空（不再放种子假设备）。
+// 真实字段在 bindDevice 里由蓝牙读取结果（CMD=0x01/0x03）写入。
+const DEVICE_SEED = []
 
 const PHOTO_SEED = [
   {
@@ -173,12 +129,13 @@ function nowText() {
 function readStore() {
   const store = wx.getStorageSync(STORE_KEY)
 
-  if (store && store.version === 1) {
+  // version 升到 2：清掉旧的种子假设备（老测试机上残留的 3 台相册）。改字段后递增即可强制重建。
+  if (store && store.version === 2) {
     return store
   }
 
   const initialStore = {
-    version: 1,
+    version: 2,
     user: clone(DEFAULT_USER),
     devices: clone(DEVICE_SEED),
     photos: clone(PHOTO_SEED),
@@ -280,48 +237,49 @@ function bindEmail(data) {
   return delay(store.user)
 }
 
-function scanBluetoothDevices() {
-  return delay([
-    {
-      id: 'scan_001',
-      name: 'PHOTO-FRAME-A8',
-      deviceNo: 'FRAME-2026-A8',
-      RSSI: -42
-    },
-    {
-      id: 'scan_002',
-      name: 'PHOTO-FRAME-C1',
-      deviceNo: 'FRAME-2026-C1',
-      RSSI: -63
-    }
-  ], 600)
+// 把绑定时（蓝牙读取 + 扫描）得到的真实字段，映射成设备列表/详情页用的存储结构。
+// 没读到的状态字段一律留空/0，由页面显示为「--」，绝不再现编假值。
+function realDeviceFields(scan) {
+  const intervalSeconds = Number(scan.intervalSeconds) || 0
+  return {
+    name: scan.name || scan.screen || '智能相框',
+    deviceNo: scan.deviceNo || scan.deviceId || `FRAME-${Date.now()}`,
+    deviceId: scan.deviceId || '', // 蓝牙连接用的 deviceId，供详情页重连读取
+    screen: scan.screen || '',
+    model: scan.model || '',
+    screenType: scan.screenType || 0,
+    battery: typeof scan.battery === 'number' ? scan.battery : null,
+    firmwareVersion: scan.firmwareVersion || '',
+    hwVersion: scan.hwVersion || 0,
+    macAddress: scan.deviceNo || '', // 设备 SN，详情页当 MAC/编号展示
+    playbackMode: scan.playMode || 'order',
+    intervalSeconds,
+    intervalHours: intervalSeconds ? Math.max(1, Math.round(intervalSeconds / 3600)) : 2,
+    carouselEnabled: true,
+    // 内存按张数：已用=设备已有图片数(IMG_MASK 置位数)，总量=该尺寸最大可存张数
+    usedMemory: scan.imgCount || 0,
+    totalMemory: scan.capacity || 0
+  }
 }
 
 function bindDevice(data) {
   const store = readStore()
-  const scanDevice = data.device || data
-  const existed = store.devices.find(item => item.deviceNo === scanDevice.deviceNo)
+  const scan = data.device || data
+  // 同一台设备按蓝牙 deviceId 或设备编号识别，重复绑定则刷新其真实信息
+  const existed = store.devices.find(item =>
+    (scan.deviceId && item.deviceId === scan.deviceId) || (scan.deviceNo && item.deviceNo === scan.deviceNo)
+  )
 
   if (existed) {
-    existed.connected = true
-    existed.lastOnline = '刚刚'
+    Object.assign(existed, realDeviceFields(scan), { connected: true, lastOnline: '刚刚' })
     writeStore(store)
     return delay(existed)
   }
 
-  const device = {
-    id: `d_${Date.now()}`,
-    name: scanDevice.name || '新相框',
-    deviceNo: scanDevice.deviceNo || `FRAME-${Date.now()}`,
-    connected: true,
-    battery: 100,
-    totalMemory: 512,
-    usedMemory: 0,
-    playbackMode: 'order',
-    carouselEnabled: false,
-    intervalHours: 2,
-    lastOnline: '刚刚'
-  }
+  const device = Object.assign(
+    { id: `d_${Date.now()}`, connected: true, lastOnline: '刚刚' },
+    realDeviceFields(scan)
+  )
   store.devices.unshift(device)
   writeStore(store)
   return delay(device)
@@ -519,7 +477,6 @@ function handle(options) {
   if (path === '/account' && method === 'DELETE') return deleteAccount()
 
   if (path === '/devices' && method === 'GET') return delay(store.devices)
-  if (path === '/devices/scan' && method === 'GET') return scanBluetoothDevices()
   if (path === '/devices/bind' && method === 'POST') return bindDevice(data)
 
   const deviceDetailMatch = path.match(/^\/devices\/([^/]+)$/)

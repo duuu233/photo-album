@@ -31,9 +31,9 @@
                 <image class="meta-bt-icon" src="{{item.connected ? '/assets/images/bluetooth-icon.png' : '/assets/images/bluetooth-icon-not.png'}}" mode="aspectFit"></image>
                 <text>{{item.connected ? '已连接' : '未连接'}}</text>
               </view>
-              <view wx:if="{{item.connected}}" class="battery-meta">
+              <view wx:if="{{item.connected && item.batteryText}}" class="battery-meta">
                 <image class="battery-level-icon" src="{{item.batteryIcon}}" mode="aspectFit"></image>
-                <text>{{item.battery}}%</text>
+                <text>{{item.batteryText}}</text>
               </view>
             </view>
           </view>

@@ -1,22 +1,10 @@
 const api = require('../../../utils/api')
 const permission = require('../../../utils/permission')
 const bluetooth = require('../../../utils/bluetooth')
+const deviceBle = require('../../../utils/device-ble')
 const system = require('../../../utils/system')
 
 const app = getApp()
-
-// 合并真实蓝牙搜索结果与模拟设备并去重（同一设备编号只保留先出现的一条，真机结果优先）
-function mergeDevices(realDevices, mockDevices) {
-  const map = {}
-  realDevices.concat(mockDevices).forEach(device => {
-    const key = device.deviceNo || device.deviceId || device.id
-    if (!key || map[key]) {
-      return
-    }
-    map[key] = device
-  })
-  return Object.keys(map).map(key => map[key])
-}
 
 Page({
   data: {
@@ -25,7 +13,6 @@ Page({
     scanning: false,
     devices: [],
     location: null,
-    usedMockFallback: false,
     showHelp: false
   },
 
@@ -61,7 +48,6 @@ Page({
 
     this.setData({
       scanning: true,
-      usedMockFallback: false,
       devices: [],
       showHelp: false
     })
@@ -83,37 +69,19 @@ Page({
 
       await bluetooth.openAdapter()
 
-      const realDevices = await bluetooth.discoverDevices({
+      // 只扫真实相框（广播名以 EF6 开头或带合法厂商数据），不再用模拟设备兜底
+      const devices = await bluetooth.discoverDevices({
         timeout: 8000
       })
-      let devices = realDevices
-      let usedMockFallback = false
-
-      // 真机扫不到且在开发者工具中：补充模拟设备，方便无硬件时调试 UI
-      if (!devices.length && system.isDevTools()) {
-        const mockDevices = await api.scanBluetoothDevices()
-        devices = mergeDevices(realDevices, mockDevices)
-        usedMockFallback = true
-      }
 
       this.setData({
-        devices,
-        usedMockFallback
+        devices
       })
     } catch (error) {
-      // 蓝牙不可用时：开发者工具下用模拟数据兜底，真机则提示错误
-      if (system.isDevTools()) {
-        const devices = await api.scanBluetoothDevices()
-        this.setData({
-          devices,
-          usedMockFallback: true
-        })
-      } else {
-        wx.showToast({
-          title: error.message || '设备搜索失败',
-          icon: 'none'
-        })
-      }
+      wx.showToast({
+        title: error.message || '设备搜索失败',
+        icon: 'none'
+      })
     } finally {
       this.setData({
         scanning: false
@@ -133,7 +101,7 @@ Page({
     })
   },
 
-  // 绑定所选设备：真机设备先建立蓝牙连接，再调用后端绑定并设为当前选中设备
+  // 绑定所选设备：真机设备先连接读取真实信息（电量/播放/屏幕/固件），再保存并设为当前选中设备
   async bindDevice(e) {
     const id = e.currentTarget.dataset.id
     const scanDevice = this.data.devices.find(item => item.id === id || item.deviceId === id)
@@ -142,20 +110,32 @@ Page({
       return
     }
 
-    // 仅真实蓝牙设备需要先连接；模拟设备跳过这一步
+    let info = null
+    // 真实蓝牙设备：连接并读取设备信息；连接失败则中止绑定（不再有模拟兜底）
     if (scanDevice.realBluetooth && scanDevice.deviceId) {
+      wx.showLoading({ title: '连接设备中', mask: true })
       try {
-        await bluetooth.connectDevice(scanDevice.deviceId)
+        info = await deviceBle.readDeviceInfo(scanDevice.deviceId)
       } catch (error) {
         wx.showToast({
-          title: error.message || '蓝牙连接失败',
+          title: error.message || '设备连接失败',
           icon: 'none'
         })
         return
+      } finally {
+        deviceBle.disconnect(scanDevice.deviceId)
+        wx.hideLoading()
       }
     }
 
-    const device = await api.bindDevice(scanDevice)
+    // 合并：扫描得到的蓝牙标识 + 连接后读到的真实设备信息（保留蓝牙 deviceId 供后续重连）
+    const payload = Object.assign({}, scanDevice, info || {}, {
+      deviceId: scanDevice.deviceId,
+      deviceNo: (info && info.deviceId) || scanDevice.deviceNo,
+      name: scanDevice.name
+    })
+
+    const device = await api.bindDevice(payload)
     app.setSelectedDevice(device)
 
     wx.showToast({
