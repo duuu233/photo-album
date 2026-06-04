@@ -7,10 +7,38 @@
 //   await deviceBle.disconnect(deviceId)
 
 const protocol = require('./frame-protocol')
+const imageCodec = require('./image-codec')
 
 // 每台设备一个会话：缓存已发现的服务/特征、接收缓冲区与未完成的请求
 const sessions = {}
 let globalListenerBound = false
+
+// 收发监听器：联调调试台用它把每一帧的 16 进制原始字节打印出来，方便和硬件侧日志对照。
+// 业务页面不需要可不设置；setMonitor(null) 取消。
+let monitor = null
+
+function setMonitor(fn) {
+  monitor = typeof fn === 'function' ? fn : null
+}
+
+// 向监听器上报一帧收发记录。dir: 'TX' 发送 / 'RX' 接收；cmd: 命令字；bytes: 整帧原始字节。
+function reportFrame(dir, deviceId, cmd, bytes, note) {
+  if (!monitor) {
+    return
+  }
+  try {
+    monitor({
+      dir,
+      deviceId,
+      cmd,
+      hex: protocol.bytesToHex(bytes),
+      note: note || '',
+      time: Date.now()
+    })
+  } catch (error) {
+    // 监听器自身异常不能影响蓝牙收发
+  }
+}
 
 // 微信返回的 UUID 是 128 位全大写串（如 0000FF01-0000-...），只取其中的 16 位短码做匹配
 function short16(uuid) {
@@ -55,11 +83,23 @@ function handleNotify(session, value) {
     if (!parsed) {
       break
     }
+    const rawBytes = session.rxBuffer.slice(0, parsed.consumed) // 整帧原始字节，给监听器打日志
     session.rxBuffer = session.rxBuffer.slice(parsed.consumed)
 
     const frame = parsed.frame
+    reportFrame('RX', session.deviceId, frame.cmd, rawBytes, frame.crcOk ? '' : 'CRC校验失败')
+
+    // 先把帧广播给临时监听者（图传的 0x23 应答靠它接收）。复制一份再遍历，避免回调里增删数组出错。
+    session.frameListeners.slice().forEach(listener => {
+      try {
+        listener(frame)
+      } catch (error) {
+        // 单个监听者异常不影响其它人
+      }
+    })
+
     if (frame.cmd !== protocol.ACK) {
-      continue // 目前只关心设备的 ACK 应答
+      continue // 非通用应答（如 0x23 图传应答）已交给上面的监听者处理
     }
     const ack = protocol.parseAck(frame.payload)
     const pending = session.pending[ack.ackCmd]
@@ -113,6 +153,7 @@ async function ensureConnection(deviceId) {
     notifyCharId: notifyChar.uuid,
     rxBuffer: [],
     pending: {},
+    frameListeners: [], // 临时帧监听者（图传等待 0x23 应答时往里塞，用完移除）
     ready: true
   }
   sessions[deviceId] = session
@@ -138,14 +179,63 @@ async function request(deviceId, cmd, payload, timeout = 6000) {
     }
   })
 
+  const value = protocol.buildFrame(cmd, payload)
+  reportFrame('TX', deviceId, cmd, value)
   await wxp(wx.writeBLECharacteristicValue, {
     deviceId,
     serviceId: session.serviceId,
     characteristicId: session.writeCharId,
-    value: protocol.buildFrame(cmd, payload)
+    value
   })
 
   return ackPromise
+}
+
+// 不等待 ACK 的裸写：图传数据包(0x21)走窗口机制，靠 0x23 累计应答，不逐包等 0x7F。
+async function writeFrame(session, cmd, payload) {
+  const value = protocol.buildFrame(cmd, payload)
+  reportFrame('TX', session.deviceId, cmd, value)
+  await wxp(wx.writeBLECharacteristicValue, {
+    deviceId: session.deviceId,
+    serviceId: session.serviceId,
+    characteristicId: session.writeCharId,
+    value
+  })
+}
+
+// 等待一帧 0x23 图传应答（ACK_SEQ）。超时(默认 1.5s)按「连接中断/丢包」处理，由上层决定重发。
+function waitForImgAck(session, timeout) {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const remove = () => {
+      const index = session.frameListeners.indexOf(listener)
+      if (index >= 0) {
+        session.frameListeners.splice(index, 1)
+      }
+    }
+    const timer = setTimeout(() => {
+      if (settled) {
+        return
+      }
+      settled = true
+      remove()
+      reject(new Error('IMG_ACK_TIMEOUT'))
+    }, timeout || 1500)
+    const listener = frame => {
+      if (settled || frame.cmd !== protocol.CMD.IMG_ACK) {
+        return
+      }
+      settled = true
+      clearTimeout(timer)
+      remove()
+      if (!frame.crcOk) {
+        reject(new Error('图传应答 CRC 校验失败'))
+        return
+      }
+      resolve(protocol.parseImgAck(frame.payload))
+    }
+    session.frameListeners.push(listener)
+  })
 }
 
 // 读设备信息：CMD=0x01 拿核心信息，再用 CMD=0x03 补固件号（固件失败不阻断主流程）
@@ -169,9 +259,114 @@ async function readBattery(deviceId) {
   return protocol.parseBattery(ack.data)
 }
 
-// 设置播放模式/间隔（CMD=0x10）
+// 设置播放模式/间隔（CMD=0x10）。成功后设备回带最新 IMG_MASK，这里顺带解析出来。
 async function setPlayback(deviceId, mode, intervalSeconds) {
-  return request(deviceId, protocol.CMD.SET_PLAY, protocol.buildSetPlaybackPayload(mode, intervalSeconds))
+  const ack = await request(deviceId, protocol.CMD.SET_PLAY, protocol.buildSetPlaybackPayload(mode, intervalSeconds))
+  return Object.assign({ result: ack.result }, protocol.parseMaskResult(ack.data))
+}
+
+// 读播放配置（CMD=0x02）：播放模式 + 切换间隔
+async function getPlayConfig(deviceId) {
+  const ack = await request(deviceId, protocol.CMD.GET_PLAY)
+  return protocol.parsePlayConfig(ack.data)
+}
+
+// 读软件版本（CMD=0x03）：固件号字符串
+async function getSwVersion(deviceId) {
+  const ack = await request(deviceId, protocol.CMD.GET_SW_VER)
+  return protocol.parseSwVer(ack.data)
+}
+
+// 校时（CMD=0x11）：把手机当前时间（或指定时间）写进设备 RTC
+async function setTime(deviceId, date) {
+  const ack = await request(deviceId, protocol.CMD.SET_TIME, protocol.buildSetTimePayload(date))
+  return { result: ack.result }
+}
+
+// 删除图片（CMD=0x12）：传图片索引数组（如 [0,2] 表示删第 0、2 张），内部转成 12 字节掩码。
+// 设备返回更新后的 IMG_MASK。
+async function deleteImage(deviceId, indexes) {
+  const mask = protocol.indexesToMask(indexes)
+  const ack = await request(deviceId, protocol.CMD.DELETE_IMG, mask)
+  return Object.assign({ result: ack.result }, protocol.parseMaskResult(ack.data))
+}
+
+// 切换/刷新当前显示（CMD=0x24）：指定要显示的图片索引；0xFF 表示保持不变。
+async function refreshScreen(deviceId, index) {
+  const value = index === undefined || index === null ? 0xff : index & 0xff
+  const ack = await request(deviceId, protocol.CMD.SET_CUR_IMG, [value])
+  return Object.assign({ result: ack.result }, protocol.parseRefreshResult(ack.data))
+}
+
+// 上传一张图片（图传协议 6.8：0x20 帧头 → 0x21 窗口分包 + 0x23 累计应答 → 0x22 结束校验）。
+// options: { screenType, index, width, height, data(Uint8Array 已转好的六色帧缓存), onProgress(done,total,phase) }
+// 返回结束应答里的 { result, imgMask, imgCount, storageFree }。任一步失败会 throw。
+async function uploadImage(deviceId, options) {
+  const session = await ensureConnection(deviceId)
+  const data = options.data instanceof Uint8Array ? options.data : new Uint8Array(options.data)
+  const dataSize = data.length
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : function () {}
+
+  // 1) 0x20 帧头：告诉设备屏幕类型/索引/宽高/数据大小/整图 CRC32，等设备点头(RESULT=0x00)再发数据。
+  const crc32 = imageCodec.crc32Mpeg2(data)
+  const startAck = await request(deviceId, protocol.CMD.IMG_START, protocol.buildImgStartPayload({
+    screenType: options.screenType,
+    index: options.index,
+    width: options.width,
+    height: options.height,
+    format: 0x01,
+    dataSize,
+    crc32
+  }))
+  if (startAck.result !== 0x00) {
+    throw new Error(`帧头被拒绝(0x20)：${protocol.resultText(startAck.result)}`)
+  }
+
+  // 2) 0x21 数据：每片最多 236 字节；窗口 5 包，发满 5 包等一次 0x23(ACK_SEQ)。
+  const CHUNK = 236
+  const WINDOW = 5
+  const totalPackets = Math.ceil(dataSize / CHUNK)
+  let nextSeq = 0 // 下一个要发送的包号（= 已确认的最后包号 + 1）
+  let retries = 0 // 同一窗口的重试次数，连续失败则判定连接中断
+  onProgress(0, totalPackets, 'start')
+
+  while (nextSeq < totalPackets) {
+    const windowEnd = Math.min(nextSeq + WINDOW, totalPackets)
+    for (let seq = nextSeq; seq < windowEnd; seq++) {
+      const chunk = data.subarray(seq * CHUNK, Math.min((seq + 1) * CHUNK, dataSize))
+      await writeFrame(session, protocol.CMD.IMG_DATA, protocol.buildImgDataPayload(seq, chunk))
+    }
+
+    let ack
+    try {
+      ack = await waitForImgAck(session, 1500) // 文档要求 1s 超时，这里留点余量
+    } catch (error) {
+      // 超时：可能整窗丢失或连接中断，重发当前窗口；连续多次失败则放弃
+      if (++retries > 8) {
+        throw new Error('图传超时，连接可能已中断')
+      }
+      continue
+    }
+
+    const advancedTo = ack.ackSeq + 1 // 设备已连续收到 ackSeq，下次应从 ackSeq+1 发
+    if (advancedTo > nextSeq) {
+      nextSeq = advancedTo // 有进展：窗口前移
+      retries = 0
+    } else if (++retries > 8) {
+      throw new Error('图传持续丢包，已中断')
+    }
+    // 无进展(ACK_SEQ 没涨)：说明有丢包，nextSeq 不变 → 下一轮重发同一窗口
+    onProgress(Math.min(nextSeq, totalPackets), totalPackets, 'data')
+  }
+
+  // 3) 0x22 结束：设备核对总长度与整图 CRC32，写入 Flash 并更新 IMG_MASK。
+  const endAck = await request(deviceId, protocol.CMD.IMG_END, [])
+  if (endAck.result !== 0x00) {
+    throw new Error(`结束校验失败(0x22)：${protocol.resultText(endAck.result)}`)
+  }
+  const summary = Object.assign({ result: endAck.result }, protocol.parseImgEndResult(endAck.data))
+  onProgress(totalPackets, totalPackets, 'done')
+  return summary
 }
 
 // 断开连接并清理会话（离开详情/绑定页时调用）
@@ -194,5 +389,12 @@ module.exports = {
   readDeviceInfo,
   readBattery,
   setPlayback,
+  getPlayConfig,
+  getSwVersion,
+  setTime,
+  deleteImage,
+  refreshScreen,
+  uploadImage,
+  setMonitor,
   disconnect
 }

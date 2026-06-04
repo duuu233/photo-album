@@ -1,0 +1,346 @@
+.debug-page {
+  min-height: 100vh;
+  background: #f2f5fc;
+}
+
+.debug-body {
+  padding: 8rpx 28rpx calc(40rpx + var(--safe-bottom));
+}
+
+/* 提示卡 */
+.tip-card {
+  margin-bottom: 22rpx;
+  padding: 24rpx 28rpx;
+  background: rgba(255, 100, 33, 0.08);
+  border: 2rpx solid rgba(255, 100, 33, 0.2);
+  border-radius: 22rpx;
+}
+
+.tip-title {
+  margin-bottom: 12rpx;
+  color: #d6480f;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.tip-line {
+  margin-top: 6rpx;
+  color: #8a5a3c;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+/* 通用卡片 */
+.card {
+  margin-bottom: 22rpx;
+  padding: 26rpx 28rpx;
+  background: #ffffff;
+  border-radius: 24rpx;
+  box-shadow: 0 16rpx 38rpx rgba(126, 150, 184, 0.08);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 18rpx;
+}
+
+.card-title {
+  color: #2a2d32;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.sec-title {
+  display: block;
+  margin-bottom: 18rpx;
+}
+
+.dot {
+  width: 18rpx;
+  height: 18rpx;
+  margin-right: 14rpx;
+  border-radius: 50%;
+}
+
+.dot-on {
+  background: #21c17a;
+  box-shadow: 0 0 0 6rpx rgba(33, 193, 122, 0.18);
+}
+
+.dot-off {
+  background: #c4ccd6;
+}
+
+.ghost-btn {
+  margin-left: auto;
+  padding: 8rpx 24rpx;
+  color: #ff621f;
+  font-size: 24rpx;
+  font-weight: 600;
+  background: rgba(255, 100, 33, 0.08);
+  border-radius: 999rpx;
+}
+
+.kv {
+  display: flex;
+  margin-top: 8rpx;
+  font-size: 24rpx;
+}
+
+.kv .k {
+  flex: 0 0 auto;
+  margin-right: 16rpx;
+  color: #8b9098;
+}
+
+.kv .v {
+  flex: 1;
+  color: #2a2d32;
+  word-break: break-all;
+}
+
+/* 设备信息网格 */
+.info-grid {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.info-cell {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 50%;
+  margin-bottom: 16rpx;
+}
+
+.info-cell .k {
+  color: #8b9098;
+  font-size: 22rpx;
+}
+
+.info-cell .v {
+  margin-top: 4rpx;
+  color: #2a2d32;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+/* 按钮 */
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  font-size: 28rpx;
+  line-height: 1.4;
+  border-radius: 16rpx;
+}
+
+.btn::after {
+  border: none;
+}
+
+.btn[disabled] {
+  opacity: 0.5;
+}
+
+.btn-primary {
+  height: 84rpx;
+  margin-top: 16rpx;
+  color: #ffffff;
+  font-weight: 700;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
+}
+
+.btn-soft {
+  height: 80rpx;
+  color: #d6480f;
+  font-weight: 600;
+  background: rgba(255, 100, 33, 0.08);
+}
+
+.btn-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18rpx;
+}
+
+.btn-mini {
+  flex: 0 0 auto;
+  height: 64rpx;
+  padding: 0 26rpx;
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 600;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
+}
+
+.btn-danger {
+  background: linear-gradient(90deg, #ff6b6b, #e74c3c);
+}
+
+/* 表单行 */
+.row {
+  display: flex;
+  align-items: center;
+  margin-top: 16rpx;
+}
+
+.row-label {
+  flex: 0 0 130rpx;
+  color: #2a2d32;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.row-hint {
+  flex: 1;
+  color: #8b9098;
+  font-size: 22rpx;
+}
+
+.input {
+  flex: 1;
+  height: 64rpx;
+  margin-right: 16rpx;
+  padding: 0 20rpx;
+  font-size: 26rpx;
+  background: #f2f5fc;
+  border-radius: 14rpx;
+}
+
+.radio-row {
+  display: flex;
+  flex: 1;
+}
+
+.radio {
+  margin-right: 32rpx;
+  color: #2a2d32;
+  font-size: 26rpx;
+}
+
+/* 进度条 */
+.progress {
+  display: flex;
+  align-items: center;
+  margin-top: 18rpx;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 16rpx;
+  margin-right: 16rpx;
+  background: #edf1f7;
+  border-radius: 999rpx;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
+  transition: width 0.2s linear;
+}
+
+.progress-text {
+  flex: 0 0 auto;
+  color: #ff621f;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+/* 扫描结果 */
+.scan-item {
+  display: flex;
+  align-items: center;
+  margin-top: 16rpx;
+  padding: 20rpx 24rpx;
+  background: #f7f9fd;
+  border-radius: 16rpx;
+}
+
+.scan-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.scan-name {
+  display: block;
+  overflow: hidden;
+  color: #2a2d32;
+  font-size: 28rpx;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.scan-sub {
+  display: block;
+  margin-top: 4rpx;
+  color: #8b9098;
+  font-size: 22rpx;
+}
+
+.scan-go {
+  flex: 0 0 auto;
+  padding: 10rpx 26rpx;
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 700;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
+  border-radius: 999rpx;
+}
+
+/* 控制台 */
+.console {
+  height: 520rpx;
+  padding: 18rpx;
+  background: #11151c;
+  border-radius: 16rpx;
+}
+
+.console-empty {
+  color: #5b6675;
+  font-size: 22rpx;
+}
+
+.log-line {
+  display: flex;
+  margin-bottom: 8rpx;
+  font-family: "Consolas", "Menlo", "Courier New", monospace;
+  font-size: 21rpx;
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+.log-time {
+  flex: 0 0 auto;
+  margin-right: 14rpx;
+  color: #5b6675;
+}
+
+.log-text {
+  flex: 1;
+  word-break: break-all;
+}
+
+.log-tx .log-text {
+  color: #6fb3ff; /* 发送：蓝 */
+}
+
+.log-rx .log-text {
+  color: #79e6a8; /* 接收：绿 */
+}
+
+.log-act .log-text {
+  color: #d7dde6; /* 操作：浅灰 */
+}
+
+.log-ok .log-text {
+  color: #ffd166; /* 成功：黄 */
+}
+
+.log-err .log-text {
+  color: #ff7b7b; /* 失败：红 */
+}

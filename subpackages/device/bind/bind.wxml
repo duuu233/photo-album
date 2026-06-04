@@ -6,6 +6,15 @@
   <page-nav title="绑定设备"></page-nav>
 
   <view class="bind-content {{showHelp ? 'content-dimmed' : ''}}">
+    <view class="debug-entry" hover-class="none" bindtap="openDebug">
+      <view class="debug-entry__icon">🔧</view>
+      <view class="debug-entry__copy">
+        <text class="debug-entry__title">硬件联调调试台</text>
+        <text class="debug-entry__sub">开发对接用 · 一键测试上传/删除/电量等全部指令</text>
+      </view>
+      <view class="debug-entry__arrow">›</view>
+    </view>
+
     <view class="radar-wrap {{scanning ? 'radar-scanning' : ''}}">
       <image wx:if="{{!scanning && devices.length}}" class="radar-art" src="/assets/images/device_found_art.png" mode="aspectFit"></image>
       <image wx:elif="{{!scanning && !devices.length}}" class="radar-art" src="/assets/images/device_not_found_art.png" mode="aspectFit"></image>
@@ -24,6 +33,7 @@
             <text class="nearby-name">{{item.name}}</text>
             <text class="nearby-sub">{{item.screen ? item.screen + ' · ' : ''}}{{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.RSSI || '--'}}</text>
           </view>
+          <view class="debug-tag" catchtap="openDebug" data-id="{{item.id || item.deviceId}}">联调</view>
           <view class="bind-tag">绑定</view>
         </button>
       </scroll-view>

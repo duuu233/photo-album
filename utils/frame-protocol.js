@@ -226,6 +226,153 @@ function buildSetPlaybackPayload(mode, intervalSeconds) {
   ]
 }
 
+// ── 结果码（6.6.1）──────────────────────────────────────────
+// 设备 ACK 里的 RESULT 字节含义。联调时把数字翻译成人话，方便排查。
+const RESULT_TEXT = {
+  0x00: '成功',
+  0x01: '参数错误',
+  0x02: '长度错误',
+  0x03: 'CRC 错误',
+  0x04: 'Flash 写入失败',
+  0x05: '图片不存在',
+  0x06: '存储空间不足',
+  0x07: '掩码不一致(该位置已有图/索引越界)',
+  0x08: '不支持的命令',
+  0x09: '传输中断',
+  0x0a: '校验失败(整图CRC32不符)',
+  0x0b: '设备忙(Busy)'
+}
+
+function resultText(code) {
+  const text = RESULT_TEXT[code]
+  return text ? text : `未知结果码 0x${(code || 0).toString(16).padStart(2, '0')}`
+}
+
+// ── 小端写入工具（组帧时把多字节数字按低字节在前压入数组）──
+function pushUint16LE(arr, value) {
+  arr.push(value & 0xff, (value >> 8) & 0xff)
+}
+
+function pushUint32LE(arr, value) {
+  arr.push(value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff, (value >>> 24) & 0xff)
+}
+
+// ── 图片掩码 ⇄ 索引互转（6.7.2 / 6.9.1）────────────────────
+// IMG_MASK 是 12 字节(96 位)，低字节在前；第 n 张图占第 n 位（bit0 在第 0 字节最低位）。
+// 把图片索引数组转成 12 字节掩码，用于 0x12 删除图片的 IMG_INDEX_MASK。
+function indexesToMask(indexes) {
+  const mask = new Array(12).fill(0)
+  ;(indexes || []).forEach(index => {
+    const i = Number(index)
+    if (i >= 0 && i < 96) {
+      mask[i >> 3] |= 1 << (i & 7) // i>>3 定位字节，i&7 定位字节内的位
+    }
+  })
+  return mask
+}
+
+// 把 12 字节掩码展开成已存在图片的索引数组（升序）
+function maskToIndexes(maskBytes) {
+  const b = toBytes(maskBytes)
+  const list = []
+  for (let i = 0; i < 96; i++) {
+    if ((b[i >> 3] || 0) & (1 << (i & 7))) {
+      list.push(i)
+    }
+  }
+  return list
+}
+
+// 在容量范围内找到第一个空闲（未被占用）的图片索引；找不到返回 -1。上传新图时用它选槽位。
+function firstFreeIndex(maskBytes, capacity) {
+  const b = toBytes(maskBytes)
+  const max = capacity || 96
+  for (let i = 0; i < max; i++) {
+    if (!((b[i >> 3] || 0) & (1 << (i & 7)))) {
+      return i
+    }
+  }
+  return -1
+}
+
+// ── 各命令的 PAYLOAD 组装 / 解析 ──────────────────────────
+
+// 解析 CMD=0x02 播放配置应答的 data 段：PLAY_MODE(1) + INTERVAL(4, 小端)（6.7.4）
+function parsePlayConfig(data) {
+  const b = toBytes(data)
+  return {
+    playMode: playModeToString(b[0]),
+    playModeByte: b[0],
+    intervalSeconds: readUint32LE(b, 1)
+  }
+}
+
+// 组 CMD=0x11 设置系统时间的 PAYLOAD：YEAR(2,小端) MONTH DAY HOUR MIN SEC（6.7.8）
+// 入参可传 JS Date；默认用手机当前时间给设备校时。
+function buildSetTimePayload(date) {
+  const d = date instanceof Date ? date : new Date()
+  const payload = []
+  pushUint16LE(payload, d.getFullYear())
+  payload.push(d.getMonth() + 1) // JS 月份从 0 开始，协议要 1~12
+  payload.push(d.getDate())
+  payload.push(d.getHours())
+  payload.push(d.getMinutes())
+  payload.push(d.getSeconds())
+  return payload
+}
+
+// 解析「带掩码」类应答的 data 段（0x10 设置播放 / 0x12 删除图片）：返回更新后的 12 字节 IMG_MASK
+function parseMaskResult(data) {
+  const b = toBytes(data)
+  return { imgMask: b.slice(0, 12) }
+}
+
+// 解析 CMD=0x24 屏幕刷新应答的 data 段：CUR_IMG_INDEX(1)（6.7.10）
+function parseRefreshResult(data) {
+  return { curImgIndex: toBytes(data)[0] }
+}
+
+// 组 CMD=0x20 图片帧头 PAYLOAD（6.8.1）：
+// SCREEN_TYPE(1) IMG_INDEX(1) WIDTH(2,小端) HEIGHT(2,小端) FORMAT(1) IMG_DATA_SIZE(4,小端) IMG_CRC32(4,小端)
+// 共 15 字节。format 固件目前只支持 0x01（六色 4bpp 原始帧缓存）。
+function buildImgStartPayload(options) {
+  const payload = []
+  payload.push(options.screenType & 0xff)
+  payload.push(options.index & 0xff)
+  pushUint16LE(payload, options.width)
+  pushUint16LE(payload, options.height)
+  payload.push((options.format || 0x01) & 0xff)
+  pushUint32LE(payload, options.dataSize)
+  pushUint32LE(payload, options.crc32) // 整图 CRC32-MPEG2，低字节在前
+  return payload
+}
+
+// 组 CMD=0x21 图片数据包 PAYLOAD（6.8.2）：PKT_SEQ(2,小端) + DATA(本片最多 236 字节)
+function buildImgDataPayload(seq, chunk) {
+  const payload = []
+  pushUint16LE(payload, seq)
+  const bytes = toBytes(chunk)
+  for (let i = 0; i < bytes.length; i++) {
+    payload.push(bytes[i] & 0xff)
+  }
+  return payload
+}
+
+// 解析 CMD=0x23 图传应答（6.6.2）：ACK_SEQ(2,小端) = 已连续收到的最后一个包号
+function parseImgAck(payload) {
+  return { ackSeq: readUint16LE(toBytes(payload), 0) }
+}
+
+// 解析 CMD=0x22 结束传输应答的 data 段（6.8.4）：IMG_MASK(12) + IMG_COUNT(2,小端) + STORAGE_FREE(4,小端)
+function parseImgEndResult(data) {
+  const b = toBytes(data)
+  return {
+    imgMask: b.slice(0, 12),
+    imgCount: readUint16LE(b, 12),
+    storageFree: readUint32LE(b, 14)
+  }
+}
+
 // 解析广播包里的厂商自定义数据（6.10.7）：Company_ID(2=0xFFFF) + Screen_Type(1) + Device_ID(4) + Battery(1)。
 // 微信的 advertisData 是否含 2 字节 Company_ID 各平台略有差异，这里两种偏移都试，命中合法值即采用。
 function parseAdvertising(advertisData) {
@@ -279,6 +426,19 @@ module.exports = {
   parseBattery,
   buildSetPlaybackPayload,
   parseAdvertising,
+  RESULT_TEXT,
+  resultText,
+  indexesToMask,
+  maskToIndexes,
+  firstFreeIndex,
+  parsePlayConfig,
+  buildSetTimePayload,
+  parseMaskResult,
+  parseRefreshResult,
+  buildImgStartPayload,
+  buildImgDataPayload,
+  parseImgAck,
+  parseImgEndResult,
   bytesToHex,
   toBytes,
   toArrayBuffer

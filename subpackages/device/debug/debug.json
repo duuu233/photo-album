@@ -1,0 +1,8 @@
+{
+  "navigationStyle": "custom",
+  "navigationBarTitleText": "硬件联调调试台",
+  "usingComponents": {
+    "page-nav": "/components/page-nav/page-nav"
+  },
+  "backgroundColor": "#f2f5fc"
+}

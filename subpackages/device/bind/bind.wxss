@@ -3,6 +3,63 @@
   z-index: 1;
 }
 
+/* 硬件联调调试台入口横幅 */
+.debug-entry {
+  display: flex;
+  align-items: center;
+  margin: 0 48rpx 8rpx;
+  padding: 22rpx 28rpx;
+  background: rgba(255, 255, 255, 0.72);
+  border: 2rpx solid rgba(255, 100, 33, 0.22);
+  border-radius: 22rpx;
+  box-shadow: 0 12rpx 30rpx rgba(126, 150, 184, 0.08);
+}
+
+.debug-entry__icon {
+  flex: 0 0 auto;
+  margin-right: 20rpx;
+  font-size: 40rpx;
+}
+
+.debug-entry__copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.debug-entry__title {
+  display: block;
+  color: #2a2d32;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.debug-entry__sub {
+  display: block;
+  margin-top: 6rpx;
+  color: #8b9098;
+  font-size: 22rpx;
+}
+
+.debug-entry__arrow {
+  flex: 0 0 auto;
+  margin-left: 12rpx;
+  color: #ff621f;
+  font-size: 40rpx;
+  font-weight: 700;
+}
+
+/* 设备行里的「联调」快捷入口 */
+.debug-tag {
+  flex: 0 0 auto;
+  margin-right: 16rpx;
+  padding: 10rpx 22rpx;
+  color: #d6480f;
+  background: rgba(255, 100, 33, 0.1);
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
 .content-dimmed {
   opacity: 0.42;
 }

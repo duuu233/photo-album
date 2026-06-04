@@ -11,7 +11,8 @@
         "list/list",
         "bind/bind",
         "detail/detail",
-        "slideshow/slideshow"
+        "slideshow/slideshow",
+        "debug/debug"
       ]
     },
     {

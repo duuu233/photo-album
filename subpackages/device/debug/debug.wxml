@@ -1,0 +1,130 @@
+<view class="debug-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <page-nav title="硬件联调调试台"></page-nav>
+
+  <view class="debug-body">
+    <!-- 新手提示：第一次对接照着做 -->
+    <view class="tip-card">
+      <view class="tip-title">📡 怎么用</view>
+      <view class="tip-line">1. 先「连接设备」，再点「获取设备信息」拿到屏幕/容量/电量。</view>
+      <view class="tip-line">2. 逐个点下面的按钮试每个功能，底部控制台会显示收发的 16 进制原始数据。</view>
+      <view class="tip-line">3. 图传先用「彩条测试图」最稳，颜色/方向不对再找硬件要调色板。</view>
+    </view>
+
+    <!-- 连接卡片 -->
+    <view class="card">
+      <view class="card-head">
+        <view class="dot {{connected ? 'dot-on' : 'dot-off'}}"></view>
+        <text class="card-title">{{connected ? '已连接' : (connecting ? '连接中…' : '未连接')}}</text>
+        <view wx:if="{{connected}}" class="ghost-btn" bindtap="disconnectDevice">断开</view>
+      </view>
+      <view wx:if="{{deviceId}}" class="kv"><text class="k">设备</text><text class="v">{{deviceName}}</text></view>
+
+      <block wx:if="{{!connected}}">
+        <button class="btn btn-primary" loading="{{scanning}}" disabled="{{scanning || connecting}}" bindtap="scan">{{scanning ? '搜索中…' : '搜索附近设备'}}</button>
+        <view wx:for="{{devices}}" wx:key="deviceId" class="scan-item" data-id="{{item.deviceId}}" bindtap="selectDevice">
+          <view class="scan-copy">
+            <text class="scan-name">{{item.name}}</text>
+            <text class="scan-sub">{{item.screen ? item.screen + ' · ' : ''}}信号 {{item.RSSI || '--'}}</text>
+          </view>
+          <view class="scan-go">连接</view>
+        </view>
+      </block>
+    </view>
+
+    <!-- 设备信息卡片 -->
+    <view wx:if="{{info}}" class="card">
+      <view class="card-head">
+        <text class="card-title">设备信息 (0x01)</text>
+        <view class="ghost-btn" bindtap="cmdGetInfo">刷新</view>
+      </view>
+      <view class="info-grid">
+        <view class="info-cell"><text class="k">电量</text><text class="v">{{info.battery}}%</text></view>
+        <view class="info-cell"><text class="k">屏幕</text><text class="v">{{info.screen || '--'}}</text></view>
+        <view class="info-cell"><text class="k">分辨率</text><text class="v">{{info.width}}×{{info.height}}</text></view>
+        <view class="info-cell"><text class="k">容量</text><text class="v">{{info.capacity}} 张</text></view>
+        <view class="info-cell"><text class="k">已存</text><text class="v">{{info.imgCount}} 张</text></view>
+        <view class="info-cell"><text class="k">当前显示</text><text class="v">{{info.curImgIndex === 255 ? '无' : info.curImgIndex}}</text></view>
+        <view class="info-cell"><text class="k">播放</text><text class="v">{{info.playMode === 'random' ? '随机' : '顺序'}} / {{info.intervalSeconds}}s</text></view>
+        <view class="info-cell"><text class="k">固件</text><text class="v">{{info.firmwareVersion || '--'}}</text></view>
+      </view>
+      <view class="kv"><text class="k">已有图片索引</text><text class="v">{{existingIndexes}}</text></view>
+    </view>
+
+    <!-- 读取类 -->
+    <view class="card">
+      <view class="card-title sec-title">读取类</view>
+      <view class="btn-grid">
+        <button class="btn btn-soft" disabled="{{busy}}" bindtap="cmdGetInfo">设备信息 0x01</button>
+        <button class="btn btn-soft" disabled="{{busy}}" bindtap="cmdGetPlay">播放配置 0x02</button>
+        <button class="btn btn-soft" disabled="{{busy}}" bindtap="cmdGetVersion">软件版本 0x03</button>
+        <button class="btn btn-soft" disabled="{{busy}}" bindtap="cmdGetBattery">电量 0x04</button>
+      </view>
+    </view>
+
+    <!-- 设置类 -->
+    <view class="card">
+      <view class="card-title sec-title">设置类</view>
+      <view class="row">
+        <text class="row-label">播放模式</text>
+        <radio-group class="radio-row" bindchange="onPlayModeChange">
+          <label class="radio"><radio value="order" checked="{{playMode === 'order'}}" color="#ff621f" />顺序</label>
+          <label class="radio"><radio value="random" checked="{{playMode === 'random'}}" color="#ff621f" />随机</label>
+        </radio-group>
+      </view>
+      <view class="row">
+        <text class="row-label">间隔(秒)</text>
+        <input class="input" type="number" value="{{intervalInput}}" bindinput="onIntervalInput" placeholder="如 60" />
+        <button class="btn btn-mini" disabled="{{busy}}" bindtap="cmdSetPlay">应用 0x10</button>
+      </view>
+      <view class="row">
+        <text class="row-label">系统校时</text>
+        <text class="row-hint">把手机当前时间同步给设备 RTC</text>
+        <button class="btn btn-mini" disabled="{{busy}}" bindtap="cmdSetTime">校时 0x11</button>
+      </view>
+    </view>
+
+    <!-- 图片类 -->
+    <view class="card">
+      <view class="card-title sec-title">图片类</view>
+
+      <view class="row">
+        <text class="row-label">上传槽位</text>
+        <input class="input" type="number" value="{{uploadIndexInput}}" bindinput="onUploadIndexInput" placeholder="留空=自动选空位{{autoUploadIndex >= 0 ? '(当前' + autoUploadIndex + ')' : ''}}" />
+      </view>
+      <view class="btn-grid">
+        <button class="btn btn-primary" disabled="{{busy || uploading}}" bindtap="cmdUploadTest">上传彩条测试图</button>
+        <button class="btn btn-primary" disabled="{{busy || uploading}}" bindtap="cmdUploadAlbum">上传相册图片</button>
+      </view>
+      <view wx:if="{{uploading}}" class="progress">
+        <view class="progress-bar"><view class="progress-fill" style="width: {{uploadPercent}}%"></view></view>
+        <text class="progress-text">图传中 {{uploadPercent}}%</text>
+      </view>
+
+      <view class="row">
+        <text class="row-label">删除图片</text>
+        <input class="input" value="{{deleteInput}}" bindinput="onDeleteInput" placeholder="索引,如 0,2" />
+        <button class="btn btn-mini btn-danger" disabled="{{busy}}" bindtap="cmdDelete">删除 0x12</button>
+      </view>
+      <view class="row">
+        <text class="row-label">切换显示</text>
+        <input class="input" type="number" value="{{switchInput}}" bindinput="onSwitchInput" placeholder="要显示的索引" />
+        <button class="btn btn-mini" disabled="{{busy}}" bindtap="cmdSwitch">切换 0x24</button>
+      </view>
+    </view>
+
+    <!-- 收发日志控制台 -->
+    <view class="card">
+      <view class="card-head">
+        <text class="card-title">收发控制台</text>
+        <view class="ghost-btn" bindtap="clearLogs">清空</view>
+      </view>
+      <scroll-view scroll-y class="console" scroll-top="0">
+        <view wx:if="{{!logs.length}}" class="console-empty">这里会实时显示每一帧的 16 进制收发数据…</view>
+        <view wx:for="{{logs}}" wx:key="id" class="log-line log-{{item.type}}">
+          <text class="log-time">{{item.time}}</text>
+          <text class="log-text">{{item.text}}</text>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+</view>

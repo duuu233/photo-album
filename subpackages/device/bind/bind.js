@@ -89,6 +89,19 @@ Page({
     }
   },
 
+  // 打开硬件联调调试台：开发对接阶段在这里逐个点按钮试每条 BLE 指令、看收发的 16 进制数据。
+  // 可从某个已扫描到的设备直接带 deviceId 进去（免去再扫一次）；不带则在调试台里自行搜索连接。
+  openDebug(e) {
+    const id = e && e.currentTarget && e.currentTarget.dataset.id
+    const device = id ? this.data.devices.find(item => item.id === id || item.deviceId === id) : null
+    const query = device
+      ? `?id=${device.deviceId}&name=${encodeURIComponent(device.name || '')}`
+      : ''
+    wx.navigateTo({
+      url: `/subpackages/device/debug/debug${query}`
+    })
+  },
+
   openHelp() {
     this.setData({
       showHelp: true
