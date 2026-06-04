@@ -39,11 +39,14 @@ Page({
     switchInput: '0', // 0x24 要显示的图片索引
     deleteInput: '', // 0x12 要删除的图片索引，逗号分隔，如 "0,2"
     uploadIndexInput: '', // 上传槽位，留空则自动选空闲位
+    pace: 45, // 图传每包发送间隔(ms)，越小越快；从慢到快试，找你这台设备不丢包的最快值
 
     // 状态
     busy: false, // 有指令正在等应答，避免并发
     uploading: false,
     uploadPercent: 0,
+    uploadStatus: '', // 图传结果/失败原因（常驻显示，方便排查）
+    uploadStatusType: '', // info / ok / err
 
     logs: [] // 收发日志（最新在最上）
   },
@@ -68,8 +71,17 @@ Page({
   onUnload() {
     deviceBle.setMonitor(null) // 取消监听，避免离开页面后还在往已销毁的页面 setData
     bluetooth.stopDiscovery()
+    wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false }) // 离开页面恢复正常息屏
     if (this.data.deviceId) {
       deviceBle.disconnect(this.data.deviceId) // 释放连接，让设备能重新广播被别的手机连
+    }
+  },
+
+  // 页面进入后台（息屏 / 切到微信外 / 跳走）。图传在后台无法继续（蓝牙被挂起、设备会超时中止），
+  // 这里打上中止标记，让正在进行的图传尽快干净停下，避免回前台后报含糊错误。
+  onHide() {
+    if (this.data.uploading) {
+      this._uploadAborted = true
     }
   },
 
@@ -168,9 +180,11 @@ Page({
     }
     this.setData({ connecting: true })
     try {
-      await deviceBle.ensureConnection(this.data.deviceId)
+      const session = await deviceBle.ensureConnection(this.data.deviceId)
       this.setData({ connected: true })
       this.appendLog({ type: 'ok', text: `已连接：${this.data.deviceName}` })
+      // MTU 决定图传每包能塞多少字节，连接后打出来便于排查图传问题
+      this.appendLog({ type: 'act', text: `协商 MTU=${session.mtu} 字节，图传每包数据 ${session.dataChunk} 字节` })
       await this.refreshInfoSilently()
     } catch (error) {
       this.setData({ connected: false })
@@ -247,7 +261,7 @@ Page({
 
   cmdGetPlay() {
     this.runCommand('获取播放配置(0x02)', () => deviceBle.getPlayConfig(this.data.deviceId), {
-      format: cfg => `播放配置：${cfg.playMode === 'random' ? '随机' : '顺序'} · 间隔 ${cfg.intervalSeconds} 秒`
+      format: cfg => `播放配置：${this.playModeText(cfg.playMode)} · 间隔 ${cfg.intervalSeconds} 秒`
     })
   },
 
@@ -264,6 +278,11 @@ Page({
   },
 
   // ── 设置类指令 ──────────────────────────────────────────
+  // 播放模式中文名：order 顺序 / random 随机 / manual 手动
+  playModeText(mode) {
+    return mode === 'random' ? '随机' : (mode === 'manual' ? '手动' : '顺序')
+  },
+
   onPlayModeChange(e) {
     this.setData({ playMode: e.detail.value })
   },
@@ -280,7 +299,7 @@ Page({
     }
     this.runCommand('设置播放配置(0x10)', () => deviceBle.setPlayback(this.data.deviceId, this.data.playMode, interval), {
       refresh: true,
-      format: () => `已设为 ${this.data.playMode === 'random' ? '随机' : '顺序'} 播放 · 间隔 ${interval} 秒`
+      format: () => `已设为 ${this.playModeText(this.data.playMode)} 播放 · 间隔 ${interval} 秒`
     })
   },
 
@@ -328,6 +347,11 @@ Page({
 
   onUploadIndexInput(e) {
     this.setData({ uploadIndexInput: e.detail.value })
+  },
+
+  // 切换图传发送速度（每包间隔 ms）。建议从「稳」往「快」试：哪一档开始丢包/卡住，就退回上一档。
+  onPaceChange(e) {
+    this.setData({ pace: Number(e.detail.value) })
   },
 
   // 上传彩条测试图：不依赖任何图片，数据尺寸天然正确，最适合首次验证图传链路是否打通
@@ -434,7 +458,15 @@ Page({
     }
 
     const totalPackets = Math.ceil(frame.dataSize / 236)
-    this.setData({ uploading: true, uploadPercent: 0 })
+    this._uploadAborted = false // 重置中止标记
+    // 上传期间保持屏幕常亮：避免自动息屏导致蓝牙被挂起、传输中断
+    wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: true })
+    this.setData({
+      uploading: true,
+      uploadPercent: 0,
+      uploadStatus: `传输中：槽位 ${index}，共 ${totalPackets} 包…（请保持屏幕常亮，勿锁屏/切后台）`,
+      uploadStatusType: 'info'
+    })
     this.appendLog({ type: 'act', text: `${label} → 槽位 ${index}，数据 ${frame.dataSize} 字节 / ${totalPackets} 包` })
 
     try {
@@ -444,20 +476,35 @@ Page({
         width: info.width,
         height: info.height,
         data: frame.data,
+        pace: this.data.pace, // 发送速度（每包间隔 ms），由页面"发送速度"档位决定
+        shouldAbort: () => this._uploadAborted, // 息屏/切后台时由 onHide 置为 true
         onProgress: (done, total) => {
-          this.setData({ uploadPercent: Math.floor((done / total) * 100) })
+          this.setData({
+            uploadPercent: Math.floor((done / total) * 100),
+            uploadStatus: `传输中：${done}/${total} 包`,
+            uploadStatusType: 'info'
+          })
         }
       })
-      this.appendLog({ type: 'ok', text: `图传完成：设备现存 ${summary.imgCount} 张，剩余 ${summary.storageFree} 字节` })
+      const okText = `图传完成 ✓ 设备现存 ${summary.imgCount} 张，剩余 ${summary.storageFree} 字节`
+      this.appendLog({ type: 'ok', text: okText })
+      this.setData({ uploadStatus: okText, uploadStatusType: 'ok' })
       // 传完顺手刷新屏幕显示这张，便于直接在屏上确认
       await deviceBle.refreshScreen(this.data.deviceId, index)
       await this.refreshInfoSilently()
       wx.showToast({ title: '上传成功', icon: 'success' })
     } catch (error) {
-      this.appendLog({ type: 'err', text: `图传失败：${error.message}` })
-      wx.showModal({ title: '图传失败', content: error.message, showCancel: false })
+      // 失败原因常驻显示在页面上（可长按复制），不用去翻一闪而过的弹窗
+      // 只要期间发生过息屏/切后台(_uploadAborted)，无论报的是中止还是写失败，都按"息屏中断"提示
+      const aborted = this._uploadAborted || (error && error.message === 'UPLOAD_ABORTED')
+      const text = aborted
+        ? '图传已中断：上传时手机息屏/切到后台，蓝牙在后台会暂停、设备也会超时。请保持屏幕常亮后重新上传。'
+        : `图传失败：${error.message}`
+      this.appendLog({ type: 'err', text })
+      this.setData({ uploadStatus: text, uploadStatusType: 'err' })
     } finally {
       this.setData({ uploading: false })
+      wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false }) // 传输结束恢复正常息屏
     }
   },
 

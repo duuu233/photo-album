@@ -200,6 +200,13 @@
   font-size: 22rpx;
 }
 
+.row-tip {
+  margin-top: 10rpx;
+  color: #8b9098;
+  font-size: 22rpx;
+  line-height: 1.4;
+}
+
 .input {
   flex: 1;
   height: 64rpx;
@@ -248,6 +255,35 @@
   color: #ff621f;
   font-size: 24rpx;
   font-weight: 600;
+}
+
+/* 图传结果/失败原因常驻横幅（可长按复制） */
+.upload-status {
+  margin-top: 16rpx;
+  padding: 18rpx 22rpx;
+  border-radius: 14rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.upload-status__text {
+  word-break: break-all;
+}
+
+.upload-status--info {
+  color: #5b6675;
+  background: #f2f5fc;
+}
+
+.upload-status--ok {
+  color: #1f8a52;
+  background: rgba(33, 193, 122, 0.12);
+}
+
+.upload-status--err {
+  color: #c7372f;
+  background: rgba(231, 76, 60, 0.1);
 }
 
 /* 扫描结果 */

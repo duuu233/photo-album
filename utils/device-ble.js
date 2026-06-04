@@ -116,6 +116,49 @@ function handleNotify(session, value) {
   }
 }
 
+// 协商 MTU（一次能传多少字节）。这是图传能否成功的关键：
+//   数据包整帧 = SOF+CMD+LEN(2)+PKT_SEQ(2)+DATA+CRC(2) = DATA + 8 字节固定开销，
+//   而蓝牙单次可写 = MTU - 3（ATT 头），整帧必须塞得下，否则会被静默丢弃 → 图传卡死。
+// 安卓默认 MTU 常只有 23，必须主动调大；iOS 由系统自动协商（setBLEMTU 会失败，忽略即可）。
+async function negotiateMtu(deviceId) {
+  let mtu = 0
+
+  // 安卓：把 MTU 顶到协议设计值 247；成功会返回实际协商到的值
+  if (wx.setBLEMTU) {
+    try {
+      const res = await wxp(wx.setBLEMTU, { deviceId, mtu: 247 })
+      if (res && res.mtu) {
+        mtu = res.mtu
+      }
+    } catch (error) {
+      // iOS 不支持手动设置，走下面的读取/兜底
+    }
+  }
+
+  // 读取真实协商到的 MTU（安卓/较新 iOS 基础库支持）
+  if (!mtu && wx.getBLEMTU) {
+    try {
+      const res = await wxp(wx.getBLEMTU, { deviceId, writeType: 'write' })
+      if (res && res.mtu) {
+        mtu = res.mtu
+      }
+    } catch (error) {
+      // 读不到就用兜底值
+    }
+  }
+
+  // 读不到时给个对 iOS 安全的保守值（iOS 实际通常 ≥185），保证整帧塞得下、不丢包
+  return mtu || 185
+}
+
+// 由 MTU 推算每个图片数据包能装多少字节（上限 236，见 6.8.2）。
+// 必须保证「整帧(=chunk+8) ≤ 单次可写(=MTU-3)」，否则数据包会被静默丢弃导致图传卡死。
+function chunkFromMtu(mtu) {
+  const writable = (mtu || 185) - 3 // 单次可写 = MTU - 3
+  const maxFrame = Math.min(writable, 244) // 协议整帧上限 244
+  return Math.min(236, Math.max(1, maxFrame - 8)) // 减 8 字节固定开销
+}
+
 // 建立连接并发现 FF00 主服务下的写(FF01)/通知(FF02)特征，开启通知。结果缓存到会话。
 async function ensureConnection(deviceId) {
   if (sessions[deviceId] && sessions[deviceId].ready) {
@@ -146,6 +189,9 @@ async function ensureConnection(deviceId) {
     state: true
   })
 
+  // 关键：协商 MTU 并据此定好每包数据大小，避免大数据包被静默丢弃导致图传卡死
+  const mtu = await negotiateMtu(deviceId)
+
   const session = {
     deviceId,
     serviceId: service.uuid,
@@ -154,6 +200,8 @@ async function ensureConnection(deviceId) {
     rxBuffer: [],
     pending: {},
     frameListeners: [], // 临时帧监听者（图传等待 0x23 应答时往里塞，用完移除）
+    mtu, // 协商到的 MTU
+    dataChunk: chunkFromMtu(mtu), // 每个图片数据包可装的字节数
     ready: true
   }
   sessions[deviceId] = session
@@ -191,7 +239,17 @@ async function request(deviceId, cmd, payload, timeout = 6000) {
   return ackPromise
 }
 
-// 不等待 ACK 的裸写：图传数据包(0x21)走窗口机制，靠 0x23 累计应答，不逐包等 0x7F。
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// 图传数据包之间的发送间隔（毫秒）。FF01 用「无应答写」，写得太快有两个后果：
+//   1) 把手机蓝牙发送缓冲冲爆 → writeValueToCharacteristics error；
+//   2) 设备端（BLE 收包 + 写 Flash）跟不上 → 收一阵就不再前进（ACK_SEQ 卡住）。
+// 留足间隔让两边都喘得过气。先求稳（值偏大），联调通了再往小调提速。
+const PACKET_PACE_MS = 45
+
+// 裸写一帧（默认写类型，由特征支持的属性决定——本设备 FF01 为无应答写）。
 async function writeFrame(session, cmd, payload) {
   const value = protocol.buildFrame(cmd, payload)
   reportFrame('TX', session.deviceId, cmd, value)
@@ -203,39 +261,78 @@ async function writeFrame(session, cmd, payload) {
   })
 }
 
-// 等待一帧 0x23 图传应答（ACK_SEQ）。超时(默认 1.5s)按「连接中断/丢包」处理，由上层决定重发。
-function waitForImgAck(session, timeout) {
-  return new Promise((resolve, reject) => {
-    let settled = false
-    const remove = () => {
-      const index = session.frameListeners.indexOf(listener)
-      if (index >= 0) {
-        session.frameListeners.splice(index, 1)
+// 写一个图传数据包，带「缓冲忙就退避重试」：写失败(常见 writeValueToCharacteristics error 是缓冲暂满)
+// 不立刻判死，稍等再试，几次都不行才抛出。
+async function writePacket(session, seq, chunk) {
+  let attempt = 0
+  for (;;) {
+    try {
+      await writeFrame(session, protocol.CMD.IMG_DATA, protocol.buildImgDataPayload(seq, chunk))
+      return
+    } catch (error) {
+      if (++attempt > 4) {
+        throw error
+      }
+      await sleep(80) // 发送缓冲可能暂时满，等一下再写
+    }
+  }
+}
+
+// 整个图传期间挂一个常驻监听器，持续记录设备回报的「已连续接收最后包号」的最大值。
+// 用「取最大值 + 等待推进」的方式，天然兼容重复/迟到/乱序的 0x23 应答，比一次性等单帧更稳。
+function createAckTracker(session) {
+  const state = { lastAckSeq: -1, waiters: [] }
+
+  const listener = frame => {
+    if (frame.cmd !== protocol.CMD.IMG_ACK || !frame.crcOk) {
+      return
+    }
+    const seq = protocol.parseImgAck(frame.payload).ackSeq
+    if (seq > state.lastAckSeq) {
+      state.lastAckSeq = seq
+    }
+    state.waiters.splice(0).forEach(wake => wake()) // 唤醒所有在等推进的人
+  }
+  session.frameListeners.push(listener)
+
+  return {
+    get last() {
+      return state.lastAckSeq
+    },
+    // 等到 lastAckSeq 超过 minExclusive（即至少又确认了一个新包），或超时 reject
+    waitAdvance(minExclusive, timeout) {
+      return new Promise((resolve, reject) => {
+        if (state.lastAckSeq > minExclusive) {
+          resolve(state.lastAckSeq)
+          return
+        }
+        const onWake = () => {
+          if (state.lastAckSeq > minExclusive) {
+            cleanup()
+            resolve(state.lastAckSeq)
+          }
+        }
+        const cleanup = () => {
+          clearTimeout(timer)
+          const i = state.waiters.indexOf(onWake)
+          if (i >= 0) {
+            state.waiters.splice(i, 1)
+          }
+        }
+        const timer = setTimeout(() => {
+          cleanup()
+          reject(new Error('IMG_ACK_TIMEOUT'))
+        }, timeout)
+        state.waiters.push(onWake)
+      })
+    },
+    dispose() {
+      const i = session.frameListeners.indexOf(listener)
+      if (i >= 0) {
+        session.frameListeners.splice(i, 1)
       }
     }
-    const timer = setTimeout(() => {
-      if (settled) {
-        return
-      }
-      settled = true
-      remove()
-      reject(new Error('IMG_ACK_TIMEOUT'))
-    }, timeout || 1500)
-    const listener = frame => {
-      if (settled || frame.cmd !== protocol.CMD.IMG_ACK) {
-        return
-      }
-      settled = true
-      clearTimeout(timer)
-      remove()
-      if (!frame.crcOk) {
-        reject(new Error('图传应答 CRC 校验失败'))
-        return
-      }
-      resolve(protocol.parseImgAck(frame.payload))
-    }
-    session.frameListeners.push(listener)
-  })
+  }
 }
 
 // 读设备信息：CMD=0x01 拿核心信息，再用 CMD=0x03 补固件号（固件失败不阻断主流程）
@@ -306,6 +403,9 @@ async function uploadImage(deviceId, options) {
   const data = options.data instanceof Uint8Array ? options.data : new Uint8Array(options.data)
   const dataSize = data.length
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : function () {}
+  // 中止钩子：返回 true 时立即停止图传（页面在息屏/切后台时会让它返回 true）。
+  // 图传在后台无法继续（蓝牙被挂起、设备 1s 超时会自行中止），所以及时干净地停掉，给出清晰提示。
+  const shouldAbort = typeof options.shouldAbort === 'function' ? options.shouldAbort : function () { return false }
 
   // 1) 0x20 帧头：告诉设备屏幕类型/索引/宽高/数据大小/整图 CRC32，等设备点头(RESULT=0x00)再发数据。
   const crc32 = imageCodec.crc32Mpeg2(data)
@@ -317,50 +417,62 @@ async function uploadImage(deviceId, options) {
     format: 0x01,
     dataSize,
     crc32
-  }))
+  }), 10000)
   if (startAck.result !== 0x00) {
     throw new Error(`帧头被拒绝(0x20)：${protocol.resultText(startAck.result)}`)
   }
 
-  // 2) 0x21 数据：每片最多 236 字节；窗口 5 包，发满 5 包等一次 0x23(ACK_SEQ)。
-  const CHUNK = 236
+  // 2) 0x21 数据：每片大小按协商到的 MTU 决定（上限 236）；窗口 5 包，发满 5 包等一次 0x23(ACK_SEQ)。
+  const CHUNK = session.dataChunk || 236
   const WINDOW = 5
+  // 每包发送间隔(ms)：可由调用方传 pace 调速；越小越快，但太小设备会跟不上而丢包/卡住。默认走保守值。
+  const pace = Number.isFinite(options.pace) ? Math.max(0, options.pace) : PACKET_PACE_MS
+  const windowPause = Math.max(10, pace) // 窗口之间的停顿，至少 10ms，随 pace 调整
   const totalPackets = Math.ceil(dataSize / CHUNK)
   let nextSeq = 0 // 下一个要发送的包号（= 已确认的最后包号 + 1）
   let retries = 0 // 同一窗口的重试次数，连续失败则判定连接中断
   onProgress(0, totalPackets, 'start')
 
-  while (nextSeq < totalPackets) {
-    const windowEnd = Math.min(nextSeq + WINDOW, totalPackets)
-    for (let seq = nextSeq; seq < windowEnd; seq++) {
-      const chunk = data.subarray(seq * CHUNK, Math.min((seq + 1) * CHUNK, dataSize))
-      await writeFrame(session, protocol.CMD.IMG_DATA, protocol.buildImgDataPayload(seq, chunk))
-    }
-
-    let ack
-    try {
-      ack = await waitForImgAck(session, 1500) // 文档要求 1s 超时，这里留点余量
-    } catch (error) {
-      // 超时：可能整窗丢失或连接中断，重发当前窗口；连续多次失败则放弃
-      if (++retries > 8) {
-        throw new Error('图传超时，连接可能已中断')
+  const tracker = createAckTracker(session)
+  try {
+    while (nextSeq < totalPackets) {
+      if (shouldAbort()) {
+        throw new Error('UPLOAD_ABORTED') // 息屏/切后台：立即停，避免在后台空转后报含糊错误
       }
-      continue
-    }
+      const windowEnd = Math.min(nextSeq + WINDOW, totalPackets)
+      // 逐包发送：每包之间留 PACKET_PACE_MS 间隔做流控，避免冲爆发送缓冲导致写失败/丢包。
+      for (let seq = nextSeq; seq < windowEnd; seq++) {
+        const chunk = data.subarray(seq * CHUNK, Math.min((seq + 1) * CHUNK, dataSize))
+        await writePacket(session, seq, chunk)
+        if (pace > 0) {
+          await sleep(pace)
+        }
+      }
 
-    const advancedTo = ack.ackSeq + 1 // 设备已连续收到 ackSeq，下次应从 ackSeq+1 发
-    if (advancedTo > nextSeq) {
-      nextSeq = advancedTo // 有进展：窗口前移
+      // 等设备的 0x23 把「已连续接收包号」推过 nextSeq-1（= 至少又确认了一个新包）
+      try {
+        await tracker.waitAdvance(nextSeq - 1, 2500)
+      } catch (error) {
+        // 超时没等到推进：设备多半在忙/落盘没收下这窗。退避(等更久)再重发，给它时间恢复。
+        if (++retries > 15) {
+          throw new Error(`图传中断：设备停在已接收第 ${tracker.last} 包不再前进。可能设备忙或处理不过来。当前 MTU=${session.mtu}、每包 ${CHUNK} 字节`)
+        }
+        await sleep(Math.min(1500, 250 * retries)) // 指数退避：第1次250ms，逐次加长，最多1.5s
+        continue
+      }
+
+      nextSeq = tracker.last + 1 // 推进到设备已确认的下一个包
       retries = 0
-    } else if (++retries > 8) {
-      throw new Error('图传持续丢包，已中断')
+      onProgress(Math.min(nextSeq, totalPackets), totalPackets, 'data')
+      await sleep(windowPause) // 窗口间停顿，给设备落盘/处理留时间
     }
-    // 无进展(ACK_SEQ 没涨)：说明有丢包，nextSeq 不变 → 下一轮重发同一窗口
-    onProgress(Math.min(nextSeq, totalPackets), totalPackets, 'data')
+  } finally {
+    tracker.dispose() // 无论成功失败都摘掉常驻监听器
   }
 
   // 3) 0x22 结束：设备核对总长度与整图 CRC32，写入 Flash 并更新 IMG_MASK。
-  const endAck = await request(deviceId, protocol.CMD.IMG_END, [])
+  // 大图算整图 CRC32 + 落盘可能要好几秒，这里给足 20s 等待，避免误判超时。
+  const endAck = await request(deviceId, protocol.CMD.IMG_END, [], 20000)
   if (endAck.result !== 0x00) {
     throw new Error(`结束校验失败(0x22)：${protocol.resultText(endAck.result)}`)
   }

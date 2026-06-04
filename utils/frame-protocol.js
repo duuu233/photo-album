@@ -40,13 +40,16 @@ const SCREEN_TYPES = {
   0x03: { label: '7.3寸', model: 'EF6-730', width: 0, height: 0, capacity: 0 }
 }
 
-// 播放模式（6.7.3）：0x00 顺序 / 0x01 随机。其余值保留，按顺序处理。
+// 播放模式（6.7.3）：0x00 顺序 / 0x01 随机 / 0x02 手动。
+const PLAY_MODES = { 0x00: 'order', 0x01: 'random', 0x02: 'manual' }
+const PLAY_MODE_BYTES = { order: 0x00, random: 0x01, manual: 0x02 }
+
 function playModeToString(value) {
-  return value === 0x01 ? 'random' : 'order'
+  return PLAY_MODES[value] || 'order'
 }
 
 function playModeToByte(mode) {
-  return mode === 'random' ? 0x01 : 0x00
+  return PLAY_MODE_BYTES[mode] !== undefined ? PLAY_MODE_BYTES[mode] : 0x00
 }
 
 // ── 基础工具 ──────────────────────────────────────────────

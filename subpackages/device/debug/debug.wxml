@@ -44,7 +44,7 @@
         <view class="info-cell"><text class="k">容量</text><text class="v">{{info.capacity}} 张</text></view>
         <view class="info-cell"><text class="k">已存</text><text class="v">{{info.imgCount}} 张</text></view>
         <view class="info-cell"><text class="k">当前显示</text><text class="v">{{info.curImgIndex === 255 ? '无' : info.curImgIndex}}</text></view>
-        <view class="info-cell"><text class="k">播放</text><text class="v">{{info.playMode === 'random' ? '随机' : '顺序'}} / {{info.intervalSeconds}}s</text></view>
+        <view class="info-cell"><text class="k">播放</text><text class="v">{{info.playMode === 'random' ? '随机' : (info.playMode === 'manual' ? '手动' : '顺序')}} / {{info.intervalSeconds}}s</text></view>
         <view class="info-cell"><text class="k">固件</text><text class="v">{{info.firmwareVersion || '--'}}</text></view>
       </view>
       <view class="kv"><text class="k">已有图片索引</text><text class="v">{{existingIndexes}}</text></view>
@@ -69,6 +69,7 @@
         <radio-group class="radio-row" bindchange="onPlayModeChange">
           <label class="radio"><radio value="order" checked="{{playMode === 'order'}}" color="#ff621f" />顺序</label>
           <label class="radio"><radio value="random" checked="{{playMode === 'random'}}" color="#ff621f" />随机</label>
+          <label class="radio"><radio value="manual" checked="{{playMode === 'manual'}}" color="#ff621f" />手动</label>
         </radio-group>
       </view>
       <view class="row">
@@ -91,6 +92,16 @@
         <text class="row-label">上传槽位</text>
         <input class="input" type="number" value="{{uploadIndexInput}}" bindinput="onUploadIndexInput" placeholder="留空=自动选空位{{autoUploadIndex >= 0 ? '(当前' + autoUploadIndex + ')' : ''}}" />
       </view>
+      <view class="row">
+        <text class="row-label">发送速度</text>
+        <radio-group class="radio-row" bindchange="onPaceChange">
+          <label class="radio"><radio value="45" checked="{{pace === 45}}" color="#ff621f" />稳</label>
+          <label class="radio"><radio value="20" checked="{{pace === 20}}" color="#ff621f" />较快</label>
+          <label class="radio"><radio value="10" checked="{{pace === 10}}" color="#ff621f" />快</label>
+          <label class="radio"><radio value="3" checked="{{pace === 3}}" color="#ff621f" />极速</label>
+        </radio-group>
+      </view>
+      <view class="row-tip">从「稳」往右试：哪档开始失败/卡住，就退回上一档。当前每包间隔 {{pace}}ms</view>
       <view class="btn-grid">
         <button class="btn btn-primary" disabled="{{busy || uploading}}" bindtap="cmdUploadTest">上传彩条测试图</button>
         <button class="btn btn-primary" disabled="{{busy || uploading}}" bindtap="cmdUploadAlbum">上传相册图片</button>
@@ -98,6 +109,10 @@
       <view wx:if="{{uploading}}" class="progress">
         <view class="progress-bar"><view class="progress-fill" style="width: {{uploadPercent}}%"></view></view>
         <text class="progress-text">图传中 {{uploadPercent}}%</text>
+      </view>
+
+      <view wx:if="{{uploadStatus}}" class="upload-status upload-status--{{uploadStatusType}}">
+        <text class="upload-status__text" user-select selectable>{{uploadStatus}}</text>
       </view>
 
       <view class="row">
