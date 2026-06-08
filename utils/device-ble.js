@@ -202,6 +202,9 @@ async function ensureConnection(deviceId) {
     frameListeners: [], // 临时帧监听者（图传等待 0x23 应答时往里塞，用完移除）
     mtu, // 协商到的 MTU
     dataChunk: chunkFromMtu(mtu), // 每个图片数据包可装的字节数
+    // 实测指定有应答写(write)会报 10007「特征不支持此操作」，与 PRD「FF01: Write Without Response」一致——
+    // 这台设备只能用无应答写。无应答写不可靠(可能被手机/链路悄悄丢)，只能靠应用层窗口 ACK 重传兜底。
+    writeType: 'writeNoResponse',
     ready: true
   }
   sessions[deviceId] = session
@@ -250,15 +253,19 @@ function sleep(ms) {
 const PACKET_PACE_MS = 45
 
 // 裸写一帧（默认写类型，由特征支持的属性决定——本设备 FF01 为无应答写）。
-async function writeFrame(session, cmd, payload) {
+async function writeFrame(session, cmd, payload, writeType) {
   const value = protocol.buildFrame(cmd, payload)
   reportFrame('TX', session.deviceId, cmd, value)
-  await wxp(wx.writeBLECharacteristicValue, {
+  const params = {
     deviceId: session.deviceId,
     serviceId: session.serviceId,
     characteristicId: session.writeCharId,
     value
-  })
+  }
+  if (writeType) {
+    params.writeType = writeType // 'write' 有应答(可靠) / 'writeNoResponse' 无应答(快但可能丢)
+  }
+  await wxp(wx.writeBLECharacteristicValue, params)
 }
 
 // 写一个图传数据包，带「缓冲忙就退避重试」：写失败(常见 writeValueToCharacteristics error 是缓冲暂满)
@@ -267,7 +274,7 @@ async function writePacket(session, seq, chunk) {
   let attempt = 0
   for (;;) {
     try {
-      await writeFrame(session, protocol.CMD.IMG_DATA, protocol.buildImgDataPayload(seq, chunk))
+      await writeFrame(session, protocol.CMD.IMG_DATA, protocol.buildImgDataPayload(seq, chunk), session.writeType)
       return
     } catch (error) {
       if (++attempt > 4) {
@@ -427,10 +434,12 @@ async function uploadImage(deviceId, options) {
   const WINDOW = 5
   // 每包发送间隔(ms)：可由调用方传 pace 调速；越小越快，但太小设备会跟不上而丢包/卡住。默认走保守值。
   const pace = Number.isFinite(options.pace) ? Math.max(0, options.pace) : PACKET_PACE_MS
-  const windowPause = Math.max(10, pace) // 窗口之间的停顿，至少 10ms，随 pace 调整
   const totalPackets = Math.ceil(dataSize / CHUNK)
   let nextSeq = 0 // 下一个要发送的包号（= 已确认的最后包号 + 1）
   let retries = 0 // 同一窗口的重试次数，连续失败则判定连接中断
+  // 窗口之间的停顿必须「小」：PRD 6.4.1 规定「设备超过 1 秒没收到下一包数据即判定传输中断」，
+  // 所以图传期间要持续快速喂数据，窗口之间绝不能长时间停顿，否则设备会单方面中止本次传输。
+  const windowPause = Math.max(10, pace)
   onProgress(0, totalPackets, 'start')
 
   const tracker = createAckTracker(session)
@@ -439,32 +448,43 @@ async function uploadImage(deviceId, options) {
       if (shouldAbort()) {
         throw new Error('UPLOAD_ABORTED') // 息屏/切后台：立即停，避免在后台空转后报含糊错误
       }
-      const windowEnd = Math.min(nextSeq + WINDOW, totalPackets)
-      // 逐包发送：每包之间留 PACKET_PACE_MS 间隔做流控，避免冲爆发送缓冲导致写失败/丢包。
+      // 卡住后主动「收敛」：每多重试一次，窗口就缩小一包（最终降到 1 包）、每包间隔就拉大一截。
+      // 很多固件只接收「按序的下一个包」、且 Flash 落盘期间会丢掉来不及处理的包；于是次待收包反复在设备
+      // 忙时抵达被丢，ACK_SEQ 就永远停在它前一个不动。缩窗+减速能让这个待收包在设备空闲时「单独」抵达，
+      // 打破死结。初次发送(retries===0)完全不受影响，正常速度不变。
+      const burst = retries === 0 ? WINDOW : Math.max(1, WINDOW - retries)
+      const sendPace = retries === 0 ? pace : Math.min(150, pace + 30 * retries)
+      const windowEnd = Math.min(nextSeq + burst, totalPackets)
+      // 逐包发送：每包之间留间隔做流控，避免冲爆发送缓冲导致写失败/丢包。
       for (let seq = nextSeq; seq < windowEnd; seq++) {
         const chunk = data.subarray(seq * CHUNK, Math.min((seq + 1) * CHUNK, dataSize))
         await writePacket(session, seq, chunk)
-        if (pace > 0) {
-          await sleep(pace)
+        if (sendPace > 0) {
+          await sleep(sendPace)
         }
       }
 
-      // 等设备的 0x23 把「已连续接收包号」推过 nextSeq-1（= 至少又确认了一个新包）
+      // 等设备的 0x23 把「已连续接收包号」推过 nextSeq-1（= 至少又确认了一个新包）。
+      // 超时必须 < 1s（PRD 6.4.1）：等不到 ACK 就尽快补发数据，赶在设备 1 秒接收超时前喂上；
+      // 否则设备会判定传输中断、清掉会话，之后再怎么重发都收不进，ACK_SEQ 会永远停住。
       try {
-        await tracker.waitAdvance(nextSeq - 1, 2500)
+        await tracker.waitAdvance(nextSeq - 1, 600)
       } catch (error) {
-        // 超时没等到推进：设备多半在忙/落盘没收下这窗。退避(等更久)再重发，给它时间恢复。
+        // 没等到推进：可能丢包或 ACK 迟到。立刻（极短退避）重发，务必赶在设备 1s 超时前把数据送到。
         if (++retries > 15) {
           throw new Error(`图传中断：设备停在已接收第 ${tracker.last} 包不再前进。可能设备忙或处理不过来。当前 MTU=${session.mtu}、每包 ${CHUNK} 字节`)
         }
-        await sleep(Math.min(1500, 250 * retries)) // 指数退避：第1次250ms，逐次加长，最多1.5s
+        // 把卡顿实况抛给页面：停在第几包(stuckAt)、第几次重发。便于判断是「设备中断(stuckAt 死住不动)」
+        // 还是「链路慢(stuckAt 缓慢推进)」——这是向硬件提问时最关键的证据。
+        onProgress(Math.min(nextSeq, totalPackets), totalPackets, 'retry', { stuckAt: tracker.last, retries })
+        await sleep(Math.min(150, 50 * retries)) // 极短退避(≤150ms)：保证「等待+退避」远小于设备 1s 超时
         continue
       }
 
       nextSeq = tracker.last + 1 // 推进到设备已确认的下一个包
       retries = 0
       onProgress(Math.min(nextSeq, totalPackets), totalPackets, 'data')
-      await sleep(windowPause) // 窗口间停顿，给设备落盘/处理留时间
+      await sleep(windowPause) // 窗口间小停顿（必须远小于 1s，见 6.4.1，否则设备会判定中断）
     }
   } finally {
     tracker.dispose() // 无论成功失败都摘掉常驻监听器

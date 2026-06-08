@@ -184,7 +184,8 @@ Page({
       this.setData({ connected: true })
       this.appendLog({ type: 'ok', text: `已连接：${this.data.deviceName}` })
       // MTU 决定图传每包能塞多少字节，连接后打出来便于排查图传问题
-      this.appendLog({ type: 'act', text: `协商 MTU=${session.mtu} 字节，图传每包数据 ${session.dataChunk} 字节` })
+      const writeTypeText = session.writeType === 'write' ? '有应答写(可靠)' : '无应答写'
+      this.appendLog({ type: 'act', text: `协商 MTU=${session.mtu} 字节，图传每包数据 ${session.dataChunk} 字节，写入方式：${writeTypeText}` })
       await this.refreshInfoSilently()
     } catch (error) {
       this.setData({ connected: false })
@@ -383,7 +384,10 @@ Page({
     wx.showLoading({ title: '转换图片中', mask: true })
     let frame
     try {
-      const imageData = await this.imageToImageData(tempPath, info.width, info.height)
+      // 大图先按比例压一遍再解码：超大原图(几千万像素)在离屏 canvas 全分辨率解码时易内存吃紧/失败。
+      // 注意：这步只为让解码更稳，不改变上传量——上传的是定长六色帧缓存(宽×高÷2)，与原图大小无关。
+      const srcPath = await this.shrinkIfHuge(tempPath, info.width, info.height)
+      const imageData = await this.imageToImageData(srcPath, info.width, info.height)
       frame = imageCodec.fromImageData(imageData, info.width, info.height)
     } catch (error) {
       wx.hideLoading()
@@ -412,6 +416,44 @@ Page({
       return false
     }
     return true
+  },
+
+  // 大图预压缩：仅在原图长边明显大于目标显示尺寸时，按比例把长边限制到 maxEdge 再返回新临时路径。
+  // 目的是给后面的离屏 canvas 解码减负，避免超大原图直接全分辨率解码导致内存吃紧/解码失败。
+  // 任何环节失败（老版本不支持 / 取不到尺寸 / 压缩报错）都退回用原图，绝不阻断上传。
+  shrinkIfHuge(path, targetW, targetH) {
+    return new Promise(resolve => {
+      if (!wx.compressImage) {
+        resolve(path) // 基础库过老不支持 compressImage，直接用原图
+        return
+      }
+      wx.getImageInfo({
+        src: path,
+        success: ({ width, height }) => {
+          // 长边上限取「目标长边 ×2」并兜底 1280：留一倍清晰度余量，又把内存压在可控范围
+          const maxEdge = Math.max(1280, Math.max(targetW, targetH) * 2)
+          const srcMax = Math.max(width, height)
+          if (!srcMax || srcMax <= maxEdge) {
+            resolve(path) // 原图本就不大，无需压缩（也避免被放大）
+            return
+          }
+          const scale = maxEdge / srcMax
+          wx.compressImage({
+            src: path,
+            // 同一缩放系数算出的宽高，宽高比不变；设了尺寸后 quality 会失效，留着无害
+            compressedWidth: Math.round(width * scale),
+            compressedHeight: Math.round(height * scale),
+            quality: 80,
+            success: res => {
+              this.appendLog({ type: 'act', text: `原图 ${width}×${height} 较大，已预压到约 ${Math.round(width * scale)}×${Math.round(height * scale)} 再解码` })
+              resolve(res.tempFilePath)
+            },
+            fail: () => resolve(path) // 压缩失败退回原图
+          })
+        },
+        fail: () => resolve(path) // 取尺寸失败退回原图
+      })
+    })
   },
 
   // 用离屏 canvas 把图片解码并缩放到目标尺寸，取出 RGBA 像素（ImageData）
@@ -478,12 +520,18 @@ Page({
         data: frame.data,
         pace: this.data.pace, // 发送速度（每包间隔 ms），由页面"发送速度"档位决定
         shouldAbort: () => this._uploadAborted, // 息屏/切后台时由 onHide 置为 true
-        onProgress: (done, total) => {
-          this.setData({
-            uploadPercent: Math.floor((done / total) * 100),
-            uploadStatus: `传输中：${done}/${total} 包`,
-            uploadStatusType: 'info'
-          })
+        onProgress: (done, total, phase, detail) => {
+          const patch = { uploadPercent: Math.floor((done / total) * 100) }
+          if (phase === 'retry' && detail) {
+            // 卡顿重试：把「停在第几包、重发第几次」实时显示出来。
+            // 若 stuckAt 长时间不变 → 多为设备中断/链路断；若缓慢变大 → 只是慢，可能还能传完。
+            patch.uploadStatus = `传输卡顿：停在第 ${detail.stuckAt} 包，正第 ${detail.retries} 次重发…（此数字若长时间不动，基本是设备侧中断或链路问题）`
+            patch.uploadStatusType = 'info'
+          } else {
+            patch.uploadStatus = `传输中：${done}/${total} 包`
+            patch.uploadStatusType = 'info'
+          }
+          this.setData(patch)
         }
       })
       const okText = `图传完成 ✓ 设备现存 ${summary.imgCount} 张，剩余 ${summary.storageFree} 字节`
