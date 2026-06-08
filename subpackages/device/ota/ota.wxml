@@ -1,0 +1,69 @@
+<view class="mock-root ota-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <image class="mock-bg__image" src="/assets/images/bg01.png" mode="aspectFill"></image>
+  </view>
+
+  <page-nav title="OTA升级"></page-nav>
+
+  <view class="mock-content ota-content">
+    <view wx:if="{{loading}}" class="ota-card glass-panel loading-card">
+      <view class="loading-mark"></view>
+      <view class="loading-text">正在检查固件版本...</view>
+    </view>
+
+    <block wx:else>
+      <view class="version-card glass-panel">
+        <view class="version-badge">OTA</view>
+        <view class="version-copy">
+          <view class="device-name">{{device.name || '智能相框'}}</view>
+          <view class="version-line">当前版本 {{currentVersion}}</view>
+        </view>
+        <view class="status-pill {{statusClass}}">{{statusText}}</view>
+      </view>
+
+      <view class="upgrade-card glass-panel">
+        <view class="upgrade-head">
+          <view>
+            <view class="upgrade-title">固件版本 {{latestVersion}}</view>
+            <view class="upgrade-subtitle">升级包 {{packageSizeText}} · 最低电量 {{minBatteryText}}</view>
+          </view>
+          <view class="battery-text">电量 {{batteryText}}</view>
+        </view>
+
+        <view class="progress-track">
+          <view class="progress-fill" style="width: {{progressPercent}}%;"></view>
+        </view>
+        <view class="progress-meta">
+          <text>{{progressText || (state === 'available' ? '可开始升级' : '无需升级')}}</text>
+          <text>{{progressPercent}}%</text>
+        </view>
+      </view>
+
+      <view class="notes-card glass-panel">
+        <view class="card-title">升级内容</view>
+        <view wx:if="{{releaseNotes.length}}" class="note-list">
+          <view wx:for="{{releaseNotes}}" wx:key="*this" class="note-item">
+            <view class="note-dot"></view>
+            <text>{{item}}</text>
+          </view>
+        </view>
+        <view wx:else class="empty-note">暂无升级说明</view>
+      </view>
+
+      <view wx:if="{{errorMessage}}" class="error-card">
+        {{errorMessage}}
+      </view>
+
+      <view class="ota-tip">升级过程中请保持设备供电、手机屏幕常亮，并避免切换到后台。</view>
+
+      <button
+        class="ota-action {{((!canUpgrade && state !== 'failed') || state === 'upgrading') ? 'is-disabled' : ''}}"
+        hover-class="none"
+        disabled="{{!canUpgrade && state !== 'failed'}}"
+        bindtap="startUpgrade"
+      >
+        {{actionText}}
+      </button>
+    </block>
+  </view>
+</view>

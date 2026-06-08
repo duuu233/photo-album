@@ -11,6 +11,7 @@
         "list/list",
         "bind/bind",
         "detail/detail",
+        "ota/ota",
         "slideshow/slideshow",
         "debug/debug"
       ]

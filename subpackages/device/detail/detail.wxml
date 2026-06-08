@@ -64,12 +64,15 @@
 
 
 
-      <view class="detail-row">
+      <view class="detail-row" hover-class="none" bindtap="goOtaUpgrade">
         <view class="row-left">
           <image class="row-icon" src="/assets/images/device-detail-icon04.png" mode="aspectFit"></image>
           <text>OTA升级</text>
         </view>
-        <view class="row-value">版本{{firmwareVersion}}</view>
+        <view class="row-right">
+          <text>版本{{firmwareVersion}}</text>
+          <view class="ui-chevron"></view>
+        </view>
       </view>
     </view>
 

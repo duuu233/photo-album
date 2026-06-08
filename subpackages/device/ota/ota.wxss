@@ -1,0 +1,266 @@
+.ota-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+  padding-bottom: calc(176rpx + var(--safe-bottom));
+  margin-top: 48rpx;
+}
+
+.ota-card,
+.version-card,
+.upgrade-card,
+.notes-card {
+  position: relative;
+  z-index: 1;
+}
+
+.loading-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220rpx;
+  gap: 22rpx;
+  color: #687280;
+  font-size: 28rpx;
+}
+
+.loading-mark {
+  width: 34rpx;
+  height: 34rpx;
+  border: 4rpx solid rgba(255, 106, 32, 0.2);
+  border-top-color: #ff6a20;
+  border-radius: 50%;
+  animation: otaSpin 0.9s linear infinite;
+}
+
+@keyframes otaSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.version-card {
+  display: flex;
+  align-items: center;
+  min-height: 150rpx;
+  padding: 28rpx 34rpx;
+}
+
+.version-badge {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 86rpx;
+  height: 86rpx;
+  color: #ffffff;
+  background: linear-gradient(180deg, #ff8b3d 0%, #ff6421 100%);
+  border-radius: 24rpx;
+  box-shadow: 0 16rpx 34rpx rgba(255, 100, 33, 0.18);
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.version-copy {
+  flex: 1;
+  min-width: 0;
+  margin-left: 28rpx;
+}
+
+.device-name {
+  overflow: hidden;
+  color: #25282d;
+  font-size: 34rpx;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version-line {
+  margin-top: 14rpx;
+  color: #757d88;
+  font-size: 24rpx;
+  line-height: 1.2;
+}
+
+.status-pill {
+  flex: 0 0 auto;
+  min-width: 132rpx;
+  padding: 13rpx 18rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+
+.status-pill.is-latest {
+  color: #1f8c62;
+  background: rgba(31, 140, 98, 0.12);
+}
+
+.status-pill.is-available,
+.status-pill.is-upgrading {
+  color: #ff6421;
+  background: rgba(255, 100, 33, 0.12);
+}
+
+.status-pill.is-error {
+  color: #d83b34;
+  background: rgba(216, 59, 52, 0.1);
+}
+
+.upgrade-card {
+  padding: 38rpx 36rpx 34rpx;
+}
+
+.upgrade-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+
+.upgrade-title {
+  color: #25282d;
+  font-size: 36rpx;
+  font-weight: 800;
+  line-height: 1.18;
+}
+
+.upgrade-subtitle,
+.battery-text {
+  color: #747d89;
+  font-size: 24rpx;
+  line-height: 1.35;
+}
+
+.upgrade-subtitle {
+  margin-top: 16rpx;
+}
+
+.battery-text {
+  flex: 0 0 auto;
+  padding-top: 4rpx;
+}
+
+.progress-track {
+  width: 100%;
+  height: 18rpx;
+  margin-top: 44rpx;
+  overflow: hidden;
+  background: rgba(208, 217, 229, 0.86);
+  border-radius: 999rpx;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff9650 0%, #ff6421 100%);
+  border-radius: 999rpx;
+  transition: width 0.18s ease;
+}
+
+.progress-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 24rpx;
+  margin-top: 20rpx;
+  color: #687280;
+  font-size: 24rpx;
+  line-height: 1.35;
+}
+
+.progress-meta text:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.notes-card {
+  padding: 34rpx 36rpx;
+}
+
+.card-title {
+  color: #25282d;
+  font-size: 30rpx;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.note-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+  margin-top: 24rpx;
+}
+
+.note-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+  color: #59616d;
+  font-size: 26rpx;
+  line-height: 1.42;
+}
+
+.note-dot {
+  flex: 0 0 auto;
+  width: 10rpx;
+  height: 10rpx;
+  margin-top: 15rpx;
+  background: #ff6421;
+  border-radius: 50%;
+}
+
+.empty-note {
+  margin-top: 24rpx;
+  color: #808690;
+  font-size: 26rpx;
+}
+
+.error-card {
+  position: relative;
+  z-index: 1;
+  padding: 24rpx 30rpx;
+  color: #c7372f;
+  background: rgba(255, 240, 239, 0.92);
+  border: 2rpx solid rgba(255, 184, 178, 0.72);
+  border-radius: 24rpx;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.ota-tip {
+  position: relative;
+  z-index: 1;
+  color: #747d89;
+  font-size: 24rpx;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.ota-action {
+  position: fixed;
+  right: 48rpx;
+  bottom: calc(48rpx + var(--safe-bottom));
+  left: 48rpx;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 112rpx;
+  color: #ffffff;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
+  border-radius: 999rpx;
+  box-shadow: 0 18rpx 36rpx rgba(255, 98, 31, 0.22);
+  font-size: 36rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.ota-action.is-disabled,
+.ota-action[disabled] {
+  color: rgba(255, 255, 255, 0.82);
+  background: #cfd6df;
+  box-shadow: none;
+}

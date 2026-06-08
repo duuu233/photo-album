@@ -64,8 +64,9 @@
         <image class="empty-hero-art" src="/assets/images/empty_device_art.png" mode="aspectFit"></image>
         <view class="empty-hint">请先绑定相框设备后再投屏照片</view>
         <view class="bind-pill" hover-class="none" bindtap="showBindNowSheet">
-          <view class="btn-bluetooth">ᛒ</view>
-          <view class="bind-pill-text">绑定设备</view>
+       
+              <image class="mini-bluetooth" src="/assets/images/bluetooth-icon.png" mode="aspectFill"></image>
+          <view class="bind-pill-text">绑定设备</view> 
         </view>
       </block>
 
@@ -110,7 +111,7 @@
         <view class="sheet-close" hover-class="none" bindtap="closeHomeSheet">×</view>
         <view class="prompt-title">{{promptTitle}}</view>
         <view class="prompt-desc">{{promptDesc}}</view>
-        <view class="primary-action" hover-class="none" bindtap="confirmPrompt">{{promptview}}</view>
+        <view class="primary-action" hover-class="none" bindtap="confirmPrompt">{{promptButton}}</view>
       </view>
     </view>
 

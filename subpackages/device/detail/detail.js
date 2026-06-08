@@ -163,6 +163,12 @@ Page({
     })
   },
 
+  goOtaUpgrade() {
+    wx.navigateTo({
+      url: `/subpackages/device/ota/ota?id=${this.data.id}`
+    })
+  },
+
   showClearConfirm() {
     this.setData({
       showClearConfirm: true

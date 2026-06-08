@@ -1,6 +1,7 @@
 // 本地模拟后端：用一份存在 Storage 里的“数据库”模拟全部接口，无需真实服务端即可联调。
 // 入口是底部的 handle(options)，按 url/method 路由到对应处理函数；config.useMock 控制是否启用。
 const STORE_KEY = 'mockPhotoAlbumDb' // 模拟数据库在本地缓存中的键名
+const STORE_VERSION = 3
 
 const DEFAULT_USER = {
   id: 'u_mock_001',
@@ -14,6 +15,22 @@ const DEFAULT_USER = {
 // 纯蓝牙无后端：设备列表只保存用户真实绑定过的相框，初始为空（不再放种子假设备）。
 // 真实字段在 bindDevice 里由蓝牙读取结果（CMD=0x01/0x03）写入。
 const DEVICE_SEED = []
+
+const FIRMWARE_RELEASE = {
+  version: '1.2.0',
+  fileName: 'BoltStar_EF6_1.2.0.bin',
+  sizeBytes: 196608,
+  packageUrl: '',
+  checksum: 'mock-crc32-mpeg2',
+  minBattery: 20,
+  releaseDate: '2026-06-08',
+  mock: true,
+  releaseNotes: [
+    '优化照片写入稳定性',
+    '提升蓝牙 OTA 传输容错能力',
+    '修复部分设备重连后版本号刷新异常'
+  ]
+}
 
 const PHOTO_SEED = [
   {
@@ -125,21 +142,46 @@ function nowText() {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+function migrateStore(store) {
+  let changed = false
+
+  if (!store.firmwareRelease) {
+    store.firmwareRelease = clone(FIRMWARE_RELEASE)
+    changed = true
+  }
+
+  if (!Array.isArray(store.devices)) {
+    store.devices = []
+    changed = true
+  }
+
+  if (store.version !== STORE_VERSION) {
+    store.version = STORE_VERSION
+    changed = true
+  }
+
+  return changed
+}
+
 // 读取模拟数据库；首次使用或版本不符时用种子数据初始化并写回
 function readStore() {
   const store = wx.getStorageSync(STORE_KEY)
 
-  // version 升到 2：清掉旧的种子假设备（老测试机上残留的 3 台相册）。改字段后递增即可强制重建。
-  if (store && store.version === 2) {
+  // version 2 之后保留用户已绑定的真实设备，只补齐新增字段，不再重置整个库。
+  if (store && store.version >= 2) {
+    if (migrateStore(store)) {
+      wx.setStorageSync(STORE_KEY, store)
+    }
     return store
   }
 
   const initialStore = {
-    version: 2,
+    version: STORE_VERSION,
     user: clone(DEFAULT_USER),
     devices: clone(DEVICE_SEED),
     photos: clone(PHOTO_SEED),
-    records: clone(RECORD_SEED)
+    records: clone(RECORD_SEED),
+    firmwareRelease: clone(FIRMWARE_RELEASE)
   }
   wx.setStorageSync(STORE_KEY, initialStore)
   return initialStore
@@ -165,6 +207,29 @@ function fail(message, code = 400) {
 
 function getDeviceById(store, deviceId) {
   return store.devices.find(item => item.id === deviceId)
+}
+
+function versionParts(version) {
+  return String(version || '0.0.0')
+    .match(/\d+/g)
+    ? String(version || '0.0.0').match(/\d+/g).map(Number)
+    : [0]
+}
+
+function compareVersion(left, right) {
+  const a = versionParts(left)
+  const b = versionParts(right)
+  const len = Math.max(a.length, b.length)
+
+  for (let i = 0; i < len; i++) {
+    const av = a[i] || 0
+    const bv = b[i] || 0
+
+    if (av > bv) return 1
+    if (av < bv) return -1
+  }
+
+  return 0
 }
 
 function normalizeImage(image, index, device) {
@@ -357,6 +422,71 @@ function clearDevicePhotoCopies(deviceId) {
   })
 }
 
+function getDeviceFirmware(deviceId) {
+  const store = readStore()
+  const device = getDeviceById(store, deviceId)
+
+  if (!device) {
+    return fail('设备不存在', 404)
+  }
+
+  const release = store.firmwareRelease || FIRMWARE_RELEASE
+  const currentVersion = device.firmwareVersion || '0.0.0'
+  const hasUpdate = compareVersion(currentVersion, release.version) < 0
+
+  return delay({
+    deviceId: device.id,
+    deviceName: device.name,
+    bleDeviceId: device.deviceId || '',
+    connected: device.connected,
+    battery: device.battery,
+    currentVersion,
+    latestVersion: release.version,
+    hasUpdate,
+    minBattery: release.minBattery,
+    releaseDate: release.releaseDate,
+    releaseNotes: release.releaseNotes,
+    package: hasUpdate
+      ? {
+        version: release.version,
+        fileName: release.fileName,
+        sizeBytes: release.sizeBytes,
+        packageUrl: release.packageUrl,
+        checksum: release.checksum,
+        mock: release.mock
+      }
+      : null
+  })
+}
+
+function reportDeviceFirmwareUpgrade(deviceId, data) {
+  const store = readStore()
+  const device = getDeviceById(store, deviceId)
+
+  if (!device) {
+    return fail('设备不存在', 404)
+  }
+
+  const release = store.firmwareRelease || FIRMWARE_RELEASE
+  const status = data.status || 'success'
+
+  if (status === 'success') {
+    device.firmwareVersion = data.version || release.version
+    device.connected = true
+    device.lastOnline = '刚刚'
+    device.firmwareUpdatedAt = nowText()
+    device.lastOtaError = ''
+  } else {
+    device.lastOtaError = data.message || 'OTA升级失败'
+  }
+
+  writeStore(store)
+  return delay({
+    success: status === 'success',
+    device
+  })
+}
+
 function deleteDevice(deviceId) {
   const store = readStore()
   const existed = getDeviceById(store, deviceId)
@@ -498,6 +628,12 @@ function handle(options) {
 
   const clearCopyMatch = path.match(/^\/devices\/([^/]+)\/clear-photo-copies$/)
   if (clearCopyMatch && method === 'POST') return clearDevicePhotoCopies(clearCopyMatch[1])
+
+  const firmwareMatch = path.match(/^\/devices\/([^/]+)\/firmware$/)
+  if (firmwareMatch && method === 'GET') return getDeviceFirmware(firmwareMatch[1])
+
+  const firmwareResultMatch = path.match(/^\/devices\/([^/]+)\/firmware\/upgrade-result$/)
+  if (firmwareResultMatch && method === 'POST') return reportDeviceFirmwareUpgrade(firmwareResultMatch[1], data)
 
   if (path === '/album/photos' && method === 'GET') return delay(store.photos)
   if (path === '/album/photos' && method === 'DELETE') return deleteAlbumPhotos(data)

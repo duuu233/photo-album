@@ -30,15 +30,12 @@
   z-index: 1;
   display: flex;
   align-items: center;
-  width: auto;
-  height: 178rpx;
+  width: 654rpx;
+
+  height: 242rpx;
   margin: 72rpx 48rpx 0;
-  padding: 0 34rpx 0 48rpx;
+  padding: 0 34rpx 0 44rpx;
   overflow: hidden;
-  text-align: left;
-  border: 2rpx solid rgba(255, 255, 255, 0.88);
-  border-radius: 36rpx;
-  box-shadow: 0 24rpx 52rpx rgba(128, 151, 184, 0.14);
 }
 
 /* 卡片背景图：铺满卡片，置于内容下方 */
@@ -125,14 +122,6 @@
   flex-direction: column;
 
   border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.31);
-  background: linear-gradient(
-    326deg,
-    rgba(255, 255, 255, 0.24) 6.29%,
-    rgba(255, 255, 255, 0.43) 97.85%
-  );
-  box-shadow: 0 4px 12px 0 rgba(44, 63, 97, 0.03);
-  backdrop-filter: blur(10.550000190734863px);
 }
 
 /* 卡片背景图：铺满卡片，置于内容下方 */

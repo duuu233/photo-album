@@ -104,6 +104,16 @@ module.exports = {
     })
   },
 
+  getDeviceFirmware(deviceId) {
+    return http.get(`/devices/${deviceId}/firmware`)
+  },
+
+  reportDeviceFirmwareUpgrade(deviceId, data) {
+    return http.post(`/devices/${deviceId}/firmware/upgrade-result`, data, {
+      showError: false
+    })
+  },
+
   deleteDevice(deviceId) {
     return http.delete(`/devices/${deviceId}`, null, {
       loading: true,

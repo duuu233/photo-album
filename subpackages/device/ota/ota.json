@@ -1,0 +1,8 @@
+{
+  "navigationStyle": "custom",
+  "navigationBarTitleText": "OTA升级",
+  "usingComponents": {
+    "page-nav": "/components/page-nav/page-nav"
+  },
+  "backgroundColor": "#edf6ff"
+}
