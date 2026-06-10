@@ -47,6 +47,48 @@ App({
     return session
   },
 
+  // 真实 BoltFox 一键登录：detail 来自 button open-type="getPhoneNumber" 的回调，
+  // 新版微信返回 code，旧版返回 encryptedData + iv，后端据此换取手机号并下发 userToken。
+  async loginWithWechatPhone(detail = {}) {
+    const profile = await api.wechatAppLogin({
+      code: detail.code,
+      wxEncrypData: detail.encryptedData,
+      wxIvData: detail.iv
+    })
+
+    return this.applyWechatSession(profile)
+  },
+
+  // 把后端返回的 UserInfoDetailApiOut 落地为会话：写 token + 规范化用户信息，内存与缓存双写。
+  applyWechatSession(profile = {}) {
+    const token = profile.userToken || ''
+    const userInfo = this.normalizeUserInfo(profile)
+
+    this.globalData.token = token
+    this.globalData.userInfo = userInfo
+    wx.setStorageSync('token', token)
+    wx.setStorageSync('userInfo', userInfo)
+
+    return {
+      token,
+      user: userInfo
+    }
+  },
+
+  // 兼容旧页面字段：BoltFox 用 avatar/userEmail，旧页面读 avatarUrl/email，这里两套都给。
+  normalizeUserInfo(profile = {}) {
+    return {
+      nickName: profile.nickName || '',
+      avatar: profile.avatar || '',
+      avatarUrl: profile.avatar || '',
+      userEmail: profile.userEmail || '',
+      email: profile.userEmail || '',
+      userNo: profile.userNo || '',
+      imgCount: profile.imgCount || 0,
+      productCount: profile.productCount || 0
+    }
+  },
+
   // 需要登录态的入口统一调用：已登录直接复用，未登录才触发微信登录
   ensureLogin() {
     if (this.globalData.token) {

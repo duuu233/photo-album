@@ -24,14 +24,33 @@ Page({
     })
   },
 
-  async onWechatLogin() {
+  // 未勾选协议时按钮无 getPhoneNumber 能力，仅触发 bindtap：提示先同意协议（避免提前弹授权框）
+  onLoginTap() {
+    if (!this.data.agreed) {
+      this.showToast('请先同意用户协议和隐私政策')
+    }
+  },
+
+  // open-type="getPhoneNumber" 的回调：detail 含手机号授权结果（code 或 encryptedData+iv）
+  async onWechatLogin(event) {
     if (this.data.submitting) {
       return // 防重复点击
     }
 
-    // 未勾选协议禁止登录（合规要求）
+    // 双重保险：勾选协议后才会触发该回调，这里再校验一次
     if (!this.data.agreed) {
       this.showToast('请先同意用户协议和隐私政策')
+      return
+    }
+
+    const detail = (event && event.detail) || {}
+
+    // 用户拒绝/取消授权：静默返回，不弹错误；其余失败给出提示
+    if (!detail.code && !detail.encryptedData) {
+      const errMsg = detail.errMsg || ''
+      if (errMsg && errMsg.indexOf('deny') === -1 && errMsg.indexOf('cancel') === -1) {
+        this.showToast('获取手机号失败，请重试')
+      }
       return
     }
 
@@ -40,7 +59,7 @@ Page({
     })
 
     try {
-      await app.loginWithWechat()
+      await app.loginWithWechatPhone(detail)
       wx.switchTab({
         url: '/pages/home/home'
       })
