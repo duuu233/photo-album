@@ -1,4 +1,10 @@
+// 投屏结果页：进入时（status=progress）真实连接设备并走 BLE 图传，进度条与张数为真实进度；
+// 传完按真实结果切到「成功 / 失败」。链路与调试台一致：
+//   连接 → 读真实设备信息(0x01) → 逐张：解码→量化六色帧→图传(0x20/0x21/0x22)→刷新显示(0x24)。
 const system = require('../../../utils/system')
+const deviceBle = require('../../../utils/device-ble')
+const imageCodec = require('../../../utils/image-codec')
+const protocol = require('../../../utils/frame-protocol')
 
 const STATUS_TEXT = {
   progress: {
@@ -30,29 +36,42 @@ Page({
     title: '投屏中',
     desc: STATUS_TEXT.progress.desc,
     artImage: STATUS_ART.progress,
-    deviceName: '房间相册',
-    recordCount: 12,
+    deviceName: '相框',
+    recordCount: 0,
     progressCurrent: 0,
-    progressTotal: 12,
+    progressTotal: 0,
     progressPercent: 0
   },
 
   onLoad(options) {
     this.setData(system.getLayoutMetrics())
+    this._aborted = false
+    this._activeDeviceId = ''
 
-    // 状态由 URL 参数决定，结果详情（设备名/张数）从预览页写入的 Storage 读取
     const status = options.status || 'progress'
-    const result = wx.getStorageSync('lastProjectionResult') || {}
-    this.applyStatus(status, result)
-
-    // 进度态会模拟一个上传进度，结束后自动切到成功
     if (status === 'progress') {
-      this.startProgress(result)
+      // 真实投屏：读取预览页写入的待投屏设备与图片，连接设备后逐张图传
+      this.runRealProjection()
+    } else {
+      // 直接以某个结果态进入（如从别处跳转）：只展示，不发起图传
+      const result = wx.getStorageSync('lastProjectionResult') || {}
+      this.applyStatus(status, result)
+    }
+  },
+
+  // 进入后台（息屏 / 切到微信外）：图传在后台无法继续（蓝牙挂起、设备 1s 超时会中止），打中止标记尽快干净停下
+  onHide() {
+    if (this.data.status === 'progress') {
+      this._aborted = true
     }
   },
 
   onUnload() {
-    this.clearProgress()
+    this._aborted = true
+    wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false })
+    if (this._activeDeviceId) {
+      deviceBle.disconnect(this._activeDeviceId) // 释放连接，让设备能重新被连接
+    }
   },
 
   applyStatus(status, result) {
@@ -60,48 +79,187 @@ Page({
     this.setData({
       status,
       title: text.title,
-      desc: text.desc,
+      // 失败时优先显示真实失败原因
+      desc: status === 'fail' && result.message ? result.message : text.desc,
       artImage: STATUS_ART[status] || STATUS_ART.progress,
-      deviceName: result.deviceName || '房间相册',
-      recordCount: result.recordCount || result.imageCount || 12
+      deviceName: result.deviceName || '相框',
+      recordCount: result.imageCount || 0
     })
   },
 
-  // 模拟投屏进度：每 280ms 上传一张，到达总数后置 100% 并稍后切换到成功态
-  startProgress(result) {
-    const total = result.imageCount || 12
-    this.setData({
-      progressTotal: total,
-      progressCurrent: 0,
-      progressPercent: 0
-    })
+  // 真实投屏主流程：连接 → 读设备信息 → 逐张解码并图传 → 按真实结果置成功/失败
+  async runRealProjection() {
+    const pending = wx.getStorageSync('pendingProjection') || {}
+    const device = pending.device || {}
+    // 只投有真实图片文件的照片（相册占位图 url 为空，无法图传）
+    const images = (pending.images || []).filter(item => item && (item.tempFilePath || item.url))
+    const deviceId = device.deviceId
 
-    this.progressTimer = setInterval(() => {
-      const next = this.data.progressCurrent + 1
+    if (!deviceId) {
+      this.failResult(device, 0, '设备未连接，请重新绑定后再投屏')
+      return
+    }
+    if (!images.length) {
+      this.failResult(device, 0, '没有可投屏的照片')
+      return
+    }
 
-      // 到达最后一张：停定时器、补满进度条，短暂停顿后展示成功页
-      if (next >= total) {
-        this.clearProgress()
-        this.setData({
-          progressCurrent: total,
-          progressPercent: 100
-        })
-        setTimeout(() => this.applyStatus('success', result), 400)
-        return
+    this._aborted = false
+    this._activeDeviceId = deviceId
+    // 投屏期间保持屏幕常亮：避免息屏导致蓝牙被挂起、传输中断
+    wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: true })
+
+    const total = images.length
+    this.setData({ progressTotal: total, progressCurrent: 0, progressPercent: 0 })
+
+    let uploaded = 0
+    try {
+      // 1) 连接并读取真实设备信息（屏幕尺寸/类型/容量/已存掩码）
+      await deviceBle.ensureConnection(deviceId)
+      const info = await deviceBle.readDeviceInfo(deviceId)
+
+      if (info.screenType === 0x03 || !info.width || !info.height) {
+        throw new Error('该型号暂不支持图传')
       }
 
-      this.setData({
-        progressCurrent: next,
-        progressPercent: Math.round((next / total) * 100)
-      })
-    }, 280)
+      // 设备空间校验：剩余可存张数 = 容量 - 已存张数（掩码置位数）
+      let usedIndexes = protocol.maskToIndexes(info.imgMask)
+      const free = (info.capacity || 0) - usedIndexes.length
+      if (free < total) {
+        throw new Error(`设备空间不足：剩余 ${Math.max(0, free)} 张，待投 ${total} 张`)
+      }
+
+      // 2) 逐张：解码到目标尺寸 → 量化成六色帧 → 选空闲槽位 → 图传 → 刷新显示
+      for (let i = 0; i < total; i++) {
+        if (this._aborted) {
+          throw new Error('UPLOAD_ABORTED')
+        }
+        const image = images[i]
+        this.setData({ desc: `正在投第 ${i + 1}/${total} 张…` })
+
+        const srcPath = await this.shrinkIfHuge(image.tempFilePath || image.url, info.width, info.height)
+        const imageData = await this.imageToImageData(srcPath, info.width, info.height)
+        const frame = imageCodec.fromImageData(imageData, info.width, info.height)
+
+        const index = protocol.firstFreeIndex(protocol.indexesToMask(usedIndexes), info.capacity)
+        if (index < 0) {
+          throw new Error('设备已存满')
+        }
+
+        await deviceBle.uploadImage(deviceId, {
+          screenType: info.screenType,
+          index,
+          width: info.width,
+          height: info.height,
+          data: frame.data,
+          shouldAbort: () => this._aborted,
+          // 单张内的分包进度叠加已完成张数 → 整体百分比，进度条平滑推进
+          onProgress: (done, totalPackets) => {
+            const frac = totalPackets ? done / totalPackets : 0
+            const percent = Math.min(100, Math.floor(((i + frac) / total) * 100))
+            this.setData({ progressPercent: percent })
+          }
+        })
+
+        // 传完顺手刷新到这张（失败不影响整体）；并把该槽位记为已用，供下一张选槽位
+        try {
+          await deviceBle.refreshScreen(deviceId, index)
+        } catch (error) {
+          // 刷新失败不阻断
+        }
+        usedIndexes = usedIndexes.concat(index)
+        uploaded++
+        this.setData({
+          progressCurrent: uploaded,
+          progressPercent: Math.floor((uploaded / total) * 100)
+        })
+      }
+
+      this.successResult(device, uploaded)
+    } catch (error) {
+      const aborted = this._aborted || (error && error.message === 'UPLOAD_ABORTED')
+      const message = aborted
+        ? '投屏已中断：上传时手机息屏/切到后台，蓝牙会被挂起。请保持亮屏后重新投屏。'
+        : (error && error.message) || '投屏失败'
+      this.failResult(device, uploaded, message)
+    } finally {
+      wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false })
+      deviceBle.disconnect(deviceId) // 传完/失败都断开，释放连接
+      this._activeDeviceId = ''
+    }
   },
 
-  clearProgress() {
-    if (this.progressTimer) {
-      clearInterval(this.progressTimer)
-      this.progressTimer = null
+  successResult(device, count) {
+    wx.removeStorageSync('pendingProjection') // 成功后清掉，避免重复投
+    const result = { status: 'success', deviceName: device.name || '相框', imageCount: count }
+    wx.setStorageSync('lastProjectionResult', result)
+    this.applyStatus('success', result)
+  },
+
+  failResult(device, count, message) {
+    // 失败保留 pendingProjection，便于「重新投屏」直接重试
+    const result = { status: 'fail', deviceName: device.name || '相框', imageCount: count, message }
+    wx.setStorageSync('lastProjectionResult', result)
+    this.applyStatus('fail', result)
+    if (message) {
+      wx.showToast({ title: message, icon: 'none' })
     }
+  },
+
+  // 大图预压缩：原图长边明显大于目标显示尺寸时，按比例压一遍再解码，给离屏 canvas 解码减负。
+  // 任何环节失败都退回原图，绝不阻断投屏。
+  shrinkIfHuge(path, targetW, targetH) {
+    return new Promise(resolve => {
+      if (!wx.compressImage) {
+        resolve(path)
+        return
+      }
+      wx.getImageInfo({
+        src: path,
+        success: ({ width, height }) => {
+          const maxEdge = Math.max(1280, Math.max(targetW, targetH) * 2)
+          const srcMax = Math.max(width, height)
+          if (!srcMax || srcMax <= maxEdge) {
+            resolve(path)
+            return
+          }
+          const scale = maxEdge / srcMax
+          wx.compressImage({
+            src: path,
+            compressedWidth: Math.round(width * scale),
+            compressedHeight: Math.round(height * scale),
+            quality: 80,
+            success: res => resolve(res.tempFilePath),
+            fail: () => resolve(path)
+          })
+        },
+        fail: () => resolve(path)
+      })
+    })
+  },
+
+  // 用离屏 canvas 把图片解码并缩放到目标尺寸，取出 RGBA 像素（ImageData）
+  imageToImageData(path, width, height) {
+    return new Promise((resolve, reject) => {
+      if (!wx.createOffscreenCanvas) {
+        reject(new Error('当前微信版本不支持离屏 canvas'))
+        return
+      }
+      const canvas = wx.createOffscreenCanvas({ type: '2d', width, height })
+      const ctx = canvas.getContext('2d')
+      const img = canvas.createImage()
+      img.onload = () => {
+        ctx.clearRect(0, 0, width, height)
+        ctx.drawImage(img, 0, 0, width, height) // 拉伸铺满目标尺寸
+        try {
+          resolve(ctx.getImageData(0, 0, width, height))
+        } catch (error) {
+          reject(error)
+        }
+      }
+      img.onerror = () => reject(new Error('图片解码失败'))
+      img.src = path
+    })
   },
 
   goBack() {

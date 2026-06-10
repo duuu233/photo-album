@@ -55,7 +55,11 @@ Page({
     })
   },
 
-  sendCode() {
+  async sendCode() {
+    if (this.data.codeCountdown > 0) {
+      return
+    }
+
     if (!isEmail(this.data.email)) {
       wx.showToast({
         title: '请输入正确邮箱',
@@ -64,11 +68,19 @@ Page({
       return
     }
 
-    this.startCodeCountdown()
-    wx.showToast({
-      title: '验证码已发送',
-      icon: 'success'
-    })
+    try {
+      await api.sendEmail({
+        userEmail: this.data.email,
+        sendType: 3
+      })
+      this.startCodeCountdown()
+      wx.showToast({
+        title: '验证码已发送',
+        icon: 'success'
+      })
+    } catch (error) {
+      // request.js already shows the backend error message.
+    }
   },
 
   // 发送验证码后启动 30 秒倒计时，期间禁用按钮防止重复发送

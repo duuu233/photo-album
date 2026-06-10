@@ -2,7 +2,81 @@
 // 第三个参数为请求选项，常用：loading 显示加载、auth:false 免登录、showError:false 静默错误。
 const http = require('./request')
 
+function normalizeFilePaths(input) {
+  const files = Array.isArray(input) ? input : [input]
+
+  return files
+    .map(file => {
+      if (typeof file === 'string') {
+        return file
+      }
+
+      return file && (file.tempFilePath || file.path || file.url)
+    })
+    .filter(Boolean)
+}
+
 module.exports = {
+  getProductList(params = {}) {
+    return http.get('/Client/Product/getProductList', params, {
+      mock: false
+    })
+  },
+
+  getProductFaqList(params = {}) {
+    return http.get('/Client/Product/getProductFaqList', params, {
+      mock: false
+    })
+  },
+
+  getProductFaqDetail(faqIdOrParams) {
+    const params =
+      typeof faqIdOrParams === 'object' ? faqIdOrParams : { faqId: faqIdOrParams }
+
+    return http.get('/Client/Product/getProductFaqDetail', params, {
+      mock: false
+    })
+  },
+
+  sendEmail(data) {
+    const payload = typeof data === 'string' ? { userEmail: data } : data || {}
+
+    return http.post('/Client/Basic/sendEmail', payload, {
+      auth: false,
+      mock: false,
+      loading: true,
+      loadingText: '发送中'
+    })
+  },
+
+  sendEmailToken(data = {}) {
+    return http.post('/Client/Basic/sendEmailToken', data, {
+      mock: false,
+      loading: true,
+      loadingText: '发送中'
+    })
+  },
+
+  setUserProductUpload(options = {}) {
+    const filePaths = normalizeFilePaths(
+      options.filePaths || options.files || options.filePath
+    )
+
+    return http.upload({
+      url: '/Client/Basic/setUserProductUpload',
+      filePaths,
+      name: 'fileParam',
+      query: {
+        userProductId: options.userProductId,
+        deviceUploadState: options.deviceUploadState
+      },
+      formData: options.formData,
+      mock: false,
+      loading: true,
+      loadingText: '上传中'
+    })
+  },
+
   loginByWechat(data) {
     return http.post('/auth/wechat-login', data, {
       auth: false,

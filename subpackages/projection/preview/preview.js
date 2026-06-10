@@ -1,10 +1,4 @@
-const api = require('../../../utils/api')
 const system = require('../../../utils/system')
-
-// 累加所有待投屏图片大小（MB，保留两位），用于判断设备内存是否够用
-function calcTotalSize(images) {
-  return Number(images.reduce((sum, image) => sum + Number(image.sizeMb || image.size || 0), 0).toFixed(2))
-}
 
 Page({
   data: {
@@ -15,8 +9,6 @@ Page({
     activeImage: null,
     activeIndex: 0,
     imageCount: 0,
-    totalSize: 0,
-    enoughMemory: true,
     activeTool: 'origin',
     editing: false,
     rotation: 0,
@@ -32,19 +24,16 @@ Page({
     this.updateImageState(images, device, 0)
   },
 
-  // 统一刷新图片相关状态：当前预览图、总大小，并据此判断设备内存是否足够
+  // 统一刷新图片相关状态：当前预览图与张数（设备空间是否够由结果页按真实容量/掩码判断）
   updateImageState(images, device, activeIndex) {
     const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1)) // 防止下标越界
-    const totalSize = calcTotalSize(images)
 
     this.setData({
       device,
       images,
       activeIndex: safeIndex,
       activeImage: images[safeIndex] || null,
-      imageCount: images.length,
-      totalSize,
-      enoughMemory: device ? device.usedMemory + totalSize <= device.totalMemory : false
+      imageCount: images.length
     })
   },
 
@@ -118,81 +107,34 @@ Page({
     })
   },
 
-  // 确认投屏：依次校验设备/图片/连接/内存，上传成功或失败都跳转结果页（通过 Storage 传递结果）
-  async confirmProjection() {
+  // 确认投屏：基础校验后跳到结果页，由结果页真实连接设备并走 BLE 图传（带真实进度）。
+  // 设备空间是否够、能否连接，都在结果页用真实读到的容量/掩码与连接结果判断，这里不再用假数据预判。
+  confirmProjection() {
     // 编辑态下按钮置灰不可投屏，需先保存或还原退出编辑
     if (this.data.editing) {
       return
     }
 
-    // 逐项前置校验，任一不满足即提示并中断
     if (!this.data.device) {
-      wx.showToast({
-        title: '请选择设备',
-        icon: 'none'
-      })
+      wx.showToast({ title: '请选择设备', icon: 'none' })
       return
     }
 
     if (!this.data.images.length) {
-      wx.showToast({
-        title: '请至少保留一张照片',
-        icon: 'none'
-      })
+      wx.showToast({ title: '请至少保留一张照片', icon: 'none' })
       return
     }
 
-    if (!this.data.device.connected) {
-      wx.showToast({
-        title: '设备未连接',
-        icon: 'none'
-      })
+    // 必须有真实蓝牙 deviceId 才能连接图传（绑定时由蓝牙读取写入）
+    if (!this.data.device.deviceId) {
+      wx.showToast({ title: '设备未连接，请重新绑定后再投屏', icon: 'none' })
       return
     }
 
-    if (!this.data.enoughMemory) {
-      wx.showToast({
-        title: '设备内存不足',
-        icon: 'none'
-      })
-      return
-    }
-
-    this.setData({
-      projecting: true // 投屏中，禁用按钮防重复提交
+    // 待投屏的设备与图片已在 Storage(pendingProjection)，结果页读取后真实图传
+    wx.redirectTo({
+      url: '/subpackages/projection/result/result?status=progress'
     })
-
-    try {
-      await api.uploadProjection({
-        deviceId: this.data.device.id,
-        images: this.data.images
-      })
-      // 成功：清除待投屏数据，写入结果供结果页读取，并 redirect（不可返回本页）
-      wx.removeStorageSync('pendingProjection')
-      wx.setStorageSync('lastProjectionResult', {
-        status: 'success',
-        deviceName: this.data.device.name,
-        imageCount: this.data.images.length
-      })
-      wx.redirectTo({
-        url: '/subpackages/projection/result/result?status=progress'
-      })
-    } catch (error) {
-      // 失败：同样写入结果（含错误信息）并跳转失败结果页
-      wx.setStorageSync('lastProjectionResult', {
-        status: 'fail',
-        deviceName: this.data.device ? this.data.device.name : '',
-        imageCount: this.data.images.length,
-        message: error.message || '投屏失败'
-      })
-      wx.redirectTo({
-        url: '/subpackages/projection/result/result?status=fail'
-      })
-    } finally {
-      this.setData({
-        projecting: false
-      })
-    }
   },
 
   goBack() {

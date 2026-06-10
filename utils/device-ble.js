@@ -501,6 +501,13 @@ async function uploadImage(deviceId, options) {
   return summary
 }
 
+// 是否已与该设备建立可用的 BLE 会话（用于首页等真实展示「已连接/未连接」，不再恒为已连接）。
+// 本设备是「即连即传」模型：投屏时才连接、传完即断，所以多数时候为未连接是真实状态。
+function isConnected(deviceId) {
+  const session = sessions[deviceId]
+  return !!(session && session.ready)
+}
+
 // 断开连接并清理会话（离开详情/绑定页时调用）
 function disconnect(deviceId) {
   const session = sessions[deviceId]
@@ -528,5 +535,6 @@ module.exports = {
   refreshScreen,
   uploadImage,
   setMonitor,
+  isConnected,
   disconnect
 }

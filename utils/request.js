@@ -1,6 +1,14 @@
 const config = require('./config')
 const mock = require('./mock')
 
+const WECHAT_MINI_PROGRAM_TERMINAL = 3
+const LANGUAGE_CODE_MAP = {
+  en: 1,
+  'zh-Hans': 2,
+  'zh-Hant': 3,
+  ja: 4
+}
+
 // 允许直接传字符串当作 url，统一转成 options 对象
 function normalizeOptions(options) {
   if (typeof options === 'string') {
@@ -19,8 +27,90 @@ function buildUrl(url) {
   return `${config.baseURL}${url}`
 }
 
+function appendQuery(url, params) {
+  const query = Object.keys(params || {})
+    .filter(key => params[key] !== undefined && params[key] !== null && params[key] !== '')
+    .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
+    .join('&')
+
+  if (!query) {
+    return url
+  }
+
+  return `${url}${url.indexOf('?') === -1 ? '?' : '&'}${query}`
+}
+
 function getToken() {
   return wx.getStorageSync('token') || ''
+}
+
+function getSystemInfo() {
+  try {
+    return wx.getSystemInfoSync()
+  } catch (error) {
+    return {}
+  }
+}
+
+function normalizeLanguage(language) {
+  const raw = String(language || '').replace('_', '-').toLowerCase()
+
+  if (raw.indexOf('zh-hant') === 0 || raw.indexOf('zh-tw') === 0 || raw.indexOf('zh-hk') === 0 || raw.indexOf('zh-mo') === 0) {
+    return 'zh-Hant'
+  }
+
+  if (raw.indexOf('ja') === 0) {
+    return 'ja'
+  }
+
+  if (raw.indexOf('en') === 0) {
+    return 'en'
+  }
+
+  return 'zh-Hans'
+}
+
+function getLanguageCode() {
+  const info = getSystemInfo()
+  const normalized = normalizeLanguage(info.language)
+  return LANGUAGE_CODE_MAP[normalized] || LANGUAGE_CODE_MAP['zh-Hans']
+}
+
+function appendClientHeaders(header, token) {
+  const info = getSystemInfo()
+  const nextHeader = Object.assign({}, header)
+
+  if (!nextHeader.terminal) {
+    nextHeader.terminal = WECHAT_MINI_PROGRAM_TERMINAL
+  }
+
+  if (!nextHeader.language) {
+    nextHeader.language = getLanguageCode()
+  }
+
+  if (!nextHeader.device && info.model) {
+    nextHeader.device = info.model
+  }
+
+  if (token && !nextHeader.userToken) {
+    nextHeader.userToken = token
+  }
+
+  return nextHeader
+}
+
+function parseResponseData(data) {
+  if (typeof data !== 'string') {
+    return data || {}
+  }
+
+  try {
+    return JSON.parse(data)
+  } catch (error) {
+    return {
+      data
+    }
+  }
 }
 
 function showError(message) {
@@ -43,7 +133,7 @@ function handleBusinessError(error, options) {
     showError(message)
   }
 
-  if (error && error.code === 401) {
+  if (error && (error.code === 401 || error.code === 406)) {
     wx.removeStorageSync('token')
     wx.removeStorageSync('userInfo')
   }
@@ -56,8 +146,9 @@ function request(rawOptions) {
   const options = normalizeOptions(rawOptions)
   const method = (options.method || 'GET').toUpperCase()
   const data = options.data || {}
-  const header = Object.assign({}, options.header)
   const token = getToken()
+  const authToken = options.auth === false ? '' : token
+  const header = appendClientHeaders(options.header, authToken)
 
   // 有 token 且未显式关闭鉴权时，自动带上 Bearer 头
   if (token && options.auth !== false) {
@@ -79,7 +170,7 @@ function request(rawOptions) {
   }
 
   // mock 模式（本地开发无后端时）走内存模拟接口，绕过真实网络请求
-  if (config.useMock || options.mock) {
+  if ((config.useMock && options.mock !== false) || options.mock) {
     return mock
       .handle({
         url: options.url,
@@ -107,12 +198,13 @@ function request(rawOptions) {
       success(res) {
         // wx.request 只要收到响应就算 success，需在这里按 HTTP 状态码和业务 code 二次判定
         const body = res.data || {}
+        const businessCode = body.code !== undefined ? body.code : body.retCode
 
         // 登录过期：HTTP 401 或业务 code 401
-        if (res.statusCode === 401 || body.code === 401) {
+        if (res.statusCode === 401 || businessCode === 401 || businessCode === 406) {
           reject({
-            code: 401,
-            message: body.message || '登录已过期'
+            code: businessCode || 401,
+            message: body.message || body.retMsg || '登录已过期'
           })
           return
         }
@@ -121,12 +213,26 @@ function request(rawOptions) {
         if (res.statusCode < 200 || res.statusCode >= 300) {
           reject({
             code: res.statusCode,
-            message: body.message || '服务器异常'
+            message: body.message || body.retMsg || '服务器异常'
           })
           return
         }
 
         // 约定 code 为 0 表示成功，非 0 即业务错误
+        if (Object.prototype.hasOwnProperty.call(body, 'retCode')) {
+          if (body.retCode !== 200) {
+            reject({
+              code: body.retCode,
+              message: body.retMsg || '业务处理失败',
+              data: body.retData
+            })
+            return
+          }
+
+          resolve(body.retData !== undefined ? body.retData : body)
+          return
+        }
+
         if (body.code && body.code !== 0) {
           reject({
             code: body.code,
@@ -157,8 +263,124 @@ function request(rawOptions) {
     })
 }
 
+function upload(rawOptions) {
+  const options = normalizeOptions(rawOptions)
+  const token = getToken()
+  const authToken = options.auth === false ? '' : token
+  const header = appendClientHeaders(options.header, authToken)
+  const filePaths = Array.isArray(options.filePaths)
+    ? options.filePaths
+    : [options.filePath].filter(Boolean)
+  const name = options.name || 'fileParam'
+  const formData = options.formData || {}
+  const query = options.query || {}
+
+  if (token && options.auth !== false) {
+    header.Authorization = `Bearer ${token}`
+  }
+
+  if (!filePaths.length) {
+    return handleBusinessError({
+      code: 'UPLOAD_FILE_REQUIRED',
+      message: '请选择上传文件'
+    }, options)
+  }
+
+  if (options.loading) {
+    wx.showLoading({
+      title: options.loadingText || '上传中',
+      mask: true
+    })
+  }
+
+  const done = () => {
+    if (options.loading) {
+      wx.hideLoading()
+    }
+  }
+
+  const uploadOne = filePath =>
+    new Promise((resolve, reject) => {
+      wx.uploadFile({
+        url: buildUrl(appendQuery(options.url, query)),
+        filePath,
+        name,
+        formData,
+        header,
+        timeout: options.timeout || config.timeout,
+        success(res) {
+          const body = parseResponseData(res.data)
+          const businessCode = body.code !== undefined ? body.code : body.retCode
+
+          if (res.statusCode === 401 || businessCode === 401 || businessCode === 406) {
+            reject({
+              code: businessCode || 401,
+              message: body.message || body.retMsg || '登录已过期'
+            })
+            return
+          }
+
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            reject({
+              code: res.statusCode,
+              message: body.message || body.retMsg || '服务器异常'
+            })
+            return
+          }
+
+          if (Object.prototype.hasOwnProperty.call(body, 'retCode')) {
+            if (body.retCode !== 200) {
+              reject({
+                code: body.retCode,
+                message: body.retMsg || '业务处理失败',
+                data: body.retData
+              })
+              return
+            }
+
+            resolve(body.retData !== undefined ? body.retData : body)
+            return
+          }
+
+          if (body.code && body.code !== 0) {
+            reject({
+              code: body.code,
+              message: body.message || '业务处理失败',
+              data: body.data
+            })
+            return
+          }
+
+          resolve(body.data !== undefined ? body.data : body)
+        },
+        fail(error) {
+          reject({
+            code: 'NETWORK_ERROR',
+            message: error.errMsg || '网络连接失败'
+          })
+        }
+      })
+    })
+
+  return filePaths
+    .reduce((promise, filePath) => {
+      return promise.then(results =>
+        uploadOne(filePath).then(result => results.concat(result))
+      )
+    }, Promise.resolve([]))
+    .then(results => {
+      done()
+      return filePaths.length === 1 ? results[0] : results
+    })
+    .catch(error => {
+      done()
+      return handleBusinessError(error, options)
+    })
+}
+
 module.exports = {
   request,
+  upload,
   get(url, data, options) {
     return request(Object.assign({}, options, {
       url,

@@ -1,6 +1,7 @@
 const api = require('../../utils/api')
 const media = require('../../utils/media')
 const batteryUtil = require('../../utils/battery')
+const deviceBle = require('../../utils/device-ble')
 
 const app = getApp()
 
@@ -128,16 +129,18 @@ function isNetworkError(error) {
   )
 }
 
-// 将接口返回的设备裁剪为首页展示所需字段（connected 默认 true）
+// 将接口返回的设备裁剪为首页展示所需字段。connected 取真实蓝牙会话状态，deviceId 透传给投屏页用于连接。
 function normalizeDevice(device) {
   if (!device) {
     return null
   }
-  const battery = clampBattery(device.battery || 30)
+  const battery = clampBattery(typeof device.battery === 'number' ? device.battery : 30)
   return {
     id: device.id || DEFAULT_DEVICE.id,
-    name: device.displayName || '房间相册',
-    connected: device.connected !== false,
+    deviceId: device.deviceId || '', // 真实蓝牙 deviceId：投屏页据此连接设备并图传
+    name: device.name || device.displayName || '相框',
+    // 「已连接」按真实蓝牙会话显示（即连即传，无活动会话即未连接），不再恒为 true
+    connected: !!(device.deviceId && deviceBle.isConnected(device.deviceId)),
     battery,
     batteryIcon: batteryUtil.getBatteryIcon(battery)
   }
@@ -575,8 +578,9 @@ Page({
       return
     }
 
+    // 传给投屏页的设备用全量的已选设备（含真实蓝牙 deviceId），投屏页据此真实连接并图传
     wx.setStorageSync('pendingProjection', {
-      device: this.data.currentDevice,
+      device: app.globalData.selectedDevice || this.data.currentDevice,
       images
     })
     wx.navigateTo({
