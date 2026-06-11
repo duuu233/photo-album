@@ -18,12 +18,12 @@
 
 ## 模块进度
 
-| 模块 | 状态 | 代码位置 | 说明 |
-| --- | --- | --- | --- |
-| 用户前端-产品接口 | 已完成 | `utils/api.js` | 本模块 3 个接口均接入 |
-| 用户前端-基础功能接口 | 已完成 | `utils/api.js`、`utils/request.js` | App 版本/安卓下载接口跳过；邮箱验证码、设备图片上传、基础数据、基础文件上传已接入 |
-| 用户前端-用户接口 | 接口层已接入 | `utils/api.js` | 邮箱/PC 相关登录注册跳过；微信一键登录、用户信息、昵称/头像、退出、注销已接入；待页面联调 |
-| 用户前端-设备接口 | 接口层已接入 | `utils/api.js` | 设备增删改查、图库、一键清空、投屏记录列表/删除均接入；待页面联调 |
+| 模块                  | 状态         | 代码位置                           | 说明                                                                                      |
+| --------------------- | ------------ | ---------------------------------- | ----------------------------------------------------------------------------------------- |
+| 用户前端-产品接口     | 已完成       | `utils/api.js`                     | 本模块 3 个接口均接入                                                                     |
+| 用户前端-基础功能接口 | 已完成       | `utils/api.js`、`utils/request.js` | App 版本/安卓下载接口跳过；邮箱验证码、设备图片上传、基础数据、基础文件上传已接入         |
+| 用户前端-用户接口     | 接口层已接入 | `utils/api.js`                     | 邮箱/PC 相关登录注册跳过；微信一键登录、用户信息、昵称/头像、退出、注销已接入；待页面联调 |
+| 用户前端-设备接口     | 接口层已接入 | `utils/api.js`                     | 设备增删改查、图库、一键清空、投屏记录列表/删除均接入；待页面联调                         |
 
 > 2026-06-11 增量：对照 Swagger 最新接口，补齐用户接口、设备接口及基础新增接口（`getBasicData`、`setFileUpload`），并新增了 Swagger 新出现的投屏记录接口（`getUserProductImgRecordList`、`delUserProductImgRecord`）。接口清单见 [`接口清单.md`](接口清单.md)。
 
@@ -31,11 +31,11 @@
 
 ### 已接入
 
-| 方法 | 路径 | `utils/api.js` 方法 | Swagger 摘要 |
-| --- | --- | --- | --- |
-| GET | `/Client/Product/getProductList` | `getProductList(params)` | 产品列表 |
-| GET | `/Client/Product/getProductFaqList` | `getProductFaqList(params)` | 常见问题列表 |
-| GET | `/Client/Product/getProductFaqDetail` | `getProductFaqDetail(faqIdOrParams)` | 常见问题列表详情 |
+| 方法 | 路径                                  | `utils/api.js` 方法                  | Swagger 摘要     |
+| ---- | ------------------------------------- | ------------------------------------ | ---------------- |
+| GET  | `/Client/Product/getProductList`      | `getProductList(params)`             | 产品列表         |
+| GET  | `/Client/Product/getProductFaqList`   | `getProductFaqList(params)`          | 常见问题列表     |
+| GET  | `/Client/Product/getProductFaqDetail` | `getProductFaqDetail(faqIdOrParams)` | 常见问题列表详情 |
 
 ### 参数参考
 
@@ -51,13 +51,13 @@
 
 ### 已接入
 
-| 方法 | 路径 | Swagger 摘要 | 小程序计划 |
-| --- | --- | --- | --- |
-| POST | `/Client/Basic/sendEmail` | 发送邮箱验证码,10分钟有效期 | 已接入：`sendEmail(data)` |
-| POST | `/Client/Basic/sendEmailToken` | 发送邮箱验证码(已登录的用户传userToken),10分钟有效期 | 已接入：`sendEmailToken(data)` |
-| POST | `/Client/Basic/setUserProductUpload` | 设备上传，form-data 文件上传 | 已接入：`setUserProductUpload(options)` |
-| GET | `/Client/Basic/getBasicData` | 获取基础数据 | 已接入：`getBasicData(params)` |
-| POST | `/Client/Basic/setFileUpload` | 基础上传(无关业务)，form-data 文件上传 | 已接入：`setFileUpload(options)` |
+| 方法 | 路径                                 | Swagger 摘要                                         | 小程序计划                              |
+| ---- | ------------------------------------ | ---------------------------------------------------- | --------------------------------------- |
+| POST | `/Client/Basic/sendEmail`            | 发送邮箱验证码,10分钟有效期                          | 已接入：`sendEmail(data)`               |
+| POST | `/Client/Basic/sendEmailToken`       | 发送邮箱验证码(已登录的用户传userToken),10分钟有效期 | 已接入：`sendEmailToken(data)`          |
+| POST | `/Client/Basic/setUserProductUpload` | 设备上传，form-data 文件上传                         | 已接入：`setUserProductUpload(options)` |
+| GET  | `/Client/Basic/getBasicData`         | 获取基础数据                                         | 已接入：`getBasicData(params)`          |
+| POST | `/Client/Basic/setFileUpload`        | 基础上传(无关业务)，form-data 文件上传               | 已接入：`setFileUpload(options)`        |
 
 ### 页面接入
 
@@ -74,23 +74,23 @@
 
 ### 小程序跳过
 
-| 方法 | 路径 | Swagger 摘要 | 跳过原因 |
-| --- | --- | --- | --- |
-| GET | `/Client/Basic/getLastVersion` | 获取App版本更新状态 | 涉及 App 版本更新 |
-| GET | `/Client/Basic/getAndroidDownload` | 安卓下载 | 安卓 App 专用，小程序不涉及 |
+| 方法 | 路径                               | Swagger 摘要        | 跳过原因                    |
+| ---- | ---------------------------------- | ------------------- | --------------------------- |
+| GET  | `/Client/Basic/getLastVersion`     | 获取App版本更新状态 | 涉及 App 版本更新           |
+| GET  | `/Client/Basic/getAndroidDownload` | 安卓下载            | 安卓 App 专用，小程序不涉及 |
 
 ## 用户前端-用户接口
 
 ### 已接入
 
-| 方法 | 路径 | `utils/api.js` 方法 | Swagger 摘要 |
-| --- | --- | --- | --- |
-| POST | `/Client/User/setWechatAppLogin` | `setWechatAppLogin(data)` | 微信小程序授权手机号一键登录，返回登录 token |
-| GET | `/Client/User/getUserInfo` | `getUserInfo()` | 获取用户信息 |
-| POST | `/Client/User/changeNickName` | `changeNickName(nickName)` | 修改昵称（1-10 字） |
-| POST | `/Client/User/changeAvatar` | `changeAvatar(avatar)` | 修改头像 |
-| POST | `/Client/User/loginOut` | `loginOut()` | 用户登录退出 |
-| POST | `/Client/User/userOff` | `userOff()` | 用户注销 |
+| 方法 | 路径                             | `utils/api.js` 方法        | Swagger 摘要                                 |
+| ---- | -------------------------------- | -------------------------- | -------------------------------------------- |
+| POST | `/Client/User/setWechatAppLogin` | `setWechatAppLogin(data)`  | 微信小程序授权手机号一键登录，返回登录 token |
+| GET  | `/Client/User/getUserInfo`       | `getUserInfo()`            | 获取用户信息                                 |
+| POST | `/Client/User/changeNickName`    | `changeNickName(nickName)` | 修改昵称（1-10 字）                          |
+| POST | `/Client/User/changeAvatar`      | `changeAvatar(avatar)`     | 修改头像                                     |
+| POST | `/Client/User/loginOut`          | `loginOut()`               | 用户登录退出                                 |
+| POST | `/Client/User/userOff`           | `userOff()`                | 用户注销                                     |
 
 ### 参数参考
 
@@ -100,32 +100,32 @@
 
 ### 小程序跳过
 
-| 方法 | 路径 | Swagger 摘要 | 跳过原因 |
-| --- | --- | --- | --- |
-| POST | `/Client/User/userLogin` | 用户登录-邮箱 | 小程序走微信一键登录，不需要邮箱登录 |
-| POST | `/Client/User/userRegister` | 用户注册-邮箱 | 邮箱注册，App 专用 |
-| POST | `/Client/User/changePassword` | 修改密码(已登录) | 邮箱账号密码体系，小程序不涉及 |
-| POST | `/Client/User/changeUserEmail` | 修改邮箱/绑定邮箱 | App 邮箱登录相关 |
-| POST | `/Client/User/chkUserEmailNotExist` | 校验邮箱是否不存在 | 邮箱注册流程相关 |
-| POST | `/Client/User/resetPassword` | 忘记密码-重置密码(未登录) | 邮箱账号找回密码，小程序不涉及 |
-| POST | `/Client/User/userOffPC` | 用户注销PC版 | PC 版接口 |
+| 方法 | 路径                                | Swagger 摘要              | 跳过原因                             |
+| ---- | ----------------------------------- | ------------------------- | ------------------------------------ |
+| POST | `/Client/User/userLogin`            | 用户登录-邮箱             | 小程序走微信一键登录，不需要邮箱登录 |
+| POST | `/Client/User/userRegister`         | 用户注册-邮箱             | 邮箱注册，App 专用                   |
+| POST | `/Client/User/changePassword`       | 修改密码(已登录)          | 邮箱账号密码体系，小程序不涉及       |
+| POST | `/Client/User/changeUserEmail`      | 修改邮箱/绑定邮箱         | App 邮箱登录相关                     |
+| POST | `/Client/User/chkUserEmailNotExist` | 校验邮箱是否不存在        | 邮箱注册流程相关                     |
+| POST | `/Client/User/resetPassword`        | 忘记密码-重置密码(未登录) | 邮箱账号找回密码，小程序不涉及       |
+| POST | `/Client/User/userOffPC`            | 用户注销PC版              | PC 版接口                            |
 
 ## 用户前端-设备接口
 
 ### 已接入
 
-| 方法 | 路径 | `utils/api.js` 方法 | Swagger 摘要 |
-| --- | --- | --- | --- |
-| POST | `/Client/UserProduct/addUserProduct` | `addUserProduct(data)` | 添加用户设备（绑定设备到用户） |
-| GET | `/Client/UserProduct/getUserProductList` | `getUserProductList(params)` | 获取用户设备列表 |
-| GET | `/Client/UserProduct/getUserProductDetail` | `getUserProductDetail(params)` | 获取用户设备详情 |
-| POST | `/Client/UserProduct/editUserProduct` | `editUserProduct(data)` | 编辑设备信息 |
-| POST | `/Client/UserProduct/delUserProduct` | `delUserProduct(userProductId)` | 删除设备,id=userProductId |
-| POST | `/Client/UserProduct/clearUserProductImg` | `clearUserProductImg(userProductId)` | 一键清除设备图片,id=userProductId |
-| GET | `/Client/UserProduct/getUserProductImgList` | `getUserProductImgList(params)` | 用户产品图片列表（我的图库） |
-| POST | `/Client/UserProduct/delUserProductImg` | `delUserProductImg(ids)` | 删除产品图片,id=uProductImgId（支持多选） |
-| GET | `/Client/UserProduct/getUserProductImgRecordList` | `getUserProductImgRecordList(params)` | 产品投屏记录列表（新出现接口） |
-| POST | `/Client/UserProduct/delUserProductImgRecord` | `delUserProductImgRecord(upirId)` | 删除产品投屏记录,id=upirId（新出现接口） |
+| 方法 | 路径                                              | `utils/api.js` 方法                   | Swagger 摘要                              |
+| ---- | ------------------------------------------------- | ------------------------------------- | ----------------------------------------- |
+| POST | `/Client/UserProduct/addUserProduct`              | `addUserProduct(data)`                | 添加用户设备（绑定设备到用户）            |
+| GET  | `/Client/UserProduct/getUserProductList`          | `getUserProductList(params)`          | 获取用户设备列表                          |
+| GET  | `/Client/UserProduct/getUserProductDetail`        | `getUserProductDetail(params)`        | 获取用户设备详情                          |
+| POST | `/Client/UserProduct/editUserProduct`             | `editUserProduct(data)`               | 编辑设备信息                              |
+| POST | `/Client/UserProduct/delUserProduct`              | `delUserProduct(userProductId)`       | 删除设备,id=userProductId                 |
+| POST | `/Client/UserProduct/clearUserProductImg`         | `clearUserProductImg(userProductId)`  | 一键清除设备图片,id=userProductId         |
+| GET  | `/Client/UserProduct/getUserProductImgList`       | `getUserProductImgList(params)`       | 用户产品图片列表（我的图库）              |
+| POST | `/Client/UserProduct/delUserProductImg`           | `delUserProductImg(ids)`              | 删除产品图片,id=uProductImgId（支持多选） |
+| GET  | `/Client/UserProduct/getUserProductImgRecordList` | `getUserProductImgRecordList(params)` | 产品投屏记录列表（新出现接口）            |
+| POST | `/Client/UserProduct/delUserProductImgRecord`     | `delUserProductImgRecord(upirId)`     | 删除产品投屏记录,id=upirId（新出现接口）  |
 
 ### 参数参考
 

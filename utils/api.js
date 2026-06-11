@@ -31,7 +31,9 @@ module.exports = {
 
   getProductFaqDetail(faqIdOrParams) {
     const params =
-      typeof faqIdOrParams === 'object' ? faqIdOrParams : { faqId: faqIdOrParams }
+      typeof faqIdOrParams === 'object'
+        ? faqIdOrParams
+        : { faqId: faqIdOrParams }
 
     return http.get('/Client/Product/getProductFaqDetail', params, {
       mock: false
@@ -119,9 +121,13 @@ module.exports = {
 
   // 获取用户信息（昵称、头像、ID 等），userToken 走 header
   getUserInfo() {
-    return http.get('/Client/User/getUserInfo', {}, {
-      mock: false
-    })
+    return http.get(
+      '/Client/User/getUserInfo',
+      {},
+      {
+        mock: false
+      }
+    )
   },
 
   // 修改昵称，限制 1-10 字。可传字符串或 { nickName }
@@ -148,18 +154,26 @@ module.exports = {
 
   // 退出登录
   loginOut() {
-    return http.post('/Client/User/loginOut', {}, {
-      mock: false
-    })
+    return http.post(
+      '/Client/User/loginOut',
+      {},
+      {
+        mock: false
+      }
+    )
   },
 
   // 用户注销（销户）
   userOff() {
-    return http.post('/Client/User/userOff', {}, {
-      mock: false,
-      loading: true,
-      loadingText: '注销中'
-    })
+    return http.post(
+      '/Client/User/userOff',
+      {},
+      {
+        mock: false,
+        loading: true,
+        loadingText: '注销中'
+      }
+    )
   },
 
   // —— 设备接口（UserProduct）——
@@ -301,21 +315,29 @@ module.exports = {
   },
 
   bindEmail(email) {
-    return http.post('/user/email', {
-      email
-    }, {
-      loading: true,
-      loadingText: '绑定中'
-    })
+    return http.post(
+      '/user/email',
+      {
+        email
+      },
+      {
+        loading: true,
+        loadingText: '绑定中'
+      }
+    )
   },
 
   changeEmail(email) {
-    return http.put('/user/email', {
-      email
-    }, {
-      loading: true,
-      loadingText: '保存中'
-    })
+    return http.put(
+      '/user/email',
+      {
+        email
+      },
+      {
+        loading: true,
+        loadingText: '保存中'
+      }
+    )
   },
 
   logout() {
@@ -335,12 +357,16 @@ module.exports = {
   },
 
   bindDevice(device) {
-    return http.post('/devices/bind', {
-      device
-    }, {
-      loading: true,
-      loadingText: '绑定中'
-    })
+    return http.post(
+      '/devices/bind',
+      {
+        device
+      },
+      {
+        loading: true,
+        loadingText: '绑定中'
+      }
+    )
   },
 
   renameDevice(deviceId, name) {
