@@ -4,6 +4,7 @@
   padding-bottom: calc(170rpx + var(--safe-bottom));
   overflow: hidden;
   color: #2a2d32;
+  padding: 0 48rpx;
 }
 
 .mine-bg {
@@ -18,9 +19,9 @@
 .page-title {
   position: relative;
   z-index: 1;
-  color: #111111;
+  color: #2a2b2b;
   font-size: 34rpx;
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1;
   text-align: center;
 }
@@ -33,7 +34,7 @@
   width: 654rpx;
 
   height: 242rpx;
-  margin: 72rpx 48rpx 0;
+  margin: 72rpx 0 0;
   padding: 0 34rpx 0 44rpx;
   overflow: hidden;
 }
@@ -49,18 +50,10 @@
 }
 
 .profile-avatar {
-  flex: 0 0 112rpx;
-  width: 112rpx;
-  height: 112rpx;
+  width: 160rpx;
+  height: 160rpx;
   overflow: hidden;
   border-radius: 50%;
-}
-
-.avatar-placeholder {
-  background:
-    radial-gradient(circle at 50% 38%, #ffe3cb 0 22rpx, transparent 23rpx),
-    radial-gradient(circle at 50% 94%, #ff873e 0 44rpx, transparent 45rpx),
-    linear-gradient(135deg, #fff6ee, #d7eaff);
 }
 
 .profile-copy {
@@ -70,9 +63,9 @@
 }
 
 .profile-name {
-  color: #2a2d32;
+  color: #2a2d2d;
   font-size: 40rpx;
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1;
 }
 
@@ -84,27 +77,31 @@
 }
 
 .chevron {
-  color: #777e88;
-  font-size: 58rpx;
-  font-weight: 300;
-  line-height: 1;
+  width: 40rpx;
+  height: 40rpx;
+  flex-shrink: 0;
 }
-
+.service-list .chevron {
+  width: 24rpx;
+  height: 24rpx;
+  flex-shrink: 0;
+}
 .section-title {
   position: relative;
   z-index: 1;
-  color: #2a2d32;
+  color: #2a2b2b;
   font-size: 32rpx;
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1;
 }
 
 .functions-title {
-  margin: 92rpx 48rpx 24rpx 48rpx;
+  margin: 92rpx 0 24rpx 0;
 }
 
 .quick-grid {
   position: relative;
+  padding: 0;
   z-index: 1;
   display: flex;
   align-items: center;
@@ -122,6 +119,16 @@
   flex-direction: column;
 
   border-radius: 20px;
+
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.31);
+  background: linear-gradient(
+    326deg,
+    rgba(255, 255, 255, 0.24) 6.29%,
+    rgba(255, 255, 255, 0.43) 97.85%
+  );
+  box-shadow: 0 4px 12px 0 rgba(44, 63, 97, 0.03);
+  backdrop-filter: blur(10.550000190734863px);
 }
 
 /* 卡片背景图：铺满卡片，置于内容下方 */
@@ -272,13 +279,13 @@
 }
 
 .help-title {
-  margin: 86rpx 48rpx 0;
+  margin: 86rpx 0 0;
 }
 
 .service-list {
   position: relative;
   z-index: 1;
-  margin: 18rpx 48rpx 0;
+  margin: 18rpx 0 0;
 }
 
 .service-row {
@@ -299,5 +306,5 @@
   flex: 1;
   color: #2a2d32;
   font-size: 30rpx;
-  font-weight: 600;
+  font-weight: 500;
 }

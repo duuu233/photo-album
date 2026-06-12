@@ -105,10 +105,9 @@
 }
 
 .chevron {
-  color: #777e88;
-  font-size: 42rpx;
-  font-weight: 300;
-  line-height: 1;
+  width: 28rpx;
+  height: 28rpx;
+  flex-shrink: 0;
 }
 
 .modal-mask {

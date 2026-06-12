@@ -9,18 +9,18 @@
   <view class="profile-card" hover-class="none" bindtap="goProfile">
     <image class="profile-card-bg" src="/assets/images/mine-header-bg01.png" mode="aspectFill"></image>
     <image wx:if="{{avatarUrl}}" class="profile-avatar" src="{{avatarUrl}}" mode="aspectFill"></image>
-    <view wx:else class="profile-avatar avatar-placeholder"></view>
+    <image wx:else class="profile-avatar" src="/assets/images/mine-header02.png" mode="aspectFill"></image>
     <view class="profile-copy">
       <view class="profile-name">{{nickName}}</view>
       <view class="profile-id">ID：{{userId}}</view>
     </view>
-    <view class="chevron">›</view>
+    <image class="chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
   </view>
 
   <view class="section-title functions-title">常用功能</view>
   <view class="quick-grid">
     <view class="quick-card" hover-class="none" bindtap="goAlbum">
-      <image class="quick-card-bg" src="/assets/images/mine-bg02.png" mode="aspectFill"></image>
+      <!-- <image class="quick-card-bg" src="/assets/images/mine-bg02.png" mode="aspectFill"></image> -->
       <image class="quick-icon" src="/assets/images/mine-icon01.png" mode="aspectFit"></image>
       <view class="quick-title">我的图库</view>
       <view class="quick-desc">{{photoCount}}张照片</view>
@@ -43,12 +43,12 @@
     <view class="service-row" hover-class="none" bindtap="goGuide">
       <image class="service-icon" src="/assets/images/mine-icon05.png" mode="aspectFit"></image>
       <text>操作指南</text>
-      <view class="chevron">›</view>
+      <image class="chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
     </view>
     <view class="service-row" hover-class="none" bindtap="goSettings">
       <image class="service-icon" src="/assets/images/mine-icon04.png" mode="aspectFit"></image>
       <text>设置</text>
-      <view class="chevron">›</view>
+      <image class="chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
     </view>
   </view>
 

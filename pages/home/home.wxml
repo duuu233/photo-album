@@ -65,7 +65,7 @@
         <view class="empty-hint">请先绑定相框设备后再投屏照片</view>
         <view class="bind-pill" hover-class="none" bindtap="showBindNowSheet">
        
-              <image class="mini-bluetooth" src="/assets/images/bluetooth-icon.png" mode="aspectFill"></image>
+              <image class="mini-bluetooth-white" src="/assets/images/bluetooth-icon-white.png" mode="aspectFill"></image>
           <view class="bind-pill-text">绑定设备</view> 
         </view>
       </block>

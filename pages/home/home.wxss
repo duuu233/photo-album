@@ -231,7 +231,7 @@ button {
   margin-bottom: 18rpx;
   color: #2a2d32;
   font-size: 40rpx;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .device-status,
@@ -251,7 +251,10 @@ button {
   width: 22rpx;
   height: 28rpx;
 }
-
+.mini-bluetooth-white {
+  width: 28rpx;
+  height: 36rpx;
+}
 .carousel-dots {
   display: flex;
   align-self: center;
@@ -292,7 +295,7 @@ button {
   align-items: center;
   justify-content: center;
   align-self: center;
-  gap: 16rpx;
+  gap: 28rpx;
   width: 400rpx;
   height: 88rpx;
   margin-top: 48rpx;
@@ -301,7 +304,7 @@ button {
   border-radius: 999rpx;
   box-shadow: 0 18rpx 36rpx rgba(255, 98, 31, 0.28);
   font-size: 30rpx;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .btn-bluetooth {
@@ -383,7 +386,7 @@ button {
   margin-bottom: 12rpx;
   color: #2a2d32;
   font-size: 36rpx;
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1;
 }
 
@@ -442,7 +445,7 @@ button {
 .prompt-title {
   color: #2a2d32;
   font-size: 36rpx;
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1;
   text-align: center;
 }
@@ -470,7 +473,7 @@ button {
   border-radius: 999rpx;
   box-shadow: 0 18rpx 36rpx rgba(255, 98, 31, 0.2);
   font-size: 36rpx;
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1;
 }
 
@@ -492,7 +495,7 @@ button {
   margin-bottom: 46rpx;
   color: #2a2b2b;
   font-size: 40rpx;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .media-option {
@@ -530,7 +533,7 @@ button {
 .media-option-copy view {
   color: #2a2d32;
   font-size: 32rpx;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .media-option-copy text {
@@ -556,7 +559,7 @@ button {
   background: #ededed;
   border-radius: 999rpx;
   font-size: 36rpx;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .radar-wrap {
@@ -600,7 +603,7 @@ button {
 .scan-title {
   color: #2a2d32;
   font-size: 40rpx;
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1;
 }
 
@@ -640,7 +643,7 @@ button {
 .nearby-head text {
   color: #2a2d32;
   font-size: 32rpx;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .refresh-btn {
@@ -683,7 +686,7 @@ button {
   flex: 1;
   color: #2a2d32;
   font-size: 32rpx;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .select-circle {
@@ -718,7 +721,7 @@ image.select-circle {
 .scan-help-title {
   color: #2a2d32;
   font-size: 36rpx;
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1;
   text-align: center;
 }
@@ -734,7 +737,7 @@ image.select-circle {
   margin-bottom: 22rpx;
   color: #2a2d32;
   font-size: 28rpx;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .check-list {

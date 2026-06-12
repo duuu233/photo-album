@@ -8,7 +8,7 @@
       <view class="setting-icon orange-icon"><image class="setting-icon__img" src="/assets/images/set-icon01.png" mode="aspectFit"></image></view>
       <text class="row-label">语种设置</text>
       <text class="row-value">简中</text>
-      <view class="chevron">›</view>
+      <image class="chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
     </view>
   </view>
 
@@ -22,18 +22,18 @@
     <view class="setting-row" hover-class="none" bindtap="goPrivacy">
       <view class="setting-icon blue-icon"><image class="setting-icon__img" src="/assets/images/set-icon03.png" mode="aspectFit"></image></view>
       <text class="row-label">隐私政策</text>
-      <view class="chevron">›</view>
+      <image class="chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
     </view>
     <view class="setting-row" hover-class="none" bindtap="goAgreement">
       <view class="setting-icon blue-icon"><image class="setting-icon__img" src="/assets/images/set-icon04.png" mode="aspectFit"></image></view>
       <text class="row-label">用户协议</text>
-      <view class="chevron">›</view>
+      <image class="chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
     </view>
     <!-- <view class="setting-row" hover-class="none" bindtap="goUpdate">
       <view class="setting-icon blue-icon"><image class="setting-icon__img" src="/assets/images/set-icon05.png" mode="aspectFit"></image></view>
       <text class="row-label">更新BoltStar</text>
       <text class="row-value">版本1.0.0</text>
-      <view class="chevron">›</view>
+      <image class="chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
     </view> -->
   </view>
 

@@ -60,67 +60,6 @@
   border-radius: 50%;
 }
 
-.avatar-placeholder {
-  position: relative;
-  background: linear-gradient(135deg, #7fc1ff 0%, #f4fbff 100%);
-}
-
-.avatar-sky,
-.avatar-face,
-.avatar-cap {
-  position: absolute;
-}
-
-.avatar-sky {
-  inset: 0;
-  background:
-    radial-gradient(circle at 26% 24%, #ffffff 0 5rpx, transparent 6rpx),
-    radial-gradient(circle at 74% 20%, #ffffff 0 4rpx, transparent 5rpx);
-}
-
-.avatar-face {
-  left: 15rpx;
-  top: 22rpx;
-  width: 34rpx;
-  height: 30rpx;
-  background: #fff1e2;
-  border-radius: 46% 46% 50% 50%;
-}
-
-.avatar-face::before {
-  position: absolute;
-  top: 13rpx;
-  left: 9rpx;
-  width: 4rpx;
-  height: 4rpx;
-  background: #33373d;
-  border-radius: 50%;
-  box-shadow:
-    13rpx 0 0 #33373d,
-    7rpx 9rpx 0 -1rpx #ff7f6b;
-  content: '';
-}
-
-.avatar-cap {
-  left: 13rpx;
-  top: 14rpx;
-  width: 38rpx;
-  height: 16rpx;
-  background: #f4a23a;
-  border-radius: 18rpx 18rpx 5rpx 5rpx;
-}
-
-.avatar-cap::after {
-  position: absolute;
-  right: -7rpx;
-  bottom: 0;
-  width: 16rpx;
-  height: 5rpx;
-  background: #f4a23a;
-  border-radius: 999rpx;
-  content: '';
-}
-
 .nickname-input {
   flex: 1;
   min-width: 0;

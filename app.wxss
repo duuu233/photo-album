@@ -79,7 +79,7 @@ input {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20rpx;
+ 
   margin-bottom: 16rpx;
   color: #232323;
   font-size: 30rpx;
