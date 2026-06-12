@@ -3,7 +3,7 @@
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  padding: 108rpx 52rpx calc(34rpx + env(safe-area-inset-bottom));
+  padding: 0 0 calc(34rpx + env(safe-area-inset-bottom));
   overflow: hidden;
   color: #2a2b2b;
   background:
@@ -81,7 +81,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: 268rpx;
+  margin-top: 376rpx;
 }
 
 .login-back {
@@ -155,7 +155,7 @@
   align-items: center;
   align-self: center;
   width: 100%;
-  max-width: 524rpx;
+  max-width: 600rpx;
   min-height: 42rpx;
   margin-top: 58rpx;
 }
@@ -201,7 +201,8 @@
   background: #eb5f1b;
 }
 
-.login-agreement__checkbox .wx-checkbox-input.wx-checkbox-input-checked::before {
+.login-agreement__checkbox
+  .wx-checkbox-input.wx-checkbox-input-checked::before {
   color: #ffffff;
   font-size: 24rpx;
   font-weight: 700;
