@@ -533,6 +533,76 @@ Page({
     })
   },
 
+  // 图传前置诊断：把连接间隔设到目标值并复读确认（0x05 读 → 0x13 设 → 0x05 复读）。
+  // 这一步专门用来区分两类「停在第N包」的根因：
+  //   ① 连接间隔指令根本没生效（设备不支持 / 0x13 被拒 / 设了复读没变）；
+  //   ② 间隔已确认生效，仍卡住 → 就是「设备吃不下这个速率」，该动的是 pace/窗口而非连接参数。
+  // 返回 { category, verdict, before, after }，全过程同步打到控制台日志。
+  // category: 'unsupported'(读不到0x05) / 'rejected'(0x13被拒) / 'not-applied'(设了没变) /
+  //           'unconfirmed'(设了但复读失败) / 'applied'(已确认生效)
+  async applyAndVerifyConnInterval(targetMs) {
+    const deviceId = this.data.deviceId
+    const targetUnits = protocol.connectionIntervalMsToUnits(targetMs)
+
+    // 1) 传前读当前连接间隔（0x05）。读不到 → 这台固件没有连接间隔能力，提速只能靠 pace。
+    let before
+    try {
+      before = await deviceBle.getConnectionInterval(deviceId)
+      this.appendLog({ type: 'act', text: `图传前 连接间隔(0x05)=${before.ms}ms · units=${before.units}` })
+    } catch (error) {
+      const verdict = `设备不支持读取连接间隔(0x05)：${error.message}`
+      this.appendLog({ type: 'err', text: verdict })
+      return { category: 'unsupported', verdict, before: null, after: null }
+    }
+
+    // 2) 设到目标值（0x13）。被拒（0x08 不支持 / 0x0B 忙等）→ 连接间隔没生效。
+    try {
+      await deviceBle.setConnectionInterval(deviceId, targetUnits)
+    } catch (error) {
+      const verdict = `设置连接间隔(0x13)被拒：${error.message}`
+      this.appendLog({ type: 'err', text: verdict })
+      return { category: 'rejected', verdict, before, after: null }
+    }
+
+    // 3) 复读确认设备是否「真的」应用了（0x05）。这是判定「生效 vs 没生效」最可靠的一步。
+    let after
+    try {
+      after = await deviceBle.getConnectionInterval(deviceId)
+      this.setData({ connInterval: after, connIntervalInput: String(after.ms) })
+    } catch (error) {
+      const verdict = `已发 0x13 设为 ${targetMs}ms，但复读(0x05)失败：${error.message}`
+      this.appendLog({ type: 'act', text: verdict })
+      return { category: 'unconfirmed', verdict, before, after: null }
+    }
+
+    if (after.units === targetUnits) {
+      const verdict = `连接间隔已生效：${before.ms}ms → ${after.ms}ms（units=${after.units}）`
+      this.appendLog({ type: 'ok', text: verdict })
+      return { category: 'applied', verdict, before, after }
+    }
+    const verdict = `连接间隔未实际应用：请求 ${targetMs}ms(units=${targetUnits})，复读仍为 ${after.ms}ms(units=${after.units})`
+    this.appendLog({ type: 'err', text: verdict })
+    return { category: 'not-applied', verdict, before, after }
+  },
+
+  // 把连接间隔诊断分类翻成「下一步该怎么办」，附到图传失败提示里，直接给出可执行结论。
+  connDiagConclusion(category) {
+    switch (category) {
+      case 'applied':
+        return '连接间隔已确认生效仍卡住 → 基本可判定是「设备吃不下这个速率」：把发送速度调慢一档（pace 调大）后重试，问题不在连接参数。'
+      case 'not-applied':
+        return '设备对 0x13 回了成功但复读没变 → 连接间隔实际没生效：先查固件 0x13 是否真正更新链路参数，再谈速率。'
+      case 'rejected':
+        return '0x13 被拒（不支持/忙）→ 连接间隔没生效：先解决 0x13 设置，或只靠 pace/窗口调速。'
+      case 'unsupported':
+        return '设备不支持连接间隔指令(0x05) → 用不了它提速：只能靠 pace（每包间隔）/窗口来调。'
+      case 'unconfirmed':
+        return '设了 0x13 但复读失败，无法确认是否生效：建议重连后手动点「获取连接间隔(0x05)」核对。'
+      default:
+        return ''
+    }
+  },
+
   // 执行一次图传：挑槽位 → 调 device-ble.uploadImage（内部走 0x20→0x21窗口→0x22）→ 自动刷新显示这张
   async uploadFrame(frame, label) {
     const info = this.data.info
@@ -563,6 +633,16 @@ Page({
       uploadStatusType: 'info'
     })
     this.appendLog({ type: 'act', text: `${label} → 槽位 ${index}，数据 ${frame.dataSize} 字节 / ${totalPackets} 包` })
+
+    // 图传前：按「连接间隔」输入框的值把链路间隔设好并复读确认。卡住时据此区分
+    // 「连接间隔没生效」还是「设备吃不下速率」（结论见 applyAndVerifyConnInterval / connDiagConclusion）。
+    let connDiag = null
+    const targetMs = Number(this.data.connIntervalInput)
+    const targetUnits = protocol.connectionIntervalMsToUnits(targetMs)
+    if (Number.isFinite(targetMs) && targetMs > 0 &&
+        targetUnits >= protocol.CONN_INTERVAL_MIN_UNITS && targetUnits <= protocol.CONN_INTERVAL_MAX_UNITS) {
+      connDiag = await this.applyAndVerifyConnInterval(targetMs)
+    }
 
     try {
       const summary = await deviceBle.uploadImage(this.data.deviceId, {
@@ -598,9 +678,13 @@ Page({
       // 失败原因常驻显示在页面上（可长按复制），不用去翻一闪而过的弹窗
       // 只要期间发生过息屏/切后台(_uploadAborted)，无论报的是中止还是写失败，都按"息屏中断"提示
       const aborted = this._uploadAborted || (error && error.message === 'UPLOAD_ABORTED')
-      const text = aborted
+      let text = aborted
         ? '图传已中断：上传时手机息屏/切到后台，蓝牙在后台会暂停、设备也会超时。请保持屏幕常亮后重新上传。'
         : `图传失败：${error.message}`
+      // 非息屏类失败：把图传前的连接间隔诊断结论拼上，直接告诉是「没生效」还是「吃不下速率」。
+      if (!aborted && connDiag) {
+        text += `\n连接间隔诊断：${connDiag.verdict}\n→ ${this.connDiagConclusion(connDiag.category)}`
+      }
       this.appendLog({ type: 'err', text })
       this.setData({ uploadStatus: text, uploadStatusType: 'err' })
     } finally {

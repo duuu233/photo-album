@@ -269,6 +269,7 @@
 
 .upload-status__text {
   word-break: break-all;
+  white-space: pre-line; /* 让诊断结论里的换行(\n)正常分行显示 */
 }
 
 .upload-status--info {
