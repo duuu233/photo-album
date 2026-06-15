@@ -118,6 +118,14 @@ Page({
       await deviceBle.ensureConnection(deviceId)
       const info = await deviceBle.readDeviceInfo(deviceId)
 
+      // v1.4 固件支持主动设置 BLE 连接间隔。图传前切到 30ms，可减少默认慢连接间隔造成的写入排队/卡顿。
+      // 旧固件或链路暂不支持时继续走原有图传逻辑，避免把优化能力变成硬依赖。
+      try {
+        await deviceBle.optimizeConnectionIntervalForTransfer(deviceId)
+      } catch (error) {
+        // 不阻断投屏
+      }
+
       if (info.screenType === 0x03 || !info.width || !info.height) {
         throw new Error('该型号暂不支持图传')
       }

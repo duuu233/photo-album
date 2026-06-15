@@ -251,6 +251,8 @@ function sleep(ms) {
 //   2) 设备端（BLE 收包 + 写 Flash）跟不上 → 收一阵就不再前进（ACK_SEQ 卡住）。
 // 留足间隔让两边都喘得过气。先求稳（值偏大），联调通了再往小调提速。
 const PACKET_PACE_MS = 45
+// 图传前尝试把 BLE 连接间隔调到 30ms（CONN_INTERVAL=24）。失败时不阻断旧图传链路。
+const TRANSFER_CONN_INTERVAL_MS = 30
 
 // 裸写一帧（默认写类型，由特征支持的属性决定——本设备 FF01 为无应答写）。
 async function writeFrame(session, cmd, payload, writeType) {
@@ -379,6 +381,62 @@ async function getPlayConfig(deviceId) {
 async function getSwVersion(deviceId) {
   const ack = await request(deviceId, protocol.CMD.GET_SW_VER)
   return protocol.parseSwVer(ack.data)
+}
+
+function normalizeConnectionIntervalUnits(units) {
+  const value = Number(units)
+  if (!Number.isInteger(value) || value < protocol.CONN_INTERVAL_MIN_UNITS || value > protocol.CONN_INTERVAL_MAX_UNITS) {
+    throw new Error(`连接间隔需在 ${protocol.CONN_INTERVAL_MIN_UNITS}~${protocol.CONN_INTERVAL_MAX_UNITS} 之间`)
+  }
+  return value
+}
+
+// 读取 BLE 连接间隔（CMD=0x05）。返回 { units, ms }，units 的单位是 1.25ms。
+async function getConnectionInterval(deviceId) {
+  const ack = await request(deviceId, protocol.CMD.GET_CONN_INTERVAL)
+  if (ack.result !== 0x00) {
+    throw new Error(`读取连接间隔失败：${protocol.resultText(ack.result)}`)
+  }
+  return protocol.parseConnectionInterval(ack.data)
+}
+
+// 设置 BLE 连接间隔（CMD=0x13）。入参是协议原始 units，1 unit = 1.25ms。
+async function setConnectionInterval(deviceId, units) {
+  const value = normalizeConnectionIntervalUnits(units)
+  const ack = await request(deviceId, protocol.CMD.SET_CONN_INTERVAL, protocol.buildSetConnectionIntervalPayload(value))
+  if (ack.result !== 0x00) {
+    throw new Error(`设置连接间隔失败：${protocol.resultText(ack.result)}`)
+  }
+  return {
+    result: ack.result,
+    units: value,
+    ms: protocol.connectionIntervalUnitsToMs(value)
+  }
+}
+
+// 设置 BLE 连接间隔（毫秒便捷入口）。会按 1.25ms 单位四舍五入。
+async function setConnectionIntervalMs(deviceId, ms) {
+  return setConnectionInterval(deviceId, protocol.connectionIntervalMsToUnits(ms))
+}
+
+// 图传前的连接参数优化：读当前值，必要时切到更快的连接间隔。
+// 兼容旧固件/异常链路：调用方可捕获错误后继续走原图传逻辑。
+async function optimizeConnectionIntervalForTransfer(deviceId, ms) {
+  const targetUnits = normalizeConnectionIntervalUnits(protocol.connectionIntervalMsToUnits(ms || TRANSFER_CONN_INTERVAL_MS))
+  const previous = await getConnectionInterval(deviceId)
+  if (previous.units === targetUnits) {
+    return {
+      changed: false,
+      previous,
+      current: previous
+    }
+  }
+  const current = await setConnectionInterval(deviceId, targetUnits)
+  return {
+    changed: true,
+    previous,
+    current
+  }
 }
 
 // 校时（CMD=0x11）：把手机当前时间（或指定时间）写进设备 RTC
@@ -530,6 +588,10 @@ module.exports = {
   setPlayback,
   getPlayConfig,
   getSwVersion,
+  getConnectionInterval,
+  setConnectionInterval,
+  setConnectionIntervalMs,
+  optimizeConnectionIntervalForTransfer,
   setTime,
   deleteImage,
   refreshScreen,

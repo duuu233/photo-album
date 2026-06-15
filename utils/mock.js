@@ -317,6 +317,8 @@ function realDeviceFields(scan) {
     firmwareVersion: scan.firmwareVersion || '',
     hwVersion: scan.hwVersion || 0,
     macAddress: scan.deviceNo || '', // 设备 SN，详情页当 MAC/编号展示
+    connectionIntervalUnits: Number(scan.connectionIntervalUnits) || 0,
+    connectionIntervalMs: Number(scan.connectionIntervalMs) || 0,
     playbackMode: scan.playMode || 'order',
     intervalSeconds,
     intervalHours: intervalSeconds ? Math.max(1, Math.round(intervalSeconds / 3600)) : 2,

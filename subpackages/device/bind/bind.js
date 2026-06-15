@@ -129,6 +129,13 @@ Page({
       wx.showLoading({ title: '连接设备中', mask: true })
       try {
         info = await deviceBle.readDeviceInfo(scanDevice.deviceId)
+        try {
+          const conn = await deviceBle.getConnectionInterval(scanDevice.deviceId)
+          info.connectionIntervalUnits = conn.units
+          info.connectionIntervalMs = conn.ms
+        } catch (error) {
+          // 连接间隔是 v1.4 新增能力，读取失败不影响基础绑定。
+        }
       } catch (error) {
         wx.showToast({
           title: error.message || '设备连接失败',

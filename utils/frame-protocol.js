@@ -1,4 +1,4 @@
-// 电子相框 BLE 协议编解码层（依据《电子相框产品需求规格书 v1.2》第 6 章实现）。
+// 电子相框 BLE 协议编解码层（依据《电子相框产品需求规格书 v1.4》第 6 章实现）。
 // 纯函数、无副作用，便于单测；与具体的微信蓝牙 API 解耦，由 utils/device-ble.js 调用。
 //
 // 串行帧格式（6.4.1）：
@@ -22,9 +22,11 @@ const CMD = {
   GET_PLAY: 0x02, // 获取播放参数
   GET_SW_VER: 0x03, // 获取软件版本（固件号字符串）
   GET_BATTERY: 0x04, // 获取电量
+  GET_CONN_INTERVAL: 0x05, // 获取 BLE 连接间隔（v1.4）
   SET_PLAY: 0x10, // 设置播放模式/间隔
   SET_TIME: 0x11, // 校时（同步手机时间到设备 RTC）
   DELETE_IMG: 0x12, // 按位掩码删除图片
+  SET_CONN_INTERVAL: 0x13, // 设置 BLE 连接间隔（v1.4）
   IMG_START: 0x20, // 图传-开始
   IMG_DATA: 0x21, // 图传-数据
   IMG_END: 0x22, // 图传-结束
@@ -32,6 +34,11 @@ const CMD = {
   SET_CUR_IMG: 0x24, // 切换当前显示图片
   ACK: 0x7f // 通用应答
 }
+
+// BLE 连接间隔（v1.4）：CONN_INTERVAL 为 2 字节小端，单位 1.25ms，范围 6~3200。
+const CONN_INTERVAL_UNIT_MS = 1.25
+const CONN_INTERVAL_MIN_UNITS = 6
+const CONN_INTERVAL_MAX_UNITS = 3200
 
 // 屏幕类型（6.7.3 / 6.10.7）。capacity = 该尺寸最多可存图片张数（5.2）。
 const SCREEN_TYPES = {
@@ -217,6 +224,28 @@ function parseBattery(data) {
   return toBytes(data)[0]
 }
 
+function connectionIntervalUnitsToMs(units) {
+  const value = Number(units) || 0
+  return Number((value * CONN_INTERVAL_UNIT_MS).toFixed(2))
+}
+
+function connectionIntervalMsToUnits(ms) {
+  const value = Number(ms)
+  if (!Number.isFinite(value)) {
+    return 0
+  }
+  return Math.round(value / CONN_INTERVAL_UNIT_MS)
+}
+
+function parseConnectionInterval(data) {
+  const b = toBytes(data)
+  const units = b.length >= 2 ? readUint16LE(b, 0) : 0
+  return {
+    units,
+    ms: connectionIntervalUnitsToMs(units)
+  }
+}
+
 // 组 CMD=0x10 设置播放参数的 PAYLOAD：PLAY_MODE(1) + INTERVAL(4, 小端)（6.7.7）
 function buildSetPlaybackPayload(mode, intervalSeconds) {
   const interval = Number(intervalSeconds) || 0
@@ -226,6 +255,15 @@ function buildSetPlaybackPayload(mode, intervalSeconds) {
     (interval >> 8) & 0xff,
     (interval >> 16) & 0xff,
     (interval >> 24) & 0xff
+  ]
+}
+
+// 组 CMD=0x13 设置 BLE 连接间隔的 PAYLOAD：CONN_INTERVAL(2, 小端)，单位 1.25ms。
+function buildSetConnectionIntervalPayload(units) {
+  const value = Number(units) || 0
+  return [
+    value & 0xff,
+    (value >> 8) & 0xff
   ]
 }
 
@@ -411,6 +449,9 @@ module.exports = {
   SOF,
   ACK,
   CMD,
+  CONN_INTERVAL_UNIT_MS,
+  CONN_INTERVAL_MIN_UNITS,
+  CONN_INTERVAL_MAX_UNITS,
   SERVICE_UUID,
   CHAR_WRITE_UUID,
   CHAR_NOTIFY_UUID,
@@ -427,7 +468,11 @@ module.exports = {
   parseDeviceInfo,
   parseSwVer,
   parseBattery,
+  connectionIntervalUnitsToMs,
+  connectionIntervalMsToUnits,
+  parseConnectionInterval,
   buildSetPlaybackPayload,
+  buildSetConnectionIntervalPayload,
   parseAdvertising,
   RESULT_TEXT,
   resultText,

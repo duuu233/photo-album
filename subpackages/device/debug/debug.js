@@ -30,12 +30,14 @@ Page({
 
     // 设备信息（0x01 读回后填充）
     info: null,
+    connInterval: null,
     existingIndexes: '', // 设备上已有图片的索引列表，便于决定删哪张/传到哪
     autoUploadIndex: -1, // 自动挑选的空闲槽位
 
     // 指令输入框
     playMode: 'order', // 'order' 顺序 / 'random' 随机
     intervalInput: '60', // 切换间隔(秒)
+    connIntervalInput: '30', // BLE 连接间隔(ms)，协议会换算为 1.25ms 单位
     switchInput: '0', // 0x24 要显示的图片索引
     deleteInput: '', // 0x12 要删除的图片索引，逗号分隔，如 "0,2"
     uploadIndexInput: '', // 上传槽位，留空则自动选空闲位
@@ -187,6 +189,7 @@ Page({
       const writeTypeText = session.writeType === 'write' ? '有应答写(可靠)' : '无应答写'
       this.appendLog({ type: 'act', text: `协商 MTU=${session.mtu} 字节，图传每包数据 ${session.dataChunk} 字节，写入方式：${writeTypeText}` })
       await this.refreshInfoSilently()
+      await this.refreshConnectionIntervalSilently()
     } catch (error) {
       this.setData({ connected: false })
       this.appendLog({ type: 'err', text: `连接失败：${error.message}` })
@@ -200,7 +203,7 @@ Page({
     if (this.data.deviceId) {
       deviceBle.disconnect(this.data.deviceId)
     }
-    this.setData({ connected: false, info: null })
+    this.setData({ connected: false, info: null, connInterval: null })
     this.appendLog({ type: 'act', text: '已断开连接' })
   },
 
@@ -216,6 +219,18 @@ Page({
       })
     } catch (error) {
       // 读取失败不阻断主流程
+    }
+  },
+
+  async refreshConnectionIntervalSilently() {
+    try {
+      const connInterval = await deviceBle.getConnectionInterval(this.data.deviceId)
+      this.setData({
+        connInterval,
+        connIntervalInput: String(connInterval.ms)
+      })
+    } catch (error) {
+      // v1.4 新增能力，读取失败不影响其它指令调试。
     }
   },
 
@@ -278,6 +293,18 @@ Page({
     })
   },
 
+  async cmdGetConnInterval() {
+    const connInterval = await this.runCommand('获取连接间隔(0x05)', () => deviceBle.getConnectionInterval(this.data.deviceId), {
+      format: value => `连接间隔：${value.ms}ms · CONN_INTERVAL=${value.units}`
+    })
+    if (connInterval) {
+      this.setData({
+        connInterval,
+        connIntervalInput: String(connInterval.ms)
+      })
+    }
+  },
+
   // ── 设置类指令 ──────────────────────────────────────────
   // 播放模式中文名：order 顺序 / random 随机 / manual 手动
   playModeText(mode) {
@@ -292,6 +319,10 @@ Page({
     this.setData({ intervalInput: e.detail.value })
   },
 
+  onConnIntervalInput(e) {
+    this.setData({ connIntervalInput: e.detail.value })
+  },
+
   cmdSetPlay() {
     const interval = Number(this.data.intervalInput)
     if (!Number.isFinite(interval) || interval < 1) {
@@ -302,6 +333,28 @@ Page({
       refresh: true,
       format: () => `已设为 ${this.playModeText(this.data.playMode)} 播放 · 间隔 ${interval} 秒`
     })
+  },
+
+  async cmdSetConnInterval() {
+    const ms = Number(this.data.connIntervalInput)
+    if (!Number.isFinite(ms) || ms <= 0) {
+      wx.showToast({ title: '请输入有效的连接间隔毫秒数', icon: 'none' })
+      return
+    }
+    const units = protocol.connectionIntervalMsToUnits(ms)
+    if (units < protocol.CONN_INTERVAL_MIN_UNITS || units > protocol.CONN_INTERVAL_MAX_UNITS) {
+      wx.showToast({ title: '范围需在 7.5~4000ms', icon: 'none' })
+      return
+    }
+    const connInterval = await this.runCommand('设置连接间隔(0x13)', () => deviceBle.setConnectionInterval(this.data.deviceId, units), {
+      format: value => `已设连接间隔：${value.ms}ms · CONN_INTERVAL=${value.units}`
+    })
+    if (connInterval) {
+      this.setData({
+        connInterval,
+        connIntervalInput: String(connInterval.ms)
+      })
+    }
   },
 
   cmdSetTime() {

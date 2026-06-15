@@ -45,6 +45,7 @@
         <view class="info-cell"><text class="k">已存</text><text class="v">{{info.imgCount}} 张</text></view>
         <view class="info-cell"><text class="k">当前显示</text><text class="v">{{info.curImgIndex === 255 ? '无' : info.curImgIndex}}</text></view>
         <view class="info-cell"><text class="k">播放</text><text class="v">{{info.playMode === 'random' ? '随机' : (info.playMode === 'manual' ? '手动' : '顺序')}} / {{info.intervalSeconds}}s</text></view>
+        <view class="info-cell"><text class="k">连接间隔</text><text class="v">{{connInterval ? connInterval.ms + 'ms / ' + connInterval.units : '--'}}</text></view>
         <view class="info-cell"><text class="k">固件</text><text class="v">{{info.firmwareVersion || '--'}}</text></view>
       </view>
       <view class="kv"><text class="k">已有图片索引</text><text class="v">{{existingIndexes}}</text></view>
@@ -58,6 +59,7 @@
         <button class="btn btn-soft" disabled="{{busy}}" bindtap="cmdGetPlay">播放配置 0x02</button>
         <button class="btn btn-soft" disabled="{{busy}}" bindtap="cmdGetVersion">软件版本 0x03</button>
         <button class="btn btn-soft" disabled="{{busy}}" bindtap="cmdGetBattery">电量 0x04</button>
+        <button class="btn btn-soft" disabled="{{busy}}" bindtap="cmdGetConnInterval">连接间隔 0x05</button>
       </view>
     </view>
 
@@ -77,6 +79,12 @@
         <input class="input" type="number" value="{{intervalInput}}" bindinput="onIntervalInput" placeholder="如 60" />
         <button class="btn btn-mini" disabled="{{busy}}" bindtap="cmdSetPlay">应用 0x10</button>
       </view>
+      <view class="row">
+        <text class="row-label">连接间隔</text>
+        <input class="input" type="digit" value="{{connIntervalInput}}" bindinput="onConnIntervalInput" placeholder="ms,如 30" />
+        <button class="btn btn-mini" disabled="{{busy}}" bindtap="cmdSetConnInterval">应用 0x13</button>
+      </view>
+      <view class="row-tip">BLE 连接间隔单位为 1.25ms，允许 7.5~4000ms；图传建议先试 30ms。</view>
       <view class="row">
         <text class="row-label">系统校时</text>
         <text class="row-hint">把手机当前时间同步给设备 RTC</text>
