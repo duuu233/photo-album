@@ -4,7 +4,7 @@ const system = require('../../../utils/system')
 
 const app = getApp()
 
-const TOTAL_PLACEHOLDER_COUNT = 102 // demo 用：把图库补足到这个数量，营造“满相册”的视觉效果
+const TOTAL_PLACEHOLDER_COUNT = 0
 const HIDDEN_KEY = 'albumHiddenPhotoIds' // 本地“软删除”记录的缓存键（被删除照片的 id 集合）
 const FILTERS = [
   { label: '全部', value: '全部' },
@@ -62,36 +62,11 @@ function normalizePhoto(photo, index) {
   })
 }
 
-// 组装图库展示列表：真实照片在前，再用占位照片补足到 TOTAL_PLACEHOLDER_COUNT。
-// 占位照片 id 以 'ui_photo_' 开头、带 generated 标记，删除时只软隐藏、不调真实接口。
 function buildDisplayPhotos(sourcePhotos, devices) {
-  const activeDeviceNames = getActiveDeviceNames(devices)
-  // 只保留仍在设备上的照片并补全展示字段
-  const normalized = sourcePhotos
+  // 只保留仍在设备上的真实照片并补全展示字段。
+  return sourcePhotos
     .filter(photo => photo.onDevice !== false)
     .map(normalizePhoto)
-  const photos = normalized.slice()
-
-  // 没有任何有照片的设备时，不生成占位（避免空设备也显示满屏假照片）
-  if (!activeDeviceNames.length) {
-    return photos
-  }
-
-  // 从真实照片数量开始补占位，缩略图与归属设备按下标循环分配
-  for (let index = normalized.length; index < TOTAL_PLACEHOLDER_COUNT; index += 1) {
-    photos.push({
-      id: `ui_photo_${index + 1}`,
-      title: `设备照片 ${index + 1}`,
-      url: '',
-      deviceName: activeDeviceNames[index % activeDeviceNames.length],
-      thumbType: THUMB_TYPES[index % THUMB_TYPES.length],
-      size: 2.5,
-      onDevice: true,
-      generated: true
-    })
-  }
-
-  return photos
 }
 
 Page({
@@ -99,7 +74,7 @@ Page({
     statusBarHeight: 20,
     safeBottom: 0,
     filters: FILTERS,
-    currentFilter: '房间相册',
+    currentFilter: '全部',
     showFilterMenu: false,
     sourcePhotos: [],
     photos: [],
@@ -226,7 +201,7 @@ Page({
     })
   },
 
-  // 删除选中照片：所有项都加入本地隐藏表（软删除），其中真实照片再调后端删除
+  // 删除选中照片：先本地隐藏，随后调用后端删除真实照片记录
   async confirmDeleteSelected() {
     const ids = Object.keys(this.data.selectedMap)
 
@@ -235,8 +210,7 @@ Page({
       return
     }
 
-    // 占位照片（ui_photo_ 前缀）只在前端隐藏，真实照片才需要请求后端
-    const realIds = ids.filter(id => id.indexOf('ui_photo_') !== 0)
+    const realIds = ids
     const hiddenMap = readHiddenMap()
     ids.forEach(id => {
       hiddenMap[id] = true
@@ -266,13 +240,14 @@ Page({
     }
 
     const selectedPhotos = this.data.photos.filter(item => this.data.selectedMap[item.id])
-    // 没有选中设备时给一个兜底设备（demo 数据），保证投屏流程可走通
-    const device = app.globalData.selectedDevice || {
-      id: 'd_living_001',
-      name: '房间相册',
-      connected: true,
-      totalMemory: 100,
-      usedMemory: 68
+    const device = app.globalData.selectedDevice
+
+    if (!device) {
+      wx.showToast({
+        title: '请先选择设备',
+        icon: 'none'
+      })
+      return
     }
 
     // 把选中照片转换为预览页期望的图片结构，经 Storage 传入预览页
@@ -310,12 +285,14 @@ Page({
       return
     }
 
-    const device = app.globalData.selectedDevice || {
-      id: 'd_living_001',
-      name: '房间相册',
-      connected: true,
-      totalMemory: 100,
-      usedMemory: 68
+    const device = app.globalData.selectedDevice
+
+    if (!device) {
+      wx.showToast({
+        title: '请先选择设备',
+        icon: 'none'
+      })
+      return
     }
 
     wx.setStorageSync('pendingProjection', {

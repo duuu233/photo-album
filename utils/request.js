@@ -99,6 +99,30 @@ function appendClientHeaders(header, token) {
   return nextHeader
 }
 
+function isClientApi(url) {
+  return /^\/Client\//.test(url || '')
+}
+
+function getClientQuery(token, header) {
+  const info = getSystemInfo()
+  const query = {}
+
+  query.terminal = header && header.terminal ? header.terminal : WECHAT_MINI_PROGRAM_TERMINAL
+  query.language = header && header.language ? header.language : getLanguageCode()
+
+  if (header && header.device) {
+    query.device = header.device
+  } else if (info.model) {
+    query.device = info.model
+  }
+
+  if (token) {
+    query.userToken = token
+  }
+
+  return query
+}
+
 function parseResponseData(data) {
   if (typeof data !== 'string') {
     return data || {}
@@ -149,6 +173,9 @@ function request(rawOptions) {
   const token = getToken()
   const authToken = options.auth === false ? '' : token
   const header = appendClientHeaders(options.header, authToken)
+  const clientQuery = options.clientParams === false || !isClientApi(options.url)
+    ? {}
+    : getClientQuery(authToken, header)
 
   // 有 token 且未显式关闭鉴权时，自动带上 Bearer 头
   if (token && options.auth !== false) {
@@ -190,7 +217,7 @@ function request(rawOptions) {
 
   return new Promise((resolve, reject) => {
     wx.request({
-      url: buildUrl(options.url),
+      url: buildUrl(appendQuery(options.url, clientQuery)),
       method,
       data,
       header,
@@ -274,6 +301,9 @@ function upload(rawOptions) {
   const name = options.name || 'fileParam'
   const formData = options.formData || {}
   const query = options.query || {}
+  const clientQuery = options.clientParams === false || !isClientApi(options.url)
+    ? {}
+    : getClientQuery(authToken, header)
 
   if (token && options.auth !== false) {
     header.Authorization = `Bearer ${token}`
@@ -302,7 +332,7 @@ function upload(rawOptions) {
   const uploadOne = filePath =>
     new Promise((resolve, reject) => {
       wx.uploadFile({
-        url: buildUrl(appendQuery(options.url, query)),
+        url: buildUrl(appendQuery(options.url, Object.assign({}, clientQuery, query))),
         filePath,
         name,
         formData,

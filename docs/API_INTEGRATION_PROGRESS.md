@@ -11,7 +11,7 @@
 - 只对接用户前端模块：产品接口、基础功能接口、用户接口、设备接口。
 - 当前为微信小程序，接口名、摘要或语义涉及 `APP` / `App` / `app` 的接口先不接入小程序。
 - `/Client/User/userLogin`（用户登录-邮箱）不接入小程序。
-- Swagger 公共参数 `device`、`terminal`、`language`、`userToken` 按文档说明通过 headers 传递；小程序 `terminal=3`。
+- Swagger 当前把公共参数 `device`、`terminal`、`language`、`userToken` 标为 query；`utils/request.js` 已同时写入 query 与 header，兼容旧约定与当前 Swagger 标注；小程序 `terminal=3`。
 - BoltFox 响应格式为 `retCode/retMsg/retData`，`retCode=200` 表示成功。
 - 现阶段保留 `config.useMock=true`，避免未完成模块影响现有页面；已接入真实服务的方法在 `utils/api.js` 里通过 `mock:false` 单独请求真实接口。
 - 当前真实产品接口未携带有效 `userToken` 时会返回 `retCode=406`（请重新登录）；用户模块完成真实登录接入后才能完整联调产品数据。
@@ -22,10 +22,12 @@
 | --------------------- | ------------ | ---------------------------------- | ----------------------------------------------------------------------------------------- |
 | 用户前端-产品接口     | 已完成       | `utils/api.js`                     | 本模块 3 个接口均接入                                                                     |
 | 用户前端-基础功能接口 | 已完成       | `utils/api.js`、`utils/request.js` | App 版本/安卓下载接口跳过；邮箱验证码、设备图片上传、基础数据、基础文件上传已接入         |
-| 用户前端-用户接口     | 接口层已接入 | `utils/api.js`                     | 邮箱/PC 相关登录注册跳过；微信一键登录、用户信息、昵称/头像、退出、注销已接入；待页面联调 |
-| 用户前端-设备接口     | 接口层已接入 | `utils/api.js`                     | 设备增删改查、图库、一键清空、投屏记录列表/删除均接入；待页面联调                         |
+| 用户前端-用户接口     | 页面已接入   | `utils/api.js`、`app.js`、`pages/login/login.js`、`pages/mine/mine.js`、`subpackages/settings/profile/profile.js`、`subpackages/settings/index/index.js` | 微信手机号一键登录、用户信息、昵称/头像、退出、注销已接入；邮箱/PC 相关登录注册跳过 |
+| 用户前端-设备接口     | 页面已接入   | `utils/api.js`、`pages/home/home.js`、`subpackages/device/*`、`subpackages/album/list/list.js`、`subpackages/projection/*` | 设备增删改查、图库、一键清空、投屏记录列表/删除已接入真实接口；轮播/电量/图传/清空设备照片走 BLE 真指令 |
 
 > 2026-06-11 增量：对照 Swagger 最新接口，补齐用户接口、设备接口及基础新增接口（`getBasicData`、`setFileUpload`），并新增了 Swagger 新出现的投屏记录接口（`getUserProductImgRecordList`、`delUserProductImgRecord`）。接口清单见 [`接口清单.md`](接口清单.md)。
+>
+> 2026-06-16 复核：实时 Swagger `/v2/api-docs` 中小程序相关 `/Client/...` 路径仍为 33 个，未发现新增路径或 HTTP 方法变化；新增发现是公共参数在 Swagger 中标注为 query。已将旧页面方法（`getDevices`、`getAlbumPhotos`、`getProjectionRecords` 等）映射到真实 `/Client/...` 接口，并清理主要演示数据兜底。
 
 ## 用户前端-产品接口
 
@@ -64,6 +66,7 @@
 - `subpackages/settings/bind-email/bind-email.js`：获取验证码调用 `sendEmail({ userEmail, sendType: 3 })`。
 - `subpackages/settings/change-email/change-email.js`：获取验证码调用 `sendEmail({ userEmail, sendType: 3 })`。
 - `subpackages/settings/forgot-password/forgot-password.js`：获取验证码调用 `sendEmail({ userEmail, sendType: 2 })`。
+- `subpackages/projection/result/result.js`：BLE 图传成功后调用 `setUserProductUpload({ userProductId, deviceUploadState: 1, filePath })` 同步后端图库/投屏记录。
 
 ### 参数参考
 
@@ -136,3 +139,26 @@
 - `delUserProduct/clearUserProductImg(userProductId)`：可传 `id` 或 `{ id }`。
 - `delUserProductImg(ids)`：可传单个 id、id 数组或 `{ ids }`。
 - `delUserProductImgRecord(upirId)`：可传 `id` 或 `{ id }`。
+
+### 页面接入
+
+- `subpackages/device/bind/bind.js`：真实蓝牙扫描/读取设备信息后调用 `addUserProduct` 绑定后端设备。
+- `pages/home/home.js`、`subpackages/device/list/list.js`、`subpackages/device/detail/detail.js`：设备列表/详情改为 `getUserProductList`、`getUserProductDetail`、`editUserProduct`、`delUserProduct`。
+- `subpackages/device/detail/detail.js`、`subpackages/device/slideshow/slideshow.js`：轮播设置走 BLE `setPlayback(0x10)`；电量/容量刷新走 BLE `readDeviceInfo(0x01)`。
+- `subpackages/device/detail/detail.js`：一键清空先走 BLE `deleteImage(0x12)` 删除设备内图片，再调用 `clearUserProductImg` 同步后端。
+- `subpackages/album/list/list.js`：图库列表/删除改为 `getUserProductImgList`、`delUserProductImg`，不再补演示占位照片。
+- `subpackages/projection/records/records.js`：投屏记录列表/删除改为 `getUserProductImgRecordList`、`delUserProductImgRecord`。
+- `subpackages/settings/guide/guide.js`：操作指南接入 `getProductFaqList` / `getProductFaqDetail`，失败时保留静态兜底。
+
+## 硬件调试台能力接入状态
+
+| 调试台能力 | 真实页面接入 |
+| --- | --- |
+| 扫描/连接设备 | `subpackages/device/bind/bind.js`、`subpackages/device/list/list.js` |
+| 读设备信息/电量/容量/固件 | 绑定页、设备列表、设备详情、投屏结果页 |
+| 设置轮播顺序/随机/关闭 | `subpackages/device/detail/detail.js`、`subpackages/device/slideshow/slideshow.js` |
+| 相册/拍照图片转码并图传 | `subpackages/projection/result/result.js` |
+| 图传前优化连接间隔/保持亮屏/后台中断 | `subpackages/projection/result/result.js` |
+| 图传后刷新屏幕显示 | `subpackages/projection/result/result.js` |
+| 删除设备图片/一键清空 | `subpackages/device/detail/detail.js` |
+| 连接间隔手动读取/设置、彩条测试图、16 进制收发日志 | 仍仅保留在 `subpackages/device/debug/debug.js`，属于硬件联调工具能力，不开放到用户页面 |

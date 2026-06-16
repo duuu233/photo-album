@@ -8,11 +8,11 @@ Page({
     statusBarHeight: 20,
     safeBottom: 0,
     userInfo: {
-      id: '123456',
-      nickName: '江江江',
+      id: '--',
+      nickName: '微信用户',
       avatarUrl: '',
       email: '',
-      phone: '123456789'
+      phone: ''
     }
   },
 
@@ -32,14 +32,12 @@ Page({
   async loadUser() {
     try {
       const userInfo = await api.getUserProfile()
-      // id 仅在为纯数字时展示，否则用占位号
-      const displayId = userInfo.id && /^\d+$/.test(String(userInfo.id)) ? userInfo.id : '123456'
       this.syncUser({
-        id: displayId,
-        nickName: userInfo.nickName || '江江江',
+        id: userInfo.id || userInfo.userNo || '--',
+        nickName: userInfo.nickName || '微信用户',
         avatarUrl: userInfo.avatarUrl || '',
         email: userInfo.email || '',
-        phone: userInfo.phone || '123456789'
+        phone: userInfo.phone || ''
       })
     } catch (error) {
       this.syncUser(this.data.userInfo)

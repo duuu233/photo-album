@@ -285,8 +285,16 @@ Page({
       const devices = await api.getDevices()
       const cached = app.globalData.selectedDevice
       // 优先沿用上次选中的设备，没有则取列表第一个
-      const selected =
+      let selected =
         devices.find(item => cached && item.id === cached.id) || devices[0]
+
+      if (selected && cached && String(selected.id) === String(cached.id)) {
+        selected = Object.assign({}, selected, {
+          deviceId: selected.deviceId || cached.deviceId,
+          bleDeviceId: selected.bleDeviceId || cached.bleDeviceId || cached.deviceId,
+          battery: typeof selected.battery === 'number' ? selected.battery : cached.battery
+        })
+      }
       const currentDevice = normalizeDevice(selected)
 
       if (selected) {
@@ -429,21 +437,10 @@ Page({
     this.startBindingScan()
   },
 
-  // 模拟蓝牙搜索：进入“搜索中”场景，1.2s 后切到“已发现设备”并默认选中第一个
   startBindingScan() {
-    this.clearScanTimer()
-    this.setScene(SCENES.BINDING_SCANNING)
-
-    this.scanTimer = setTimeout(() => {
-      this.scanTimer = null
-      this.setData({
-        nearbyDevices: NEARBY_DEVICES.map((item, index) => ({
-          ...item,
-          selected: index === 0
-        }))
-      })
-      this.setScene(SCENES.DEVICE_FOUND)
-    }, 1200)
+    wx.navigateTo({
+      url: '/subpackages/device/bind/bind'
+    })
   },
 
   rescanDevices() {
@@ -480,25 +477,7 @@ Page({
   },
 
   finishBind() {
-    const selected =
-      this.data.nearbyDevices.find(item => item.selected) ||
-      this.data.nearbyDevices[0]
-    const currentDevice = {
-      id: selected.id,
-      name: selected.name,
-      connected: true,
-      battery: 30,
-      batteryIcon: batteryUtil.getBatteryIcon(30)
-    }
-
-    this.setData({
-      currentDevice,
-      deviceList: [currentDevice],
-      currentDeviceIndex: 0,
-      batteryWidth: currentDevice.battery,
-      hasDevice: true
-    })
-    this.setScene(SCENES.BOUND)
+    this.startBindingScan()
   },
 
   // 轮播切换：同步当前设备与电量，供拍照/投屏等逻辑沿用 currentDevice

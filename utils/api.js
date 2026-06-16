@@ -16,6 +16,163 @@ function normalizeFilePaths(input) {
     .filter(Boolean)
 }
 
+function pageData(data) {
+  if (Array.isArray(data)) {
+    return data
+  }
+  if (data && Array.isArray(data.pageData)) {
+    return data.pageData
+  }
+  if (data && Array.isArray(data.list)) {
+    return data.list
+  }
+  if (data && Array.isArray(data.rows)) {
+    return data.rows
+  }
+  return []
+}
+
+function firstValue() {
+  for (let i = 0; i < arguments.length; i++) {
+    const value = arguments[i]
+    if (value !== undefined && value !== null && value !== '') {
+      return value
+    }
+  }
+  return ''
+}
+
+function normalizeNumber(value, fallback) {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : fallback
+}
+
+function normalizeUserProfile(user = {}) {
+  return {
+    id: firstValue(user.userNo, user.userId, user.id),
+    userNo: firstValue(user.userNo, user.userId, user.id),
+    nickName: firstValue(user.nickName, user.nickname, ''),
+    avatar: firstValue(user.avatar, user.avatarUrl, ''),
+    avatarUrl: firstValue(user.avatar, user.avatarUrl, ''),
+    userEmail: firstValue(user.userEmail, user.email, ''),
+    email: firstValue(user.userEmail, user.email, ''),
+    phone: firstValue(user.userMobile, user.phone, ''),
+    imgCount: normalizeNumber(user.imgCount, 0),
+    productCount: normalizeNumber(user.productCount, 0),
+    userToken: user.userToken || ''
+  }
+}
+
+function normalizeDevice(device = {}) {
+  const userProductId = firstValue(device.userProductId, device.id)
+  const bleDeviceId = firstValue(
+    device.bleDeviceId,
+    device.wxDeviceId,
+    device.bluetoothDeviceId,
+    device.bleId
+  )
+  const productDeviceId = firstValue(
+    device.productDeviceId,
+    device.deviceNo,
+    device.serialNo,
+    device.productSerialNo,
+    bleDeviceId ? device.backendDeviceId : device.deviceId
+  )
+  const usedMemory = normalizeNumber(firstValue(device.usedMemory, device.imgCount), 0)
+  const totalMemory = normalizeNumber(firstValue(device.totalMemory, device.capacity), 0)
+  const intervalSeconds = normalizeNumber(device.intervalSeconds, 0)
+
+  return Object.assign({}, device, {
+    id: String(firstValue(userProductId, productDeviceId, bleDeviceId)),
+    userProductId,
+    // deviceId 在页面里用于微信 BLE 连接；后端的设备唯一号保存在 deviceNo/productDeviceId。
+    deviceId: bleDeviceId,
+    productDeviceId,
+    deviceNo: productDeviceId,
+    name: firstValue(device.name, device.productName, device.screen, '智能相框'),
+    productName: firstValue(device.productName, device.name, device.screen, '智能相框'),
+    icon: firstValue(device.productImg, device.icon, '/assets/images/device-list-icon01.png'),
+    battery: typeof device.battery === 'number' ? device.battery : null,
+    connected: !!(device.connected && bleDeviceId),
+    usedMemory,
+    totalMemory,
+    playbackMode: firstValue(device.playbackMode, device.playMode, 'order'),
+    intervalSeconds,
+    intervalHours: normalizeNumber(device.intervalHours, intervalSeconds ? Math.max(1, Math.round(intervalSeconds / 3600)) : 2),
+    carouselEnabled: device.carouselEnabled !== false
+  })
+}
+
+function normalizePhoto(photo = {}, index = 0) {
+  const id = firstValue(photo.uProductImgId, photo.uproductImgId, photo.id, `photo_${index}`)
+  return Object.assign({}, photo, {
+    id: String(id),
+    uProductImgId: firstValue(photo.uProductImgId, photo.uproductImgId, id),
+    deviceId: firstValue(photo.userProductId, photo.deviceId, ''),
+    deviceName: firstValue(photo.productName, photo.deviceName, '相框'),
+    title: firstValue(photo.title, photo.productName, `照片 ${index + 1}`),
+    url: firstValue(photo.img, photo.url, ''),
+    createdAt: firstValue(photo.upTime, photo.joinTime, photo.createdAt, ''),
+    onDevice: photo.onDevice !== false
+  })
+}
+
+function normalizeProjectionRecord(record = {}, index = 0) {
+  const state = Number(record.deviceUploadState)
+  const stateText = String(record.deviceUploadStateMsg || record.status || '')
+  const success = record.status
+    ? record.status === 'success'
+    : (Number.isFinite(state) ? state === 1 : stateText.indexOf('成功') > -1)
+
+  return Object.assign({}, record, {
+    id: String(firstValue(record.upirId, record.id, `record_${index}`)),
+    status: success ? 'success' : 'fail',
+    message: firstValue(record.deviceUploadStateMsg, record.message, success ? '投屏成功' : '投屏失败'),
+    createdAt: firstValue(record.upTime, record.joinTime, record.createdAt, ''),
+    deviceName: firstValue(record.productName, record.deviceName, '相框'),
+    imageCount: normalizeNumber(record.imageCount, 1)
+  })
+}
+
+function isLocalFile(path) {
+  return !!path && !/^https?:\/\//i.test(path) && !/^\/assets\//.test(path)
+}
+
+function extractUploadUrl(result) {
+  const item = Array.isArray(result) ? result[0] : result
+
+  if (typeof item === 'string') {
+    return item
+  }
+  if (!item || typeof item !== 'object') {
+    return ''
+  }
+
+  return firstValue(
+    item.url,
+    item.fileUrl,
+    item.filePath,
+    item.path,
+    item.img,
+    item.data && item.data.url
+  )
+}
+
+function productScore(product, scan) {
+  const text = [
+    product.productName,
+    product.model,
+    product.screen,
+    product.width,
+    product.height
+  ].join(' ').toLowerCase()
+  const terms = [scan.model, scan.screen, scan.name]
+    .filter(Boolean)
+    .map(item => String(item).toLowerCase())
+
+  return terms.reduce((score, term) => score + (text.indexOf(term) > -1 ? 1 : 0), 0)
+}
+
 module.exports = {
   getProductList(params = {}) {
     return http.get('/Client/Product/getProductList', params, {
@@ -280,11 +437,12 @@ module.exports = {
     })
   },
 
+  wechatAppLogin(data) {
+    return module.exports.setWechatAppLogin(data)
+  },
+
   loginByWechat(data) {
-    return http.post('/auth/wechat-login', data, {
-      auth: false,
-      showError: false
-    })
+    return module.exports.setWechatAppLogin(data)
   },
 
   bindPhone(data) {
@@ -307,11 +465,31 @@ module.exports = {
   },
 
   getUserProfile() {
-    return http.get('/user/profile')
+    return module.exports.getUserInfo().then(normalizeUserProfile)
   },
 
-  updateUserProfile(data) {
-    return http.put('/user/profile', data)
+  async updateUserProfile(data = {}) {
+    const nickName = String(data.nickName || '').trim()
+    let avatar = data.avatar || data.avatarUrl || ''
+
+    if (avatar && isLocalFile(avatar)) {
+      const uploadResult = await module.exports.setFileUpload({ filePath: avatar })
+      avatar = extractUploadUrl(uploadResult) || avatar
+    }
+
+    const tasks = []
+    if (nickName) {
+      tasks.push(module.exports.changeNickName(nickName))
+    }
+    if (avatar) {
+      tasks.push(module.exports.changeAvatar(avatar))
+    }
+
+    if (tasks.length) {
+      await Promise.all(tasks)
+    }
+
+    return module.exports.getUserProfile()
   },
 
   bindEmail(email) {
@@ -341,56 +519,90 @@ module.exports = {
   },
 
   logout() {
-    return http.post('/auth/logout')
+    return module.exports.loginOut()
   },
 
   deleteAccount() {
-    return http.delete('/account')
+    return module.exports.userOff()
   },
 
   getDevices() {
-    return http.get('/devices')
+    return module.exports.getUserProductList({
+      pageIndex: 1,
+      pageSize: 100
+    }).then(data => pageData(data).map(normalizeDevice))
   },
 
   getDeviceDetail(deviceId) {
-    return http.get(`/devices/${deviceId}`)
+    return module.exports.getUserProductDetail(deviceId)
+      .then(device => normalizeDevice(Object.assign({}, device, {
+        userProductId: firstValue(device && device.userProductId, deviceId)
+      })))
   },
 
-  bindDevice(device) {
-    return http.post(
-      '/devices/bind',
-      {
-        device
-      },
-      {
-        loading: true,
-        loadingText: '绑定中'
+  async bindDevice(device) {
+    const scan = device && device.device ? device.device : (device || {})
+    let productId = scan.productId
+
+    if (!productId) {
+      try {
+        const products = await module.exports.getProductList({
+          pageIndex: 1,
+          pageSize: 100,
+          keyword: firstValue(scan.model, scan.screen, scan.name, scan.productName)
+        })
+        const list = pageData(products)
+        const matched = list
+          .slice()
+          .sort((a, b) => productScore(b, scan) - productScore(a, scan))[0]
+        productId = matched && matched.productId
+      } catch (error) {
+        // 产品匹配失败时仍尝试按硬件信息绑定，具体校验交给后端。
       }
-    )
+    }
+
+    const productName = firstValue(scan.productName, scan.name, scan.model, scan.screen, '智能相框')
+    const productDeviceId = firstValue(scan.deviceNo, scan.hardwareDeviceId, scan.productSerialNo, scan.deviceId)
+    const payload = {
+      productName,
+      deviceId: productDeviceId
+    }
+
+    if (productId) {
+      payload.productId = productId
+    }
+
+    const saved = await module.exports.addUserProduct(payload)
+    return normalizeDevice(Object.assign({}, scan, saved, {
+      bleDeviceId: scan.deviceId,
+      productDeviceId,
+      deviceNo: productDeviceId,
+      productName
+    }))
   },
 
   renameDevice(deviceId, name) {
-    return http.put(`/devices/${deviceId}`, {
-      name
-    })
+    return module.exports.editUserProduct({
+      userProductId: deviceId,
+      productName: name
+    }).then(device => normalizeDevice(Object.assign({}, device, {
+      userProductId: deviceId,
+      productName: name
+    })))
   },
 
   updateDevicePlayback(deviceId, data) {
-    return http.put(`/devices/${deviceId}/playback`, data)
+    return Promise.resolve(normalizeDevice(Object.assign({
+      userProductId: deviceId
+    }, data)))
   },
 
   formatDevice(deviceId) {
-    return http.post(`/devices/${deviceId}/format`, null, {
-      loading: true,
-      loadingText: '格式化中'
-    })
+    return module.exports.clearUserProductImg(deviceId)
   },
 
   clearDevicePhotoCopies(deviceId) {
-    return http.post(`/devices/${deviceId}/clear-photo-copies`, null, {
-      loading: true,
-      loadingText: '清理中'
-    })
+    return module.exports.clearUserProductImg(deviceId)
   },
 
   getDeviceFirmware(deviceId) {
@@ -404,34 +616,37 @@ module.exports = {
   },
 
   deleteDevice(deviceId) {
-    return http.delete(`/devices/${deviceId}`, null, {
-      loading: true,
-      loadingText: '删除中'
-    })
+    return module.exports.delUserProduct(deviceId)
   },
 
   getAlbumPhotos() {
-    return http.get('/album/photos')
+    return module.exports.getUserProductImgList({
+      pageIndex: 1,
+      pageSize: 100
+    }).then(data => pageData(data).map(normalizePhoto))
   },
 
   deleteAlbumPhotos(ids) {
-    return http.delete('/album/photos', {
-      ids
-    })
+    return module.exports.delUserProductImg(ids)
   },
 
   uploadProjection(data) {
-    return http.post('/projection/upload', data, {
-      loading: true,
-      loadingText: '投屏中'
+    const files = data && data.images ? data.images : []
+    return module.exports.setUserProductUpload({
+      filePaths: files.map(item => item.tempFilePath || item.url).filter(Boolean),
+      userProductId: data && data.deviceId,
+      deviceUploadState: data && data.deviceUploadState
     })
   },
 
   getProjectionRecords() {
-    return http.get('/projection/records')
+    return module.exports.getUserProductImgRecordList({
+      pageIndex: 1,
+      pageSize: 100
+    }).then(data => pageData(data).map(normalizeProjectionRecord))
   },
 
   deleteProjectionRecord(recordId) {
-    return http.delete(`/projection/records/${recordId}`)
+    return module.exports.delUserProductImgRecord(recordId)
   }
 }

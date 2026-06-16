@@ -1,5 +1,8 @@
 const api = require('../../../utils/api')
 const system = require('../../../utils/system')
+const deviceBle = require('../../../utils/device-ble')
+
+const app = getApp()
 
 Page({
   data: {
@@ -41,7 +44,16 @@ Page({
 
   // 加载设备并把当前轮播间隔小时数映射为选择器下标（缺省落到第 1 项）
   async loadDevice() {
-    const device = await api.getDeviceDetail(this.data.id)
+    let device = await api.getDeviceDetail(this.data.id)
+    const selected = app.globalData.selectedDevice
+
+    if (selected && String(selected.id) === String(device && device.id)) {
+      device = Object.assign({}, device, {
+        deviceId: device.deviceId || selected.deviceId,
+        bleDeviceId: device.bleDeviceId || selected.bleDeviceId || selected.deviceId
+      })
+    }
+
     const intervalIndex = this.data.intervalOptions.indexOf(device ? device.intervalHours : 2)
     this.setData({
       device,
@@ -50,33 +62,68 @@ Page({
   },
 
   async toggleCarousel(e) {
-    const device = await api.updateDevicePlayback(this.data.id, {
-      carouselEnabled: e.detail.value
-    })
-    this.setData({
-      device
-    })
+    const currentMode = this.data.device && this.data.device.playbackMode === 'manual'
+      ? 'order'
+      : this.data.device && this.data.device.playbackMode
+    await this.applyPlayback(
+      e.detail.value ? currentMode || 'order' : 'manual',
+      this.data.device && this.data.device.intervalHours,
+      e.detail.value
+    )
   },
 
   // 切换轮播间隔：picker 返回下标，转成实际小时数后保存
   async changeInterval(e) {
     const intervalHours = this.data.intervalOptions[Number(e.detail.value)]
-    const device = await api.updateDevicePlayback(this.data.id, {
-      intervalHours
-    })
-    this.setData({
-      device,
-      intervalIndex: Number(e.detail.value)
-    })
+    await this.applyPlayback(this.data.device.playbackMode || 'order', intervalHours, this.data.device.carouselEnabled !== false)
   },
 
   // 切换播放模式（顺序/随机），模式值由按钮 data-mode 提供
   async changePlayback(e) {
-    const device = await api.updateDevicePlayback(this.data.id, {
-      playbackMode: e.currentTarget.dataset.mode
-    })
-    this.setData({
-      device
-    })
+    await this.applyPlayback(e.currentTarget.dataset.mode, this.data.device.intervalHours, true)
+  },
+
+  async applyPlayback(mode, intervalHours, carouselEnabled) {
+    const device = this.data.device
+    if (!device || !device.deviceId) {
+      wx.showToast({
+        title: '请先连接设备',
+        icon: 'none'
+      })
+      return
+    }
+
+    const hours = Number(intervalHours) || 2
+    const intervalSeconds = Math.max(1, Math.round(hours * 3600))
+
+    wx.showLoading({ title: '保存中', mask: true })
+    try {
+      await deviceBle.setPlayback(device.deviceId, mode, intervalSeconds)
+      const updated = Object.assign({}, device, {
+        connected: true,
+        playbackMode: mode,
+        intervalSeconds,
+        intervalHours: hours,
+        carouselEnabled
+      })
+      const intervalIndex = this.data.intervalOptions.indexOf(hours)
+
+      if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === updated.id) {
+        app.setSelectedDevice(updated)
+      }
+
+      this.setData({
+        device: updated,
+        intervalIndex: intervalIndex > -1 ? intervalIndex : this.data.intervalIndex
+      })
+      wx.showToast({ title: '已保存', icon: 'success' })
+    } catch (error) {
+      wx.showToast({
+        title: error.message || '保存失败',
+        icon: 'none'
+      })
+    } finally {
+      wx.hideLoading()
+    }
   }
 })

@@ -1,6 +1,7 @@
 const api = require('../../../utils/api')
 const system = require('../../../utils/system')
 const batteryUtil = require('../../../utils/battery')
+const deviceBle = require('../../../utils/device-ble')
 
 const app = getApp()
 
@@ -41,8 +42,18 @@ Page({
     this.setData({
       loading: true
     })
-    const devices = await api.getDevices()
+    const sourceDevices = await api.getDevices()
     const selected = app.globalData.selectedDevice
+    const devices = sourceDevices.map(item => {
+      if (!selected || String(selected.id) !== String(item.id)) {
+        return item
+      }
+      return Object.assign({}, item, {
+        deviceId: item.deviceId || selected.deviceId,
+        bleDeviceId: item.bleDeviceId || selected.bleDeviceId || selected.deviceId,
+        battery: typeof item.battery === 'number' ? item.battery : selected.battery
+      })
+    })
 
     this.setData({
       // 先算内存百分比，再标记“可删除提示”仅显示在最后一个离线设备上（引导用户清理）
@@ -113,7 +124,6 @@ Page({
     })
   },
 
-  // 切换设备在线状态（模拟连接/断开）
   async toggleConnection(e) {
     const id = e.currentTarget.dataset.id
     const device = this.data.devices.find(item => item.id === id)
@@ -122,15 +132,62 @@ Page({
       return
     }
 
-    await api.updateDevicePlayback(id, {
-      connected: !device.connected,
-      lastOnline: '刚刚'
-    })
-    wx.showToast({
-      title: device.connected ? '已断开' : '已连接',
-      icon: 'none'
-    })
-    this.loadDevices()
+    if (device.connected) {
+      if (device.deviceId) {
+        deviceBle.disconnect(device.deviceId)
+      }
+      this.setData({
+        devices: this.data.devices.map(item => item.id === id ? Object.assign({}, item, {
+          connected: false
+        }) : item)
+      })
+      wx.showToast({ title: '已断开', icon: 'none' })
+      return
+    }
+
+    if (!device.deviceId) {
+      wx.showToast({
+        title: '请重新搜索绑定后连接',
+        icon: 'none'
+      })
+      return
+    }
+
+    wx.showLoading({ title: '连接设备中', mask: true })
+    try {
+      await deviceBle.ensureConnection(device.deviceId)
+      const info = await deviceBle.readDeviceInfo(device.deviceId)
+      const updated = Object.assign({}, device, {
+        connected: true,
+        battery: info.battery,
+        usedMemory: info.imgCount,
+        totalMemory: info.capacity,
+        playbackMode: info.playMode,
+        intervalSeconds: info.intervalSeconds,
+        intervalHours: info.intervalSeconds ? Math.max(1, Math.round(info.intervalSeconds / 3600)) : device.intervalHours,
+        firmwareVersion: info.firmwareVersion || device.firmwareVersion
+      })
+
+      if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === id) {
+        app.setSelectedDevice(updated)
+      }
+
+      this.setData({
+        devices: this.data.devices.map(item => item.id === id ? Object.assign({}, updated, {
+          memoryPercent: memoryPercent(updated),
+          batteryIcon: batteryUtil.getBatteryIcon(updated.battery),
+          batteryText: typeof updated.battery === 'number' ? `${updated.battery}%` : ''
+        }) : item)
+      })
+      wx.showToast({ title: '已连接', icon: 'success' })
+    } catch (error) {
+      wx.showToast({
+        title: error.message || '连接失败',
+        icon: 'none'
+      })
+    } finally {
+      wx.hideLoading()
+    }
   },
 
   renameDevice(e) {

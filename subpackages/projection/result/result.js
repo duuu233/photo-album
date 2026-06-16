@@ -2,6 +2,7 @@
 // 传完按真实结果切到「成功 / 失败」。链路与调试台一致：
 //   连接 → 读真实设备信息(0x01) → 逐张：解码→量化六色帧→图传(0x20/0x21/0x22)→刷新显示(0x24)。
 const system = require('../../../utils/system')
+const api = require('../../../utils/api')
 const deviceBle = require('../../../utils/device-ble')
 const imageCodec = require('../../../utils/image-codec')
 const protocol = require('../../../utils/frame-protocol')
@@ -169,6 +170,8 @@ Page({
           }
         })
 
+        await this.syncUploadedImage(device, image)
+
         // 传完顺手刷新到这张（失败不影响整体）；并把该槽位记为已用，供下一张选槽位
         try {
           await deviceBle.refreshScreen(deviceId, index)
@@ -194,6 +197,25 @@ Page({
       wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false })
       deviceBle.disconnect(deviceId) // 传完/失败都断开，释放连接
       this._activeDeviceId = ''
+    }
+  },
+
+  async syncUploadedImage(device, image) {
+    const filePath = image && (image.tempFilePath || image.url)
+    const userProductId = device && (device.userProductId || device.id)
+
+    if (!filePath || /^https?:\/\//i.test(filePath) || !userProductId) {
+      return
+    }
+
+    try {
+      await api.setUserProductUpload({
+        filePath,
+        userProductId,
+        deviceUploadState: 1
+      })
+    } catch (error) {
+      // 后端记录同步失败不改变已经完成的硬件图传结果。
     }
   },
 

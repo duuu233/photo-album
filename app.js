@@ -50,7 +50,7 @@ App({
   // 真实 BoltFox 一键登录：detail 来自 button open-type="getPhoneNumber" 的回调，
   // 新版微信返回 code，旧版返回 encryptedData + iv，后端据此换取手机号并下发 userToken。
   async loginWithWechatPhone(detail = {}) {
-    const profile = await api.wechatAppLogin({
+    const profile = await api.setWechatAppLogin({
       code: detail.code,
       wxEncrypData: detail.encryptedData,
       wxIvData: detail.iv
@@ -97,7 +97,19 @@ App({
         user: this.globalData.userInfo
       })
     }
-    return this.loginWithWechat()
+
+    const pages = getCurrentPages ? getCurrentPages() : []
+    const current = pages[pages.length - 1]
+    if (!current || current.route !== 'pages/login/login') {
+      wx.reLaunch({
+        url: '/pages/login/login'
+      })
+    }
+
+    return Promise.reject({
+      code: 'NO_TOKEN',
+      message: '请先登录'
+    })
   },
 
   // 设置/清除当前选中的相框设备，同步写入缓存以便跨页面、跨启动保持选中

@@ -1,3 +1,17 @@
+const api = require('../../../utils/api')
+
+function faqToGuide(item, index) {
+  const content = item.faqContent || ''
+  return {
+    id: String(item.faqId || item.id || `faq_${index}`),
+    faqId: item.faqId,
+    title: item.faqTitle || item.title || `问题 ${index + 1}`,
+    open: index === 0,
+    loaded: !!content,
+    lines: content ? content.split(/\r?\n/).filter(Boolean) : []
+  }
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -31,6 +45,25 @@ Page({
 
   onLoad() {
     this.setSystemMetrics()
+    this.loadGuides()
+  },
+
+  async loadGuides() {
+    try {
+      const data = await api.getProductFaqList({
+        pageIndex: 1,
+        pageSize: 50
+      })
+      const list = Array.isArray(data) ? data : (data && data.pageData) || []
+      if (!list.length) {
+        return
+      }
+      this.setData({
+        guides: list.map(faqToGuide)
+      })
+    } catch (error) {
+      // FAQ 接口失败时保留本地静态指南。
+    }
   },
 
   setSystemMetrics() {
@@ -45,8 +78,26 @@ Page({
   },
 
   // 折叠面板：点击的项切换展开/收起，其余保持不变（可多个同时展开）
-  toggleGuide(event) {
+  async toggleGuide(event) {
     const id = event.currentTarget.dataset.id
+    const guide = this.data.guides.find(item => item.id === id)
+    const willOpen = guide && !guide.open
+
+    if (willOpen && guide.faqId && !guide.loaded) {
+      try {
+        const detail = await api.getProductFaqDetail(guide.faqId)
+        const content = detail && detail.faqContent ? detail.faqContent : ''
+        this.setData({
+          guides: this.data.guides.map(item => item.id === id ? Object.assign({}, item, {
+            loaded: true,
+            lines: content ? content.split(/\r?\n/).filter(Boolean) : item.lines
+          }) : item)
+        })
+      } catch (error) {
+        // 详情加载失败不阻断展开。
+      }
+    }
+
     this.setData({
       guides: this.data.guides.map(item => ({
         ...item,

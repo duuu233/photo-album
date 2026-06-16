@@ -1,6 +1,6 @@
 <view class="mock-root ota-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
-    <image class="mock-bg__image" src="/assets/images/bg01.png" mode="aspectFill"></image>
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202606161438400869930.png" mode="aspectFill"></image>
   </view>
 
   <page-nav title="OTA升级"></page-nav>

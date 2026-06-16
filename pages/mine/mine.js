@@ -7,10 +7,10 @@ Page({
     statusBarHeight: 20,
     safeBottom: 0,
     avatarUrl: '',
-    nickName: '江江江',
-    userId: '123456',
-    photoCount: 102,
-    deviceCount: 3
+    nickName: '微信用户',
+    userId: '--',
+    photoCount: 0,
+    deviceCount: 0
   },
 
   onLoad() {
@@ -51,23 +51,21 @@ Page({
         api.getAlbumPhotos(),
         api.getDevices()
       ])
-      // 仅当 id 为纯数字时展示，否则用占位号（demo 数据兜底）
-      const displayUserId = userInfo.id && /^\d+$/.test(String(userInfo.id)) ? userInfo.id : '123456'
-      // 默认昵称“微信用户”视为未设置，回退到占位昵称
-      const displayName = userInfo.nickName && userInfo.nickName !== '微信用户' ? userInfo.nickName : '江江江'
+      const displayUserId = userInfo.id || userInfo.userNo || '--'
+      const displayName = userInfo.nickName || '微信用户'
       this.setData({
         avatarUrl: userInfo.avatarUrl || '',
         nickName: displayName,
         userId: displayUserId,
-        photoCount: Math.max(photos.length, 102),
-        deviceCount: devices.length || 3
+        photoCount: Number(userInfo.imgCount) || photos.length,
+        deviceCount: Number(userInfo.productCount) || devices.length
       })
     } catch (error) {
       this.setData({
-        nickName: '江江江',
-        userId: '123456',
-        photoCount: 102,
-        deviceCount: 3
+        nickName: '微信用户',
+        userId: '--',
+        photoCount: 0,
+        deviceCount: 0
       })
     }
   },

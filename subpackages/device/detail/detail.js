@@ -1,6 +1,8 @@
 const api = require('../../../utils/api')
 const system = require('../../../utils/system')
 const batteryUtil = require('../../../utils/battery')
+const deviceBle = require('../../../utils/device-ble')
+const protocol = require('../../../utils/frame-protocol')
 
 const app = getApp()
 
@@ -10,6 +12,13 @@ function memoryPercent(device) {
     return 0
   }
   return Math.min(100, Math.round((device.usedMemory / device.totalMemory) * 100))
+}
+
+function getPlaybackLabel(device) {
+  if (!device || device.playbackMode === 'manual' || device.carouselEnabled === false) {
+    return '已关闭'
+  }
+  return device.playbackMode === 'random' ? '随机轮播' : '顺序轮播'
 }
 
 Page({
@@ -64,7 +73,34 @@ Page({
 
   // 拉取设备详情并派生出页面展示字段（含轮播间隔下标、设备编号、内存文案等）
   async loadDetail() {
-    const device = await api.getDeviceDetail(this.data.id)
+    let device = await api.getDeviceDetail(this.data.id)
+    const selected = app.globalData.selectedDevice
+
+    if (selected && String(selected.id) === String(device && device.id)) {
+      device = Object.assign({}, device, {
+        deviceId: device.deviceId || selected.deviceId,
+        bleDeviceId: device.bleDeviceId || selected.bleDeviceId || selected.deviceId,
+        battery: typeof device.battery === 'number' ? device.battery : selected.battery
+      })
+    }
+
+    if (device && device.deviceId && deviceBle.isConnected(device.deviceId)) {
+      try {
+        const info = await deviceBle.readDeviceInfo(device.deviceId)
+        device = Object.assign({}, device, {
+          connected: true,
+          battery: info.battery,
+          usedMemory: info.imgCount,
+          totalMemory: info.capacity,
+          playbackMode: info.playMode,
+          intervalSeconds: info.intervalSeconds,
+          intervalHours: info.intervalSeconds ? Math.max(1, Math.round(info.intervalSeconds / 3600)) : device.intervalHours,
+          firmwareVersion: info.firmwareVersion || device.firmwareVersion
+        })
+      } catch (error) {
+        // 详情展示不因刷新蓝牙状态失败而中断。
+      }
+    }
     // 把当前间隔小时数映射到选择器下标，缺省落到第 1 项（2 小时）
     const intervalIndex = this.data.intervalOptions.indexOf(device ? device.intervalHours : 2)
     // 设备编号取末 6 位数字作为展示码；真实数据缺失时用 -- 占位（不再用假的 123456）
@@ -80,7 +116,7 @@ Page({
       memoryText: device && device.totalMemory ? `${device.usedMemory}/${device.totalMemory}` : '--',
       macAddress: device && device.macAddress ? device.macAddress : '--',
       firmwareVersion: device && device.firmwareVersion ? device.firmwareVersion : '--',
-      playbackLabel: device && device.playbackMode === 'random' ? '随机轮播' : '顺序轮播',
+      playbackLabel: getPlaybackLabel(device),
       intervalIndex: intervalIndex > -1 ? intervalIndex : 1
     })
   },
@@ -118,12 +154,14 @@ Page({
       return
     }
 
-    const device = await api.updateDevicePlayback(this.data.id, {
-      carouselEnabled: e.detail.value
-    })
-    this.setData({
-      device
-    })
+    const currentMode = this.data.device.playbackMode === 'manual'
+      ? 'order'
+      : this.data.device.playbackMode
+    await this.applyPlayback(
+      e.detail.value ? currentMode || 'order' : 'manual',
+      this.data.device.intervalHours,
+      e.detail.value
+    )
   },
 
   // 切换播放模式：单选值 '0' 为顺序，其余为随机
@@ -133,12 +171,7 @@ Page({
     }
 
     const mode = e.detail.value === '0' ? 'order' : 'random'
-    const device = await api.updateDevicePlayback(this.data.id, {
-      playbackMode: mode
-    })
-    this.setData({
-      device
-    })
+    await this.applyPlayback(mode, this.data.device.intervalHours, true)
   },
 
   // 切换轮播间隔：picker 返回的是 intervalOptions 的下标，需转换为实际小时数
@@ -148,13 +181,52 @@ Page({
     }
 
     const intervalHours = this.data.intervalOptions[Number(e.detail.value)]
-    const device = await api.updateDevicePlayback(this.data.id, {
-      intervalHours
-    })
-    this.setData({
-      device,
-      intervalIndex: Number(e.detail.value)
-    })
+    await this.applyPlayback(this.data.device.playbackMode || 'order', intervalHours, this.data.device.carouselEnabled !== false)
+  },
+
+  async applyPlayback(mode, intervalHours, carouselEnabled) {
+    const device = this.data.device
+    if (!device || !device.deviceId) {
+      wx.showToast({
+        title: '请先连接设备',
+        icon: 'none'
+      })
+      return
+    }
+
+    const hours = Number(intervalHours) || 2
+    const intervalSeconds = Math.max(1, Math.round(hours * 3600))
+
+    wx.showLoading({ title: '保存中', mask: true })
+    try {
+      await deviceBle.setPlayback(device.deviceId, mode, intervalSeconds)
+      const updated = Object.assign({}, device, {
+        connected: true,
+        playbackMode: mode,
+        intervalSeconds,
+        intervalHours: hours,
+        carouselEnabled
+      })
+      const intervalIndex = this.data.intervalOptions.indexOf(hours)
+
+      if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === updated.id) {
+        app.setSelectedDevice(updated)
+      }
+
+      this.setData({
+        device: updated,
+        playbackLabel: getPlaybackLabel(updated),
+        intervalIndex: intervalIndex > -1 ? intervalIndex : this.data.intervalIndex
+      })
+      wx.showToast({ title: '已保存', icon: 'success' })
+    } catch (error) {
+      wx.showToast({
+        title: error.message || '保存失败',
+        icon: 'none'
+      })
+    } finally {
+      wx.hideLoading()
+    }
   },
 
   goSlideshow() {
@@ -190,7 +262,34 @@ Page({
       return
     }
 
-    await api.clearDevicePhotoCopies(this.data.id)
+    if (!this.data.device.deviceId) {
+      wx.showToast({
+        title: '请先连接设备',
+        icon: 'none'
+      })
+      return
+    }
+
+    wx.showLoading({ title: '清空中', mask: true })
+    try {
+      await deviceBle.ensureConnection(this.data.device.deviceId)
+      const info = await deviceBle.readDeviceInfo(this.data.device.deviceId)
+      const indexes = protocol.maskToIndexes(info.imgMask)
+
+      if (indexes.length) {
+        await deviceBle.deleteImage(this.data.device.deviceId, indexes)
+      }
+
+      await api.clearDevicePhotoCopies(this.data.id)
+    } catch (error) {
+      wx.showToast({
+        title: error.message || '清空失败',
+        icon: 'none'
+      })
+      wx.hideLoading()
+      return
+    }
+    wx.hideLoading()
     this.setData({
       showClearConfirm: false
     })

@@ -167,7 +167,7 @@
         </image>
         <image wx:elif="{{isBindingNoDevice || isScanHelp}}" class="radar-art"
           src="/assets/images/device_not_found_art.png" mode="aspectFit"></image>
-        <image wx:else class="radar-art" src="/assets/images/search-devices.gif" mode="aspectFit"></image>
+        <image wx:else class="radar-art" src="https://oss.boltfox.cn/prodFile/202606161504054302273.gif" mode="aspectFit"></image>
       </view>
 
       <!-- 已发现设备：列出附近设备供单选，确认后绑定 -->
