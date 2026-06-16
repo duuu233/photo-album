@@ -15,12 +15,10 @@ Page({
     }
   },
 
-  // 协议勾选框为 checkbox-group，值数组含 'agreed' 即视为已同意
-  onAgreementChange(event) {
-    const values = event.detail.value || []
-
+  // 协议勾选改为图片单选按钮，点击切换勾选状态
+  onAgreementChange() {
     this.setData({
-      agreed: values.indexOf('agreed') !== -1
+      agreed: !this.data.agreed
     })
   },
 
@@ -71,15 +69,8 @@ Page({
     }
   },
 
-  // 返回：有上级页面则正常返回，否则兜底回首页（防止无处可返回）
+  // 登录页返回固定回首页：无论从哪个页面进入登录页，点返回都直达首页
   goBack() {
-    const pages = getCurrentPages()
-
-    if (pages.length > 1) {
-      wx.navigateBack()
-      return
-    }
-
     wx.switchTab({
       url: '/pages/home/home'
     })

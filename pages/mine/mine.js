@@ -44,8 +44,19 @@ Page({
 
   // 并行拉取用户信息、相册照片、设备列表，组装“我的”页头部展示数据
   async loadUserInfo() {
+    // 游客模式：未登录展示默认头部，不强制跳登录（登录留到具体操作时再触发）
+    if (!app.globalData.token && !wx.getStorageSync('token')) {
+      this.setData({
+        avatarUrl: '',
+        nickName: '微信用户',
+        userId: '--',
+        photoCount: 0,
+        deviceCount: 0
+      })
+      return
+    }
+
     try {
-      await app.ensureLogin()
       const [userInfo, photos, devices] = await Promise.all([
         api.getUserProfile(),
         api.getAlbumPhotos(),

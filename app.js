@@ -48,10 +48,15 @@ App({
   },
 
   // 真实 BoltFox 一键登录：detail 来自 button open-type="getPhoneNumber" 的回调，
-  // 新版微信返回 code，旧版返回 encryptedData + iv，后端据此换取手机号并下发 userToken。
+  // 仅携带手机号授权（旧版 encryptedData + iv）。换取 openid 必须用 wx.login 的登录 code 走
+  // jscode2session —— getPhoneNumber 回调里的 code 是手机号专用 code，不能用于 jscode2session
+  // （误用即报 40029 invalid code），所以这里单独再调一次 wx.login 取新鲜登录 code。
   async loginWithWechatPhone(detail = {}) {
+    // 登录 code 一次性、5 分钟有效，取到后立即提交，避免过期/复用导致 40029
+    const loginRes = await wxLogin()
+
     const profile = await api.setWechatAppLogin({
-      code: detail.code,
+      code: loginRes.code,
       wxEncrypData: detail.encryptedData,
       wxIvData: detail.iv
     })

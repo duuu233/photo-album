@@ -78,8 +78,14 @@ function normalizeDevice(device = {}) {
     device.productSerialNo,
     bleDeviceId ? device.backendDeviceId : device.deviceId
   )
-  const usedMemory = normalizeNumber(firstValue(device.usedMemory, device.imgCount), 0)
-  const totalMemory = normalizeNumber(firstValue(device.totalMemory, device.capacity), 0)
+  const usedMemory = normalizeNumber(
+    firstValue(device.usedMemory, device.imgCount),
+    0
+  )
+  const totalMemory = normalizeNumber(
+    firstValue(device.totalMemory, device.capacity),
+    0
+  )
   const intervalSeconds = normalizeNumber(device.intervalSeconds, 0)
 
   return Object.assign({}, device, {
@@ -89,22 +95,44 @@ function normalizeDevice(device = {}) {
     deviceId: bleDeviceId,
     productDeviceId,
     deviceNo: productDeviceId,
-    name: firstValue(device.name, device.productName, device.screen, '智能相框'),
-    productName: firstValue(device.productName, device.name, device.screen, '智能相框'),
-    icon: firstValue(device.productImg, device.icon, '/assets/images/device-list-icon01.png'),
+    name: firstValue(
+      device.name,
+      device.productName,
+      device.screen,
+      '智能相框'
+    ),
+    productName: firstValue(
+      device.productName,
+      device.name,
+      device.screen,
+      '智能相框'
+    ),
+    icon: firstValue(
+      device.productImg,
+      device.icon,
+      '/assets/images/device-list-icon01.png'
+    ),
     battery: typeof device.battery === 'number' ? device.battery : null,
     connected: !!(device.connected && bleDeviceId),
     usedMemory,
     totalMemory,
     playbackMode: firstValue(device.playbackMode, device.playMode, 'order'),
     intervalSeconds,
-    intervalHours: normalizeNumber(device.intervalHours, intervalSeconds ? Math.max(1, Math.round(intervalSeconds / 3600)) : 2),
+    intervalHours: normalizeNumber(
+      device.intervalHours,
+      intervalSeconds ? Math.max(1, Math.round(intervalSeconds / 3600)) : 2
+    ),
     carouselEnabled: device.carouselEnabled !== false
   })
 }
 
 function normalizePhoto(photo = {}, index = 0) {
-  const id = firstValue(photo.uProductImgId, photo.uproductImgId, photo.id, `photo_${index}`)
+  const id = firstValue(
+    photo.uProductImgId,
+    photo.uproductImgId,
+    photo.id,
+    `photo_${index}`
+  )
   return Object.assign({}, photo, {
     id: String(id),
     uProductImgId: firstValue(photo.uProductImgId, photo.uproductImgId, id),
@@ -122,12 +150,18 @@ function normalizeProjectionRecord(record = {}, index = 0) {
   const stateText = String(record.deviceUploadStateMsg || record.status || '')
   const success = record.status
     ? record.status === 'success'
-    : (Number.isFinite(state) ? state === 1 : stateText.indexOf('成功') > -1)
+    : Number.isFinite(state)
+      ? state === 1
+      : stateText.indexOf('成功') > -1
 
   return Object.assign({}, record, {
     id: String(firstValue(record.upirId, record.id, `record_${index}`)),
     status: success ? 'success' : 'fail',
-    message: firstValue(record.deviceUploadStateMsg, record.message, success ? '投屏成功' : '投屏失败'),
+    message: firstValue(
+      record.deviceUploadStateMsg,
+      record.message,
+      success ? '投屏成功' : '投屏失败'
+    ),
     createdAt: firstValue(record.upTime, record.joinTime, record.createdAt, ''),
     deviceName: firstValue(record.productName, record.deviceName, '相框'),
     imageCount: normalizeNumber(record.imageCount, 1)
@@ -165,12 +199,17 @@ function productScore(product, scan) {
     product.screen,
     product.width,
     product.height
-  ].join(' ').toLowerCase()
+  ]
+    .join(' ')
+    .toLowerCase()
   const terms = [scan.model, scan.screen, scan.name]
     .filter(Boolean)
     .map(item => String(item).toLowerCase())
 
-  return terms.reduce((score, term) => score + (text.indexOf(term) > -1 ? 1 : 0), 0)
+  return terms.reduce(
+    (score, term) => score + (text.indexOf(term) > -1 ? 1 : 0),
+    0
+  )
 }
 
 module.exports = {
@@ -473,7 +512,9 @@ module.exports = {
     let avatar = data.avatar || data.avatarUrl || ''
 
     if (avatar && isLocalFile(avatar)) {
-      const uploadResult = await module.exports.setFileUpload({ filePath: avatar })
+      const uploadResult = await module.exports.setFileUpload({
+        filePath: avatar
+      })
       avatar = extractUploadUrl(uploadResult) || avatar
     }
 
@@ -527,21 +568,26 @@ module.exports = {
   },
 
   getDevices() {
-    return module.exports.getUserProductList({
-      pageIndex: 1,
-      pageSize: 100
-    }).then(data => pageData(data).map(normalizeDevice))
+    return module.exports
+      .getUserProductList({
+        pageIndex: 1,
+        pageSize: 100
+      })
+      .then(data => pageData(data).map(normalizeDevice))
   },
 
   getDeviceDetail(deviceId) {
-    return module.exports.getUserProductDetail(deviceId)
-      .then(device => normalizeDevice(Object.assign({}, device, {
-        userProductId: firstValue(device && device.userProductId, deviceId)
-      })))
+    return module.exports.getUserProductDetail(deviceId).then(device =>
+      normalizeDevice(
+        Object.assign({}, device, {
+          userProductId: firstValue(device && device.userProductId, deviceId)
+        })
+      )
+    )
   },
 
   async bindDevice(device) {
-    const scan = device && device.device ? device.device : (device || {})
+    const scan = device && device.device ? device.device : device || {}
     let productId = scan.productId
 
     if (!productId) {
@@ -549,7 +595,12 @@ module.exports = {
         const products = await module.exports.getProductList({
           pageIndex: 1,
           pageSize: 100,
-          keyword: firstValue(scan.model, scan.screen, scan.name, scan.productName)
+          keyword: firstValue(
+            scan.model,
+            scan.screen,
+            scan.name,
+            scan.productName
+          )
         })
         const list = pageData(products)
         const matched = list
@@ -561,8 +612,19 @@ module.exports = {
       }
     }
 
-    const productName = firstValue(scan.productName, scan.name, scan.model, scan.screen, '智能相框')
-    const productDeviceId = firstValue(scan.deviceNo, scan.hardwareDeviceId, scan.productSerialNo, scan.deviceId)
+    const productName = firstValue(
+      scan.productName,
+      scan.name,
+      scan.model,
+      scan.screen,
+      '智能相框'
+    )
+    const productDeviceId = firstValue(
+      scan.deviceNo,
+      scan.hardwareDeviceId,
+      scan.productSerialNo,
+      scan.deviceId
+    )
     const payload = {
       productName,
       deviceId: productDeviceId
@@ -573,28 +635,43 @@ module.exports = {
     }
 
     const saved = await module.exports.addUserProduct(payload)
-    return normalizeDevice(Object.assign({}, scan, saved, {
-      bleDeviceId: scan.deviceId,
-      productDeviceId,
-      deviceNo: productDeviceId,
-      productName
-    }))
+    return normalizeDevice(
+      Object.assign({}, scan, saved, {
+        bleDeviceId: scan.deviceId,
+        productDeviceId,
+        deviceNo: productDeviceId,
+        productName
+      })
+    )
   },
 
   renameDevice(deviceId, name) {
-    return module.exports.editUserProduct({
-      userProductId: deviceId,
-      productName: name
-    }).then(device => normalizeDevice(Object.assign({}, device, {
-      userProductId: deviceId,
-      productName: name
-    })))
+    return module.exports
+      .editUserProduct({
+        userProductId: deviceId,
+        productName: name
+      })
+      .then(device =>
+        normalizeDevice(
+          Object.assign({}, device, {
+            userProductId: deviceId,
+            productName: name
+          })
+        )
+      )
   },
 
   updateDevicePlayback(deviceId, data) {
-    return Promise.resolve(normalizeDevice(Object.assign({
-      userProductId: deviceId
-    }, data)))
+    return Promise.resolve(
+      normalizeDevice(
+        Object.assign(
+          {
+            userProductId: deviceId
+          },
+          data
+        )
+      )
+    )
   },
 
   formatDevice(deviceId) {
@@ -620,10 +697,12 @@ module.exports = {
   },
 
   getAlbumPhotos() {
-    return module.exports.getUserProductImgList({
-      pageIndex: 1,
-      pageSize: 100
-    }).then(data => pageData(data).map(normalizePhoto))
+    return module.exports
+      .getUserProductImgList({
+        pageIndex: 1,
+        pageSize: 100
+      })
+      .then(data => pageData(data).map(normalizePhoto))
   },
 
   deleteAlbumPhotos(ids) {
@@ -633,17 +712,21 @@ module.exports = {
   uploadProjection(data) {
     const files = data && data.images ? data.images : []
     return module.exports.setUserProductUpload({
-      filePaths: files.map(item => item.tempFilePath || item.url).filter(Boolean),
+      filePaths: files
+        .map(item => item.tempFilePath || item.url)
+        .filter(Boolean),
       userProductId: data && data.deviceId,
       deviceUploadState: data && data.deviceUploadState
     })
   },
 
   getProjectionRecords() {
-    return module.exports.getUserProductImgRecordList({
-      pageIndex: 1,
-      pageSize: 100
-    }).then(data => pageData(data).map(normalizeProjectionRecord))
+    return module.exports
+      .getUserProductImgRecordList({
+        pageIndex: 1,
+        pageSize: 100
+      })
+      .then(data => pageData(data).map(normalizeProjectionRecord))
   },
 
   deleteProjectionRecord(recordId) {

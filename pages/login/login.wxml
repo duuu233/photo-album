@@ -4,7 +4,7 @@
     <view class="login-bg__bottom"></view>
   </view>
 
-  <page-nav title="登录"></page-nav>
+  <page-nav title="登录" custom-back="{{true}}" bind:backtap="goBack"></page-nav>
 
   <view class="login-main">
     <image class="login-logo" src="/assets/images/logo.png" mode="aspectFit"></image>
@@ -18,11 +18,11 @@
   </view>
 
   <view class="login-agreement">
-    <checkbox-group class="login-agreement__check-group" bindchange="onAgreementChange">
-      <label class="login-agreement__check">
-        <checkbox class="login-agreement__checkbox" value="agreed" checked="{{agreed}}" color="#eb5f1b"></checkbox>
-      </label>
-    </checkbox-group>
+    <view class="login-agreement__check-group" bindtap="onAgreementChange">
+      <image class="login-agreement__check-icon"
+        src="{{agreed ? '/assets/images/radio-button-icon02.png' : '/assets/images/radio-button-icon01.png'}}"
+        mode="aspectFit"></image>
+    </view>
     <view class="login-agreement__text">
       <text>我已阅读并同意</text>
       <text class="login-agreement__link" bindtap="openUserAgreement">《用户协议》</text>
