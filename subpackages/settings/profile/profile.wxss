@@ -21,6 +21,34 @@
   min-height: 118rpx;
 }
 
+/* button 承载 open-type="chooseAvatar"，需彻底清除默认按钮样式，外观与普通 profile-row 一致 */
+.avatar-button {
+  margin: 0;
+  width: 100% !important;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  text-align: left;
+  line-height: normal;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+/* 去掉 button 默认的 ::after 边框线 */
+.avatar-button::after {
+  display: none;
+  border: none;
+}
+
+/* 去掉点击态默认背景 */
+.avatar-button.button-hover {
+  background: transparent;
+}
+
 .profile-label {
   flex: 0 0 auto;
   color: #2a2d32;

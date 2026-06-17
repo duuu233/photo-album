@@ -46,6 +46,11 @@ function getToken() {
 
 function getSystemInfo() {
   try {
+    // 新版基础库：用 getDeviceInfo(取 model) + getAppBaseInfo(取 language) 替代已废弃的 getSystemInfoSync
+    if (wx.getDeviceInfo && wx.getAppBaseInfo) {
+      return Object.assign({}, wx.getDeviceInfo(), wx.getAppBaseInfo())
+    }
+    // 旧版基础库降级
     return wx.getSystemInfoSync()
   } catch (error) {
     return {}

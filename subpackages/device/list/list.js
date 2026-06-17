@@ -100,7 +100,7 @@ Page({
       app.setSelectedDevice(device)
       wx.showToast({
         title: '已切换设备',
-        icon: 'success'
+        icon: 'none'
       })
       setTimeout(() => wx.navigateBack(), 350)
       return
@@ -179,7 +179,7 @@ Page({
           batteryText: typeof updated.battery === 'number' ? `${updated.battery}%` : ''
         }) : item)
       })
-      wx.showToast({ title: '已连接', icon: 'success' })
+      wx.showToast({ title: '已连接', icon: 'none' })
     } catch (error) {
       wx.showToast({
         title: error.message || '连接失败',

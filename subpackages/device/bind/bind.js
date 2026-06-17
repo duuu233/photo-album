@@ -160,7 +160,7 @@ Page({
 
     wx.showToast({
       title: '绑定成功',
-      icon: 'success'
+      icon: 'none'
     })
     setTimeout(() => {
       wx.navigateBack()

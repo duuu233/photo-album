@@ -5,10 +5,10 @@
 
   <page-nav title="操作指南"></page-nav>
 
-  <view class="search-box">
+  <!-- <view class="search-box">
     <input placeholder="搜索帮助文档" placeholder-class="search-placeholder" />
     <image class="search-icon" src="/assets/images/search-icon01.png" mode="aspectFit"></image>
-  </view>
+  </view> -->
 
   <view class="glass-card guide-card">
     <view wx:for="{{guides}}" wx:key="id" class="guide-item {{item.open ? 'open' : ''}}">
@@ -18,7 +18,7 @@
         <view class="fold-icon"></view>
       </view>
       <view wx:if="{{item.open}}" class="guide-body">
-        <text wx:for="{{item.lines}}" wx:for-item="line" wx:key="*this">{{line}}</text>
+        <text wx:for="{{item.lines}}" wx:for-item="line" wx:key="*this" user-select>{{line}}</text>
       </view>
     </view>
   </view>

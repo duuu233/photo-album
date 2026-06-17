@@ -7,14 +7,14 @@
 
   <view class="mock-content profile-content">
     <view class="profile-form glass-panel">
-      <view class="profile-row avatar-row" hover-class="none" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar">
+      <button class="profile-row avatar-row avatar-button" hover-class="none" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar">
         <text class="profile-label">头像</text>
         <view class="profile-value avatar-value">
           <image wx:if="{{userInfo.avatarUrl}}" class="profile-avatar" src="{{userInfo.avatarUrl}}" mode="aspectFill"></image>
           <image wx:else class="profile-avatar" src="/assets/images/mine-header.png" mode="aspectFill"></image>
           <view class="ui-chevron"></view>
         </view>
-      </view>
+      </button>
       <view class="thin-divider"></view>
 
       <view class="profile-row">

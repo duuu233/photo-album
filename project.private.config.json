@@ -22,11 +22,25 @@
     "miniprogram": {
       "list": [
         {
-          "name": "我的",
-          "pathName": "pages/mine/mine",
+          "name": "操作指南",
+          "pathName": "subpackages/settings/guide/guide",
           "query": "",
           "scene": null,
           "launchMode": "default"
+        },
+        {
+          "name": "个人信息",
+          "pathName": "subpackages/settings/profile/profile",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
+        },
+        {
+          "name": "我的",
+          "pathName": "pages/mine/mine",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
         }
       ]
     }

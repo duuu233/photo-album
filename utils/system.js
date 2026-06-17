@@ -56,8 +56,9 @@ function getSystemLanguageInfo() {
 
 function isDevTools() {
   try {
-    const systemInfo = wx.getSystemInfoSync()
-    return systemInfo.platform === 'devtools'
+    // 新版基础库用 getDeviceInfo 读取 platform，降级到已废弃的 getSystemInfoSync
+    const info = wx.getDeviceInfo ? wx.getDeviceInfo() : wx.getSystemInfoSync()
+    return info.platform === 'devtools'
   } catch (error) {
     return false
   }

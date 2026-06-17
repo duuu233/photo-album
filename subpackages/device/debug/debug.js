@@ -252,7 +252,7 @@ Page({
       if (options && options.refresh) {
         await this.refreshInfoSilently()
       }
-      wx.showToast({ title: '指令成功', icon: 'success' })
+      wx.showToast({ title: '指令成功', icon: 'none' })
       return result
     } catch (error) {
       this.appendLog({ type: 'err', text: `${label} 失败：${error.message}` })
@@ -673,7 +673,7 @@ Page({
       // 传完顺手刷新屏幕显示这张，便于直接在屏上确认
       await deviceBle.refreshScreen(this.data.deviceId, index)
       await this.refreshInfoSilently()
-      wx.showToast({ title: '上传成功', icon: 'success' })
+      wx.showToast({ title: '上传成功', icon: 'none' })
     } catch (error) {
       // 失败原因常驻显示在页面上（可长按复制），不用去翻一闪而过的弹窗
       // 只要期间发生过息屏/切后台(_uploadAborted)，无论报的是中止还是写失败，都按"息屏中断"提示

@@ -223,7 +223,7 @@ Page({
 
     wx.showToast({
       title: '已删除',
-      icon: 'success'
+      icon: 'none'
     })
     this.loadPhotos()
   },

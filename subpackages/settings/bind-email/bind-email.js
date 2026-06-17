@@ -69,7 +69,7 @@ Page({
       this.startCodeCountdown()
       wx.showToast({
         title: '验证码已发送',
-        icon: 'success'
+        icon: 'none'
       })
     } catch (error) {
       // request.js already shows the backend error message.
@@ -136,7 +136,7 @@ Page({
     wx.setStorageSync('userInfo', userInfo)
     wx.showToast({
       title: '绑定成功',
-      icon: 'success'
+      icon: 'none'
     })
     setTimeout(() => wx.navigateBack(), 500)
   },

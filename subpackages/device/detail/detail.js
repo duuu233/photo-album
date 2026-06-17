@@ -218,7 +218,7 @@ Page({
         playbackLabel: getPlaybackLabel(updated),
         intervalIndex: intervalIndex > -1 ? intervalIndex : this.data.intervalIndex
       })
-      wx.showToast({ title: '已保存', icon: 'success' })
+      wx.showToast({ title: '已保存', icon: 'none' })
     } catch (error) {
       wx.showToast({
         title: error.message || '保存失败',
@@ -295,7 +295,7 @@ Page({
     })
     wx.showToast({
       title: '已清空',
-      icon: 'success'
+      icon: 'none'
     })
     this.loadDetail()
   },
@@ -324,7 +324,7 @@ Page({
     }
     wx.showToast({
       title: '已删除',
-      icon: 'success'
+      icon: 'none'
     })
     setTimeout(() => wx.navigateBack(), 500)
   },
@@ -347,7 +347,7 @@ Page({
         await api.formatDevice(this.data.id)
         wx.showToast({
           title: '格式化完成',
-          icon: 'success'
+          icon: 'none'
         })
         this.loadDetail()
       }

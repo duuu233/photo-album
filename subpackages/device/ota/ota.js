@@ -281,7 +281,7 @@ Page({
 
       wx.showToast({
         title: '升级完成',
-        icon: 'success'
+        icon: 'none'
       })
     } catch (error) {
       const aborted = this._abortUpgrade || (error && error.message === 'OTA_ABORTED')

@@ -116,7 +116,7 @@ Page({
         device: updated,
         intervalIndex: intervalIndex > -1 ? intervalIndex : this.data.intervalIndex
       })
-      wx.showToast({ title: '已保存', icon: 'success' })
+      wx.showToast({ title: '已保存', icon: 'none' })
     } catch (error) {
       wx.showToast({
         title: error.message || '保存失败',

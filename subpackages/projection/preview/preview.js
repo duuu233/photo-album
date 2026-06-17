@@ -103,7 +103,7 @@ Page({
     })
     wx.showToast({
       title: '已保存',
-      icon: 'success'
+      icon: 'none'
     })
   },
 
