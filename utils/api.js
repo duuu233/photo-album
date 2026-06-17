@@ -1,6 +1,7 @@
 // 业务接口集中定义层：每个方法对应一个后端接口，统一通过 request.js 发起。
 // 第三个参数为请求选项，常用：loading 显示加载、auth:false 免登录、showError:false 静默错误。
 const http = require('./request')
+const { md5 } = require('./md5')
 
 function normalizeFilePaths(input) {
   const files = Array.isArray(input) ? input : [input]
@@ -536,16 +537,24 @@ module.exports = {
     return module.exports.getUserProfile()
   },
 
-  // 修改/绑定邮箱，POST /Client/User/changeUserEmail。data = { userEmail, code }，
-  // userToken 由 request.js 自动经 header 传递。小程序绑定与修改邮箱共用此接口。
+  // 修改/绑定邮箱，POST /Client/User/changeUserEmail。
+  // body: userEmail、verifyCode、password、confirmPassword；密码以 md5(32位小写) 加密后传输。
+  // device/language/terminal/userToken 由 request.js 经 header/query 自动传递。
+  // 小程序绑定与修改邮箱共用此接口，绑定后邮箱+密码可用于 App 登录。
   changeUserEmail(data = {}) {
     const payload = typeof data === 'string' ? { userEmail: data } : data || {}
+    const verifyCode = payload.verifyCode != null ? payload.verifyCode : payload.code
+    const password = payload.password || ''
+    const confirmPassword =
+      payload.confirmPassword != null ? payload.confirmPassword : password
 
     return http.post(
       '/Client/User/changeUserEmail',
       {
         userEmail: payload.userEmail,
-        code: payload.code
+        verifyCode,
+        password: password ? md5(password) : '',
+        confirmPassword: confirmPassword ? md5(confirmPassword) : ''
       },
       {
         mock: false,

@@ -53,15 +53,7 @@
 
   <!-- 无照片空态：引导用户重新投屏 -->
   <view class="album-empty" wx:else>
-    <view class="empty-art">
-      <view class="empty-frame">
-        <view class="empty-picture-icon"></view>
-      </view>
-      <view class="empty-warning">!</view>
-      <view class="empty-base"></view>
-      <view class="empty-spark spark-a"></view>
-      <view class="empty-spark spark-b"></view>
-    </view>
+    <image class="empty-art" src="/assets/images/album-bg01.png" mode="aspectFit"></image>
     <view class="empty-title">当前没有可查看的设备照片</view>
     <view class="empty-desc">你可以重新投屏照片到设备</view>
     <view class="empty-action" hover-class="none" bindtap="chooseForProjection">重新投屏</view>

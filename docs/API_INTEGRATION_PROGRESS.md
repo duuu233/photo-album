@@ -92,7 +92,7 @@
 | GET  | `/Client/User/getUserInfo`       | `getUserInfo()`            | 获取用户信息                                 |
 | POST | `/Client/User/changeNickName`    | `changeNickName(nickName)` | 修改昵称（1-10 字）                          |
 | POST | `/Client/User/changeAvatar`      | `changeAvatar(avatar)`     | 修改头像                                     |
-| POST | `/Client/User/changeUserEmail`   | `changeUserEmail(data)`    | 绑定/修改邮箱（小程序共用），`userEmail`+`code` |
+| POST | `/Client/User/changeUserEmail`   | `changeUserEmail(data)`    | 绑定/修改邮箱（小程序共用），`userEmail`+`verifyCode`+`password`+`confirmPassword`（密码 md5） |
 | POST | `/Client/User/loginOut`          | `loginOut()`               | 用户登录退出                                 |
 | POST | `/Client/User/userOff`           | `userOff()`                | 用户注销                                     |
 
@@ -101,11 +101,11 @@
 - `setWechatAppLogin(data)`：透传微信授权数据，`{ code, phoneEncrypted/encryptedData, iv }`，`auth:false`。
 - `changeNickName(nickName)`：可传字符串或 `{ nickName }`。
 - `changeAvatar(avatar)`：可传头像地址字符串或 `{ avatar }`；头像文件可先经 `setFileUpload` 拿到地址再提交。
-- `changeUserEmail(data)`：`{ userEmail, code }`。新邮箱先经 `sendEmail({ userEmail, sendType: 3 })` 获取验证码；`userToken` 由 `request.js` 经 header 传递。绑定与修改邮箱共用此方法。
+- `changeUserEmail(data)`：body `{ userEmail, verifyCode, password, confirmPassword }`，`password`/`confirmPassword` 由 `utils/md5.js` 在 api 层加密为 md5(32位小写) 后传输；兼容传 `code` 作为 `verifyCode` 别名。新邮箱先经 `sendEmail({ userEmail, sendType: 3 })` 获取验证码；`device/language/terminal/userToken` 由 `request.js` 经 header/query 传递。绑定与修改邮箱共用此方法，绑定后邮箱+密码可用于 App 邮箱登录。
 
 ### 页面接入
 
-- `subpackages/settings/bind-email/bind-email.js`：绑定邮箱（用户当前未绑定）→ `sendEmail(sendType:3)` 取码 + `changeUserEmail({ userEmail, code })`。
+- `subpackages/settings/bind-email/bind-email.js`：绑定邮箱（用户当前未绑定）→ `sendEmail(sendType:3)` 取码 + `changeUserEmail({ userEmail, verifyCode, password, confirmPassword })`。
 - `subpackages/settings/change-email/change-email.js`：修改邮箱（用户已绑定）→ 同上；当前邮箱取自本地 `userInfo.email`。
 - `subpackages/settings/profile/profile.js`：按 `userInfo.email` 是否存在路由到 bind-email / change-email。
 

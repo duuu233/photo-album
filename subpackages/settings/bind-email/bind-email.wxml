@@ -18,6 +18,18 @@
         <input class="email-input code-input" type="number" value="{{code}}" placeholder="请输入验证码" placeholder-class="email-placeholder" data-field="code" bindinput="onInput" />
         <view class="code-btn {{codeCountdown ? 'is-counting' : ''}}" disabled="{{codeCountdown > 0}}" hover-class="none" bindtap="sendCode">{{codeButtonText}}</view>
       </view>
+      <view class="thin-divider"></view>
+
+      <view class="email-row">
+        <text class="email-label">密码</text>
+        <input class="email-input" password value="{{password}}" placeholder="请设置登录密码" placeholder-class="email-placeholder" data-field="password" bindinput="onInput" />
+      </view>
+      <view class="thin-divider"></view>
+
+      <view class="email-row">
+        <text class="email-label">确认密码</text>
+        <input class="email-input" password value="{{confirmPassword}}" placeholder="请再次输入密码" placeholder-class="email-placeholder" data-field="confirmPassword" bindinput="onInput" />
+      </view>
     </view>
 
     <view class="email-tip">
