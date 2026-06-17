@@ -17,14 +17,8 @@
 
     <view wx:if="{{filteredRecords.length}}" class="record-list">
       <view class="record-card glass-panel" wx:for="{{filteredRecords}}" wx:key="id">
-        <view class="thumb thumb-{{item.thumbType}}">
+        <view class="thumb">
           <image wx:if="{{item.thumbUrl}}" class="thumb-img" src="{{item.thumbUrl}}" mode="aspectFill"></image>
-          <view wx:else class="thumb-art">
-            <view class="thumb-sky"></view>
-            <view class="thumb-sun"></view>
-            <view class="thumb-ground"></view>
-            <view class="thumb-face"></view>
-          </view>
         </view>
 
         <view class="record-body">

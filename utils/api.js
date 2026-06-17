@@ -153,17 +153,20 @@ function normalizeProjectionRecord(record = {}, index = 0) {
     : Number.isFinite(state)
       ? state === 1
       : stateText.indexOf('成功') > -1
+  const status = success ? 'success' : 'fail'
 
   return Object.assign({}, record, {
     id: String(firstValue(record.upirId, record.id, `record_${index}`)),
-    status: success ? 'success' : 'fail',
+    status,
+    statusText: status === 'success' ? '投屏成功' : '投屏失败',
     message: firstValue(
       record.deviceUploadStateMsg,
       record.message,
-      success ? '投屏成功' : '投屏失败'
+      status === 'success' ? '投屏成功' : '投屏失败'
     ),
     createdAt: firstValue(record.upTime, record.joinTime, record.createdAt, ''),
     deviceName: firstValue(record.productName, record.deviceName, '相框'),
+    thumbUrl: firstValue(record.img, record.thumbUrl, record.url, ''),
     imageCount: normalizeNumber(record.imageCount, 1)
   })
 }
@@ -533,30 +536,32 @@ module.exports = {
     return module.exports.getUserProfile()
   },
 
-  bindEmail(email) {
-    return http.post(
-      '/user/email',
-      {
-        email
-      },
-      {
-        loading: true,
-        loadingText: '绑定中'
-      }
-    )
-  },
+  // 修改/绑定邮箱，POST /Client/User/changeUserEmail。data = { userEmail, code }，
+  // userToken 由 request.js 自动经 header 传递。小程序绑定与修改邮箱共用此接口。
+  changeUserEmail(data = {}) {
+    const payload = typeof data === 'string' ? { userEmail: data } : data || {}
 
-  changeEmail(email) {
-    return http.put(
-      '/user/email',
+    return http.post(
+      '/Client/User/changeUserEmail',
       {
-        email
+        userEmail: payload.userEmail,
+        code: payload.code
       },
       {
+        mock: false,
         loading: true,
         loadingText: '保存中'
       }
     )
+  },
+
+  // 兼容旧方法名：绑定/修改邮箱统一走真实的 changeUserEmail
+  bindEmail(data) {
+    return module.exports.changeUserEmail(data)
+  },
+
+  changeEmail(data) {
+    return module.exports.changeUserEmail(data)
   },
 
   logout() {

@@ -12,8 +12,6 @@ Page({
     safeBottom: 0,
     email: '',
     code: '',
-    password: '123456',
-    confirmPassword: '',
     codeCountdown: 0,
     codeButtonText: '获取验证码',
     canSubmit: false
@@ -40,11 +38,11 @@ Page({
     }, this.updateSubmitState)
   },
 
-  // 四项均填写且两次密码一致才允许提交
+  // 邮箱和验证码均填写才允许提交
   updateSubmitState() {
-    const { email, code, password, confirmPassword } = this.data
+    const { email, code } = this.data
     this.setData({
-      canSubmit: Boolean(email && code && password && confirmPassword && password === confirmPassword)
+      canSubmit: Boolean(email && code)
     })
   },
 
@@ -112,7 +110,7 @@ Page({
   async submit() {
     if (!this.data.canSubmit) {
       wx.showToast({
-        title: '请补全信息并确认密码',
+        title: '请填写邮箱和验证码',
         icon: 'none'
       })
       return
@@ -126,7 +124,16 @@ Page({
       return
     }
 
-    await api.bindEmail(this.data.email)
+    try {
+      await api.changeUserEmail({
+        userEmail: this.data.email,
+        code: this.data.code
+      })
+    } catch (error) {
+      // request.js already shows the backend error message.
+      return
+    }
+
     // 成功后把新邮箱合并回用户信息并同步到内存与缓存
     const app = getApp()
     const userInfo = Object.assign({}, app.globalData.userInfo || wx.getStorageSync('userInfo') || {}, {

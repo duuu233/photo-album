@@ -22,11 +22,25 @@
     "miniprogram": {
       "list": [
         {
-          "name": "操作指南",
-          "pathName": "subpackages/settings/guide/guide",
+          "name": "绑定邮箱",
+          "pathName": "subpackages/settings/bind-email/bind-email",
           "query": "",
           "scene": null,
           "launchMode": "default"
+        },
+        {
+          "name": "投屏管理",
+          "pathName": "subpackages/projection/records/records",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
+        },
+        {
+          "name": "操作指南",
+          "pathName": "subpackages/settings/guide/guide",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
         },
         {
           "name": "个人信息",

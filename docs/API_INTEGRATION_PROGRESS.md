@@ -92,6 +92,7 @@
 | GET  | `/Client/User/getUserInfo`       | `getUserInfo()`            | 获取用户信息                                 |
 | POST | `/Client/User/changeNickName`    | `changeNickName(nickName)` | 修改昵称（1-10 字）                          |
 | POST | `/Client/User/changeAvatar`      | `changeAvatar(avatar)`     | 修改头像                                     |
+| POST | `/Client/User/changeUserEmail`   | `changeUserEmail(data)`    | 绑定/修改邮箱（小程序共用），`userEmail`+`code` |
 | POST | `/Client/User/loginOut`          | `loginOut()`               | 用户登录退出                                 |
 | POST | `/Client/User/userOff`           | `userOff()`                | 用户注销                                     |
 
@@ -100,6 +101,13 @@
 - `setWechatAppLogin(data)`：透传微信授权数据，`{ code, phoneEncrypted/encryptedData, iv }`，`auth:false`。
 - `changeNickName(nickName)`：可传字符串或 `{ nickName }`。
 - `changeAvatar(avatar)`：可传头像地址字符串或 `{ avatar }`；头像文件可先经 `setFileUpload` 拿到地址再提交。
+- `changeUserEmail(data)`：`{ userEmail, code }`。新邮箱先经 `sendEmail({ userEmail, sendType: 3 })` 获取验证码；`userToken` 由 `request.js` 经 header 传递。绑定与修改邮箱共用此方法。
+
+### 页面接入
+
+- `subpackages/settings/bind-email/bind-email.js`：绑定邮箱（用户当前未绑定）→ `sendEmail(sendType:3)` 取码 + `changeUserEmail({ userEmail, code })`。
+- `subpackages/settings/change-email/change-email.js`：修改邮箱（用户已绑定）→ 同上；当前邮箱取自本地 `userInfo.email`。
+- `subpackages/settings/profile/profile.js`：按 `userInfo.email` 是否存在路由到 bind-email / change-email。
 
 ### 小程序跳过
 
@@ -108,7 +116,6 @@
 | POST | `/Client/User/userLogin`            | 用户登录-邮箱             | 小程序走微信一键登录，不需要邮箱登录 |
 | POST | `/Client/User/userRegister`         | 用户注册-邮箱             | 邮箱注册，App 专用                   |
 | POST | `/Client/User/changePassword`       | 修改密码(已登录)          | 邮箱账号密码体系，小程序不涉及       |
-| POST | `/Client/User/changeUserEmail`      | 修改邮箱/绑定邮箱         | App 邮箱登录相关                     |
 | POST | `/Client/User/chkUserEmailNotExist` | 校验邮箱是否不存在        | 邮箱注册流程相关                     |
 | POST | `/Client/User/resetPassword`        | 忘记密码-重置密码(未登录) | 邮箱账号找回密码，小程序不涉及       |
 | POST | `/Client/User/userOffPC`            | 用户注销PC版              | PC 版接口                            |

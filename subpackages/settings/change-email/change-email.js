@@ -10,11 +10,9 @@ Page({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
-    currentEmail: '123456789@qq.com',
+    currentEmail: '',
     email: '',
     code: '',
-    password: '',
-    confirmPassword: '',
     codeCountdown: 0,
     codeButtonText: '获取验证码',
     canSubmit: false
@@ -36,7 +34,7 @@ Page({
   loadCurrentEmail() {
     const userInfo = getApp().globalData.userInfo || wx.getStorageSync('userInfo') || {}
     this.setData({
-      currentEmail: userInfo.email || '123456789@qq.com'
+      currentEmail: userInfo.email || '未绑定'
     })
   },
 
@@ -47,11 +45,11 @@ Page({
     }, this.updateSubmitState)
   },
 
-  // 四项均填写且两次密码一致才允许提交
+  // 新邮箱和验证码均填写才允许提交
   updateSubmitState() {
-    const { email, code, password, confirmPassword } = this.data
+    const { email, code } = this.data
     this.setData({
-      canSubmit: Boolean(email && code && password && confirmPassword && password === confirmPassword)
+      canSubmit: Boolean(email && code)
     })
   },
 
@@ -119,7 +117,7 @@ Page({
   async submit() {
     if (!this.data.canSubmit) {
       wx.showToast({
-        title: '请补全信息并确认密码',
+        title: '请填写新邮箱和验证码',
         icon: 'none'
       })
       return
@@ -133,7 +131,16 @@ Page({
       return
     }
 
-    await api.changeEmail(this.data.email)
+    try {
+      await api.changeUserEmail({
+        userEmail: this.data.email,
+        code: this.data.code
+      })
+    } catch (error) {
+      // request.js already shows the backend error message.
+      return
+    }
+
     // 成功后把新邮箱合并回用户信息并同步到内存与缓存
     const app = getApp()
     const userInfo = Object.assign({}, app.globalData.userInfo || wx.getStorageSync('userInfo') || {}, {
