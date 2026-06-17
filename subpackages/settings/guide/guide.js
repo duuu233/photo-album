@@ -8,6 +8,7 @@ function faqToGuide(item, index) {
     title: item.faqTitle || item.title || `问题 ${index + 1}`,
     open: index === 0,
     loaded: !!content,
+    content,
     lines: content ? content.split(/\r?\n/).filter(Boolean) : []
   }
 }
@@ -90,6 +91,7 @@ Page({
         this.setData({
           guides: this.data.guides.map(item => item.id === id ? Object.assign({}, item, {
             loaded: true,
+            content,
             lines: content ? content.split(/\r?\n/).filter(Boolean) : item.lines
           }) : item)
         })

@@ -18,7 +18,10 @@
         <view class="fold-icon"></view>
       </view>
       <view wx:if="{{item.open}}" class="guide-body">
-        <text wx:for="{{item.lines}}" wx:for-item="line" wx:key="*this" user-select>{{line}}</text>
+        <rich-text wx:if="{{item.content}}" class="guide-rich" nodes="{{item.content}}" user-select></rich-text>
+        <block wx:else>
+          <text wx:for="{{item.lines}}" wx:for-item="line" wx:key="*this" user-select>{{line}}</text>
+        </block>
       </view>
     </view>
   </view>

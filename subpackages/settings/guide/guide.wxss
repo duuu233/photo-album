@@ -112,3 +112,7 @@
 .guide-body text {
   display: block;
 }
+
+.guide-rich {
+  display: block;
+}
