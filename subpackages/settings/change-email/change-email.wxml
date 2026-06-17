@@ -22,7 +22,7 @@
       <view class="email-row">
         <text class="email-label">验证码</text>
         <input class="email-input code-input" type="number" value="{{code}}" placeholder="请输入验证码" placeholder-class="email-placeholder" data-field="code" bindinput="onInput" />
-        <button class="code-btn {{codeCountdown ? 'is-counting' : ''}}" disabled="{{codeCountdown > 0}}" hover-class="none" bindtap="sendCode">{{codeButtonText}}</button>
+        <view class="code-btn {{codeCountdown ? 'is-counting' : ''}}" disabled="{{codeCountdown > 0}}" hover-class="none" bindtap="sendCode">{{codeButtonText}}</view>
       </view>
       <view class="thin-divider"></view>
 
@@ -38,6 +38,6 @@
       </view>
     </view>
 
-    <button class="settings-primary email-submit {{canSubmit ? '' : 'is-disabled'}}" disabled="{{!canSubmit}}" hover-class="none" bindtap="submit">确认修改</button>
+    <view class="settings-primary email-submit {{canSubmit ? '' : 'is-disabled'}}" disabled="{{!canSubmit}}" hover-class="none" bindtap="submit">确认修改</view>
   </view>
 </view>

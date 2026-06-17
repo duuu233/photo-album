@@ -65,10 +65,20 @@ Page({
     })
   },
 
-  // 已绑邮箱去“更换邮箱”，未绑去“绑定邮箱”
+  // 小程序仅支持首次绑定邮箱：未绑定去“绑定邮箱”，已绑定提示前往 App 修改
   goEmail() {
+    if (this.data.userInfo.email) {
+      wx.showModal({
+        title: '修改邮箱',
+        content: '小程序暂不支持修改邮箱，请前往 App 修改。',
+        showCancel: false,
+        confirmText: '我知道了'
+      })
+      return
+    }
+
     wx.navigateTo({
-      url: this.data.userInfo.email ? '/subpackages/settings/change-email/change-email' : '/subpackages/settings/bind-email/bind-email'
+      url: '/subpackages/settings/bind-email/bind-email'
     })
   },
 

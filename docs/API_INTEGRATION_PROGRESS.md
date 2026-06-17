@@ -106,8 +106,8 @@
 ### 页面接入
 
 - `subpackages/settings/bind-email/bind-email.js`：绑定邮箱（用户当前未绑定）→ `sendEmail(sendType:3)` 取码 + `changeUserEmail({ userEmail, verifyCode, password, confirmPassword })`。
-- `subpackages/settings/change-email/change-email.js`：修改邮箱（用户已绑定）→ 同上；当前邮箱取自本地 `userInfo.email`。
-- `subpackages/settings/profile/profile.js`：按 `userInfo.email` 是否存在路由到 bind-email / change-email。
+- `subpackages/settings/profile/profile.js`：`goEmail()` 仅在**未绑定**时进入 bind-email；**已绑定**时弹窗提示「小程序暂不支持修改邮箱，请前往 App 修改」，不跳转。
+- 小程序仅支持首次绑定邮箱，修改邮箱引导至 App。`subpackages/settings/change-email/` 页面当前不在小程序流程内使用（保留备用，调用同一 `changeUserEmail`）。
 
 ### 小程序跳过
 
