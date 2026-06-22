@@ -370,13 +370,11 @@ button {
   height: 132rpx;
 }
 .projection-grid .media-art {
-  margin: 46rpx 0 0 46rpx;
+  margin: 34rpx 0 0 26rpx;
 }
 .projection-copy {
   z-index: 2;
-  /* padding-right 要在原来基础 - 23px 即46rpx */
-  padding: 28rpx 27rpx 0 50rpx;
-
+  padding: 12rpx 0rpx 0 24rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
