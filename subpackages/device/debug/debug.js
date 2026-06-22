@@ -64,17 +64,21 @@ const DEBUG_CALIBRATION_PROFILES = DEBUG_CALIBRATION_PROFILE_SOURCE.map(profile 
   palette: withLabPalette(profile.palette)
 }))
 const DEBUG_CALIBRATION_PROFILE_OPTIONS = DEBUG_CALIBRATION_PROFILES.map(profile => profile.name)
-const DEFAULT_DEBUG_PROFILE_ID = 'shot-20260622'
+const DEBUG_DISTANCE_RGB = 'APP RGB 欧氏距离'
+const DEBUG_DISTANCE_LAB = 'Lab ΔE76'
+const DEFAULT_DEBUG_PROFILE_ID = 'app-6color'
 const DEFAULT_DEBUG_PROFILE_INDEX = Math.max(0, DEBUG_CALIBRATION_PROFILES.findIndex(profile => profile.id === DEFAULT_DEBUG_PROFILE_ID))
 const DEFAULT_DEBUG_PROFILE = DEBUG_CALIBRATION_PROFILES[DEFAULT_DEBUG_PROFILE_INDEX]
 
 const DEFAULT_DEBUG_QUANTIZE = {
   dither: true,
+  ditherStrength: 1,
   contrast: 1.12,
   saturation: 1.28,
-  distanceMetric: 'Lab ΔE76',
-  // 实拍/相册图的黑白灰常带轻微色偏；低饱和像素只在黑白之间抖动，避免暗部被归成绿/红。
-  achromaticChromaMax: 28
+  // 默认先和 Flutter APP 端 FrameImageCodec.fromRgba 对齐：RGB 最近色 + 完整 Floyd 抖动。
+  distanceMetric: DEBUG_DISTANCE_RGB,
+  // <0 表示关闭。APP 端没有低饱和黑白保护；需要色准实验时再打开。
+  achromaticChromaMax: -1
 }
 
 const DEBUG_RESAMPLE = {
@@ -142,11 +146,33 @@ function findDebugCalibrationProfile(id) {
 
 function nearestDebugPaletteIndex(r, g, b, settings) {
   const palette = settings.palette || DEFAULT_DEBUG_PROFILE.palette
+  const useAchromaticGuard = Number.isFinite(settings.achromaticChromaMax) && settings.achromaticChromaMax >= 0
+  if (settings.distanceMetric !== DEBUG_DISTANCE_LAB) {
+    const rr = Number(r) || 0
+    const gg = Number(g) || 0
+    const bb = Number(b) || 0
+    const chroma = Math.max(clamp255(rr), clamp255(gg), clamp255(bb)) - Math.min(clamp255(rr), clamp255(gg), clamp255(bb))
+    const paletteLength = useAchromaticGuard && chroma <= settings.achromaticChromaMax ? 2 : palette.length
+    let best = 0
+    let bestDist = Infinity
+    for (let i = 0; i < paletteLength; i++) {
+      const [pr, pg, pb] = palette[i].rgb
+      const dr = rr - pr
+      const dg = gg - pg
+      const db = bb - pb
+      const dist = dr * dr + dg * dg + db * db
+      if (dist < bestDist) {
+        bestDist = dist
+        best = i
+      }
+    }
+    return best
+  }
   const cr = clamp255(r)
   const cg = clamp255(g)
   const cb = clamp255(b)
   const chroma = Math.max(cr, cg, cb) - Math.min(cr, cg, cb)
-  const paletteLength = chroma <= settings.achromaticChromaMax ? 2 : palette.length
+  const paletteLength = useAchromaticGuard && chroma <= settings.achromaticChromaMax ? 2 : palette.length
   const lab = rgbToLab(cr, cg, cb)
   let best = 0
   let bestDist = Infinity
@@ -203,9 +229,9 @@ function fromImageDataWithDebugCalibration(imageData, width, height, options) {
       const pi = nearestDebugPaletteIndex(r, g, b, settings)
       nibbles[i] = palette[pi].nibble
       const [pr, pg, pb] = palette[pi].rgb
-      const er = r - pr
-      const eg = g - pg
-      const eb = b - pb
+      const er = (r - pr) * settings.ditherStrength
+      const eg = (g - pg) * settings.ditherStrength
+      const eb = (b - pb) * settings.ditherStrength
       spreadDebugError(buf, x + 1, y, width, height, er, eg, eb, 7 / 16)
       spreadDebugError(buf, x - 1, y + 1, width, height, er, eg, eb, 3 / 16)
       spreadDebugError(buf, x, y + 1, width, height, er, eg, eb, 5 / 16)
@@ -245,6 +271,8 @@ Page({
     uploadIndexInput: '', // 上传槽位，留空则自动选空闲位
     pace: 45, // 图传每包发送间隔(ms)，越小越快；从慢到快试，找你这台设备不丢包的最快值
     cropMode: 'cover', // cover 与 APP centerCropCover 对齐；contain 用白底完整显示原图
+    debugResizeMode: 'staged', // staged=当前分阶段缩放；single=APP对照用单步 drawImage 缩放
+    debugSkipCompressImage: false, // 开启后跳过 wx.compressImage，直接用 chooseMedia 原图进 canvas 解码
     debugDither: DEFAULT_DEBUG_QUANTIZE.dither,
     debugContrastPercent: Math.round(DEFAULT_DEBUG_QUANTIZE.contrast * 100),
     debugContrastText: DEFAULT_DEBUG_QUANTIZE.contrast.toFixed(2),
@@ -632,8 +660,16 @@ Page({
     this.setData({ cropMode: e.detail.value === 'contain' ? 'contain' : 'cover' })
   },
 
+  onDebugResizeModeChange(e) {
+    this.setData({ debugResizeMode: e.detail.value === 'single' ? 'single' : 'staged' })
+  },
+
   onDebugDitherChange(e) {
     this.setData({ debugDither: !!e.detail.value })
+  },
+
+  onDebugSkipCompressImageChange(e) {
+    this.setData({ debugSkipCompressImage: !!e.detail.value })
   },
 
   onDebugContrastChange(e) {
@@ -767,17 +803,22 @@ Page({
     try {
       // 大图先按比例压一遍再解码：超大原图(几千万像素)在离屏 canvas 全分辨率解码时易内存吃紧/失败。
       // 注意：这步只为让解码更稳，不改变上传量——上传的是定长六色帧缓存(宽×高÷2)，与原图大小无关。
-      const srcPath = await this.shrinkIfHuge(tempPath, info.width, info.height)
+      const skipCompressImage = !!this.data.debugSkipCompressImage
+      const srcPath = skipCompressImage ? tempPath : await this.shrinkIfHuge(tempPath, info.width, info.height)
+      if (skipCompressImage) {
+        this.appendLog({ type: 'act', text: '已跳过 wx.compressImage：直接使用 chooseMedia 原图进入 canvas 解码缩放' })
+      }
       const cropMode = this.data.cropMode === 'contain' ? 'contain' : 'cover'
+      const resizeMode = this.data.debugResizeMode === 'single' ? 'single' : 'staged'
       const quantize = this.getDebugQuantizeOptions()
-      const decoded = await this.imageToImageData(srcPath, info.width, info.height, cropMode)
+      const decoded = await this.imageToImageData(srcPath, info.width, info.height, cropMode, resizeMode)
       const imageData = decoded.imageData
       if (decoded.resampleLog) {
         this.appendLog({ type: 'act', text: decoded.resampleLog })
       }
       this.appendLog({
         type: 'act',
-        text: `调试页色准量化：${quantize.calibrationProfileName} / ${quantize.distanceMetric} / 裁剪${cropMode} / 抖动${quantize.dither ? '开' : '关'} / 对比度${quantize.contrast.toFixed(2)} / 饱和度${quantize.saturation.toFixed(2)} / 低饱和保护≤${quantize.achromaticChromaMax}`
+        text: `调试页色准量化：${quantize.calibrationProfileName} / ${quantize.distanceMetric} / 裁剪${cropMode} / 缩放${resizeMode === 'single' ? 'APP单步' : '分阶段'} / 预压缩${skipCompressImage ? '跳过' : '自动'} / 抖动${quantize.dither ? '开' : '关'}${quantize.dither ? `(${DEFAULT_DEBUG_QUANTIZE.ditherStrength})` : ''} / 对比度${quantize.contrast.toFixed(2)} / 饱和度${quantize.saturation.toFixed(2)} / 低饱和保护${quantize.achromaticChromaMax >= 0 ? `≤${quantize.achromaticChromaMax}` : '关'}`
       })
       frame = fromImageDataWithDebugCalibration(imageData, info.width, info.height, quantize)
     } catch (error) {
@@ -940,7 +981,7 @@ Page({
   },
 
   // 用离屏 canvas 把图片解码并缩放到目标尺寸，取出 RGBA 像素（ImageData）
-  imageToImageData(path, width, height, cropMode) {
+  imageToImageData(path, width, height, cropMode, resizeMode) {
     return new Promise((resolve, reject) => {
       if (!wx.createOffscreenCanvas) {
         reject(new Error('当前微信版本不支持离屏 canvas'))
@@ -963,23 +1004,29 @@ Page({
             ctx.fillStyle = '#fff'
             ctx.fillRect(0, 0, width, height)
           }
-          try {
-            stages = this.drawImageResampled(ctx, img, plan)
-          } catch (resampleError) {
-            ctx.clearRect(0, 0, width, height)
-            if (cropMode === 'contain') {
-              ctx.fillStyle = '#fff'
-              ctx.fillRect(0, 0, width, height)
-            }
+          if (resizeMode === 'single') {
             ctx.drawImage(img, plan.sx, plan.sy, plan.sw, plan.sh, plan.dx, plan.dy, plan.dw, plan.dh)
-            fallbackLog = `APP式分阶段缩放不可用，已退回单步缩放：${resampleError.message || resampleError}`
+          } else {
+            try {
+              stages = this.drawImageResampled(ctx, img, plan)
+            } catch (resampleError) {
+              ctx.clearRect(0, 0, width, height)
+              if (cropMode === 'contain') {
+                ctx.fillStyle = '#fff'
+                ctx.fillRect(0, 0, width, height)
+              }
+              ctx.drawImage(img, plan.sx, plan.sy, plan.sw, plan.sh, plan.dx, plan.dy, plan.dw, plan.dh)
+              fallbackLog = `分阶段缩放不可用，已退回单步缩放：${resampleError.message || resampleError}`
+            }
           }
           const imageData = ctx.getImageData(0, 0, width, height)
           const sourceText = `${Math.round(plan.sw)}×${Math.round(plan.sh)}`
           const targetText = `${Math.round(plan.dw)}×${Math.round(plan.dh)}`
-          const resampleLog = fallbackLog || (stages.length
-            ? `APP式分阶段缩放：原图 ${iw}×${ih}，${cropMode} 取样 ${sourceText} → ${stages.join(' → ')} → ${targetText}`
-            : `APP式缩放：原图 ${iw}×${ih}，${cropMode} 取样 ${sourceText} → ${targetText}`)
+          const resampleLog = fallbackLog || (resizeMode === 'single'
+            ? `APP单步缩放：原图 ${iw}×${ih}，${cropMode} 取样 ${sourceText} → ${targetText}`
+            : (stages.length
+                ? `分阶段缩放：原图 ${iw}×${ih}，${cropMode} 取样 ${sourceText} → ${stages.join(' → ')} → ${targetText}`
+                : `分阶段缩放未触发：原图 ${iw}×${ih}，${cropMode} 取样 ${sourceText} → ${targetText}`))
           resolve({ imageData, resampleLog })
         } catch (error) {
           reject(error)
