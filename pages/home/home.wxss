@@ -337,7 +337,7 @@ button {
   align-items: center;
   justify-content: space-between;
 
-  margin: 20rpx 24rpx 0 24rpx;
+  margin: 20rpx 48rpx 0 48rpx;
 
   overflow: hidden;
 }
@@ -351,8 +351,8 @@ button {
   position: relative;
   flex-direction: column;
   display: flex;
-  width: 366rpx;
-  height: 358rpx;
+  width: 316rpx;
+  height: 308rpx;
 }
 
 .projection-card-bg {
