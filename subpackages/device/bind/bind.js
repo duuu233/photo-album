@@ -155,7 +155,17 @@ Page({
       name: scanDevice.name
     })
 
-    const device = await api.bindDevice(payload)
+    let device
+    try {
+      device = await api.bindDevice(payload)
+    } catch (error) {
+      // bindDevice 在 productId 解析不到时会抛错（后端必传），这里把原因提示给用户
+      wx.showToast({
+        title: error.message || '绑定失败',
+        icon: 'none'
+      })
+      return
+    }
     app.setSelectedDevice(device)
 
     wx.showToast({

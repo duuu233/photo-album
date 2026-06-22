@@ -427,7 +427,9 @@ Page({
     let media
     try {
       media = await new Promise((resolve, reject) => {
-        wx.chooseMedia({ count: 1, mediaType: ['image'], sizeType: ['compressed'], success: resolve, fail: reject })
+        // sizeType 取 'original'：拿原图而不是微信压缩过的低清版。'compressed' 会先被微信降分辨率+重压一遍，
+        // 是「上屏发糊」最大的源头(APP 走的就是原图)。原图偏大时由下面 shrinkIfHuge 仅做防 OOM 的轻量预缩。
+        wx.chooseMedia({ count: 1, mediaType: ['image'], sizeType: ['original'], success: resolve, fail: reject })
       })
     } catch (error) {
       return // 用户取消选择
@@ -483,8 +485,9 @@ Page({
       wx.getImageInfo({
         src: path,
         success: ({ width, height }) => {
-          // 长边上限取「目标长边 ×2」并兜底 1280：留一倍清晰度余量，又把内存压在可控范围
-          const maxEdge = Math.max(1280, Math.max(targetW, targetH) * 2)
+          // 长边上限取「目标长边 ×2.5」并兜底 1600：给目标分辨率留 2 倍以上过采样(下采样越多越锐)，
+          // 同时把超大图(12MP+)的解码内存压在可控范围。只有真的超过这个上限才预缩，普通手机照片原样通过。
+          const maxEdge = Math.max(1600, Math.round(Math.max(targetW, targetH) * 2.5))
           const srcMax = Math.max(width, height)
           if (!srcMax || srcMax <= maxEdge) {
             resolve(path) // 原图本就不大，无需压缩（也避免被放大）
@@ -496,7 +499,7 @@ Page({
             // 同一缩放系数算出的宽高，宽高比不变；设了尺寸后 quality 会失效，留着无害
             compressedWidth: Math.round(width * scale),
             compressedHeight: Math.round(height * scale),
-            quality: 80,
+            quality: 92, // 仅在超大图时才会走到这一步，质量拉高减少二次 JPEG 损失
             success: res => {
               this.appendLog({ type: 'act', text: `原图 ${width}×${height} 较大，已预压到约 ${Math.round(width * scale)}×${Math.round(height * scale)} 再解码` })
               resolve(res.tempFilePath)
@@ -521,7 +524,24 @@ Page({
       const img = canvas.createImage()
       img.onload = () => {
         ctx.clearRect(0, 0, width, height)
-        ctx.drawImage(img, 0, 0, width, height) // 拉伸铺满目标尺寸（不保持比例，联调够用）
+        // 开高质量缩放：大图一步缩到屏幕尺寸时，默认平滑会发糊/锯齿，high 明显更锐(APP 用的是原生双线性)。
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = 'high'
+        // 中心裁剪「覆盖」(与 APP 的 centerCropCover 一致)：等比缩放铺满目标后从原图正中取，
+        // 保持宽高比、不拉伸变形。代价是裁掉超出屏幕比例的边缘（想看全图改成 contain 即可，见下注释）。
+        const iw = img.width || width
+        const ih = img.height || height
+        const scale = Math.max(width / iw, height / ih)
+        const sw = width / scale // 参与绘制的原图区域宽（高）
+        const sh = height / scale
+        const sx = (iw - sw) / 2 // 从原图正中裁
+        const sy = (ih - sh) / 2
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height)
+        // 想「显示整张图、不裁边」的话，把上面 drawImage 换成等比缩放+留白(contain)：
+        //   const s = Math.min(width / iw, height / ih)
+        //   const dw = iw * s, dh = ih * s
+        //   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height) // 留白底色
+        //   ctx.drawImage(img, 0, 0, iw, ih, (width - dw) / 2, (height - dh) / 2, dw, dh)
         try {
           resolve(ctx.getImageData(0, 0, width, height))
         } catch (error) {

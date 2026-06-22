@@ -24,10 +24,10 @@
     <block wx:if="{{!scanning && devices.length}}">
       <view class="nearby-head">
         <text>附近设备</text>
-        <button class="refresh-btn" hover-class="none" aria-label="重新搜索" bindtap="scan"></button>
+        <view class="refresh-btn" hover-class="none" aria-label="重新搜索" bindtap="scan"></view>
       </view>
       <scroll-view scroll-y class="device-list">
-        <button class="nearby-device" wx:for="{{devices}}" wx:key="deviceNo" hover-class="none" data-id="{{item.id || item.deviceId}}" bindtap="bindDevice">
+        <view class="nearby-device" wx:for="{{devices}}" wx:key="deviceNo" hover-class="none" data-id="{{item.id || item.deviceId}}" bindtap="bindDevice">
           <view class="nearby-icon"><view class="small-frame-icon"></view></view>
           <view class="nearby-copy">
             <text class="nearby-name">{{item.name}}</text>
@@ -35,7 +35,7 @@
           </view>
           <view class="debug-tag" catchtap="openDebug" data-id="{{item.id || item.deviceId}}">联调</view>
           <view class="bind-tag">绑定</view>
-        </button>
+        </view>
       </scroll-view>
     </block>
 
@@ -44,7 +44,7 @@
         <view class="scan-title">正在搜索附近设备</view>
         <view class="scan-desc">请尽量将手机靠近需要添加的设备...</view>
       </view>
-      <button class="scan-help-link" hover-class="none" bindtap="openHelp">扫描不到怎么办?</button>
+      <view class="scan-help-link" hover-class="none" bindtap="openHelp">扫描不到怎么办?</view>
     </block>
 
     <block wx:else>
@@ -52,14 +52,14 @@
         <view class="scan-title">未发现设备</view>
         <view class="scan-desc">设备连接中断，请检查设备状态后重试</view>
       </view>
-      <button class="scan-help-link" hover-class="none" bindtap="openHelp">扫描不到怎么办?</button>
-      <button class="primary-action bind-bottom" hover-class="none" bindtap="scan">重新扫描</button>
+      <view class="scan-help-link" hover-class="none" bindtap="openHelp">扫描不到怎么办?</view>
+      <view class="primary-action bind-bottom" hover-class="none" bindtap="scan">重新扫描</view>
     </block>
   </view>
 
   <view wx:if="{{showHelp}}" class="bind-mask" catchtouchmove="noop" bindtap="closeHelp">
     <view class="scan-help-sheet" catchtap="noop">
-      <button class="sheet-close" hover-class="none" bindtap="closeHelp">×</button>
+      <view class="sheet-close" hover-class="none" bindtap="closeHelp">×</view>
       <view class="scan-help-title">扫描不到怎么办?</view>
       <image class="scan-help-icon" src="/assets/images/scan_help_art.png" mode="aspectFit"></image>
       <view class="check-title">请检查:</view>
@@ -69,7 +69,7 @@
         <text>3.设备蓝牙是否工作正常，手机蓝牙是否打开</text>
         <text>4.设备是否与手机距离过远，隔离或有其他遮挡物</text>
       </view>
-      <button class="primary-action" hover-class="none" bindtap="scan">重新扫描</button>
+      <view class="primary-action" hover-class="none" bindtap="scan">重新扫描</view>
     </view>
   </view>
 </view>

@@ -377,7 +377,7 @@ module.exports = {
   },
 
   // —— 设备接口（UserProduct）——
-  // 添加/绑定用户设备。data: { productId, productName, productSerialNo }
+  // 添加/绑定用户设备。data: { productId(必传), productName, deviceId }
   addUserProduct(data = {}) {
     return http.post('/Client/UserProduct/addUserProduct', data, {
       mock: false,
@@ -602,28 +602,29 @@ module.exports = {
 
   async bindDevice(device) {
     const scan = device && device.device ? device.device : device || {}
-    let productId = scan.productId
+    // productId 是 addUserProduct 的必传参数，来源是产品列表接口 /Client/Product/getProductList。
+    // 蓝牙扫描到的设备本身不带 productId：每次绑定附近设备都先拉「全部产品列表」，
+    // 再用本地蓝牙搜索到的设备去逐条匹配，匹配出对应产品的 productId 后才调用添加设备接口。
+    let list = []
+    try {
+      const products = await module.exports.getProductList({
+        pageIndex: 1,
+        pageSize: 100
+      })
+      list = pageData(products)
+    } catch (error) {
+      throw new Error('获取产品列表失败，无法确定产品(productId)，请稍后重试')
+    }
 
+    // 用本地蓝牙搜索到的设备(型号/屏幕/名称)和产品列表逐条比对，取匹配度最高的一条作为它对应的产品。
+    const matched = list
+      .slice()
+      .sort((a, b) => productScore(b, scan) - productScore(a, scan))[0]
+    const productId = matched && matched.productId
+
+    // productId 必传：匹配不到就中止绑定并明确提示，避免缺 productId 还往后端发请求。
     if (!productId) {
-      try {
-        const products = await module.exports.getProductList({
-          pageIndex: 1,
-          pageSize: 100,
-          keyword: firstValue(
-            scan.model,
-            scan.screen,
-            scan.name,
-            scan.productName
-          )
-        })
-        const list = pageData(products)
-        const matched = list
-          .slice()
-          .sort((a, b) => productScore(b, scan) - productScore(a, scan))[0]
-        productId = matched && matched.productId
-      } catch (error) {
-        // 产品匹配失败时仍尝试按硬件信息绑定，具体校验交给后端。
-      }
+      throw new Error('未匹配到对应产品(productId)，请确认该设备在产品列表中存在')
     }
 
     const productName = firstValue(
@@ -640,12 +641,9 @@ module.exports = {
       scan.deviceId
     )
     const payload = {
+      productId, // 必传，已在上面确保非空
       productName,
       deviceId: productDeviceId
-    }
-
-    if (productId) {
-      payload.productId = productId
     }
 
     const saved = await module.exports.addUserProduct(payload)

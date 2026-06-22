@@ -17,16 +17,28 @@
         <view class="photo-wrap">
           <image wx:if="{{item.tempFilePath || item.url}}" class="photo-img" src="{{item.tempFilePath || item.url}}" mode="aspectFill" style="transform: rotate({{index === activeIndex ? rotation : 0}}deg);"></image>
           <view wx:else class="photo-img photo-placeholder">图片占位</view>
-          <view wx:if="{{index === activeIndex && activeTool === 'crop'}}" class="crop-corners">
-            <view class="crop-corner corner-tl"></view>
-            <view class="crop-corner corner-tr"></view>
-            <view class="crop-corner corner-bl"></view>
-            <view class="crop-corner corner-br"></view>
-          </view>
         </view>
       </swiper-item>
     </swiper>
     <view wx:else class="photo-wrap empty-photo">暂无待投屏照片</view>
+
+    <!-- 裁剪交互层：覆盖在 swiper 之上，单独显示当前图片并提供可拖拽/缩放的裁剪框 -->
+    <view wx:if="{{cropping}}" class="crop-layer" catchtouchmove="onCropTouchMove" catchtouchend="onCropTouchEnd" catchtouchcancel="onCropTouchEnd">
+      <image class="crop-image" src="{{activeImage.tempFilePath || activeImage.url}}" mode="scaleToFill"
+             style="left:{{cropImageRect.left}}px; top:{{cropImageRect.top}}px; width:{{cropImageRect.width}}px; height:{{cropImageRect.height}}px;"></image>
+      <view class="crop-shade" style="left:{{cropBox.left}}px; top:{{cropBox.top}}px; width:{{cropBox.width}}px; height:{{cropBox.height}}px;"></view>
+      <view class="crop-frame" style="left:{{cropBox.left}}px; top:{{cropBox.top}}px; width:{{cropBox.width}}px; height:{{cropBox.height}}px;">
+        <view class="crop-move" catchtouchstart="onCropHandleStart" data-handle="move"></view>
+        <view class="crop-third crop-third--v1"></view>
+        <view class="crop-third crop-third--v2"></view>
+        <view class="crop-third crop-third--h1"></view>
+        <view class="crop-third crop-third--h2"></view>
+        <view class="crop-corner corner-tl" catchtouchstart="onCropHandleStart" data-handle="tl"></view>
+        <view class="crop-corner corner-tr" catchtouchstart="onCropHandleStart" data-handle="tr"></view>
+        <view class="crop-corner corner-bl" catchtouchstart="onCropHandleStart" data-handle="bl"></view>
+        <view class="crop-corner corner-br" catchtouchstart="onCropHandleStart" data-handle="br"></view>
+      </view>
+    </view>
   </view>
 
   <view class="tool-bar">
@@ -45,4 +57,7 @@
   </view>
 
   <view class="preview-submit {{editing ? 'is-disabled' : ''}}" hover-class="none" bindtap="confirmProjection">{{projecting ? '投屏中' : '开始投屏'}}</view>
+
+  <!-- 离屏导出用画布（定位到屏幕外不可见）：裁剪时把选区绘制到这里再导出临时文件 -->
+  <canvas type="2d" id="cropCanvas" class="crop-canvas"></canvas>
 </view>

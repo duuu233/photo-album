@@ -67,48 +67,118 @@
   font-size: 28rpx;
 }
 
-.crop-corners {
+/* 裁剪交互层：盖在 swiper 之上，单独显示当前图片 */
+.crop-layer {
   position: absolute;
-  top: 40rpx;
-  right: 40rpx;
-  bottom: 40rpx;
-  left: 40rpx;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  background: #11151c;
+  border-radius: 40rpx;
+}
+
+.crop-image {
+  position: absolute;
+}
+
+/* 选区外的遮罩：用超大 box-shadow 把裁剪框以外区域压暗 */
+.crop-shade {
+  position: absolute;
+  box-shadow: 0 0 0 2000px rgba(17, 21, 28, 0.58);
   pointer-events: none;
 }
 
+.crop-frame {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2rpx solid rgba(255, 255, 255, 0.95);
+}
+
+/* 框内可拖动区域：整体平移裁剪框 */
+.crop-move {
+  position: absolute;
+  inset: 0;
+}
+
+/* 三等分参考线 */
+.crop-third {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+}
+
+.crop-third--v1 {
+  top: 0;
+  bottom: 0;
+  left: 33.33%;
+  width: 1px;
+}
+
+.crop-third--v2 {
+  top: 0;
+  bottom: 0;
+  left: 66.66%;
+  width: 1px;
+}
+
+.crop-third--h1 {
+  left: 0;
+  right: 0;
+  top: 33.33%;
+  height: 1px;
+}
+
+.crop-third--h2 {
+  left: 0;
+  right: 0;
+  top: 66.66%;
+  height: 1px;
+}
+
+/* 四角拖拽手柄 */
 .crop-corner {
   position: absolute;
-  width: 44rpx;
-  height: 44rpx;
-  border: 6rpx solid rgba(255, 255, 255, 0.95);
+  width: 48rpx;
+  height: 48rpx;
+  border: 6rpx solid #ffffff;
+  z-index: 2;
 }
 
 .corner-tl {
-  top: 0;
-  left: 0;
+  top: -3rpx;
+  left: -3rpx;
   border-right: 0;
   border-bottom: 0;
 }
 
 .corner-tr {
-  top: 0;
-  right: 0;
+  top: -3rpx;
+  right: -3rpx;
   border-left: 0;
   border-bottom: 0;
 }
 
 .corner-bl {
-  bottom: 0;
-  left: 0;
+  bottom: -3rpx;
+  left: -3rpx;
   border-right: 0;
   border-top: 0;
 }
 
 .corner-br {
-  bottom: 0;
-  right: 0;
+  bottom: -3rpx;
+  right: -3rpx;
   border-left: 0;
   border-top: 0;
+}
+
+/* 离屏导出画布：移到屏幕外，仅用于裁剪导出 */
+.crop-canvas {
+  position: fixed;
+  left: -9999rpx;
+  top: 0;
+  width: 10rpx;
+  height: 10rpx;
 }
 
 .tool-bar {
