@@ -4,7 +4,7 @@ function chooseImageByLegacy(sourceType, count) {
     wx.chooseImage({
       count,
       sourceType,
-      sizeType: ['compressed'],
+      sizeType: ['original'], // 取原图，避免上屏发糊（旧版降级路径，同新版一致）
       success(res) {
         const images = res.tempFilePaths.map((path, index) => ({
           tempFilePath: path,
@@ -29,7 +29,9 @@ function chooseMedia(sourceType, count) {
       count,
       mediaType: ['image'],
       sourceType,
-      sizeType: ['compressed'],
+      // 取原图而非微信压缩版：compressed 会先降分辨率+重压，是投屏「发糊」最大来源；
+      // 原图偏大时由 result.js 的 shrinkIfHuge 仅做防 OOM 的轻量预缩（与 APP 一致走原图）。
+      sizeType: ['original'],
       success(res) {
         const images = res.tempFiles.map((file, index) => ({
           tempFilePath: file.tempFilePath,

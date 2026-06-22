@@ -143,8 +143,8 @@ button {
 .device-carousel {
   position: relative;
   display: flex;
-  width: 702rpx;
-  height: 420rpx;
+  width: 654rpx;
+  height: 372rpx;
   margin: 0 auto;
 
   justify-content: space-around;

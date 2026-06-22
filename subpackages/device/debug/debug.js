@@ -15,6 +15,17 @@ const protocol = require('../../../utils/frame-protocol')
 const imageCodec = require('../../../utils/image-codec')
 const system = require('../../../utils/system')
 
+// APP(Flutter) 版实测校准的六色参照色，仅调试页试用，用来和小程序默认调色板对比观感。
+// nibble 为协议编码值（不可改）；rgb 搬自 D:\Work\learn\flutter\lib\src\device\ble\image_codec.dart 的 palette。
+const APP_PALETTE = [
+  { nibble: 0x0, rgb: [0, 0, 0], name: '黑' },
+  { nibble: 0x1, rgb: [255, 255, 255], name: '白' },
+  { nibble: 0x2, rgb: [255, 246, 32], name: '黄' },
+  { nibble: 0x3, rgb: [129, 22, 0], name: '红' },
+  { nibble: 0x5, rgb: [47, 77, 151], name: '蓝' },
+  { nibble: 0x6, rgb: [57, 109, 68], name: '绿' }
+]
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -443,7 +454,8 @@ Page({
       // 注意：这步只为让解码更稳，不改变上传量——上传的是定长六色帧缓存(宽×高÷2)，与原图大小无关。
       const srcPath = await this.shrinkIfHuge(tempPath, info.width, info.height)
       const imageData = await this.imageToImageData(srcPath, info.width, info.height)
-      frame = imageCodec.fromImageData(imageData, info.width, info.height)
+      // 调试期：试用 APP(Flutter) 版实测校准调色板，对比小程序默认调色板的上屏观感（仅本页生效）。
+      frame = imageCodec.fromImageData(imageData, info.width, info.height, { palette: APP_PALETTE })
     } catch (error) {
       wx.hideLoading()
       wx.showToast({ title: '图片转换失败：' + error.message, icon: 'none' })

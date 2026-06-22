@@ -51,11 +51,12 @@ function packNibbles(nibbles) {
 
 // 找出与给定 RGB 最接近的调色板颜色，返回其在 PALETTE 中的下标（欧氏距离最近）。
 // 抖动量化既要拿到 nibble 又要拿到这个颜色的 RGB 来算误差，所以返回下标而不是 nibble。
-function nearestPaletteIndex(r, g, b) {
+function nearestPaletteIndex(r, g, b, palette) {
+  const pal = palette || PALETTE
   let best = 0
   let bestDist = Infinity
-  for (let i = 0; i < PALETTE.length; i++) {
-    const [pr, pg, pb] = PALETTE[i].rgb
+  for (let i = 0; i < pal.length; i++) {
+    const [pr, pg, pb] = pal[i].rgb
     const dist = (r - pr) * (r - pr) + (g - pg) * (g - pg) + (b - pb) * (b - pb)
     if (dist < bestDist) {
       bestDist = dist
@@ -122,7 +123,8 @@ function enhancePixel(r, g, b, contrast, saturation) {
 // 流程：① 量化前先做观感增强(对比度/饱和度) → ② Floyd–Steinberg 误差扩散抖动：每像素量化到最近 6 色后，
 // 把「原色 - 量化色」的误差按 7/16、3/16、5/16、1/16 扩散到右/左下/下/右下相邻像素，肉眼会把密集色点
 // 空间混合成中间色，缓解 6 色硬量化的大色块/断层，渐变、肤色等过渡更自然。
-// options：dither===false 关抖动；contrast / saturation 自定增强强度（默认 1.12 / 1.28，传 1 即不增强）。
+// options：dither===false 关抖动；contrast / saturation 自定增强强度（默认 1.12 / 1.28，传 1 即不增强）；
+//          palette 可传自定义六色调色板（默认用 PALETTE，用于不改默认值就试别的实测校准色）。
 function fromImageData(imageData, width, height, options) {
   const px = imageData.data // [r,g,b,a, r,g,b,a, ...]
   const count = width * height
@@ -131,11 +133,13 @@ function fromImageData(imageData, width, height, options) {
   const dither = opt.dither !== false
   const contrast = Number.isFinite(opt.contrast) ? opt.contrast : 1.12
   const saturation = Number.isFinite(opt.saturation) ? opt.saturation : 1.28
+  // 可选自定义调色板：不传用默认 PALETTE；传了就用传入的（便于在不改默认值前提下试别的实测校准色）。
+  const palette = Array.isArray(opt.palette) && opt.palette.length ? opt.palette : PALETTE
 
   if (!dither) {
     for (let i = 0; i < count; i++) {
       const [r, g, b] = enhancePixel(px[i * 4], px[i * 4 + 1], px[i * 4 + 2], contrast, saturation)
-      nibbles[i] = PALETTE[nearestPaletteIndex(r, g, b)].nibble
+      nibbles[i] = palette[nearestPaletteIndex(r, g, b, palette)].nibble
     }
     const data = packNibbles(nibbles)
     return { data, width, height, dataSize: data.length }
@@ -157,9 +161,9 @@ function fromImageData(imageData, width, height, options) {
       const r = buf[i * 3]
       const g = buf[i * 3 + 1]
       const b = buf[i * 3 + 2]
-      const pi = nearestPaletteIndex(r, g, b)
-      nibbles[i] = PALETTE[pi].nibble
-      const [pr, pg, pb] = PALETTE[pi].rgb
+      const pi = nearestPaletteIndex(r, g, b, palette)
+      nibbles[i] = palette[pi].nibble
+      const [pr, pg, pb] = palette[pi].rgb
       const er = r - pr
       const eg = g - pg
       const eb = b - pb

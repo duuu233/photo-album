@@ -2,6 +2,8 @@ const api = require('../../../utils/api')
 const system = require('../../../utils/system')
 const batteryUtil = require('../../../utils/battery')
 const deviceBle = require('../../../utils/device-ble')
+const bluetooth = require('../../../utils/bluetooth')
+const permission = require('../../../utils/permission')
 
 const app = getApp()
 
@@ -145,19 +147,30 @@ Page({
       return
     }
 
-    if (!device.deviceId) {
-      wx.showToast({
-        title: '请重新搜索绑定后连接',
-        icon: 'none'
-      })
-      return
-    }
-
-    wx.showLoading({ title: '连接设备中', mask: true })
+    // 微信 BLE deviceId 是「本次扫描会话」临时分配的，后端只存了序列号，没存它。
+    // 所以列表页连接必须先重扫拿到当下有效的 deviceId，再连——直连存下来的 deviceId 必失败。
+    wx.showLoading({ title: '搜索设备中', mask: true })
     try {
-      await deviceBle.ensureConnection(device.deviceId)
-      const info = await deviceBle.readDeviceInfo(device.deviceId)
+      const location = await permission.getCurrentLocation()
+      if (!location) {
+        throw new Error('请先授权定位后再连接')
+      }
+      await bluetooth.openAdapter()
+      const found = await bluetooth.discoverDevices({ timeout: 6000 })
+
+      // 用稳定标识匹配出这台设备：序列号(广播 Device_ID)优先，名称兜底
+      const target = this.matchScannedDevice(found, device)
+      if (!target) {
+        throw new Error('未搜索到该设备，请确认设备已开机并在附近')
+      }
+
+      // 用本次扫描到的有效 deviceId 连接并读真实信息
+      wx.showLoading({ title: '连接设备中', mask: true })
+      await deviceBle.ensureConnection(target.deviceId)
+      const info = await deviceBle.readDeviceInfo(target.deviceId)
       const updated = Object.assign({}, device, {
+        deviceId: target.deviceId, // 刷新成本次会话有效的 deviceId，供后续断开/图传复用
+        bleDeviceId: target.deviceId,
         connected: true,
         battery: info.battery,
         usedMemory: info.imgCount,
@@ -188,6 +201,28 @@ Page({
     } finally {
       wx.hideLoading()
     }
+  },
+
+  // 把后端来的设备(只有序列号/名称)和扫描结果匹配，返回带「本次会话有效 deviceId」的那条。
+  // 序列号(deviceNo，对应扫描侧广播里的 Device_ID)优先精确匹配；取不到再按设备名兜底
+  // (discoverDevices 已按 RSSI 降序，同名时拿到的是信号最强的一台)。
+  matchScannedDevice(found, device) {
+    const list = found || []
+    const serial = String(device.deviceNo || device.productDeviceId || '').trim()
+    if (serial) {
+      const bySerial = list.find(item => String(item.deviceNo || '').trim() === serial)
+      if (bySerial) {
+        return bySerial
+      }
+    }
+    const name = String(device.name || '').trim()
+    if (name) {
+      const byName = list.find(item => String(item.name || '').trim() === name)
+      if (byName) {
+        return byName
+      }
+    }
+    return null
   },
 
   renameDevice(e) {

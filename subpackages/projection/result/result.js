@@ -247,7 +247,9 @@ Page({
       wx.getImageInfo({
         src: path,
         success: ({ width, height }) => {
-          const maxEdge = Math.max(1280, Math.max(targetW, targetH) * 2)
+          // 长边上限取「目标长边 ×2.5」并兜底 1600：给目标分辨率留 2 倍以上过采样(下采样越多越锐)，
+          // 同时把超大图(12MP+)的解码内存压住。只有真超过上限才预缩，普通手机照片原样通过。
+          const maxEdge = Math.max(1600, Math.round(Math.max(targetW, targetH) * 2.5))
           const srcMax = Math.max(width, height)
           if (!srcMax || srcMax <= maxEdge) {
             resolve(path)
@@ -258,7 +260,7 @@ Page({
             src: path,
             compressedWidth: Math.round(width * scale),
             compressedHeight: Math.round(height * scale),
-            quality: 80,
+            quality: 92, // 仅超大图才会走到，质量拉高减少二次 JPEG 损失
             success: res => resolve(res.tempFilePath),
             fail: () => resolve(path)
           })
@@ -280,7 +282,19 @@ Page({
       const img = canvas.createImage()
       img.onload = () => {
         ctx.clearRect(0, 0, width, height)
-        ctx.drawImage(img, 0, 0, width, height) // 拉伸铺满目标尺寸
+        // 开高质量缩放：大图一步缩到屏幕尺寸时默认平滑会发糊/锯齿，high 明显更锐(APP 用原生双线性)。
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = 'high'
+        // 中心裁剪「覆盖」(与 APP 的 centerCropCover 一致)：等比缩放铺满目标后从原图正中取，
+        // 保持宽高比、不拉伸变形。用户在预览页手动裁过的图已是目标比例，这里几乎无裁切。
+        const iw = img.width || width
+        const ih = img.height || height
+        const scale = Math.max(width / iw, height / ih)
+        const sw = width / scale
+        const sh = height / scale
+        const sx = (iw - sw) / 2
+        const sy = (ih - sh) / 2
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height)
         try {
           resolve(ctx.getImageData(0, 0, width, height))
         } catch (error) {
