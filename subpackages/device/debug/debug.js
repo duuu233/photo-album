@@ -15,16 +15,207 @@ const protocol = require('../../../utils/frame-protocol')
 const imageCodec = require('../../../utils/image-codec')
 const system = require('../../../utils/system')
 
-// APP(Flutter) 版实测校准的六色参照色，仅调试页试用，用来和小程序默认调色板对比观感。
-// nibble 为协议编码值（不可改）；rgb 搬自 D:\Work\learn\flutter\lib\src\device\ble\image_codec.dart 的 palette。
-const APP_PALETTE = [
-  { nibble: 0x0, rgb: [0, 0, 0], name: '黑' },
-  { nibble: 0x1, rgb: [255, 255, 255], name: '白' },
-  { nibble: 0x2, rgb: [255, 246, 32], name: '黄' },
-  { nibble: 0x3, rgb: [129, 22, 0], name: '红' },
-  { nibble: 0x5, rgb: [47, 77, 151], name: '蓝' },
-  { nibble: 0x6, rgb: [57, 109, 68], name: '绿' }
+// 调试页专用校准档：nibble 为协议编码值（不可改）；rgb 仅参与「原图像素 → 六色」最近色匹配。
+// 只在当前硬件调试页试用，不影响 utils/image-codec.js 和其它正式上传入口。
+const DEBUG_CALIBRATION_PROFILE_SOURCE = [
+  {
+    id: 'shot-20260622',
+    name: '实拍 2026-06-22',
+    note: '本次六色测试图取样；适合当前这台样机/批次。',
+    palette: [
+      { nibble: 0x0, rgb: [0, 0, 0], name: '黑' },
+      { nibble: 0x1, rgb: [255, 255, 255], name: '白' },
+      { nibble: 0x2, rgb: [255, 250, 0], name: '黄' },
+      { nibble: 0x3, rgb: [97, 0, 0], name: '红' },
+      { nibble: 0x5, rgb: [20, 56, 180], name: '蓝' },
+      { nibble: 0x6, rgb: [57, 104, 57], name: '绿' }
+    ]
+  },
+  {
+    id: 'app-6color',
+    name: 'APP 6色基准',
+    note: 'Flutter APP 中 6色.jpg 校准值；用于和 APP 当前效果对齐。',
+    palette: [
+      { nibble: 0x0, rgb: [0, 0, 0], name: '黑' },
+      { nibble: 0x1, rgb: [255, 255, 255], name: '白' },
+      { nibble: 0x2, rgb: [255, 246, 32], name: '黄' },
+      { nibble: 0x3, rgb: [129, 22, 0], name: '红' },
+      { nibble: 0x5, rgb: [47, 77, 151], name: '蓝' },
+      { nibble: 0x6, rgb: [57, 109, 68], name: '绿' }
+    ]
+  },
+  {
+    id: 'mini-default',
+    name: '小程序默认基准',
+    note: 'utils/image-codec.js 默认 palette；用于回退对比旧效果。',
+    palette: [
+      { nibble: 0x0, rgb: [0, 0, 0], name: '黑' },
+      { nibble: 0x1, rgb: [255, 255, 255], name: '白' },
+      { nibble: 0x2, rgb: [255, 255, 29], name: '黄' },
+      { nibble: 0x3, rgb: [140, 65, 43], name: '红' },
+      { nibble: 0x5, rgb: [71, 97, 192], name: '蓝' },
+      { nibble: 0x6, rgb: [90, 129, 96], name: '绿' }
+    ]
+  }
 ]
+
+const DEBUG_PROFILE_STORAGE_PREFIX = 'debug:image-calibration-profile:'
+const DEBUG_CALIBRATION_PROFILES = DEBUG_CALIBRATION_PROFILE_SOURCE.map(profile => Object.assign({}, profile, {
+  palette: withLabPalette(profile.palette)
+}))
+const DEBUG_CALIBRATION_PROFILE_OPTIONS = DEBUG_CALIBRATION_PROFILES.map(profile => profile.name)
+const DEFAULT_DEBUG_PROFILE_ID = 'shot-20260622'
+const DEFAULT_DEBUG_PROFILE_INDEX = Math.max(0, DEBUG_CALIBRATION_PROFILES.findIndex(profile => profile.id === DEFAULT_DEBUG_PROFILE_ID))
+const DEFAULT_DEBUG_PROFILE = DEBUG_CALIBRATION_PROFILES[DEFAULT_DEBUG_PROFILE_INDEX]
+
+const DEFAULT_DEBUG_QUANTIZE = {
+  dither: true,
+  contrast: 1.12,
+  saturation: 1.28,
+  distanceMetric: 'Lab ΔE76',
+  // 实拍/相册图的黑白灰常带轻微色偏；低饱和像素只在黑白之间抖动，避免暗部被归成绿/红。
+  achromaticChromaMax: 28
+}
+
+const DEBUG_RESAMPLE = {
+  predecodeQuality: 96,
+  maxStageEdge: 2048,
+  stageScale: 0.5
+}
+
+function clamp255(v) {
+  return v < 0 ? 0 : (v > 255 ? 255 : v)
+}
+
+function enhanceDebugPixel(r, g, b, settings) {
+  const contrast = settings.contrast
+  const saturation = settings.saturation
+  r = (r - 128) * contrast + 128
+  g = (g - 128) * contrast + 128
+  b = (b - 128) * contrast + 128
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b
+  r = lum + (r - lum) * saturation
+  g = lum + (g - lum) * saturation
+  b = lum + (b - lum) * saturation
+  return [clamp255(r), clamp255(g), clamp255(b)]
+}
+
+function srgbToLinear(v) {
+  const n = clamp255(v) / 255
+  return n <= 0.04045 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4)
+}
+
+function xyzPivot(v) {
+  return v > 0.008856 ? Math.pow(v, 1 / 3) : (7.787 * v) + (16 / 116)
+}
+
+function rgbToLab(r, g, b) {
+  const lr = srgbToLinear(r)
+  const lg = srgbToLinear(g)
+  const lb = srgbToLinear(b)
+  const x = (0.4124564 * lr + 0.3575761 * lg + 0.1804375 * lb) / 0.95047
+  const y = (0.2126729 * lr + 0.7151522 * lg + 0.0721750 * lb) / 1.00000
+  const z = (0.0193339 * lr + 0.1191920 * lg + 0.9503041 * lb) / 1.08883
+  const fx = xyzPivot(x)
+  const fy = xyzPivot(y)
+  const fz = xyzPivot(z)
+  return [(116 * fy) - 16, 500 * (fx - fy), 200 * (fy - fz)]
+}
+
+function labDistance(lab, entry) {
+  const [pl, pa, pb] = entry.lab
+  const dl = lab[0] - pl
+  const da = lab[1] - pa
+  const db = lab[2] - pb
+  return dl * dl + da * da + db * db
+}
+
+function withLabPalette(palette) {
+  return palette.map(entry => Object.assign({}, entry, {
+    lab: rgbToLab(entry.rgb[0], entry.rgb[1], entry.rgb[2])
+  }))
+}
+
+function findDebugCalibrationProfile(id) {
+  return DEBUG_CALIBRATION_PROFILES.find(profile => profile.id === id) || null
+}
+
+function nearestDebugPaletteIndex(r, g, b, settings) {
+  const palette = settings.palette || DEFAULT_DEBUG_PROFILE.palette
+  const cr = clamp255(r)
+  const cg = clamp255(g)
+  const cb = clamp255(b)
+  const chroma = Math.max(cr, cg, cb) - Math.min(cr, cg, cb)
+  const paletteLength = chroma <= settings.achromaticChromaMax ? 2 : palette.length
+  const lab = rgbToLab(cr, cg, cb)
+  let best = 0
+  let bestDist = Infinity
+  for (let i = 0; i < paletteLength; i++) {
+    const dist = labDistance(lab, palette[i])
+    if (dist < bestDist) {
+      bestDist = dist
+      best = i
+    }
+  }
+  return best
+}
+
+function spreadDebugError(buf, x, y, width, height, er, eg, eb, weight) {
+  if (x < 0 || x >= width || y < 0 || y >= height) {
+    return
+  }
+  const i = (y * width + x) * 3
+  buf[i] += er * weight
+  buf[i + 1] += eg * weight
+  buf[i + 2] += eb * weight
+}
+
+function fromImageDataWithDebugCalibration(imageData, width, height, options) {
+  const settings = Object.assign({}, DEFAULT_DEBUG_QUANTIZE, options || {})
+  const palette = settings.palette || DEFAULT_DEBUG_PROFILE.palette
+  const px = imageData.data
+  const count = width * height
+  const nibbles = new Uint8Array(count)
+
+  if (!settings.dither) {
+    for (let i = 0; i < count; i++) {
+      const [r, g, b] = enhanceDebugPixel(px[i * 4], px[i * 4 + 1], px[i * 4 + 2], settings)
+      nibbles[i] = palette[nearestDebugPaletteIndex(r, g, b, settings)].nibble
+    }
+    const data = imageCodec.packNibbles(nibbles)
+    return { data, width, height, dataSize: data.length }
+  }
+
+  const buf = new Float32Array(count * 3)
+  for (let i = 0; i < count; i++) {
+    const [r, g, b] = enhanceDebugPixel(px[i * 4], px[i * 4 + 1], px[i * 4 + 2], settings)
+    buf[i * 3] = r
+    buf[i * 3 + 1] = g
+    buf[i * 3 + 2] = b
+  }
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x
+      const r = buf[i * 3]
+      const g = buf[i * 3 + 1]
+      const b = buf[i * 3 + 2]
+      const pi = nearestDebugPaletteIndex(r, g, b, settings)
+      nibbles[i] = palette[pi].nibble
+      const [pr, pg, pb] = palette[pi].rgb
+      const er = r - pr
+      const eg = g - pg
+      const eb = b - pb
+      spreadDebugError(buf, x + 1, y, width, height, er, eg, eb, 7 / 16)
+      spreadDebugError(buf, x - 1, y + 1, width, height, er, eg, eb, 3 / 16)
+      spreadDebugError(buf, x, y + 1, width, height, er, eg, eb, 5 / 16)
+      spreadDebugError(buf, x + 1, y + 1, width, height, er, eg, eb, 1 / 16)
+    }
+  }
+
+  const data = imageCodec.packNibbles(nibbles)
+  return { data, width, height, dataSize: data.length }
+}
 
 Page({
   data: {
@@ -53,6 +244,18 @@ Page({
     deleteInput: '', // 0x12 要删除的图片索引，逗号分隔，如 "0,2"
     uploadIndexInput: '', // 上传槽位，留空则自动选空闲位
     pace: 45, // 图传每包发送间隔(ms)，越小越快；从慢到快试，找你这台设备不丢包的最快值
+    cropMode: 'cover', // cover 与 APP centerCropCover 对齐；contain 用白底完整显示原图
+    debugDither: DEFAULT_DEBUG_QUANTIZE.dither,
+    debugContrastPercent: Math.round(DEFAULT_DEBUG_QUANTIZE.contrast * 100),
+    debugContrastText: DEFAULT_DEBUG_QUANTIZE.contrast.toFixed(2),
+    debugSaturationPercent: Math.round(DEFAULT_DEBUG_QUANTIZE.saturation * 100),
+    debugSaturationText: DEFAULT_DEBUG_QUANTIZE.saturation.toFixed(2),
+    debugDistanceMetric: DEFAULT_DEBUG_QUANTIZE.distanceMetric,
+    calibrationProfileOptions: DEBUG_CALIBRATION_PROFILE_OPTIONS,
+    calibrationProfileIndex: DEFAULT_DEBUG_PROFILE_INDEX,
+    calibrationProfileId: DEFAULT_DEBUG_PROFILE.id,
+    calibrationProfileName: DEFAULT_DEBUG_PROFILE.name,
+    calibrationProfileNote: DEFAULT_DEBUG_PROFILE.note,
 
     // 状态
     busy: false, // 有指令正在等应答，避免并发
@@ -200,6 +403,7 @@ Page({
       const writeTypeText = session.writeType === 'write' ? '有应答写(可靠)' : '无应答写'
       this.appendLog({ type: 'act', text: `协商 MTU=${session.mtu} 字节，图传每包数据 ${session.dataChunk} 字节，写入方式：${writeTypeText}` })
       await this.refreshInfoSilently()
+      this.loadSavedCalibrationProfile()
       await this.refreshConnectionIntervalSilently()
     } catch (error) {
       this.setData({ connected: false })
@@ -419,6 +623,117 @@ Page({
     this.setData({ pace: Number(e.detail.value) })
   },
 
+  formatTuningValue(percent) {
+    const value = Number(percent) / 100
+    return Number.isFinite(value) ? value.toFixed(2) : '1.00'
+  },
+
+  onCropModeChange(e) {
+    this.setData({ cropMode: e.detail.value === 'contain' ? 'contain' : 'cover' })
+  },
+
+  onDebugDitherChange(e) {
+    this.setData({ debugDither: !!e.detail.value })
+  },
+
+  onDebugContrastChange(e) {
+    const percent = Number(e.detail.value)
+    if (!Number.isFinite(percent)) {
+      return
+    }
+    this.setData({
+      debugContrastPercent: percent,
+      debugContrastText: this.formatTuningValue(percent)
+    })
+  },
+
+  onDebugSaturationChange(e) {
+    const percent = Number(e.detail.value)
+    if (!Number.isFinite(percent)) {
+      return
+    }
+    this.setData({
+      debugSaturationPercent: percent,
+      debugSaturationText: this.formatTuningValue(percent)
+    })
+  },
+
+  getCalibrationProfileStorageKey() {
+    return `${DEBUG_PROFILE_STORAGE_PREFIX}${encodeURIComponent(this.data.deviceId || '')}`
+  },
+
+  applyCalibrationProfile(profile, options) {
+    const index = DEBUG_CALIBRATION_PROFILES.findIndex(item => item.id === profile.id)
+    this.setData({
+      calibrationProfileIndex: index >= 0 ? index : DEFAULT_DEBUG_PROFILE_INDEX,
+      calibrationProfileId: profile.id,
+      calibrationProfileName: profile.name,
+      calibrationProfileNote: profile.note
+    })
+    if (options && options.log) {
+      this.appendLog({ type: 'act', text: `${options.log}：${profile.name} · ${profile.note}` })
+    }
+  },
+
+  onCalibrationProfileChange(e) {
+    const index = Number(e.detail.value)
+    const profile = DEBUG_CALIBRATION_PROFILES[index] || DEFAULT_DEBUG_PROFILE
+    this.applyCalibrationProfile(profile, { log: '切换色彩校准档' })
+  },
+
+  loadSavedCalibrationProfile() {
+    if (!this.data.deviceId || !wx.getStorageSync) {
+      return
+    }
+    try {
+      const savedId = wx.getStorageSync(this.getCalibrationProfileStorageKey())
+      const profile = findDebugCalibrationProfile(savedId)
+      if (profile) {
+        this.applyCalibrationProfile(profile, { log: '已恢复本设备校准档' })
+      }
+    } catch (error) {
+      // 读取本地调试配置失败不影响上传链路。
+    }
+  },
+
+  saveDeviceCalibrationProfile() {
+    if (!this.data.deviceId) {
+      wx.showToast({ title: '请先连接设备', icon: 'none' })
+      return
+    }
+    if (!wx.setStorageSync) {
+      wx.showToast({ title: '当前环境不支持本地保存', icon: 'none' })
+      return
+    }
+    try {
+      wx.setStorageSync(this.getCalibrationProfileStorageKey(), this.data.calibrationProfileId)
+      this.appendLog({ type: 'ok', text: `已保存本设备校准档：${this.data.calibrationProfileName}` })
+      wx.showToast({ title: '已保存本设备校准档', icon: 'none' })
+    } catch (error) {
+      wx.showToast({ title: '保存失败：' + error.message, icon: 'none' })
+    }
+  },
+
+  getSelectedCalibrationProfile() {
+    return findDebugCalibrationProfile(this.data.calibrationProfileId) || DEFAULT_DEBUG_PROFILE
+  },
+
+  getDebugQuantizeOptions() {
+    const contrast = Number(this.data.debugContrastPercent) / 100
+    const saturation = Number(this.data.debugSaturationPercent) / 100
+    const profile = this.getSelectedCalibrationProfile()
+    return {
+      dither: !!this.data.debugDither,
+      contrast: Number.isFinite(contrast) ? contrast : DEFAULT_DEBUG_QUANTIZE.contrast,
+      saturation: Number.isFinite(saturation) ? saturation : DEFAULT_DEBUG_QUANTIZE.saturation,
+      distanceMetric: DEFAULT_DEBUG_QUANTIZE.distanceMetric,
+      palette: profile.palette,
+      calibrationProfileId: profile.id,
+      calibrationProfileName: profile.name,
+      achromaticChromaMax: DEFAULT_DEBUG_QUANTIZE.achromaticChromaMax
+    }
+  },
+
   // 上传彩条测试图：不依赖任何图片，数据尺寸天然正确，最适合首次验证图传链路是否打通
   cmdUploadTest() {
     if (!this.ensureUploadReady()) {
@@ -453,9 +768,18 @@ Page({
       // 大图先按比例压一遍再解码：超大原图(几千万像素)在离屏 canvas 全分辨率解码时易内存吃紧/失败。
       // 注意：这步只为让解码更稳，不改变上传量——上传的是定长六色帧缓存(宽×高÷2)，与原图大小无关。
       const srcPath = await this.shrinkIfHuge(tempPath, info.width, info.height)
-      const imageData = await this.imageToImageData(srcPath, info.width, info.height)
-      // 调试期：试用 APP(Flutter) 版实测校准调色板，对比小程序默认调色板的上屏观感（仅本页生效）。
-      frame = imageCodec.fromImageData(imageData, info.width, info.height, { palette: APP_PALETTE })
+      const cropMode = this.data.cropMode === 'contain' ? 'contain' : 'cover'
+      const quantize = this.getDebugQuantizeOptions()
+      const decoded = await this.imageToImageData(srcPath, info.width, info.height, cropMode)
+      const imageData = decoded.imageData
+      if (decoded.resampleLog) {
+        this.appendLog({ type: 'act', text: decoded.resampleLog })
+      }
+      this.appendLog({
+        type: 'act',
+        text: `调试页色准量化：${quantize.calibrationProfileName} / ${quantize.distanceMetric} / 裁剪${cropMode} / 抖动${quantize.dither ? '开' : '关'} / 对比度${quantize.contrast.toFixed(2)} / 饱和度${quantize.saturation.toFixed(2)} / 低饱和保护≤${quantize.achromaticChromaMax}`
+      })
+      frame = fromImageDataWithDebugCalibration(imageData, info.width, info.height, quantize)
     } catch (error) {
       wx.hideLoading()
       wx.showToast({ title: '图片转换失败：' + error.message, icon: 'none' })
@@ -485,35 +809,126 @@ Page({
     return true
   },
 
-  // 大图预压缩：仅在原图长边明显大于目标显示尺寸时，按比例把长边限制到 maxEdge 再返回新临时路径。
-  // 目的是给后面的离屏 canvas 解码减负，避免超大原图直接全分辨率解码导致内存吃紧/解码失败。
+  computeAppLikeSample(width, height, targetW, targetH) {
+    let sample = 1
+    while (width / (sample * 2) >= targetW && height / (sample * 2) >= targetH) {
+      sample *= 2
+    }
+    return sample
+  },
+
+  setupImageSmoothing(ctx) {
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+  },
+
+  createResizeCanvas(width, height) {
+    const canvas = wx.createOffscreenCanvas({
+      type: '2d',
+      width: Math.max(1, Math.round(width)),
+      height: Math.max(1, Math.round(height))
+    })
+    const ctx = canvas.getContext('2d')
+    this.setupImageSmoothing(ctx)
+    return { canvas, ctx }
+  },
+
+  getImageDrawPlan(iw, ih, width, height, cropMode) {
+    if (cropMode === 'contain') {
+      const scale = Math.min(width / iw, height / ih)
+      const dw = iw * scale
+      const dh = ih * scale
+      return {
+        sx: 0,
+        sy: 0,
+        sw: iw,
+        sh: ih,
+        dx: (width - dw) / 2,
+        dy: (height - dh) / 2,
+        dw,
+        dh
+      }
+    }
+    // 中心裁剪「覆盖」：先算目标画布在原图上的等比例取样区域，再分阶段缩到目标尺寸。
+    // 对正常照片这与 APP 的「先缩放整图再居中裁剪」等价；对超宽/超高图则避免创建超大中间画布。
+    const scale = Math.max(width / iw, height / ih)
+    const sw = width / scale
+    const sh = height / scale
+    return {
+      sx: (iw - sw) / 2,
+      sy: (ih - sh) / 2,
+      sw,
+      sh,
+      dx: 0,
+      dy: 0,
+      dw: width,
+      dh: height
+    }
+  },
+
+  drawImageResampled(ctx, image, plan) {
+    let source = image
+    let sx = plan.sx
+    let sy = plan.sy
+    let sw = plan.sw
+    let sh = plan.sh
+    const finalW = Math.max(1, Math.round(plan.dw))
+    const finalH = Math.max(1, Math.round(plan.dh))
+    const stages = []
+
+    while (sw > finalW * 2 || sh > finalH * 2 || Math.max(sw, sh) > DEBUG_RESAMPLE.maxStageEdge) {
+      const maxEdge = Math.max(sw, sh)
+      const capScale = maxEdge > DEBUG_RESAMPLE.maxStageEdge ? DEBUG_RESAMPLE.maxStageEdge / maxEdge : 1
+      const stepScale = Math.min(DEBUG_RESAMPLE.stageScale, capScale)
+      const nextW = Math.max(finalW, Math.round(sw * stepScale))
+      const nextH = Math.max(finalH, Math.round(sh * stepScale))
+      if (nextW >= Math.round(sw) && nextH >= Math.round(sh)) {
+        break
+      }
+
+      const stage = this.createResizeCanvas(nextW, nextH)
+      stage.ctx.clearRect(0, 0, nextW, nextH)
+      stage.ctx.drawImage(source, sx, sy, sw, sh, 0, 0, nextW, nextH)
+      stages.push(`${Math.round(sw)}×${Math.round(sh)}→${nextW}×${nextH}`)
+
+      source = stage.canvas
+      sx = 0
+      sy = 0
+      sw = nextW
+      sh = nextH
+    }
+
+    ctx.drawImage(source, sx, sy, sw, sh, plan.dx, plan.dy, plan.dw, plan.dh)
+    return stages
+  },
+
+  // 大图预采样：模拟 APP Android 端 BitmapFactory.inSampleSize 的 power-of-two 下采样。
+  // 小程序不能直接控制解码采样，只能用 compressImage 生成一个接近 inSampleSize 后尺寸的临时图。
+  // 这样比按固定长边硬压更接近 APP：普通图保持原图；超大图只降到「仍大于目标」的 2 的倍数。
   // 任何环节失败（老版本不支持 / 取不到尺寸 / 压缩报错）都退回用原图，绝不阻断上传。
   shrinkIfHuge(path, targetW, targetH) {
     return new Promise(resolve => {
       if (!wx.compressImage) {
-        resolve(path) // 基础库过老不支持 compressImage，直接用原图
+        resolve(path) // 基础库过老不支持 compressImage，直接用原图，后续分阶段 canvas 缩放兜底
         return
       }
       wx.getImageInfo({
         src: path,
         success: ({ width, height }) => {
-          // 长边上限取「目标长边 ×2.5」并兜底 1600：给目标分辨率留 2 倍以上过采样(下采样越多越锐)，
-          // 同时把超大图(12MP+)的解码内存压在可控范围。只有真的超过这个上限才预缩，普通手机照片原样通过。
-          const maxEdge = Math.max(1600, Math.round(Math.max(targetW, targetH) * 2.5))
-          const srcMax = Math.max(width, height)
-          if (!srcMax || srcMax <= maxEdge) {
-            resolve(path) // 原图本就不大，无需压缩（也避免被放大）
+          const sample = this.computeAppLikeSample(width, height, targetW, targetH)
+          if (sample <= 1) {
+            resolve(path) // APP 也不会下采样的尺寸，直接保留原图细节
             return
           }
-          const scale = maxEdge / srcMax
+          const compressedWidth = Math.max(targetW, Math.round(width / sample))
+          const compressedHeight = Math.max(targetH, Math.round(height / sample))
           wx.compressImage({
             src: path,
-            // 同一缩放系数算出的宽高，宽高比不变；设了尺寸后 quality 会失效，留着无害
-            compressedWidth: Math.round(width * scale),
-            compressedHeight: Math.round(height * scale),
-            quality: 92, // 仅在超大图时才会走到这一步，质量拉高减少二次 JPEG 损失
+            compressedWidth,
+            compressedHeight,
+            quality: DEBUG_RESAMPLE.predecodeQuality,
             success: res => {
-              this.appendLog({ type: 'act', text: `原图 ${width}×${height} 较大，已预压到约 ${Math.round(width * scale)}×${Math.round(height * scale)} 再解码` })
+              this.appendLog({ type: 'act', text: `APP式预采样：原图 ${width}×${height}，sample=${sample}，预解码约 ${compressedWidth}×${compressedHeight}` })
               resolve(res.tempFilePath)
             },
             fail: () => resolve(path) // 压缩失败退回原图
@@ -525,7 +940,7 @@ Page({
   },
 
   // 用离屏 canvas 把图片解码并缩放到目标尺寸，取出 RGBA 像素（ImageData）
-  imageToImageData(path, width, height) {
+  imageToImageData(path, width, height, cropMode) {
     return new Promise((resolve, reject) => {
       if (!wx.createOffscreenCanvas) {
         reject(new Error('当前微信版本不支持离屏 canvas'))
@@ -533,29 +948,39 @@ Page({
       }
       const canvas = wx.createOffscreenCanvas({ type: '2d', width, height })
       const ctx = canvas.getContext('2d')
+      this.setupImageSmoothing(ctx)
       const img = canvas.createImage()
       img.onload = () => {
         ctx.clearRect(0, 0, width, height)
-        // 开高质量缩放：大图一步缩到屏幕尺寸时，默认平滑会发糊/锯齿，high 明显更锐(APP 用的是原生双线性)。
-        ctx.imageSmoothingEnabled = true
-        ctx.imageSmoothingQuality = 'high'
-        // 中心裁剪「覆盖」(与 APP 的 centerCropCover 一致)：等比缩放铺满目标后从原图正中取，
-        // 保持宽高比、不拉伸变形。代价是裁掉超出屏幕比例的边缘（想看全图改成 contain 即可，见下注释）。
         const iw = img.width || width
         const ih = img.height || height
-        const scale = Math.max(width / iw, height / ih)
-        const sw = width / scale // 参与绘制的原图区域宽（高）
-        const sh = height / scale
-        const sx = (iw - sw) / 2 // 从原图正中裁
-        const sy = (ih - sh) / 2
-        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height)
-        // 想「显示整张图、不裁边」的话，把上面 drawImage 换成等比缩放+留白(contain)：
-        //   const s = Math.min(width / iw, height / ih)
-        //   const dw = iw * s, dh = ih * s
-        //   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height) // 留白底色
-        //   ctx.drawImage(img, 0, 0, iw, ih, (width - dw) / 2, (height - dh) / 2, dw, dh)
+        const plan = this.getImageDrawPlan(iw, ih, width, height, cropMode)
+        let stages = []
+        let fallbackLog = ''
         try {
-          resolve(ctx.getImageData(0, 0, width, height))
+          ctx.clearRect(0, 0, width, height)
+          if (cropMode === 'contain') {
+            ctx.fillStyle = '#fff'
+            ctx.fillRect(0, 0, width, height)
+          }
+          try {
+            stages = this.drawImageResampled(ctx, img, plan)
+          } catch (resampleError) {
+            ctx.clearRect(0, 0, width, height)
+            if (cropMode === 'contain') {
+              ctx.fillStyle = '#fff'
+              ctx.fillRect(0, 0, width, height)
+            }
+            ctx.drawImage(img, plan.sx, plan.sy, plan.sw, plan.sh, plan.dx, plan.dy, plan.dw, plan.dh)
+            fallbackLog = `APP式分阶段缩放不可用，已退回单步缩放：${resampleError.message || resampleError}`
+          }
+          const imageData = ctx.getImageData(0, 0, width, height)
+          const sourceText = `${Math.round(plan.sw)}×${Math.round(plan.sh)}`
+          const targetText = `${Math.round(plan.dw)}×${Math.round(plan.dh)}`
+          const resampleLog = fallbackLog || (stages.length
+            ? `APP式分阶段缩放：原图 ${iw}×${ih}，${cropMode} 取样 ${sourceText} → ${stages.join(' → ')} → ${targetText}`
+            : `APP式缩放：原图 ${iw}×${ih}，${cropMode} 取样 ${sourceText} → ${targetText}`)
+          resolve({ imageData, resampleLog })
         } catch (error) {
           reject(error)
         }

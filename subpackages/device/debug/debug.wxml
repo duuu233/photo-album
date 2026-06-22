@@ -110,6 +110,53 @@
         </radio-group>
       </view>
       <view class="row-tip">从「稳」往右试：哪档开始失败/卡住，就退回上一档。当前每包间隔 {{pace}}ms</view>
+      <view class="convert-panel">
+        <view class="convert-head">
+          <text class="convert-title">上传转换参数</text>
+          <text class="convert-summary">{{calibrationProfileName}} · {{debugDistanceMetric}}</text>
+        </view>
+        <view class="row row-tight">
+          <text class="row-label">校准档</text>
+          <picker class="profile-picker" range="{{calibrationProfileOptions}}" value="{{calibrationProfileIndex}}" disabled="{{uploading}}" bindchange="onCalibrationProfileChange">
+            <view class="picker-field">{{calibrationProfileName}}</view>
+          </picker>
+          <button class="btn btn-mini btn-compact" disabled="{{uploading || !deviceId}}" bindtap="saveDeviceCalibrationProfile">保存本机</button>
+        </view>
+        <view class="profile-note">{{calibrationProfileNote}}</view>
+        <view class="row row-tight">
+          <text class="row-label">色差算法</text>
+          <text class="row-hint">{{debugDistanceMetric}}，比 RGB 欧氏距离更贴近人眼感知</text>
+        </view>
+        <view class="row row-tight">
+          <text class="row-label">裁剪模式</text>
+          <radio-group class="radio-row" bindchange="onCropModeChange">
+            <label class="radio"><radio value="cover" checked="{{cropMode === 'cover'}}" disabled="{{uploading}}" color="#ff621f" />cover</label>
+            <label class="radio"><radio value="contain" checked="{{cropMode === 'contain'}}" disabled="{{uploading}}" color="#ff621f" />contain</label>
+          </radio-group>
+        </view>
+        <view class="row row-tight">
+          <text class="row-label">抖动</text>
+          <view class="switch-row">
+            <switch checked="{{debugDither}}" disabled="{{uploading}}" bindchange="onDebugDitherChange" color="#ff621f" />
+            <text class="row-hint">{{debugDither ? '开' : '关'}}</text>
+          </view>
+        </view>
+        <view class="tune-row">
+          <view class="tune-head">
+            <text class="tune-label">对比度</text>
+            <text class="tune-value">{{debugContrastText}}</text>
+          </view>
+          <slider class="tune-slider" value="{{debugContrastPercent}}" min="80" max="150" step="1" disabled="{{uploading}}" bindchanging="onDebugContrastChange" bindchange="onDebugContrastChange" activeColor="#ff621f" backgroundColor="#edf1f7" block-size="22" block-color="#ffffff" />
+        </view>
+        <view class="tune-row">
+          <view class="tune-head">
+            <text class="tune-label">饱和度</text>
+            <text class="tune-value">{{debugSaturationText}}</text>
+          </view>
+          <slider class="tune-slider" value="{{debugSaturationPercent}}" min="80" max="180" step="1" disabled="{{uploading}}" bindchanging="onDebugSaturationChange" bindchange="onDebugSaturationChange" activeColor="#ff621f" backgroundColor="#edf1f7" block-size="22" block-color="#ffffff" />
+        </view>
+        <view class="row-tip">{{cropMode}} · 抖动{{debugDither ? '开' : '关'}} · C{{debugContrastText}} / S{{debugSaturationText}}。只影响相册图片转换；彩条测试图仍直接写入协议六色。</view>
+      </view>
       <view class="btn-grid">
         <button class="btn btn-primary" disabled="{{busy || uploading}}" bindtap="cmdUploadTest">上传彩条测试图</button>
         <button class="btn btn-primary" disabled="{{busy || uploading}}" bindtap="cmdUploadAlbum">上传相册图片</button>
