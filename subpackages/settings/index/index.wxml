@@ -3,14 +3,15 @@
    <view class="mock-bg">
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202606161438400869930.png" mode="aspectFill"></image>
   </view>
-  <view class="glass-card first-card">
+  <!-- 语种设置已隐藏：小程序语种跟随微信「设置-通用-多语言」，请求层按系统语种自动下发，无需手动选择 -->
+  <!-- <view class="glass-card first-card">
     <view class="setting-row" hover-class="none" bindtap="goLanguage">
       <view class="setting-icon orange-icon"><image class="setting-icon__img" src="/assets/images/set-icon01.png" mode="aspectFit"></image></view>
       <text class="row-label">语种设置</text>
       <text class="row-value">简中</text>
       <image class="chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
     </view>
-  </view>
+  </view> -->
 
   <view class="glass-card setting-list">
     <view class="setting-row" hover-class="none" bindtap="copyContact">

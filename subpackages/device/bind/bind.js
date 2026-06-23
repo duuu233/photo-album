@@ -10,8 +10,9 @@ Page({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
-    scanning: false,
+    scanning: false, // 是否正在扫描附近设备
     devices: [],
+    selectedId: '', // 当前选中待绑定设备的 id（单选）
     location: null,
     showHelp: false
   },
@@ -46,6 +47,11 @@ Page({
       return // 防止重复触发扫描
     }
 
+    // 扫描序号：取消搜索时自增使在途的这次扫描结果失效，
+    // 因为 discoverDevices 仍会在 8s 超时后 resolve，不能让它再回写界面
+    this.scanSeq = (this.scanSeq || 0) + 1
+    const seq = this.scanSeq
+
     this.setData({
       scanning: true,
       devices: [],
@@ -74,26 +80,49 @@ Page({
         timeout: 8000
       })
 
+      if (seq !== this.scanSeq) {
+        return // 本次扫描已被取消，丢弃结果
+      }
+
+      // 默认选中第一台，符合设计稿「已搜索到设备」首项高亮
       this.setData({
-        devices
+        devices,
+        selectedId: devices.length ? devices[0].id || devices[0].deviceId : ''
       })
     } catch (error) {
+      if (seq !== this.scanSeq) {
+        return // 已取消，不再提示错误
+      }
       wx.showToast({
         title: error.message || '设备搜索失败',
         icon: 'none'
       })
     } finally {
-      this.setData({
-        scanning: false
-      })
+      if (seq === this.scanSeq) {
+        this.setData({
+          scanning: false
+        })
+      }
     }
+  },
+
+  // 取消正在进行的搜索：停止蓝牙扫描并让在途的 scan 结果失效，然后退出绑定流程
+  cancelScan() {
+    this.scanSeq = (this.scanSeq || 0) + 1 // 使在途扫描结果失效
+    bluetooth.stopDiscovery()
+    this.setData({
+      scanning: false
+    })
+    this.goBack()
   },
 
   // 打开硬件联调调试台：开发对接阶段在这里逐个点按钮试每条 BLE 指令、看收发的 16 进制数据。
   // 可从某个已扫描到的设备直接带 deviceId 进去（免去再扫一次）；不带则在调试台里自行搜索连接。
   openDebug(e) {
     const id = e && e.currentTarget && e.currentTarget.dataset.id
-    const device = id ? this.data.devices.find(item => item.id === id || item.deviceId === id) : null
+    const device = id
+      ? this.data.devices.find(item => item.id === id || item.deviceId === id)
+      : null
     const query = device
       ? `?id=${device.deviceId}&name=${encodeURIComponent(device.name || '')}`
       : ''
@@ -114,10 +143,30 @@ Page({
     })
   },
 
-  // 绑定所选设备：真机设备先连接读取真实信息（电量/播放/屏幕/固件），再保存并设为当前选中设备
-  async bindDevice(e) {
-    const id = e.currentTarget.dataset.id
-    const scanDevice = this.data.devices.find(item => item.id === id || item.deviceId === id)
+  // 点选某台设备：仅更新选中态，绑定动作交给底部「立即绑定」
+  selectDevice(e) {
+    this.setData({
+      selectedId: e.currentTarget.dataset.id
+    })
+  },
+
+  // 底部「立即绑定」：绑定当前选中的设备
+  confirmBind() {
+    if (!this.data.selectedId) {
+      wx.showToast({
+        title: '请选择要绑定的设备',
+        icon: 'none'
+      })
+      return
+    }
+    this.bindById(this.data.selectedId)
+  },
+
+  // 绑定指定设备：真机设备先连接读取真实信息（电量/播放/屏幕/固件），再保存并设为当前选中设备
+  async bindById(id) {
+    const scanDevice = this.data.devices.find(
+      item => item.id === id || item.deviceId === id
+    )
 
     if (!scanDevice) {
       return
@@ -130,7 +179,9 @@ Page({
       try {
         info = await deviceBle.readDeviceInfo(scanDevice.deviceId)
         try {
-          const conn = await deviceBle.getConnectionInterval(scanDevice.deviceId)
+          const conn = await deviceBle.getConnectionInterval(
+            scanDevice.deviceId
+          )
           info.connectionIntervalUnits = conn.units
           info.connectionIntervalMs = conn.ms
         } catch (error) {

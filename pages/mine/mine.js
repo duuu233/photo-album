@@ -88,36 +88,54 @@ Page({
   },
 
   goProfile() {
+    if (!app.requireLogin()) {
+      return
+    }
     wx.navigateTo({
       url: '/subpackages/settings/profile/profile'
     })
   },
 
   goAlbum() {
+    if (!app.requireLogin()) {
+      return
+    }
     wx.navigateTo({
       url: '/subpackages/album/list/list'
     })
   },
 
   goDevices() {
+    if (!app.requireLogin()) {
+      return
+    }
     wx.navigateTo({
       url: '/subpackages/device/list/list'
     })
   },
 
   goRecords() {
+    if (!app.requireLogin()) {
+      return
+    }
     wx.navigateTo({
       url: '/subpackages/projection/records/records'
     })
   },
 
   goGuide() {
+    if (!app.requireLogin()) {
+      return
+    }
     wx.navigateTo({
       url: '/subpackages/settings/guide/guide'
     })
   },
 
   goSettings() {
+    if (!app.requireLogin()) {
+      return
+    }
     wx.navigateTo({
       url: '/subpackages/settings/index/index'
     })

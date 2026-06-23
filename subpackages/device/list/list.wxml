@@ -39,11 +39,11 @@
           </view>
 
           <view class="device-chevron">
-            <view class="ui-chevron"></view>
+            <image class="device-chevron__icon" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
           </view>
         </view>
 
-        <view wx:if="{{item.canDeleteHint}}" class="device-delete-hint" hover-class="none" data-id="{{item.id}}" catchtap="deleteDevice">删除</view>
+        <!-- <view wx:if="{{item.canDeleteHint}}" class="device-delete-hint" hover-class="none" data-id="{{item.id}}" catchtap="deleteDevice">删除</view> -->
 
         <view class="device-actions">
           <view class="device-action" hover-class="none" data-id="{{item.id}}" catchtap="goSlideshow">

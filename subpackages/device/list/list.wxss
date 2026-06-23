@@ -160,6 +160,12 @@
   color: #777e88;
 }
 
+.device-chevron__icon {
+  width: 28rpx;
+  height: 28rpx;
+  flex-shrink: 0;
+}
+
 .device-delete-hint {
   position: absolute;
   right: 34rpx;

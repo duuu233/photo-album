@@ -94,6 +94,24 @@ App({
     }
   },
 
+  // 点击事件的同步登录拦截：已登录返回 true；未登录跳转登录页并返回 false。
+  // 与异步的 ensureLogin 区分——这里不返回 Promise，便于在 tap 处理函数里直接 if 判断后 return。
+  requireLogin() {
+    if (this.globalData.token || wx.getStorageSync('token')) {
+      return true
+    }
+
+    const pages = getCurrentPages ? getCurrentPages() : []
+    const current = pages[pages.length - 1]
+    if (!current || current.route !== 'pages/login/login') {
+      wx.navigateTo({
+        url: '/pages/login/login'
+      })
+    }
+
+    return false
+  },
+
   // 需要登录态的入口统一调用：已登录直接复用，未登录才触发微信登录
   ensureLogin() {
     if (this.globalData.token) {
@@ -106,7 +124,8 @@ App({
     const pages = getCurrentPages ? getCurrentPages() : []
     const current = pages[pages.length - 1]
     if (!current || current.route !== 'pages/login/login') {
-      wx.reLaunch({
+      // 用 navigateTo 带左右滑动过渡进入登录页，避免 reLaunch 的瞬间闪切（与 requireLogin 一致）
+      wx.navigateTo({
         url: '/pages/login/login'
       })
     }

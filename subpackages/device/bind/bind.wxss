@@ -52,18 +52,6 @@
   font-weight: 700;
 }
 
-/* 设备行里的「联调」快捷入口 */
-.debug-tag {
-  flex: 0 0 auto;
-  margin-right: 16rpx;
-  padding: 10rpx 22rpx;
-  color: #d6480f;
-  background: rgba(255, 100, 33, 0.1);
-  border-radius: 999rpx;
-  font-size: 24rpx;
-  font-weight: 700;
-}
-
 .content-dimmed {
   opacity: 0.42;
 }
@@ -73,31 +61,19 @@
   width: 500rpx;
   height: 500rpx;
   margin: 40rpx auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .radar-art {
   width: 100%;
   height: 100%;
 }
-
-.radar-scanning .radar-art {
-  animation: bindRadarPulse 1.8s ease-in-out infinite;
+.radar-art-gif {
+  width: 80%;
+  height: 80%;
 }
-
-@keyframes bindRadarPulse {
-  0% {
-    opacity: 0.85;
-    transform: scale(0.96);
-  }
-  55% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0.9;
-    transform: scale(1.03);
-  }
-}
-
 .scan-copy {
   margin-top: 12rpx;
   text-align: center;
@@ -146,9 +122,10 @@
   height: 44rpx;
 }
 
+/* 预留底部「立即绑定」按钮的空间，列表过长时内部滚动 */
 .device-list {
-  max-height: calc(100vh - var(--status-bar) - 760rpx);
-  padding: 0 48rpx;
+  max-height: calc(100vh - var(--status-bar) - 940rpx);
+  padding: 0 48rpx 8rpx;
 }
 
 .nearby-device {
@@ -162,6 +139,21 @@
   border: 2rpx solid rgba(255, 255, 255, 0.86);
   border-radius: 24rpx;
   box-shadow: 0 16rpx 38rpx rgba(126, 150, 184, 0.08);
+}
+
+/* 选中态：橙色描边 + 浅橙底 + 橙色设备名，对应设计稿首项高亮 */
+.nearby-device.selected {
+  background: rgba(255, 247, 242, 0.92);
+  border-color: #ff6421;
+  box-shadow: 0 16rpx 38rpx rgba(255, 105, 30, 0.12);
+}
+
+.nearby-device.selected .nearby-name {
+  color: #ff5a1e;
+}
+
+.nearby-device.selected .nearby-icon {
+  background: rgba(255, 100, 33, 0.14);
 }
 
 .nearby-icon {
@@ -218,14 +210,18 @@
   font-size: 22rpx;
 }
 
-.bind-tag {
+/* 右侧单选指示：选中显示对勾图标，未选显示空心圆 */
+.select-circle {
   flex: 0 0 auto;
-  padding: 10rpx 26rpx;
-  color: #ffffff;
-  background: linear-gradient(90deg, #ff8338, #ff621f);
-  border-radius: 999rpx;
-  font-size: 24rpx;
-  font-weight: 700;
+  width: 44rpx;
+  height: 44rpx;
+  margin-left: 16rpx;
+}
+
+.select-circle--empty {
+  box-sizing: border-box;
+  border: 3rpx solid #c8cdd5;
+  border-radius: 50%;
 }
 
 .primary-action {

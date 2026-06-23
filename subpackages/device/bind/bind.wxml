@@ -15,10 +15,10 @@
       <view class="debug-entry__arrow">›</view>
     </view>
 
-    <view class="radar-wrap {{scanning ? 'radar-scanning' : ''}}">
+    <view class="radar-wrap">
       <image wx:if="{{!scanning && devices.length}}" class="radar-art" src="/assets/images/device_found_art.png" mode="aspectFit"></image>
       <image wx:elif="{{!scanning && !devices.length}}" class="radar-art" src="/assets/images/device_not_found_art.png" mode="aspectFit"></image>
-      <image wx:else class="radar-art" src="/assets/images/device_scanning_art.png" mode="aspectFit"></image>
+      <image wx:else class="radar-art radar-art-gif" src="https://oss.boltfox.cn/prodFile/202606161504054302273.gif" mode="aspectFit"></image>
     </view>
 
     <block wx:if="{{!scanning && devices.length}}">
@@ -26,17 +26,19 @@
         <text>附近设备</text>
         <image class="refresh-btn" src="/assets/images/refresh-icon.png" mode="aspectFit" aria-label="重新搜索" bindtap="scan"></image>
       </view>
+      <!-- 单选列表：点选某台设备高亮，底部「立即绑定」绑定选中项；长按某行可进入该设备的硬件联调 -->
       <scroll-view scroll-y class="device-list">
-        <view class="nearby-device" wx:for="{{devices}}" wx:key="deviceNo" hover-class="none" data-id="{{item.id || item.deviceId}}" bindtap="bindDevice">
+        <view class="nearby-device {{selectedId === (item.id || item.deviceId) ? 'selected' : ''}}" wx:for="{{devices}}" wx:key="deviceId" hover-class="none" data-id="{{item.id || item.deviceId}}" bindtap="selectDevice" bindlongpress="openDebug">
           <view class="nearby-icon"><view class="small-frame-icon"></view></view>
           <view class="nearby-copy">
             <text class="nearby-name">{{item.name}}</text>
             <text class="nearby-sub">{{item.screen ? item.screen + ' · ' : ''}}{{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.RSSI || '--'}}</text>
           </view>
-          <view class="debug-tag" catchtap="openDebug" data-id="{{item.id || item.deviceId}}">联调</view>
-          <view class="bind-tag">绑定</view>
+          <image wx:if="{{selectedId === (item.id || item.deviceId)}}" class="select-circle" src="/assets/images/selected-icon.png" mode="aspectFit"></image>
+          <view wx:else class="select-circle select-circle--empty"></view>
         </view>
       </scroll-view>
+      <view class="primary-action bind-bottom" hover-class="none" bindtap="confirmBind">立即绑定</view>
     </block>
 
     <block wx:elif="{{scanning}}">
@@ -45,6 +47,7 @@
         <view class="scan-desc">请尽量将手机靠近需要添加的设备...</view>
       </view>
       <view class="scan-help-link" hover-class="none" bindtap="openHelp">扫描不到怎么办?</view>
+      <view class="primary-action bind-bottom" hover-class="none" bindtap="cancelScan">取消搜索</view>
     </block>
 
     <block wx:else>

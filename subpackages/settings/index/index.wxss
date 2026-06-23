@@ -4,8 +4,9 @@
   margin-top: 68rpx;
 }
 
+/* 语种设置卡片隐藏后，此卡片成为首张卡片，顶部间距与原首卡保持一致 */
 .setting-list {
-  margin-top: 28rpx;
+  margin-top: 68rpx;
 }
 
 .setting-row {

@@ -58,9 +58,18 @@ Page({
 
     try {
       await app.loginWithWechatPhone(detail)
-      wx.switchTab({
-        url: '/pages/home/home'
+      // 先提示登录成功，短暂停留后再进入首页，避免生硬的瞬间跳转。
+      // 首页是 tabBar 页，只能用 switchTab（无滑动过渡），用 toast + 延时让切换更自然。
+      wx.showToast({
+        title: '登录成功',
+        icon: 'success',
+        duration: 1500
       })
+      setTimeout(() => {
+        wx.switchTab({
+          url: '/pages/home/home'
+        })
+      }, 800)
     } finally {
       // 无论成功失败都恢复按钮可点击状态
       this.setData({

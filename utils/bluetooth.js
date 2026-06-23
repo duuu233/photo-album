@@ -3,9 +3,17 @@ const protocol = require('./frame-protocol')
 // 保存当前的“发现设备”监听回调引用，停止搜索时用它来精确解绑（off 需要传入同一函数引用）
 let foundHandler = null
 
-// 不再按广播名（EF6/EPF 等）过滤：真机广播名不确定，过滤反而会漏掉真实设备。
-// 扫描阶段把搜到的真实设备全列出来，能否绑定由“连接时是否存在 FF00 主服务”判定（见 device-ble.js）。
+// 仅保留目标相框：按广播名（name / localName）做白名单筛选，其余蓝牙设备一律不进搜索结果。
+//   3.7 寸：EF6-370    5.89 寸：EF6-589
 // 屏幕类型/电量若广播包带了厂商数据就顺带解析出来（frame-protocol.parseAdvertising）。
+const ALLOWED_BROADCAST_NAMES = ['EF6-370', 'EF6-589']
+
+// 广播名是否命中白名单：大小写不敏感，允许带前后缀，故用包含匹配。
+// name 与 localName 都查，因为真机有时只在后续广播包里带上 localName。
+function isAllowedFrame(device) {
+  const name = `${device.name || ''} ${device.localName || ''}`.toUpperCase()
+  return ALLOWED_BROADCAST_NAMES.some(allowed => name.indexOf(allowed) > -1)
+}
 
 // 检测当前微信运行环境是否具备完整的蓝牙搜索能力
 function canUseBluetooth() {
@@ -92,11 +100,16 @@ function discoverDevices(options) {
       resolve(devices)
     }
 
-    // 每次发现设备的回调：累积到 foundMap，搜索期间不立即返回。不做名字过滤，能搜到就收。
+    // 每次发现设备的回调：累积到 foundMap，搜索期间不立即返回。
+    // 新设备必须广播名命中白名单（EF6-370 / EF6-589）才收录；已收录的目标设备后续广播包继续刷新
+    // （电量/名称/信号常在后续包才带全），避免因某个包暂时缺 localName 而漏更新。
     foundHandler = res => {
       const devices = res.devices || []
       devices.forEach(device => {
         if (!device.deviceId) {
+          return
+        }
+        if (!foundMap[device.deviceId] && !isAllowedFrame(device)) {
           return
         }
         foundMap[device.deviceId] = normalizeDevice(device)

@@ -452,6 +452,9 @@ Page({
   },
 
   showBindNowSheet() {
+    if (!app.requireLogin()) {
+      return
+    }
     this.setScene(SCENES.UNBOUND_BIND_NOW)
   },
 
@@ -480,6 +483,9 @@ Page({
   },
 
   startBindingScan() {
+    if (!app.requireLogin()) {
+      return
+    }
     wx.navigateTo({
       url: '/subpackages/device/bind/bind'
     })
@@ -538,8 +544,11 @@ Page({
     })
   },
 
-  // 点击拍照入口：未绑定设备时先引导绑定，否则弹出拍照/相册选择层
+  // 点击拍照入口：未登录先跳登录；未绑定设备时再引导绑定，否则弹出拍照/相册选择层
   tapCameraEntry() {
+    if (!app.requireLogin()) {
+      return
+    }
     if (!this.data.isBoundHome) {
       this.showBindNowSheet()
       return
@@ -548,6 +557,9 @@ Page({
   },
 
   tapAlbumEntry() {
+    if (!app.requireLogin()) {
+      return
+    }
     if (!this.data.isBoundHome) {
       this.showBindNowSheet()
       return
