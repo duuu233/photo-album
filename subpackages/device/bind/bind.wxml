@@ -60,7 +60,7 @@
     </block>
   </view>
 
-  <view wx:if="{{showHelp}}" class="bind-mask {{helpClosing ? 'pop-closing-mask' : ''}}" catchtouchmove="noop" bindtap="closeHelp">
+  <view wx:if="{{showHelp}}" class="bind-mask" catchtouchmove="noop" bindtap="closeHelp">
     <view class="scan-help-sheet {{helpClosing ? 'pop-closing-sheet' : ''}}" catchtap="noop">
       <view class="sheet-close" hover-class="none" bindtap="closeHelp">×</view>
       <view class="scan-help-title">扫描不到怎么办?</view>

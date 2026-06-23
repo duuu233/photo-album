@@ -105,7 +105,7 @@
     <custom-tabbar active="home" safe-bottom="{{safeBottom}}" dimmed="{{hasHomeOverlay}}"></custom-tabbar>
 
     <!-- 弹层①：未绑定/重连提示（标题文案随场景变化）。catchtouchmove 阻止背景滚动穿透 -->
-    <view wx:if="{{showPromptSheet}}" class="home-mask {{sheetClosing ? 'pop-closing-mask' : ''}}" catchtouchmove="noop">
+    <view wx:if="{{showPromptSheet}}" class="home-mask" catchtouchmove="noop">
       <view class="bottom-sheet prompt-sheet {{sheetClosing ? 'pop-closing-sheet' : ''}}">
         <view class="sheet-close" hover-class="none" bindtap="closeHomeSheet">×</view>
         <view class="prompt-title">{{promptTitle}}</view>
@@ -115,7 +115,7 @@
     </view>
 
     <!-- 弹层②：离线断网模式 -->
-    <view wx:if="{{isOfflineMode}}" class="home-mask {{sheetClosing ? 'pop-closing-mask' : ''}}" catchtouchmove="noop">
+    <view wx:if="{{isOfflineMode}}" class="home-mask" catchtouchmove="noop">
       <view class="bottom-sheet prompt-sheet offline-sheet {{sheetClosing ? 'pop-closing-sheet' : ''}}">
         <view class="sheet-close" hover-class="none" bindtap="closeOfflineMode">×</view>
         <view class="prompt-title">离线模式</view>
@@ -125,7 +125,7 @@
     </view>
 
     <!-- 弹层③：拍照/相册选择（已绑定时点击投屏入口弹出） -->
-    <view wx:if="{{isMediaSheet}}" class="home-mask {{sheetClosing ? 'pop-closing-mask' : ''}}" catchtouchmove="noop">
+    <view wx:if="{{isMediaSheet}}" class="home-mask" catchtouchmove="noop">
       <view class="bottom-sheet media-sheet {{sheetClosing ? 'pop-closing-sheet' : ''}}">
         <view class="media-sheet-title">选择投屏方式</view>
         <view class="media-option" hover-class="none" bindtap="chooseCamera">
@@ -212,7 +212,7 @@
     </view>
 
     <!-- 弹层④：「扫描不到怎么办」排查清单 -->
-    <view wx:if="{{isScanHelp}}" class="home-mask scan-help-mask {{sheetClosing ? 'pop-closing-mask' : ''}}" catchtouchmove="noop">
+    <view wx:if="{{isScanHelp}}" class="home-mask scan-help-mask" catchtouchmove="noop">
       <view class="bottom-sheet scan-help-sheet {{sheetClosing ? 'pop-closing-sheet' : ''}}">
         <view class="sheet-close" hover-class="none" bindtap="closeScanHelp">×</view>
         <view class="scan-help-title">扫描不到怎么办?</view>

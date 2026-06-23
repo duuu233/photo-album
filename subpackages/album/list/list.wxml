@@ -59,7 +59,7 @@
   </view>
 
   <!-- 删除确认弹窗：点遮罩关闭，点弹窗内部 catchtap="noop" 阻止冒泡避免误关 -->
-  <view class="confirm-mask {{deleteClosing ? 'pop-closing-mask' : ''}}" wx:if="{{showDeleteConfirm}}" catchtouchmove="noop" bindtap="hideDeleteDialog">
+  <view class="confirm-mask" wx:if="{{showDeleteConfirm}}" catchtouchmove="noop" bindtap="hideDeleteDialog">
     <view class="confirm-dialog {{deleteClosing ? 'pop-closing-dialog' : ''}}" catchtap="noop">
       <view class="confirm-icon">
         <view class="picture-icon"></view>

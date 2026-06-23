@@ -27,8 +27,6 @@
   position: relative;
   z-index: 1;
   min-height: calc(100vh - var(--status-bar) - 88rpx);
-  /* 弹层显隐时主内容变暗/恢复做淡入淡出，避免背景亮度突变 */
-  transition: opacity 0.24s ease;
 }
 
 .home-content {
@@ -440,7 +438,6 @@ button {
   left: 0;
   z-index: 20;
   background: rgba(42, 43, 43, 0.5);
-  animation: popMaskFadeIn 0.2s ease-out;
 }
 
 .bottom-sheet {

@@ -41,7 +41,7 @@
   <view class="outline-logout" hover-class="none" bindtap="showLogout">退出登录</view>
   <view class="delete-account" hover-class="none" bindtap="showDelete">用户注销</view>
 
-  <view wx:if="{{dialogType}}" class="modal-mask {{dialogClosing ? 'pop-closing-mask' : ''}}" catchtouchmove="noop">
+  <view wx:if="{{dialogType}}" class="modal-mask" catchtouchmove="noop">
     <view class="dialog {{dialogClosing ? 'pop-closing-dialog' : ''}}">
       <view class="dialog-title">{{dialogTitle}}</view>
       <view class="dialog-desc">{{dialogDesc}}</view>

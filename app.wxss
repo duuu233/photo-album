@@ -268,17 +268,8 @@ input {
   font-size: 28rpx;
 }
 
-/* 弹层通用入场动画（全局可用）：遮罩淡入、底部弹层上滑、居中弹窗缩放淡入，避免弹层「啪」地闪现。
-   依赖 wx:if 挂载时自动播放一次 animation 实现进场过渡。 */
-@keyframes popMaskFadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
+/* 弹层动画（全局可用）：只作用于弹层本体——底部弹层上滑、居中弹窗缩放淡入（入场），
+   配合 pop-closing-* 类做退场。遮罩层不加任何动画，保持原样瞬时显隐。 */
 @keyframes popSheetSlideUp {
   from {
     transform: translateY(100%);
@@ -296,17 +287,6 @@ input {
   to {
     opacity: 1;
     transform: scale(1);
-  }
-}
-
-/* 弹层退场动画 + 关闭工具类：配合页面 JS「先标记 closing 播放退场→延时再卸载」使用，
-   避免关闭时弹层「啪」地瞬间消失。用 !important 盖过元素自身的入场 animation。 */
-@keyframes popMaskFadeOut {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
   }
 }
 
@@ -330,10 +310,6 @@ input {
   }
 }
 
-.pop-closing-mask {
-  animation: popMaskFadeOut 0.24s ease-in forwards !important;
-}
-
 .pop-closing-sheet {
   animation: popSheetSlideDown 0.24s ease-in forwards !important;
 }
@@ -353,7 +329,6 @@ input {
   align-items: flex-end;
   padding: 24rpx;
   background: rgba(17, 24, 39, 0.42);
-  animation: popMaskFadeIn 0.2s ease-out;
 }
 
 .modal-panel {
