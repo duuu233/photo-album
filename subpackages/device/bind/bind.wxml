@@ -24,7 +24,7 @@
     <block wx:if="{{!scanning && devices.length}}">
       <view class="nearby-head">
         <text>附近设备</text>
-        <view class="refresh-btn" hover-class="none" aria-label="重新搜索" bindtap="scan"></view>
+        <image class="refresh-btn" src="/assets/images/refresh-icon.png" mode="aspectFit" aria-label="重新搜索" bindtap="scan"></image>
       </view>
       <scroll-view scroll-y class="device-list">
         <view class="nearby-device" wx:for="{{devices}}" wx:key="deviceNo" hover-class="none" data-id="{{item.id || item.deviceId}}" bindtap="bindDevice">

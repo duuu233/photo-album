@@ -125,7 +125,7 @@
         <view class="profile-note">{{calibrationProfileNote}}</view>
         <view class="row row-tight">
           <text class="row-label">色差算法</text>
-          <text class="row-hint">{{debugDistanceMetric}}，比 RGB 欧氏距离更贴近人眼感知</text>
+          <text class="row-hint">{{debugDistanceMetric}}；默认先对齐 APP 端量化逻辑</text>
         </view>
         <view class="row row-tight">
           <text class="row-label">裁剪模式</text>
@@ -133,6 +133,20 @@
             <label class="radio"><radio value="cover" checked="{{cropMode === 'cover'}}" disabled="{{uploading}}" color="#ff621f" />cover</label>
             <label class="radio"><radio value="contain" checked="{{cropMode === 'contain'}}" disabled="{{uploading}}" color="#ff621f" />contain</label>
           </radio-group>
+        </view>
+        <view class="row row-tight">
+          <text class="row-label">缩放模式</text>
+          <radio-group class="radio-row" bindchange="onDebugResizeModeChange">
+            <label class="radio"><radio value="single" checked="{{debugResizeMode === 'single'}}" disabled="{{uploading}}" color="#ff621f" />APP单步</label>
+            <label class="radio"><radio value="staged" checked="{{debugResizeMode === 'staged'}}" disabled="{{uploading}}" color="#ff621f" />分阶段</label>
+          </radio-group>
+        </view>
+        <view class="row row-tight">
+          <text class="row-label">跳过预压缩</text>
+          <view class="switch-row">
+            <switch checked="{{debugSkipCompressImage}}" disabled="{{uploading}}" bindchange="onDebugSkipCompressImageChange" color="#ff621f" />
+            <text class="row-hint">{{debugSkipCompressImage ? '直接用原图' : '大图自动预压缩'}}</text>
+          </view>
         </view>
         <view class="row row-tight">
           <text class="row-label">抖动</text>
@@ -155,7 +169,7 @@
           </view>
           <slider class="tune-slider" value="{{debugSaturationPercent}}" min="80" max="180" step="1" disabled="{{uploading}}" bindchanging="onDebugSaturationChange" bindchange="onDebugSaturationChange" activeColor="#ff621f" backgroundColor="#edf1f7" block-size="22" block-color="#ffffff" />
         </view>
-        <view class="row-tip">{{cropMode}} · 抖动{{debugDither ? '开' : '关'}} · C{{debugContrastText}} / S{{debugSaturationText}}。只影响相册图片转换；彩条测试图仍直接写入协议六色。</view>
+        <view class="row-tip">{{cropMode}} · 缩放{{debugResizeMode === 'single' ? 'APP单步' : '分阶段'}} · 预压缩{{debugSkipCompressImage ? '跳过' : '自动'}} · 抖动{{debugDither ? '开' : '关'}} · C{{debugContrastText}} / S{{debugSaturationText}}。只影响相册图片转换；彩条测试图仍直接写入协议六色。</view>
       </view>
       <view class="btn-grid">
         <button class="btn btn-primary" disabled="{{busy || uploading}}" bindtap="cmdUploadTest">上传彩条测试图</button>

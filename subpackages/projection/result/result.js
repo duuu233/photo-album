@@ -7,6 +7,24 @@ const deviceBle = require('../../../utils/device-ble')
 const imageCodec = require('../../../utils/image-codec')
 const protocol = require('../../../utils/frame-protocol')
 
+// 真实投屏默认使用当前实机验证效果最好的参数：
+// 1) 跳过 wx.compressImage，直接用原图进 canvas；
+// 2) imageToImageData 内保持单步 drawImage 缩放；
+// 3) 量化使用调试页「实拍 2026-06-22」校准档。
+const PROJECTION_QUANTIZE_OPTIONS = {
+  dither: true,
+  contrast: 1.12,
+  saturation: 1.28,
+  palette: [
+    { nibble: 0x0, rgb: [0, 0, 0], name: '黑' },
+    { nibble: 0x1, rgb: [255, 255, 255], name: '白' },
+    { nibble: 0x2, rgb: [255, 250, 0], name: '黄' },
+    { nibble: 0x3, rgb: [97, 0, 0], name: '红' },
+    { nibble: 0x5, rgb: [20, 56, 180], name: '蓝' },
+    { nibble: 0x6, rgb: [57, 104, 57], name: '绿' }
+  ]
+}
+
 const STATUS_TEXT = {
   progress: {
     title: '投屏中',
@@ -146,9 +164,9 @@ Page({
         const image = images[i]
         this.setData({ desc: `正在投第 ${i + 1}/${total} 张…` })
 
-        const srcPath = await this.shrinkIfHuge(image.tempFilePath || image.url, info.width, info.height)
+        const srcPath = image.tempFilePath || image.url
         const imageData = await this.imageToImageData(srcPath, info.width, info.height)
-        const frame = imageCodec.fromImageData(imageData, info.width, info.height)
+        const frame = imageCodec.fromImageData(imageData, info.width, info.height, PROJECTION_QUANTIZE_OPTIONS)
 
         const index = protocol.firstFreeIndex(protocol.indexesToMask(usedIndexes), info.capacity)
         if (index < 0) {
