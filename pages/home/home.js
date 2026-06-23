@@ -47,7 +47,7 @@ const SCENE_ALIASES = {
 }
 
 // 未设置头像时的兜底图：与「我的」页保持一致
-const DEFAULT_AVATAR = '/assets/images/mine-header.png'
+const DEFAULT_AVATAR = '/assets/images/mine-header.jpg'
 
 const DEFAULT_DEVICE = {
   id: 'frame_room',
@@ -209,6 +209,7 @@ Page({
     nearbyDevices: NEARBY_DEVICES,
     sceneFromQuery: false,
     networkOffline: false,
+    sheetClosing: false, // 底部弹层是否正在播放退场动画
     ...sceneState(SCENES.UNBOUND)
   },
 
@@ -470,12 +471,24 @@ Page({
     })
   },
 
+  // 关闭底部弹层统一入口：先标记 sheetClosing 播放退场动画，延时后再切场景卸载弹层，避免瞬间消失
+  closeSheetWithAnim(targetScene) {
+    if (this.data.sheetClosing) {
+      return
+    }
+    this.setData({ sheetClosing: true })
+    setTimeout(() => {
+      this.setData({ sheetClosing: false })
+      this.setScene(targetScene)
+    }, 240)
+  },
+
   closeHomeSheet() {
-    this.setScene(this.data.hasDevice ? SCENES.BOUND : SCENES.UNBOUND)
+    this.closeSheetWithAnim(this.data.hasDevice ? SCENES.BOUND : SCENES.UNBOUND)
   },
 
   closeOfflineMode() {
-    this.setScene(this.data.hasDevice ? SCENES.BOUND : SCENES.UNBOUND)
+    this.closeSheetWithAnim(this.data.hasDevice ? SCENES.BOUND : SCENES.UNBOUND)
   },
 
   confirmPrompt() {
@@ -511,7 +524,7 @@ Page({
   },
 
   closeScanHelp() {
-    this.setScene(SCENES.BINDING_NO_DEVICE)
+    this.closeSheetWithAnim(SCENES.BINDING_NO_DEVICE)
   },
 
   selectNearbyDevice(event) {

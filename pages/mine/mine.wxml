@@ -9,7 +9,7 @@
   <view class="profile-card" hover-class="none" bindtap="goProfile">
     <image class="profile-card-bg" src="/assets/images/mine-header-bg01.png" mode="aspectFill"></image>
     <image wx:if="{{avatarUrl}}" class="profile-avatar" src="{{avatarUrl}}" mode="aspectFill"></image>
-    <image wx:else class="profile-avatar" src="/assets/images/mine-header02.png" mode="aspectFill"></image>
+    <image wx:else class="profile-avatar" src="/assets/images/mine-header.jpg" mode="aspectFill"></image>
     <view class="profile-copy">
       <view class="profile-name">{{nickName}}</view>
       <view class="profile-id">ID：{{userId}}</view>

@@ -104,8 +104,8 @@
     </view>
 
     <!-- 删除确认弹窗：点遮罩关闭，点弹窗内部用 catchtap="noop" 阻止冒泡，避免误关 -->
-    <view class="confirm-mask" wx:if="{{showDeleteConfirm}}" catchtouchmove="noop" bindtap="hideDeleteConfirm">
-      <view class="confirm-dialog" catchtap="noop">
+    <view class="confirm-mask {{deleteClosing ? 'pop-closing-mask' : ''}}" wx:if="{{showDeleteConfirm}}" catchtouchmove="noop" bindtap="hideDeleteConfirm">
+      <view class="confirm-dialog {{deleteClosing ? 'pop-closing-dialog' : ''}}" catchtap="noop">
         <view class="confirm-icon danger-icon">
           <image class="trash-icon" src="/assets/images/device-detail-icon06.png" mode="aspectFit"></image>
         </view>
@@ -121,8 +121,8 @@
     </view>
 
     <!-- 一键清空确认弹窗：交互同上（点遮罩关闭，点弹窗内部不关闭） -->
-    <view class="confirm-mask" wx:if="{{showClearConfirm}}" catchtouchmove="noop" bindtap="hideClearConfirm">
-      <view class="confirm-dialog" catchtap="noop">
+    <view class="confirm-mask {{clearClosing ? 'pop-closing-mask' : ''}}" wx:if="{{showClearConfirm}}" catchtouchmove="noop" bindtap="hideClearConfirm">
+      <view class="confirm-dialog {{clearClosing ? 'pop-closing-dialog' : ''}}" catchtap="noop">
         <view class="confirm-icon clear-icon">
           <image class="broom-icon" src="/assets/images/device-detail-icon05.png" mode="aspectFit"></image>
         </view>

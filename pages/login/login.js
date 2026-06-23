@@ -46,7 +46,11 @@ Page({
     // 用户拒绝/取消授权：静默返回，不弹错误；其余失败给出提示
     if (!detail.code && !detail.encryptedData) {
       const errMsg = detail.errMsg || ''
-      if (errMsg && errMsg.indexOf('deny') === -1 && errMsg.indexOf('cancel') === -1) {
+      if (
+        errMsg &&
+        errMsg.indexOf('deny') === -1 &&
+        errMsg.indexOf('cancel') === -1
+      ) {
         this.showToast('获取手机号失败，请重试')
       }
       return
@@ -62,7 +66,7 @@ Page({
       // 首页是 tabBar 页，只能用 switchTab（无滑动过渡），用 toast + 延时让切换更自然。
       wx.showToast({
         title: '登录成功',
-        icon: 'success',
+        icon: 'none',
         duration: 1500
       })
       setTimeout(() => {

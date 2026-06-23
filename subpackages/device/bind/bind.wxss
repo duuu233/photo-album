@@ -169,23 +169,9 @@
   border-radius: 22rpx;
 }
 
-.small-frame-icon {
-  position: relative;
-  width: 44rpx;
-  height: 30rpx;
-  border: 5rpx solid currentColor;
-  border-radius: 4rpx;
-}
-
-.small-frame-icon::after {
-  position: absolute;
-  left: -4rpx;
-  bottom: -20rpx;
-  width: 50rpx;
-  height: 8rpx;
-  border: 5rpx solid currentColor;
-  border-radius: 4rpx;
-  content: '';
+.nearby-icon__img {
+  width: 56rpx;
+  height: 56rpx;
 }
 
 .nearby-copy {
@@ -255,6 +241,7 @@
   display: flex;
   align-items: flex-end;
   background: rgba(42, 43, 43, 0.5);
+  animation: popMaskFadeIn 0.2s ease-out;
 }
 
 .scan-help-sheet {
@@ -263,6 +250,7 @@
   padding: 48rpx 48rpx calc(48rpx + var(--safe-bottom));
   background: #ffffff;
   border-radius: 32rpx 32rpx 0 0;
+  animation: popSheetSlideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .sheet-close {

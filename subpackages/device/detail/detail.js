@@ -39,6 +39,8 @@ Page({
     intervalIndex: 1,
     showClearConfirm: false,
     showDeleteConfirm: false,
+    clearClosing: false, // 清空确认弹窗是否正在播放退场动画
+    deleteClosing: false, // 删除确认弹窗是否正在播放退场动画
     loading: true,
     loadError: false
   },
@@ -266,10 +268,15 @@ Page({
     })
   },
 
+  // 先播放退场动画再卸载，避免弹窗瞬间消失
   hideClearConfirm() {
-    this.setData({
-      showClearConfirm: false
-    })
+    if (this.data.clearClosing) {
+      return
+    }
+    this.setData({ clearClosing: true })
+    setTimeout(() => {
+      this.setData({ showClearConfirm: false, clearClosing: false })
+    }, 220)
   },
 
   clearCopies() {
@@ -309,9 +316,7 @@ Page({
       return
     }
     wx.hideLoading()
-    this.setData({
-      showClearConfirm: false
-    })
+    this.hideClearConfirm() // 带退场动画关闭确认弹窗
     wx.showToast({
       title: '已清空',
       icon: 'none'
@@ -326,9 +331,13 @@ Page({
   },
 
   hideDeleteConfirm() {
-    this.setData({
-      showDeleteConfirm: false
-    })
+    if (this.data.deleteClosing) {
+      return
+    }
+    this.setData({ deleteClosing: true })
+    setTimeout(() => {
+      this.setData({ showDeleteConfirm: false, deleteClosing: false })
+    }, 220)
   },
 
   // 删除设备：若删除的是当前选中设备，需清空全局选中状态

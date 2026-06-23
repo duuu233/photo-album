@@ -1,17 +1,16 @@
 const api = require('../../../utils/api')
 const media = require('../../../utils/media')
 const system = require('../../../utils/system')
+const deviceBle = require('../../../utils/device-ble')
+const protocol = require('../../../utils/frame-protocol')
+const activeDevice = require('../../../utils/active-device')
 
 const app = getApp()
 
 const TOTAL_PLACEHOLDER_COUNT = 0
 const HIDDEN_KEY = 'albumHiddenPhotoIds' // 本地“软删除”记录的缓存键（被删除照片的 id 集合）
-const FILTERS = [
-  { label: '全部', value: '全部' },
-  { label: '房间相册', value: '房间相册' },
-  { label: '客厅相框', value: '客厅相框' },
-  { label: '书房相框', value: '书房相框' }
-]
+// 筛选项改为按真实设备动态生成（见 buildDeviceFilters），这里只保留默认的「全部」
+const DEFAULT_FILTERS = [{ label: '全部', value: '全部' }]
 const DEVICE_NAMES = ['房间相册', '客厅相框', '书房相框']
 const THUMB_TYPES = [
   'tree',
@@ -69,11 +68,25 @@ function buildDisplayPhotos(sourcePhotos, devices) {
     .map(normalizePhoto)
 }
 
+// 由真实设备列表生成筛选项：「全部」+ 各设备名（去重，与照片 deviceName 用同一套归一规则，保证可筛中）
+function buildDeviceFilters(devices) {
+  const filters = [{ label: '全部', value: '全部' }]
+
+  ;(devices || []).forEach((device, index) => {
+    const name = normalizeDeviceName(device.name, index)
+    if (name && !filters.some(item => item.value === name)) {
+      filters.push({ label: name, value: name })
+    }
+  })
+
+  return filters
+}
+
 Page({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
-    filters: FILTERS,
+    filters: DEFAULT_FILTERS,
     currentFilter: '全部',
     showFilterMenu: false,
     sourcePhotos: [],
@@ -82,7 +95,8 @@ Page({
     selectedMap: {},
     selectedCount: 0,
     totalCount: TOTAL_PLACEHOLDER_COUNT,
-    showDeleteConfirm: false
+    showDeleteConfirm: false,
+    deleteClosing: false // 删除确认弹窗是否正在播放退场动画
   },
 
   onLoad() {
@@ -106,7 +120,15 @@ Page({
     const hiddenMap = readHiddenMap()
     const photos = buildDisplayPhotos(sourcePhotos, devices).filter(item => !hiddenMap[item.id])
 
+    // 按真实设备动态生成筛选项；当前筛选若已不在新设备列表中（设备被删/改名）则回退到「全部」
+    const filters = buildDeviceFilters(devices)
+    const currentFilter = filters.some(item => item.value === this.data.currentFilter)
+      ? this.data.currentFilter
+      : '全部'
+
     this.setData({
+      filters,
+      currentFilter,
       sourcePhotos,
       photos,
       totalCount: photos.length,
@@ -114,7 +136,7 @@ Page({
       selectedCount: 0,
       showDeleteConfirm: false
     })
-    this.applyFilter(this.data.currentFilter, photos)
+    this.applyFilter(currentFilter, photos)
   },
 
   // 按设备名筛选照片（'全部'不筛选），切换筛选时清空已选
@@ -195,10 +217,15 @@ Page({
     })
   },
 
+  // 先播放退场动画再卸载，避免弹窗瞬间消失
   hideDeleteDialog() {
-    this.setData({
-      showDeleteConfirm: false
-    })
+    if (this.data.deleteClosing) {
+      return
+    }
+    this.setData({ deleteClosing: true })
+    setTimeout(() => {
+      this.setData({ showDeleteConfirm: false, deleteClosing: false })
+    }, 220)
   },
 
   // 删除选中照片：先本地隐藏，随后调用后端删除真实照片记录
@@ -228,41 +255,97 @@ Page({
     this.loadPhotos()
   },
 
-  projectSelected() {
+  // 刷新屏幕：图库照片大多已存在于固件，只需找到其在设备上的槽位索引，让相框切到这张图。
+  // 仅支持单选——多选/全选是为了批量删除，单选才走刷新屏幕逻辑。
+  async refreshScreen() {
     const ids = Object.keys(this.data.selectedMap)
 
     if (!ids.length) {
       wx.showToast({
-        title: '请选择照片',
+        title: '请选择图片',
         icon: 'none'
       })
       return
     }
 
-    const selectedPhotos = this.data.photos.filter(item => this.data.selectedMap[item.id])
-    const device = app.globalData.selectedDevice
-
-    if (!device) {
+    if (ids.length > 1) {
       wx.showToast({
-        title: '请先选择设备',
+        title: '刷新屏幕只能选中一张图片',
         icon: 'none'
       })
       return
     }
 
-    // 把选中照片转换为预览页期望的图片结构，经 Storage 传入预览页
-    wx.setStorageSync('pendingProjection', {
-      device,
-      images: selectedPhotos.map((item, index) => ({
-        name: item.title || `照片 ${index + 1}`,
-        tempFilePath: item.url || '',
-        url: item.url || '',
-        sizeMb: item.size || 2.5
-      }))
+    const photoId = ids[0]
+
+    // 统一与「当前选中设备(首页轮播选中的那台)」建立蓝牙连接；连不上会弹窗引导去首页切换/绑定设备
+    let device
+    try {
+      device = await activeDevice.ensureActiveDeviceConnection()
+    } catch (error) {
+      return // 提示已由 ensureActiveDeviceConnection 弹出
+    }
+
+    wx.showLoading({ title: '刷新中', mask: true })
+    try {
+      // 读固件当前已占用的图片槽位（升序），按所选照片在本设备照片中的位置取对应槽位
+      const info = await deviceBle.readDeviceInfo(device.deviceId)
+      const occupied = protocol.maskToIndexes(info.imgMask)
+      const index = this.resolveDeviceImageIndex(photoId, device, occupied)
+
+      if (index < 0) {
+        wx.hideLoading()
+        wx.showToast({
+          title: '未找到该图片在设备上的位置',
+          icon: 'none'
+        })
+        return
+      }
+
+      // CMD=0x24：让固件切换/刷新到指定索引的图片
+      await deviceBle.refreshScreen(device.deviceId, index)
+      wx.hideLoading()
+      wx.showToast({
+        title: '已刷新屏幕',
+        icon: 'none'
+      })
+    } catch (error) {
+      wx.hideLoading()
+      wx.showToast({
+        title: (error && error.message) || '刷新失败',
+        icon: 'none'
+      })
+    }
+  },
+
+  // 选中照片 → 固件图片槽位索引：
+  // 取该设备「在设备上」的照片按当前顺序排列，选中照片排第 N 个，
+  // 就对应固件已占用槽位（升序）里的第 N 个；读不到掩码时回退到位置本身。
+  resolveDeviceImageIndex(photoId, device, occupied) {
+    const onDevicePhotos = this.data.photos.filter(item => item.onDevice !== false)
+    const deviceKey = String((device && (device.userProductId || device.id)) || '')
+    const deviceName = device ? normalizeDeviceName(device.name, 0) : ''
+
+    // 选中设备的照片：优先按后端 userProductId 匹配，再按设备名；都匹配不到则退化为全部（多为单设备）
+    let devicePhotos = onDevicePhotos.filter(item => {
+      if (deviceKey && String(item.deviceId || '') === deviceKey) {
+        return true
+      }
+      return deviceName && item.deviceName === deviceName
     })
-    wx.navigateTo({
-      url: '/subpackages/projection/preview/preview'
-    })
+    if (!devicePhotos.length) {
+      devicePhotos = onDevicePhotos
+    }
+
+    const pos = devicePhotos.findIndex(item => item.id === photoId)
+    if (pos < 0) {
+      return -1
+    }
+
+    if (occupied && occupied.length) {
+      return pos < occupied.length ? occupied[pos] : -1
+    }
+    return pos
   },
 
   async chooseForProjection() {

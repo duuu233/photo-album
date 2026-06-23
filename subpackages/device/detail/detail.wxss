@@ -190,6 +190,7 @@
   justify-content: center;
   padding: 48rpx;
   background: rgba(0, 0, 0, 0.4);
+  animation: popMaskFadeIn 0.2s ease-out;
 }
 
 .confirm-dialog {
@@ -200,6 +201,7 @@
   padding: 60rpx 48rpx 40rpx 48rpx;
   background: #ffffff;
   border-radius: 28rpx;
+  animation: popDialogIn 0.24s ease-out;
 }
 
 .confirm-icon {

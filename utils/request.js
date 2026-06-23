@@ -29,7 +29,10 @@ function buildUrl(url) {
 
 function appendQuery(url, params) {
   const query = Object.keys(params || {})
-    .filter(key => params[key] !== undefined && params[key] !== null && params[key] !== '')
+    .filter(
+      key =>
+        params[key] !== undefined && params[key] !== null && params[key] !== ''
+    )
     .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
     .join('&')
 
@@ -58,9 +61,16 @@ function getSystemInfo() {
 }
 
 function normalizeLanguage(language) {
-  const raw = String(language || '').replace('_', '-').toLowerCase()
+  const raw = String(language || '')
+    .replace('_', '-')
+    .toLowerCase()
 
-  if (raw.indexOf('zh-hant') === 0 || raw.indexOf('zh-tw') === 0 || raw.indexOf('zh-hk') === 0 || raw.indexOf('zh-mo') === 0) {
+  if (
+    raw.indexOf('zh-hant') === 0 ||
+    raw.indexOf('zh-tw') === 0 ||
+    raw.indexOf('zh-hk') === 0 ||
+    raw.indexOf('zh-mo') === 0
+  ) {
     return 'zh-Hant'
   }
 
@@ -112,8 +122,10 @@ function getClientQuery(token, header) {
   const info = getSystemInfo()
   const query = {}
 
-  query.terminal = header && header.terminal ? header.terminal : WECHAT_MINI_PROGRAM_TERMINAL
-  query.language = header && header.language ? header.language : getLanguageCode()
+  query.terminal =
+    header && header.terminal ? header.terminal : WECHAT_MINI_PROGRAM_TERMINAL
+  query.language =
+    header && header.language ? header.language : getLanguageCode()
 
   if (header && header.device) {
     query.device = header.device
@@ -178,9 +190,10 @@ function request(rawOptions) {
   const token = getToken()
   const authToken = options.auth === false ? '' : token
   const header = appendClientHeaders(options.header, authToken)
-  const clientQuery = options.clientParams === false || !isClientApi(options.url)
-    ? {}
-    : getClientQuery(authToken, header)
+  const clientQuery =
+    options.clientParams === false || !isClientApi(options.url)
+      ? {}
+      : getClientQuery(authToken, header)
 
   // 有 token 且未显式关闭鉴权时，自动带上 Bearer 头
   if (token && options.auth !== false) {
@@ -233,7 +246,11 @@ function request(rawOptions) {
         const businessCode = body.code !== undefined ? body.code : body.retCode
 
         // 登录过期：HTTP 401 或业务 code 401
-        if (res.statusCode === 401 || businessCode === 401 || businessCode === 406) {
+        if (
+          res.statusCode === 401 ||
+          businessCode === 401 ||
+          businessCode === 406
+        ) {
           reject({
             code: businessCode || 401,
             message: body.message || body.retMsg || '登录已过期'
@@ -306,19 +323,23 @@ function upload(rawOptions) {
   const name = options.name || 'fileParam'
   const formData = options.formData || {}
   const query = options.query || {}
-  const clientQuery = options.clientParams === false || !isClientApi(options.url)
-    ? {}
-    : getClientQuery(authToken, header)
+  const clientQuery =
+    options.clientParams === false || !isClientApi(options.url)
+      ? {}
+      : getClientQuery(authToken, header)
 
   if (token && options.auth !== false) {
     header.Authorization = `Bearer ${token}`
   }
 
   if (!filePaths.length) {
-    return handleBusinessError({
-      code: 'UPLOAD_FILE_REQUIRED',
-      message: '请选择上传文件'
-    }, options)
+    return handleBusinessError(
+      {
+        code: 'UPLOAD_FILE_REQUIRED',
+        message: '请选择上传文件'
+      },
+      options
+    )
   }
 
   if (options.loading) {
@@ -337,7 +358,9 @@ function upload(rawOptions) {
   const uploadOne = filePath =>
     new Promise((resolve, reject) => {
       wx.uploadFile({
-        url: buildUrl(appendQuery(options.url, Object.assign({}, clientQuery, query))),
+        url: buildUrl(
+          appendQuery(options.url, Object.assign({}, clientQuery, query))
+        ),
         filePath,
         name,
         formData,
@@ -345,9 +368,14 @@ function upload(rawOptions) {
         timeout: options.timeout || config.timeout,
         success(res) {
           const body = parseResponseData(res.data)
-          const businessCode = body.code !== undefined ? body.code : body.retCode
+          const businessCode =
+            body.code !== undefined ? body.code : body.retCode
 
-          if (res.statusCode === 401 || businessCode === 401 || businessCode === 406) {
+          if (
+            res.statusCode === 401 ||
+            businessCode === 401 ||
+            businessCode === 406
+          ) {
             reject({
               code: businessCode || 401,
               message: body.message || body.retMsg || '登录已过期'
@@ -417,31 +445,39 @@ module.exports = {
   request,
   upload,
   get(url, data, options) {
-    return request(Object.assign({}, options, {
-      url,
-      data,
-      method: 'GET'
-    }))
+    return request(
+      Object.assign({}, options, {
+        url,
+        data,
+        method: 'GET'
+      })
+    )
   },
   post(url, data, options) {
-    return request(Object.assign({}, options, {
-      url,
-      data,
-      method: 'POST'
-    }))
+    return request(
+      Object.assign({}, options, {
+        url,
+        data,
+        method: 'POST'
+      })
+    )
   },
   put(url, data, options) {
-    return request(Object.assign({}, options, {
-      url,
-      data,
-      method: 'PUT'
-    }))
+    return request(
+      Object.assign({}, options, {
+        url,
+        data,
+        method: 'PUT'
+      })
+    )
   },
   delete(url, data, options) {
-    return request(Object.assign({}, options, {
-      url,
-      data,
-      method: 'DELETE'
-    }))
+    return request(
+      Object.assign({}, options, {
+        url,
+        data,
+        method: 'DELETE'
+      })
+    )
   }
 }

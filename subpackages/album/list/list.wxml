@@ -47,7 +47,7 @@
         <image class="trash-icon" src="/assets/images/del-icon.png" mode="aspectFit"></image>
       </view>
       <view class="selected-copy">已选 <text>{{selectedCount}}</text> 张</view>
-      <view class="project-btn" hover-class="none" bindtap="projectSelected">投屏</view>
+      <view class="project-btn" hover-class="none" bindtap="refreshScreen">刷新屏幕</view>
     </view>
   </block>
 
@@ -56,12 +56,11 @@
     <image class="empty-art" src="/assets/images/album-bg01.png" mode="aspectFit"></image>
     <view class="empty-title">当前没有可查看的设备照片</view>
     <view class="empty-desc">你可以重新投屏照片到设备</view>
-    <view class="empty-action" hover-class="none" bindtap="chooseForProjection">重新投屏</view>
   </view>
 
   <!-- 删除确认弹窗：点遮罩关闭，点弹窗内部 catchtap="noop" 阻止冒泡避免误关 -->
-  <view class="confirm-mask" wx:if="{{showDeleteConfirm}}" catchtouchmove="noop" bindtap="hideDeleteDialog">
-    <view class="confirm-dialog" catchtap="noop">
+  <view class="confirm-mask {{deleteClosing ? 'pop-closing-mask' : ''}}" wx:if="{{showDeleteConfirm}}" catchtouchmove="noop" bindtap="hideDeleteDialog">
+    <view class="confirm-dialog {{deleteClosing ? 'pop-closing-dialog' : ''}}" catchtap="noop">
       <view class="confirm-icon">
         <view class="picture-icon"></view>
       </view>

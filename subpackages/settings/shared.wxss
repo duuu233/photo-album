@@ -121,6 +121,7 @@
   align-items: center;
   justify-content: center;
   background: rgba(42, 43, 43, 0.5);
+  animation: popMaskFadeIn 0.2s ease-out;
 }
 
 .dialog {
@@ -129,6 +130,7 @@
   background: #ffffff;
   border-radius: 34rpx;
   text-align: center;
+  animation: popDialogIn 0.24s ease-out;
 }
 
 .dialog-title {

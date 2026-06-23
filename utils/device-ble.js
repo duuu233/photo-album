@@ -45,8 +45,13 @@ function short16(uuid) {
   return String(uuid || '').toUpperCase().replace(/-/g, '').slice(4, 8)
 }
 
+// 兼容设备上报的多种 UUID 形态：
+//   - 标准 128 位（0000FF00-0000-1000-8000-00805F9B34FB）：取去横杠后第 5-8 个字符的 16 位短码；
+//   - 直接上报的 16 位短 UUID（"FF00" / "0000FF00"）：整体比对。
 function matchUuid(uuid, shortCode) {
-  return short16(uuid) === shortCode
+  const code = String(shortCode || '').toUpperCase()
+  const norm = String(uuid || '').toUpperCase().replace(/-/g, '')
+  return norm.slice(4, 8) === code || norm === code
 }
 
 function wxp(fn, options) {
@@ -159,6 +164,44 @@ function chunkFromMtu(mtu) {
   return Math.min(236, Math.max(1, maxFrame - 8)) // 减 8 字节固定开销
 }
 
+// 发现 FF00 主服务：很多机型（尤其安卓）在 createBLEConnection 成功后服务并未立即就绪，
+// 立刻 getBLEDeviceServices 常拿到空/不全的列表 → 误报「未找到主服务」。这里短间隔重试直到发现。
+async function discoverMainService(deviceId, attempts = 6, interval = 250) {
+  let lastUuids = []
+  for (let i = 0; i < attempts; i++) {
+    const servicesRes = await wxp(wx.getBLEDeviceServices, { deviceId })
+    const services = servicesRes.services || []
+    lastUuids = services.map(s => s.uuid)
+    const service = services.find(s => matchUuid(s.uuid, protocol.SERVICE_UUID))
+    if (service) {
+      return { service, uuids: lastUuids }
+    }
+    if (i < attempts - 1) {
+      await sleep(interval) // 等服务发现完成再试一次
+    }
+  }
+  // 重试后仍未发现 FF00：打印设备实际暴露的服务 UUID，便于判断是「短码匹配问题」还是「设备根本没有 FF00」
+  console.warn('[BLE] 未匹配到 FF00 主服务，设备实际暴露的服务 UUID 列表：', lastUuids)
+  return { service: null, uuids: lastUuids }
+}
+
+// 发现主服务下的写(FF01)/通知(FF02)特征，同样对「特征尚未就绪」做短重试。
+async function discoverCharacteristics(deviceId, serviceId, attempts = 4, interval = 200) {
+  for (let i = 0; i < attempts; i++) {
+    const charsRes = await wxp(wx.getBLEDeviceCharacteristics, { deviceId, serviceId })
+    const chars = charsRes.characteristics || []
+    const writeChar = chars.find(c => matchUuid(c.uuid, protocol.CHAR_WRITE_UUID))
+    const notifyChar = chars.find(c => matchUuid(c.uuid, protocol.CHAR_NOTIFY_UUID))
+    if (writeChar && notifyChar) {
+      return { writeChar, notifyChar }
+    }
+    if (i < attempts - 1) {
+      await sleep(interval)
+    }
+  }
+  return null
+}
+
 // 建立连接并发现 FF00 主服务下的写(FF01)/通知(FF02)特征，开启通知。结果缓存到会话。
 async function ensureConnection(deviceId) {
   if (sessions[deviceId] && sessions[deviceId].ready) {
@@ -168,47 +211,62 @@ async function ensureConnection(deviceId) {
   ensureGlobalListener()
   await wxp(wx.createBLEConnection, { deviceId, timeout: 10000 })
 
-  const servicesRes = await wxp(wx.getBLEDeviceServices, { deviceId })
-  const service = (servicesRes.services || []).find(s => matchUuid(s.uuid, protocol.SERVICE_UUID))
-  if (!service) {
-    throw new Error('未找到相框主服务(FF00)，请确认是相框设备')
+  // 设备为单连接（PRD 6.2.3）：连接成功后若服务/特征发现或订阅失败，必须立即断开，
+  // 否则设备被占用、不再开启广播，会导致下次扫描不到、再也连不上。
+  try {
+    // 连接成功后服务/特征可能尚未发现完成，带短重试地查找，避免误报「未找到主服务/特征」
+    const { service, uuids } = await discoverMainService(deviceId)
+    if (!service) {
+      // 设备只暴露 OTA 服务(FF10) 而没有业务服务(FF00)：说明设备处于固件升级/引导(DFU)模式，未运行业务固件
+      const onlyOta =
+        uuids.some(u => matchUuid(u, protocol.OTA_SERVICE_UUID)) &&
+        !uuids.some(u => matchUuid(u, protocol.SERVICE_UUID))
+      throw new Error(
+        onlyOta
+          ? '设备处于固件升级(OTA/DFU)模式，未运行相框业务固件，请先完成固件烧录/升级后再绑定'
+          : '未找到相框主服务(FF00)，请确认是相框设备'
+      )
+    }
+
+    const found = await discoverCharacteristics(deviceId, service.uuid)
+    if (!found) {
+      throw new Error('未找到读写特征(FF01/FF02)')
+    }
+    const { writeChar, notifyChar } = found
+
+    await wxp(wx.notifyBLECharacteristicValueChange, {
+      deviceId,
+      serviceId: service.uuid,
+      characteristicId: notifyChar.uuid,
+      state: true
+    })
+
+    // 关键：协商 MTU 并据此定好每包数据大小，避免大数据包被静默丢弃导致图传卡死
+    const mtu = await negotiateMtu(deviceId)
+
+    const session = {
+      deviceId,
+      serviceId: service.uuid,
+      writeCharId: writeChar.uuid,
+      notifyCharId: notifyChar.uuid,
+      rxBuffer: [],
+      pending: {},
+      frameListeners: [], // 临时帧监听者（图传等待 0x23 应答时往里塞，用完移除）
+      mtu, // 协商到的 MTU
+      dataChunk: chunkFromMtu(mtu), // 每个图片数据包可装的字节数
+      // 实测指定有应答写(write)会报 10007「特征不支持此操作」，与 PRD「FF01: Write Without Response」一致——
+      // 这台设备只能用无应答写。无应答写不可靠(可能被手机/链路悄悄丢)，只能靠应用层窗口 ACK 重传兜底。
+      writeType: 'writeNoResponse',
+      ready: true
+    }
+    sessions[deviceId] = session
+    return session
+  } catch (error) {
+    if (wx.closeBLEConnection) {
+      wx.closeBLEConnection({ deviceId }) // 释放被占用的连接，保证设备能重新广播
+    }
+    throw error
   }
-
-  const charsRes = await wxp(wx.getBLEDeviceCharacteristics, { deviceId, serviceId: service.uuid })
-  const chars = charsRes.characteristics || []
-  const writeChar = chars.find(c => matchUuid(c.uuid, protocol.CHAR_WRITE_UUID))
-  const notifyChar = chars.find(c => matchUuid(c.uuid, protocol.CHAR_NOTIFY_UUID))
-  if (!writeChar || !notifyChar) {
-    throw new Error('未找到读写特征(FF01/FF02)')
-  }
-
-  await wxp(wx.notifyBLECharacteristicValueChange, {
-    deviceId,
-    serviceId: service.uuid,
-    characteristicId: notifyChar.uuid,
-    state: true
-  })
-
-  // 关键：协商 MTU 并据此定好每包数据大小，避免大数据包被静默丢弃导致图传卡死
-  const mtu = await negotiateMtu(deviceId)
-
-  const session = {
-    deviceId,
-    serviceId: service.uuid,
-    writeCharId: writeChar.uuid,
-    notifyCharId: notifyChar.uuid,
-    rxBuffer: [],
-    pending: {},
-    frameListeners: [], // 临时帧监听者（图传等待 0x23 应答时往里塞，用完移除）
-    mtu, // 协商到的 MTU
-    dataChunk: chunkFromMtu(mtu), // 每个图片数据包可装的字节数
-    // 实测指定有应答写(write)会报 10007「特征不支持此操作」，与 PRD「FF01: Write Without Response」一致——
-    // 这台设备只能用无应答写。无应答写不可靠(可能被手机/链路悄悄丢)，只能靠应用层窗口 ACK 重传兜底。
-    writeType: 'writeNoResponse',
-    ready: true
-  }
-  sessions[deviceId] = session
-  return session
 }
 
 // 发送一条指令并等待设备对应的 ACK；返回 { ackCmd, result, data }

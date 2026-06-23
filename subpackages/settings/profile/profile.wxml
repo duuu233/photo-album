@@ -11,7 +11,7 @@
         <text class="profile-label">头像</text>
         <view class="profile-value avatar-value">
           <image wx:if="{{userInfo.avatarUrl}}" class="profile-avatar" src="{{userInfo.avatarUrl}}" mode="aspectFill"></image>
-          <image wx:else class="profile-avatar" src="/assets/images/mine-header.png" mode="aspectFill"></image>
+          <image wx:else class="profile-avatar" src="/assets/images/mine-header.jpg" mode="aspectFill"></image>
           <view class="ui-chevron"></view>
         </view>
       </button>

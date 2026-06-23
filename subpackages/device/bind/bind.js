@@ -13,8 +13,10 @@ Page({
     scanning: false, // 是否正在扫描附近设备
     devices: [],
     selectedId: '', // 当前选中待绑定设备的 id（单选）
+    binding: false, // 是否正在绑定，避免重复点击「立即绑定」造成重复绑定
     location: null,
-    showHelp: false
+    showHelp: false,
+    helpClosing: false // 「扫描帮助」弹层是否正在播放退场动画
   },
 
   onLoad() {
@@ -137,10 +139,15 @@ Page({
     })
   },
 
+  // 先播放退场动画再卸载，避免弹层瞬间消失
   closeHelp() {
-    this.setData({
-      showHelp: false
-    })
+    if (this.data.helpClosing) {
+      return
+    }
+    this.setData({ helpClosing: true })
+    setTimeout(() => {
+      this.setData({ showHelp: false, helpClosing: false })
+    }, 240)
   },
 
   // 点选某台设备：仅更新选中态，绑定动作交给底部「立即绑定」
@@ -152,6 +159,9 @@ Page({
 
   // 底部「立即绑定」：绑定当前选中的设备
   confirmBind() {
+    if (this.data.binding) {
+      return // 绑定进行中，忽略重复点击，避免重复绑定
+    }
     if (!this.data.selectedId) {
       wx.showToast({
         title: '请选择要绑定的设备',
@@ -172,6 +182,8 @@ Page({
       return
     }
 
+    this.setData({ binding: true })
+
     let info = null
     // 真实蓝牙设备：连接并读取设备信息；连接失败则中止绑定（不再有模拟兜底）
     if (scanDevice.realBluetooth && scanDevice.deviceId) {
@@ -185,18 +197,25 @@ Page({
           info.connectionIntervalUnits = conn.units
           info.connectionIntervalMs = conn.ms
         } catch (error) {
+          console.warn('获取连接间隔失败', error)
           // 连接间隔是 v1.4 新增能力，读取失败不影响基础绑定。
         }
       } catch (error) {
+        console.warn('连接设备/读取设备信息失败', error)
         wx.showToast({
           title: error.message || '设备连接失败',
           icon: 'none'
         })
+        this.setData({ binding: false })
         return
       } finally {
         deviceBle.disconnect(scanDevice.deviceId)
         wx.hideLoading()
       }
+
+      // 连接并读取设备信息成功：先提示「连接成功」，短暂停留让用户看到后，再调用绑定接口
+      wx.showToast({ title: '连接成功', icon: 'none', duration: 800 })
+      await new Promise(resolve => setTimeout(resolve, 800))
     }
 
     // 合并：扫描得到的蓝牙标识 + 连接后读到的真实设备信息（保留蓝牙 deviceId 供后续重连）
@@ -215,6 +234,7 @@ Page({
         title: error.message || '绑定失败',
         icon: 'none'
       })
+      this.setData({ binding: false })
       return
     }
     app.setSelectedDevice(device)
@@ -223,6 +243,7 @@ Page({
       title: '绑定成功',
       icon: 'none'
     })
+    // 成功后保持 binding=true 直到返回上一页，避免 500ms 窗口内被重复点击触发二次绑定
     setTimeout(() => {
       wx.navigateBack()
     }, 500)

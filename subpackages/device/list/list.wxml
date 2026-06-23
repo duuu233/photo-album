@@ -6,7 +6,7 @@
   <page-nav title="{{selectMode ? '选择相框' : '我的设备'}}"></page-nav>
 
   <view class="mock-content device-content">
-    <view class="device-toolbar">
+    <view class="device-toolbar" wx:if="{{devices.length}}">
       <view class="device-add-btn" hover-class="device-add-btn--hover" aria-label="添加设备" bindtap="goBind">
         <image class="device-add-btn__icon" src="/assets/images/home-add-icon.png" mode="aspectFit"></image>
       </view>

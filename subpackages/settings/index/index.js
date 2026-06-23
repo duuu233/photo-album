@@ -9,7 +9,8 @@ Page({
     contact: '99999@qq.com',
     dialogType: '',
     dialogTitle: '',
-    dialogDesc: ''
+    dialogDesc: '',
+    dialogClosing: false // 确认弹窗是否正在播放退场动画
   },
 
   onLoad() {
@@ -89,12 +90,20 @@ Page({
     })
   },
 
+  // 先播放退场动画再卸载，避免弹窗瞬间消失
   closeDialog() {
-    this.setData({
-      dialogType: '',
-      dialogTitle: '',
-      dialogDesc: ''
-    })
+    if (this.data.dialogClosing) {
+      return
+    }
+    this.setData({ dialogClosing: true })
+    setTimeout(() => {
+      this.setData({
+        dialogType: '',
+        dialogTitle: '',
+        dialogDesc: '',
+        dialogClosing: false
+      })
+    }, 220)
   },
 
   // 弹窗确认：按 dialogType 执行退出或注销，两者都清本地会话并重启到登录页

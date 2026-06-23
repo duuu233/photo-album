@@ -16,7 +16,7 @@
       <block wx:if="{{isBoundHome}}">
         <view class="home-topbar">
           <button class="avatar-btn" hover-class="none" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar">
-            <image class="avatar-img" src="{{avatarUrl || '/assets/images/mine-header.png'}}" mode="aspectFill"></image>
+            <image class="avatar-img" src="{{avatarUrl || '/assets/images/mine-header.jpg'}}" mode="aspectFill"></image>
           </button>
           <view class="add-btn" hover-class="none" bindtap="startBindingScan">
           <image class="avatar-img" src="/assets/images/home-add-icon.png" mode="aspectFill"></image>
@@ -105,8 +105,8 @@
     <custom-tabbar active="home" safe-bottom="{{safeBottom}}" dimmed="{{hasHomeOverlay}}"></custom-tabbar>
 
     <!-- 弹层①：未绑定/重连提示（标题文案随场景变化）。catchtouchmove 阻止背景滚动穿透 -->
-    <view wx:if="{{showPromptSheet}}" class="home-mask" catchtouchmove="noop">
-      <view class="bottom-sheet prompt-sheet">
+    <view wx:if="{{showPromptSheet}}" class="home-mask {{sheetClosing ? 'pop-closing-mask' : ''}}" catchtouchmove="noop">
+      <view class="bottom-sheet prompt-sheet {{sheetClosing ? 'pop-closing-sheet' : ''}}">
         <view class="sheet-close" hover-class="none" bindtap="closeHomeSheet">×</view>
         <view class="prompt-title">{{promptTitle}}</view>
         <view class="prompt-desc">{{promptDesc}}</view>
@@ -115,8 +115,8 @@
     </view>
 
     <!-- 弹层②：离线断网模式 -->
-    <view wx:if="{{isOfflineMode}}" class="home-mask" catchtouchmove="noop">
-      <view class="bottom-sheet prompt-sheet offline-sheet">
+    <view wx:if="{{isOfflineMode}}" class="home-mask {{sheetClosing ? 'pop-closing-mask' : ''}}" catchtouchmove="noop">
+      <view class="bottom-sheet prompt-sheet offline-sheet {{sheetClosing ? 'pop-closing-sheet' : ''}}">
         <view class="sheet-close" hover-class="none" bindtap="closeOfflineMode">×</view>
         <view class="prompt-title">离线模式</view>
         <view class="prompt-desc offline-desc">当前网络异常，app进入离线模式无法同步投屏记录与图库</view>
@@ -125,8 +125,8 @@
     </view>
 
     <!-- 弹层③：拍照/相册选择（已绑定时点击投屏入口弹出） -->
-    <view wx:if="{{isMediaSheet}}" class="home-mask" catchtouchmove="noop">
-      <view class="bottom-sheet media-sheet">
+    <view wx:if="{{isMediaSheet}}" class="home-mask {{sheetClosing ? 'pop-closing-mask' : ''}}" catchtouchmove="noop">
+      <view class="bottom-sheet media-sheet {{sheetClosing ? 'pop-closing-sheet' : ''}}">
         <view class="media-sheet-title">选择投屏方式</view>
         <view class="media-option" hover-class="none" bindtap="chooseCamera">
         <view class="media-option-left"> 
@@ -212,8 +212,8 @@
     </view>
 
     <!-- 弹层④：「扫描不到怎么办」排查清单 -->
-    <view wx:if="{{isScanHelp}}" class="home-mask scan-help-mask" catchtouchmove="noop">
-      <view class="bottom-sheet scan-help-sheet">
+    <view wx:if="{{isScanHelp}}" class="home-mask scan-help-mask {{sheetClosing ? 'pop-closing-mask' : ''}}" catchtouchmove="noop">
+      <view class="bottom-sheet scan-help-sheet {{sheetClosing ? 'pop-closing-sheet' : ''}}">
         <view class="sheet-close" hover-class="none" bindtap="closeScanHelp">×</view>
         <view class="scan-help-title">扫描不到怎么办?</view>
         <image class="scan-help-icon" src="/assets/images/scan_help_art.png" mode="aspectFit"></image>
