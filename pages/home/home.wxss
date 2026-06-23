@@ -65,24 +65,38 @@ button {
   padding: 10rpx 48rpx 0 48rpx;
 }
 
-/* avatar-btn 承载 open-type="chooseAvatar"，需清除 button 默认外观，外观与原圆形头像一致 */
+/* avatar-btn 承载 open-type="chooseAvatar"，需彻底清除小程序 button 默认样式，外观与原圆形头像一致 */
 .avatar-btn {
   flex: 0 0 auto;
-  width: 72rpx;
+  width: 72rpx !important;
   height: 72rpx;
+  min-height: 0;
   padding: 0;
-  margin: 0;
+  margin: 0 !important;
   overflow: hidden;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: normal;
+  text-align: center;
+  white-space: normal;
   background: #ffffff;
   border: none;
   border-radius: 50%;
-  line-height: normal;
+  box-sizing: border-box;
 }
 
-/* 去掉 button 默认的 ::after 边框线 */
-.avatar-btn::after {
+/* 去掉 button 默认的 ::after 边框线（含点击态） */
+.avatar-btn::after,
+.avatar-btn.button-hover::after {
   display: none;
   border: none;
+  content: none;
+}
+
+/* 去掉默认点击态背景（已设 hover-class="none"，此处兜底） */
+.avatar-btn.button-hover {
+  background: #ffffff;
 }
 
 .avatar-img,
