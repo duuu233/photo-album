@@ -65,13 +65,24 @@ button {
   padding: 10rpx 48rpx 0 48rpx;
 }
 
+/* avatar-btn 承载 open-type="chooseAvatar"，需清除 button 默认外观，外观与原圆形头像一致 */
 .avatar-btn {
   flex: 0 0 auto;
   width: 72rpx;
   height: 72rpx;
+  padding: 0;
+  margin: 0;
   overflow: hidden;
   background: #ffffff;
+  border: none;
   border-radius: 50%;
+  line-height: normal;
+}
+
+/* 去掉 button 默认的 ::after 边框线 */
+.avatar-btn::after {
+  display: none;
+  border: none;
 }
 
 .avatar-img,

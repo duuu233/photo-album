@@ -46,6 +46,9 @@ const SCENE_ALIASES = {
   '首页-绑定设备-扫描不到怎么办？': SCENES.SCAN_HELP
 }
 
+// 未设置头像时的兜底图：与「我的」页保持一致
+const DEFAULT_AVATAR = '/assets/images/mine-header.png'
+
 const DEFAULT_DEVICE = {
   id: 'frame_room',
   name: '房间相册',
@@ -195,7 +198,7 @@ Page({
     statusBarHeight: 20,
     safeBottom: 0,
     navTitle: getNavigationTitle(SCENES.UNBOUND),
-    avatarUrl: '/assets/images/mine-header.png',
+    avatarUrl: DEFAULT_AVATAR,
     currentDevice: DEFAULT_DEVICE,
     deviceList: [DEFAULT_DEVICE],
     currentDeviceIndex: 0,
@@ -238,12 +241,33 @@ Page({
 
     // 仅在非“指定场景”进入时才按真实设备状态刷新首页，避免覆盖调试场景
     if (!this.data.sceneFromQuery) {
+      this.loadUserAvatar()
+
       if (this.data.networkOffline) {
         this.checkNetworkStatus()
         return
       }
 
       this.loadHomeState()
+    }
+  },
+
+  // 登录后拉取真实头像，没有头像时回退默认图；未登录则只展示默认图
+  async loadUserAvatar() {
+    if (!app.globalData.token && !wx.getStorageSync('token')) {
+      this.setData({
+        avatarUrl: DEFAULT_AVATAR
+      })
+      return
+    }
+
+    try {
+      const userInfo = await api.getUserProfile()
+      this.setData({
+        avatarUrl: userInfo.avatarUrl || DEFAULT_AVATAR
+      })
+    } catch (error) {
+      // 拉取失败保持当前/默认头像，不打断首页
     }
   },
 
@@ -579,10 +603,49 @@ Page({
     })
   },
 
-  goMine() {
-    wx.switchTab({
-      url: '/pages/mine/mine'
+  // 点击头像：触发微信头像授权（可拍照/从相册选择/用微信头像），选完后上传保存
+  async onChooseAvatar(event) {
+    const avatarUrl = event.detail && event.detail.avatarUrl
+    if (!avatarUrl) {
+      return
+    }
+
+    // 先本地回显新头像，提升响应感
+    this.setData({
+      avatarUrl
     })
+
+    try {
+      await app.ensureLogin()
+      // 上传本地临时头像并保存到后端，返回最新用户资料
+      const userInfo = await api.updateUserProfile({ avatarUrl })
+      const mergedUser = Object.assign({}, app.globalData.userInfo, userInfo)
+      app.globalData.userInfo = mergedUser
+      wx.setStorageSync('userInfo', mergedUser)
+      this.setData({
+        avatarUrl: userInfo.avatarUrl || avatarUrl
+      })
+      wx.showToast({
+        title: '头像已更新',
+        icon: 'none'
+      })
+    } catch (error) {
+      // 未登录时 ensureLogin 会跳转登录页，这里静默返回
+      if (error && error.code === 'NO_TOKEN') {
+        return
+      }
+      // 保存失败回退到原有头像并提示
+      const fallback =
+        (app.globalData.userInfo && app.globalData.userInfo.avatarUrl) ||
+        DEFAULT_AVATAR
+      this.setData({
+        avatarUrl: fallback
+      })
+      wx.showToast({
+        title: '头像更新失败',
+        icon: 'none'
+      })
+    }
   },
 
   noop() {}

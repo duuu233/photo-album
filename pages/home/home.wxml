@@ -15,10 +15,9 @@
       <!-- 已绑定：展示设备卡片（名称/连接状态/电量）+ 轮播指示点 -->
       <block wx:if="{{isBoundHome}}">
         <view class="home-topbar">
-          <view class="avatar-btn" hover-class="none" bindtap="goMine">
-            <image wx:if="{{avatarUrl}}" class="avatar-img" src="{{avatarUrl}}" mode="aspectFill"></image>
-          
-          </view>
+          <button class="avatar-btn" hover-class="none" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar">
+            <image class="avatar-img" src="{{avatarUrl || '/assets/images/mine-header.png'}}" mode="aspectFill"></image>
+          </button>
           <view class="add-btn" hover-class="none" bindtap="startBindingScan">
           <image class="avatar-img" src="/assets/images/home-add-icon.png" mode="aspectFill"></image>
             
