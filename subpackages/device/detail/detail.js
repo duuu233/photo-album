@@ -38,7 +38,9 @@ Page({
     intervalOptions: [1, 2, 4, 8, 24],
     intervalIndex: 1,
     showClearConfirm: false,
-    showDeleteConfirm: false
+    showDeleteConfirm: false,
+    loading: true,
+    loadError: false
   },
 
   onLoad(options) {
@@ -72,8 +74,23 @@ Page({
   },
 
   // 拉取设备详情并派生出页面展示字段（含轮播间隔下标、设备编号、内存文案等）
+  // 接口失败时不再让 device 悬空：标记 loadError 走统一空态，提供「重新加载」入口
   async loadDetail() {
-    let device = await api.getDeviceDetail(this.data.id)
+    if (!this.data.device) {
+      this.setData({ loading: true, loadError: false })
+    }
+
+    let device
+    try {
+      device = await api.getDeviceDetail(this.data.id)
+    } catch (error) {
+      this.setData({
+        loading: false,
+        loadError: true
+      })
+      return
+    }
+
     const selected = app.globalData.selectedDevice
 
     if (selected && String(selected.id) === String(device && device.id)) {
@@ -117,7 +134,9 @@ Page({
       macAddress: device && device.macAddress ? device.macAddress : '--',
       firmwareVersion: device && device.firmwareVersion ? device.firmwareVersion : '--',
       playbackLabel: getPlaybackLabel(device),
-      intervalIndex: intervalIndex > -1 ? intervalIndex : 1
+      intervalIndex: intervalIndex > -1 ? intervalIndex : 1,
+      loading: false,
+      loadError: false
     })
   },
 

@@ -1,11 +1,13 @@
-<view class="mock-root slideshow-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;" wx:if="{{device}}">
+<!-- 页面框架（背景 + 导航）始终渲染，内容区在「设置 / 加载中 / 加载失败 / 不存在」之间切换，
+     避免接口报错时 device 为空导致布局错乱 -->
+<view class="mock-root slideshow-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202606161438400869930.png" mode="aspectFill"></image>
   </view>
 
   <page-nav title="轮播设置"></page-nav>
 
-  <view class="mock-content slideshow-content">
+  <view wx:if="{{device}}" class="mock-content slideshow-content">
     <view class="slideshow-card glass-panel">
       <view class="switch-row">
         <view class="setting-title">开启轮播</view>
@@ -30,9 +32,14 @@
       </view>
     </view>
   </view>
-</view>
 
-<view class="mock-root empty-slideshow" wx:else>
-  <page-nav title="轮播设置"></page-nav>
-  <view class="empty-state glass-panel">设备不存在</view>
+  <!-- 设备不存在 / 加载中 / 加载失败：统一的居中空态，导航与背景仍在，不会错乱 -->
+  <view wx:else class="slideshow-status">
+    <view class="status-card glass-panel">
+      <image wx:if="{{!loading}}" class="status-art" src="/assets/images/empty_device_art.png" mode="aspectFit"></image>
+      <view class="status-title">{{loading ? '加载中…' : (loadError ? '加载失败' : '设备不存在')}}</view>
+      <view wx:if="{{!loading}}" class="status-desc">{{loadError ? '网络异常或服务出错，请稍后重试' : '该设备可能已被删除或解绑'}}</view>
+      <view wx:if="{{loadError && !loading}}" class="status-retry" hover-class="none" bindtap="loadDevice">重新加载</view>
+    </view>
+  </view>
 </view>

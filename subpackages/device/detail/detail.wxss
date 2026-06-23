@@ -276,16 +276,60 @@
   width: 48rpx;
 }
 
-.empty-detail {
+/* 加载中 / 加载失败 / 设备不存在 的统一空态：占满导航以下区域并整体居中 */
+.detail-status {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: calc(100vh - var(--status-bar) - 88rpx);
+  padding: 0 46rpx calc(120rpx + var(--safe-bottom));
+}
+
+.status-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 72rpx 48rpx 64rpx;
+  text-align: center;
+}
+
+.status-art {
+  width: 300rpx;
+  height: 240rpx;
+  margin-bottom: 12rpx;
+}
+
+.status-title {
+  color: #2a2d32;
+  font-size: 32rpx;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.status-desc {
+  margin-top: 16rpx;
+  color: #8b9098;
+  font-size: 26rpx;
+  line-height: 1.5;
+}
+
+.status-retry {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 80rpx 46rpx;
-}
-
-.empty-state {
-  width: 100%;
-  padding: 80rpx 24rpx;
-  color: #777e88;
-  text-align: center;
+  min-width: 240rpx;
+  min-height: 80rpx;
+  margin-top: 44rpx;
+  padding: 0 56rpx;
+  color: #ffffff;
+  background: linear-gradient(180deg, #ff9140 0%, #ff6a20 100%);
+  border-radius: 999rpx;
+  box-shadow: 0 16rpx 32rpx rgba(255, 102, 31, 0.22);
+  font-size: 28rpx;
+  font-weight: 600;
 }

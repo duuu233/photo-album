@@ -61,19 +61,19 @@ const NEARBY_DEVICES = [
   {
     id: 'living',
     name: '客厅相框',
-    icon: '/assets/images/device-list-icon01.png',
+    icon: '/assets/images/mine-icon03.png',
     selected: true
   },
   {
     id: 'bedroom',
     name: '卧室相框',
-    icon: '/assets/images/device-list-icon02.png',
+    icon: '/assets/images/mine-icon02.png',
     selected: false
   },
   {
     id: 'study',
     name: '书房相框',
-    icon: '/assets/images/device-list-icon03.png',
+    icon: '/assets/images/mine-icon01.png',
     selected: false
   }
 ]
@@ -137,7 +137,9 @@ function normalizeDevice(device) {
   if (!device) {
     return null
   }
-  const battery = clampBattery(typeof device.battery === 'number' ? device.battery : 30)
+  const battery = clampBattery(
+    typeof device.battery === 'number' ? device.battery : 30
+  )
   return {
     id: device.id || DEFAULT_DEVICE.id,
     deviceId: device.deviceId || '', // 真实蓝牙 deviceId：投屏页据此连接设备并图传
@@ -327,8 +329,12 @@ Page({
       if (selected && cached && String(selected.id) === String(cached.id)) {
         selected = Object.assign({}, selected, {
           deviceId: selected.deviceId || cached.deviceId,
-          bleDeviceId: selected.bleDeviceId || cached.bleDeviceId || cached.deviceId,
-          battery: typeof selected.battery === 'number' ? selected.battery : cached.battery
+          bleDeviceId:
+            selected.bleDeviceId || cached.bleDeviceId || cached.deviceId,
+          battery:
+            typeof selected.battery === 'number'
+              ? selected.battery
+              : cached.battery
         })
       }
       const currentDevice = normalizeDevice(selected)

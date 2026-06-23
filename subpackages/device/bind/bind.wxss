@@ -1,6 +1,10 @@
+/* 占满导航栏以下的剩余高度：100vh - 状态栏高度(--status-bar) - 顶部导航栏高度(88rpx)。
+   有了确定高度，底部绝对定位的「重新扫描」按钮与「扫描不到怎么办」才会贴屏幕底部。 */
 .bind-content {
   position: relative;
   z-index: 1;
+  height: calc(100vh - var(--status-bar) - 88rpx);
+  box-sizing: border-box;
 }
 
 /* 硬件联调调试台入口横幅 */
@@ -117,7 +121,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(150rpx + var(--safe-bottom));
+  bottom: calc(174rpx + var(--safe-bottom));
   color: #ff6421;
   font-size: 26rpx;
   text-align: center;
@@ -189,7 +193,7 @@
   height: 8rpx;
   border: 5rpx solid currentColor;
   border-radius: 4rpx;
-  content: "";
+  content: '';
 }
 
 .nearby-copy {
@@ -229,6 +233,7 @@
   align-items: center;
   justify-content: center;
   height: 112rpx;
+  width: 654rpx;
   color: #ffffff;
   background: linear-gradient(90deg, #ff8338, #ff621f);
   border-radius: 999rpx;

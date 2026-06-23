@@ -1,143 +1,150 @@
-<!-- 设备存在才渲染详情，否则走文件底部的“设备不存在”空态 -->
-<view class="mock-root detail-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;" wx:if="{{device}}">
+<!-- 页面框架（背景 + 导航）始终渲染，内容区在「详情 / 加载中 / 加载失败 / 不存在」之间切换，
+     避免接口报错时 device 为空导致布局错乱 -->
+<view class="mock-root detail-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202606161438400869930.png" mode="aspectFill"></image>
   </view>
 
   <page-nav title="设备详情"></page-nav>
 
-  <view class="mock-content detail-content">
-    <view class="device-summary glass-panel">
-      <view class="summary-icon">
-        <image class="summary-icon__img" src="/assets/images/device-list-icon01.png" mode="aspectFit"></image>
-      </view> 
-      <view class="summary-copy">
-        <view class="summary-name-row">
-          <view class="summary-title">{{device.name}}</view>
-          <view class="edit-name-btn" hover-class="none" catchtap="renameDevice" aria-label="编辑设备名称">
-            <image class="edit-name-icon" src="/assets/images/edit-icon01.png" mode="aspectFit"></image>
+  <!-- 设备存在：渲染详情内容与相关弹窗 -->
+  <block wx:if="{{device}}">
+    <view class="mock-content detail-content">
+      <view class="device-summary glass-panel">
+        <view class="summary-icon">
+          <image class="summary-icon__img" src="/assets/images/mine-icon03.png" mode="aspectFit"></image>
+        </view>
+        <view class="summary-copy">
+          <view class="summary-name-row">
+            <view class="summary-title">{{device.name}}</view>
+            <view class="edit-name-btn" hover-class="none" catchtap="renameDevice" aria-label="编辑设备名称">
+              <image class="edit-name-icon" src="/assets/images/edit-icon01.png" mode="aspectFit"></image>
+            </view>
+          </view>
+          <view class="summary-meta">
+            <view class="connection {{device.connected ? 'is-connected' : ''}}">
+              <image class="meta-bt-icon" src="{{device.connected ? '/assets/images/bluetooth-icon.png' : '/assets/images/bluetooth-icon-not.png'}}" mode="aspectFit"></image>
+              <text>{{device.connected ? '已连接' : '未连接'}}</text>
+            </view>
+            <view class="battery-meta">
+              <image class="battery-level-icon" src="{{batteryIcon}}" mode="aspectFit"></image>
+              <text>{{batteryText}}</text>
+            </view>
           </view>
         </view>
-        <view class="summary-meta">
-          <view class="connection {{device.connected ? 'is-connected' : ''}}">
-            <image class="meta-bt-icon" src="{{device.connected ? '/assets/images/bluetooth-icon.png' : '/assets/images/bluetooth-icon-not.png'}}" mode="aspectFit"></image>
-            <text>{{device.connected ? '已连接' : '未连接'}}</text>
+      </view>
+
+      <view class="detail-list glass-panel">
+        <view class="detail-row" hover-class="none" bindtap="goSlideshow">
+          <view class="row-left">
+            <image class="row-icon" src="/assets/images/device-detail-icon01.png" mode="aspectFit"></image>
+            <text>轮播设置</text>
           </view>
-          <view class="battery-meta">
-            <image class="battery-level-icon" src="{{batteryIcon}}" mode="aspectFit"></image>
-            <text>{{batteryText}}</text>
+          <view class="row-right">
+            <text>{{playbackLabel}}</text>
+            <view class="ui-chevron"></view>
+          </view>
+        </view>
+        <view class="thin-divider"></view>
+
+        <view class="detail-row">
+          <view class="row-left">
+            <image class="row-icon" src="/assets/images/device-detail-icon02.png" mode="aspectFit"></image>
+            <text>设备ID</text>
+          </view>
+          <view class="row-value">{{deviceCode}}</view>
+        </view>
+        <view class="thin-divider"></view>
+
+        <view class="detail-row">
+          <view class="row-left">
+            <image class="row-icon" src="/assets/images/device-detail-icon03.png" mode="aspectFit"></image>
+            <text>设备内存</text>
+          </view>
+          <view class="row-value">{{memoryText}}</view>
+        </view>
+        <view class="thin-divider"></view>
+
+        <view class="detail-row" hover-class="none" bindtap="goOtaUpgrade">
+          <view class="row-left">
+            <image class="row-icon" src="/assets/images/device-detail-icon04.png" mode="aspectFit"></image>
+            <text>OTA升级</text>
+          </view>
+          <view class="row-right">
+            <text>版本{{firmwareVersion}}</text>
+            <view class="ui-chevron"></view>
+          </view>
+        </view>
+      </view>
+
+      <view class="detail-list action-list glass-panel">
+        <view class="detail-row action-row clear-row" hover-class="none" bindtap="clearCopies">
+          <view class="row-left">
+            <image class="row-icon" src="/assets/images/device-detail-icon05.png" mode="aspectFit"></image>
+            <text>一键清空</text>
+          </view>
+          <view class="row-right">
+            <text>清空设备本地所有照片</text>
+            <view class="ui-chevron"></view>
+          </view>
+        </view>
+        <view class="thin-divider"></view>
+
+        <view class="detail-row action-row delete-row" hover-class="none" bindtap="showDeleteConfirm">
+          <view class="row-left">
+            <image class="row-icon" src="/assets/images/device-detail-icon06.png" mode="aspectFit"></image>
+            <text>删除设备</text>
+          </view>
+          <view class="row-right">
+            <text>删除后将无法恢复</text>
+            <view class="ui-chevron"></view>
           </view>
         </view>
       </view>
     </view>
 
-    <view class="detail-list glass-panel">
-      <view class="detail-row" hover-class="none" bindtap="goSlideshow">
-        <view class="row-left">
-          <image class="row-icon" src="/assets/images/device-detail-icon01.png" mode="aspectFit"></image>
-          <text>轮播设置</text>
+    <!-- 删除确认弹窗：点遮罩关闭，点弹窗内部用 catchtap="noop" 阻止冒泡，避免误关 -->
+    <view class="confirm-mask" wx:if="{{showDeleteConfirm}}" catchtouchmove="noop" bindtap="hideDeleteConfirm">
+      <view class="confirm-dialog" catchtap="noop">
+        <view class="confirm-icon danger-icon">
+          <image class="trash-icon" src="/assets/images/device-detail-icon06.png" mode="aspectFit"></image>
         </view>
-        <view class="row-right">
-          <text>{{playbackLabel}}</text>
-          <view class="ui-chevron"></view>
+        <view class="confirm-copy">
+          <view class="confirm-title">删除设备</view>
+          <view class="confirm-desc">删除后将解除与该相框设备的绑定，后续使用需重新添加设备。</view>
         </view>
-      </view>
-      <view class="thin-divider"></view>
-
-      <view class="detail-row">
-        <view class="row-left">
-          <image class="row-icon" src="/assets/images/device-detail-icon02.png" mode="aspectFit"></image>
-          <text>设备ID</text>
-        </view>
-        <view class="row-value">{{deviceCode}}</view>
-      </view>
-      <view class="thin-divider"></view>
-
-      <view class="detail-row">
-        <view class="row-left">
-          <image class="row-icon" src="/assets/images/device-detail-icon03.png" mode="aspectFit"></image>
-          <text>设备内存</text>
-        </view>
-        <view class="row-value">{{memoryText}}</view>
-      </view>
-      <view class="thin-divider"></view>
-
-
-
-      <view class="detail-row" hover-class="none" bindtap="goOtaUpgrade">
-        <view class="row-left">
-          <image class="row-icon" src="/assets/images/device-detail-icon04.png" mode="aspectFit"></image>
-          <text>OTA升级</text>
-        </view>
-        <view class="row-right">
-          <text>版本{{firmwareVersion}}</text>
-          <view class="ui-chevron"></view>
+        <view class="confirm-actions">
+          <view class="confirm-cancel" hover-class="none" bindtap="hideDeleteConfirm">取消</view>
+          <view class="confirm-primary" hover-class="none" bindtap="confirmDeleteDevice">确认</view>
         </view>
       </view>
     </view>
 
-    <view class="detail-list action-list glass-panel">
-      <view class="detail-row action-row clear-row" hover-class="none" bindtap="clearCopies">
-        <view class="row-left">
-          <image class="row-icon" src="/assets/images/device-detail-icon05.png" mode="aspectFit"></image>
-          <text>一键清空</text>
+    <!-- 一键清空确认弹窗：交互同上（点遮罩关闭，点弹窗内部不关闭） -->
+    <view class="confirm-mask" wx:if="{{showClearConfirm}}" catchtouchmove="noop" bindtap="hideClearConfirm">
+      <view class="confirm-dialog" catchtap="noop">
+        <view class="confirm-icon clear-icon">
+          <image class="broom-icon" src="/assets/images/device-detail-icon05.png" mode="aspectFit"></image>
         </view>
-        <view class="row-right">
-          <text>清空设备本地所有照片</text>
-          <view class="ui-chevron"></view>
+        <view class="confirm-copy">
+          <view class="confirm-title">一键清空</view>
+          <view class="confirm-desc">将清空设备内所有照片，请谨慎选择是否继续？</view>
+        </view>
+        <view class="confirm-actions">
+          <view class="confirm-cancel" hover-class="none" bindtap="hideClearConfirm">取消</view>
+          <view class="confirm-primary" hover-class="none" bindtap="confirmClearCopies">确认</view>
         </view>
       </view>
-      <view class="thin-divider"></view>
+    </view>
+  </block>
 
-      <view class="detail-row action-row delete-row" hover-class="none" bindtap="showDeleteConfirm">
-        <view class="row-left">
-          <image class="row-icon" src="/assets/images/device-detail-icon06.png" mode="aspectFit"></image>
-          <text>删除设备</text>
-        </view>
-        <view class="row-right">
-          <text>删除后将无法恢复</text>
-          <view class="ui-chevron"></view>
-        </view>
-      </view>
+  <!-- 设备不存在 / 加载中 / 加载失败：统一的居中空态，导航与背景仍在，不会错乱 -->
+  <view wx:else class="detail-status">
+    <view class="status-card glass-panel">
+      <image wx:if="{{!loading}}" class="status-art" src="/assets/images/empty_device_art.png" mode="aspectFit"></image>
+      <view class="status-title">{{loading ? '加载中…' : (loadError ? '加载失败' : '设备不存在')}}</view>
+      <view wx:if="{{!loading}}" class="status-desc">{{loadError ? '网络异常或服务出错，请稍后重试' : '该设备可能已被删除或解绑'}}</view>
+      <view wx:if="{{loadError && !loading}}" class="status-retry" hover-class="none" bindtap="loadDetail">重新加载</view>
     </view>
   </view>
-
-  <!-- 删除确认弹窗：点遮罩关闭，点弹窗内部用 catchtap="noop" 阻止冒泡，避免误关 -->
-  <view class="confirm-mask" wx:if="{{showDeleteConfirm}}" catchtouchmove="noop" bindtap="hideDeleteConfirm">
-    <view class="confirm-dialog" catchtap="noop">
-      <view class="confirm-icon danger-icon">
-        <image class="trash-icon" src="/assets/images/device-detail-icon06.png" mode="aspectFit"></image>
-      </view>
-      <view class="confirm-copy">
-        <view class="confirm-title">删除设备</view>
-        <view class="confirm-desc">删除后将解除与该相框设备的绑定，后续使用需重新添加设备。</view>
-      </view>
-      <view class="confirm-actions">
-        <view class="confirm-cancel" hover-class="none" bindtap="hideDeleteConfirm">取消</view>
-        <view class="confirm-primary" hover-class="none" bindtap="confirmDeleteDevice">确认</view>
-      </view>
-    </view>
-  </view>
-
-  <!-- 一键清空确认弹窗：交互同上（点遮罩关闭，点弹窗内部不关闭） -->
-  <view class="confirm-mask" wx:if="{{showClearConfirm}}" catchtouchmove="noop" bindtap="hideClearConfirm">
-    <view class="confirm-dialog" catchtap="noop">
-      <view class="confirm-icon clear-icon">
-        <image class="broom-icon" src="/assets/images/device-detail-icon05.png" mode="aspectFit"></image>
-      </view>
-      <view class="confirm-copy">
-        <view class="confirm-title">一键清空</view>
-        <view class="confirm-desc">将清空设备内所有照片，请谨慎选择是否继续？</view>
-      </view>
-      <view class="confirm-actions">
-        <view class="confirm-cancel" hover-class="none" bindtap="hideClearConfirm">取消</view>
-        <view class="confirm-primary" hover-class="none" bindtap="confirmClearCopies">确认</view>
-      </view>
-    </view>
-  </view>
-</view>
-
-<view class="mock-root empty-detail" wx:else>
-  <page-nav title="设备详情"></page-nav>
-  <view class="empty-state glass-panel">设备不存在</view>
 </view>

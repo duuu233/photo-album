@@ -111,7 +111,7 @@ function normalizeDevice(device = {}) {
     icon: firstValue(
       device.productImg,
       device.icon,
-      '/assets/images/device-list-icon01.png'
+      '/assets/images/mine-icon03.png'
     ),
     battery: typeof device.battery === 'number' ? device.battery : null,
     connected: !!(device.connected && bleDeviceId),
@@ -543,7 +543,8 @@ module.exports = {
   // 小程序绑定与修改邮箱共用此接口，绑定后邮箱+密码可用于 App 登录。
   changeUserEmail(data = {}) {
     const payload = typeof data === 'string' ? { userEmail: data } : data || {}
-    const verifyCode = payload.verifyCode != null ? payload.verifyCode : payload.code
+    const verifyCode =
+      payload.verifyCode != null ? payload.verifyCode : payload.code
     const password = payload.password || ''
     const confirmPassword =
       payload.confirmPassword != null ? payload.confirmPassword : password
@@ -624,7 +625,9 @@ module.exports = {
 
     // productId 必传：匹配不到就中止绑定并明确提示，避免缺 productId 还往后端发请求。
     if (!productId) {
-      throw new Error('未匹配到对应产品(productId)，请确认该设备在产品列表中存在')
+      throw new Error(
+        '未匹配到对应产品(productId)，请确认该设备在产品列表中存在'
+      )
     }
 
     const productName = firstValue(

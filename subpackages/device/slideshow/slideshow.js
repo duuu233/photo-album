@@ -11,7 +11,9 @@ Page({
     id: '',
     device: null,
     intervalOptions: [1, 2, 4, 8, 24],
-    intervalIndex: 1
+    intervalIndex: 1,
+    loading: true,
+    loadError: false
   },
 
   onLoad(options) {
@@ -43,8 +45,23 @@ Page({
   },
 
   // 加载设备并把当前轮播间隔小时数映射为选择器下标（缺省落到第 1 项）
+  // 接口失败时不再让 device 悬空：标记 loadError 走统一空态，提供「重新加载」入口
   async loadDevice() {
-    let device = await api.getDeviceDetail(this.data.id)
+    if (!this.data.device) {
+      this.setData({ loading: true, loadError: false })
+    }
+
+    let device
+    try {
+      device = await api.getDeviceDetail(this.data.id)
+    } catch (error) {
+      this.setData({
+        loading: false,
+        loadError: true
+      })
+      return
+    }
+
     const selected = app.globalData.selectedDevice
 
     if (selected && String(selected.id) === String(device && device.id)) {
@@ -57,7 +74,9 @@ Page({
     const intervalIndex = this.data.intervalOptions.indexOf(device ? device.intervalHours : 2)
     this.setData({
       device,
-      intervalIndex: intervalIndex > -1 ? intervalIndex : 1
+      intervalIndex: intervalIndex > -1 ? intervalIndex : 1,
+      loading: false,
+      loadError: false
     })
   },
 
