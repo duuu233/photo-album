@@ -207,6 +207,17 @@
   line-height: 1.4;
 }
 
+.row-tip-strong {
+  color: #ff621f;
+  font-weight: 600;
+}
+
+/* 与同一行内左侧按钮拉开间距 */
+.btn-sync {
+  margin-left: 12rpx;
+  background: linear-gradient(90deg, #36c2a6, #1aa886);
+}
+
 .input {
   flex: 1;
   height: 64rpx;

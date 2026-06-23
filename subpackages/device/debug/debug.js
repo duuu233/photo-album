@@ -266,6 +266,7 @@ Page({
     playMode: 'order', // 'order' 顺序 / 'random' 随机
     intervalInput: '60', // 切换间隔(秒)
     connIntervalInput: '30', // BLE 连接间隔(ms)，协议会换算为 1.25ms 单位
+    projectionConnIntervalMs: 30, // 真实投屏图传前要设的连接间隔(ms)，由「同步投屏」写入，onLoad 时回显
     switchInput: '0', // 0x24 要显示的图片索引
     deleteInput: '', // 0x12 要删除的图片索引，逗号分隔，如 "0,2"
     uploadIndexInput: '', // 上传槽位，留空则自动选空闲位
@@ -298,6 +299,13 @@ Page({
   onLoad(options) {
     this.setData(system.getLayoutMetrics())
     this._logId = 0
+
+    // 回显当前真实投屏要用的连接间隔（同步过则是同步值，否则默认 30ms），让输入框与投屏保持一致
+    const projectionConnIntervalMs = deviceBle.getTransferConnIntervalMs()
+    this.setData({
+      projectionConnIntervalMs,
+      connIntervalInput: String(projectionConnIntervalMs)
+    })
 
     // 注册监听器：device-ble 每发送/接收一帧都会回调这里，把 16 进制打到控制台
     deviceBle.setMonitor(record => this.onMonitorFrame(record))
@@ -597,6 +605,34 @@ Page({
         connInterval,
         connIntervalInput: String(connInterval.ms)
       })
+    }
+  },
+
+  // 同步投屏：把当前「连接间隔」输入值持久化给真实投屏。
+  // 之后正式投屏(result.js → optimizeConnectionIntervalForTransfer)图传前会按这个值设链路间隔，
+  // 而不是写死的默认 30ms。这里只写本地存储、不依赖蓝牙连接，所以未连接设备也能同步。
+  cmdSyncConnIntervalToProjection() {
+    const ms = Number(this.data.connIntervalInput)
+    if (!Number.isFinite(ms) || ms <= 0) {
+      wx.showToast({ title: '请输入有效的连接间隔毫秒数', icon: 'none' })
+      return
+    }
+    const units = protocol.connectionIntervalMsToUnits(ms)
+    if (units < protocol.CONN_INTERVAL_MIN_UNITS || units > protocol.CONN_INTERVAL_MAX_UNITS) {
+      wx.showToast({ title: '范围需在 7.5~4000ms', icon: 'none' })
+      return
+    }
+    try {
+      // 按 1.25ms 单位归一后落库，返回实际生效值用于回显
+      const applied = deviceBle.setTransferConnIntervalMs(ms)
+      this.setData({
+        projectionConnIntervalMs: applied.ms,
+        connIntervalInput: String(applied.ms)
+      })
+      this.appendLog({ type: 'ok', text: `已同步到真实投屏：图传前连接间隔将设为 ${applied.ms}ms（CONN_INTERVAL=${applied.units}）` })
+      wx.showToast({ title: '已同步到投屏', icon: 'success' })
+    } catch (error) {
+      wx.showToast({ title: error.message || '同步失败', icon: 'none' })
     }
   },
 

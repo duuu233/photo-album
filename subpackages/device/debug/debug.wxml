@@ -82,9 +82,10 @@
       <view class="row">
         <text class="row-label">连接间隔</text>
         <input class="input" type="digit" value="{{connIntervalInput}}" bindinput="onConnIntervalInput" placeholder="ms,如 30" />
-        <button class="btn btn-mini" disabled="{{busy}}" bindtap="cmdSetConnInterval">应用 0x13</button>
+        <button class="btn btn-mini btn-compact" disabled="{{busy}}" bindtap="cmdSetConnInterval">应用 0x13</button>
+        <button class="btn btn-mini btn-compact btn-sync" bindtap="cmdSyncConnIntervalToProjection">同步投屏</button>
       </view>
-      <view class="row-tip">BLE 连接间隔单位为 1.25ms，允许 7.5~4000ms；图传建议先试 30ms。每次图传前会自动按此值设置并复读确认（0x05→0x13→0x05），卡住时据此区分「间隔没生效」还是「设备吃不下速率」。</view>
+      <view class="row-tip">BLE 连接间隔单位为 1.25ms，允许 7.5~4000ms；图传建议先试 30ms。每次图传前会自动按此值设置并复读确认（0x05→0x13→0x05），卡住时据此区分「间隔没生效」还是「设备吃不下速率」。<text class="row-tip-strong">「同步投屏」</text>把当前输入值写给真实投屏：之后正式投屏图传前会按这个值设连接间隔（当前投屏用 {{projectionConnIntervalMs}}ms），不点则维持默认 30ms。</view>
       <view class="row">
         <text class="row-label">系统校时</text>
         <text class="row-hint">把手机当前时间同步给设备 RTC</text>

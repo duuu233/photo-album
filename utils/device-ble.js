@@ -309,8 +309,10 @@ function sleep(ms) {
 //   2) 设备端（BLE 收包 + 写 Flash）跟不上 → 收一阵就不再前进（ACK_SEQ 卡住）。
 // 留足间隔让两边都喘得过气。先求稳（值偏大），联调通了再往小调提速。
 const PACKET_PACE_MS = 45
-// 图传前尝试把 BLE 连接间隔调到 30ms（CONN_INTERVAL=24）。失败时不阻断旧图传链路。
+// 图传前尝试把 BLE 连接间隔调到此值（默认 30ms / CONN_INTERVAL=24）。失败时不阻断旧图传链路。
+// 调试页「同步投屏」会把输入框的值写进下面这个存储键；真实投屏图传前优先读它，没同步过则回落默认 30ms。
 const TRANSFER_CONN_INTERVAL_MS = 30
+const TRANSFER_CONN_INTERVAL_STORAGE_KEY = 'transferConnIntervalMs'
 
 // 裸写一帧（默认写类型，由特征支持的属性决定——本设备 FF01 为无应答写）。
 async function writeFrame(session, cmd, payload, writeType) {
@@ -477,10 +479,34 @@ async function setConnectionIntervalMs(deviceId, ms) {
   return setConnectionInterval(deviceId, protocol.connectionIntervalMsToUnits(ms))
 }
 
+// 真实投屏图传前要用的连接间隔(ms)：优先用调试页「同步投屏」存下的值，否则用默认 30ms。
+function getTransferConnIntervalMs() {
+  try {
+    const saved = Number(wx.getStorageSync(TRANSFER_CONN_INTERVAL_STORAGE_KEY))
+    if (Number.isFinite(saved) && saved > 0) {
+      return saved
+    }
+  } catch (error) {
+    // 读存储失败就用默认值
+  }
+  return TRANSFER_CONN_INTERVAL_MS
+}
+
+// 把真实投屏图传前要用的连接间隔(ms)持久化（调试页「同步投屏」调用）。
+// 先按协议 1.25ms 单位归一并校验范围，越界直接抛错，避免把无效值同步给投屏。
+// 返回归一后的 { ms, units }，方便调用方回显「实际生效值」。
+function setTransferConnIntervalMs(ms) {
+  const units = normalizeConnectionIntervalUnits(protocol.connectionIntervalMsToUnits(ms))
+  const value = protocol.connectionIntervalUnitsToMs(units)
+  wx.setStorageSync(TRANSFER_CONN_INTERVAL_STORAGE_KEY, value)
+  return { ms: value, units }
+}
+
 // 图传前的连接参数优化：读当前值，必要时切到更快的连接间隔。
+// 未显式传 ms 时，用「同步投屏」存下的值（没同步过则默认 30ms）。
 // 兼容旧固件/异常链路：调用方可捕获错误后继续走原图传逻辑。
 async function optimizeConnectionIntervalForTransfer(deviceId, ms) {
-  const targetUnits = normalizeConnectionIntervalUnits(protocol.connectionIntervalMsToUnits(ms || TRANSFER_CONN_INTERVAL_MS))
+  const targetUnits = normalizeConnectionIntervalUnits(protocol.connectionIntervalMsToUnits(ms || getTransferConnIntervalMs()))
   const previous = await getConnectionInterval(deviceId)
   if (previous.units === targetUnits) {
     return {
@@ -650,6 +676,8 @@ module.exports = {
   setConnectionInterval,
   setConnectionIntervalMs,
   optimizeConnectionIntervalForTransfer,
+  getTransferConnIntervalMs,
+  setTransferConnIntervalMs,
   setTime,
   deleteImage,
   refreshScreen,
