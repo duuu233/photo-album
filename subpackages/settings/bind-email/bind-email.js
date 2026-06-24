@@ -1,5 +1,6 @@
 const api = require('../../../utils/api')
 const system = require('../../../utils/system')
+const toast = require('../../../utils/toast')
 
 // 简单邮箱格式校验：xxx@xxx.xxx
 function isEmail(value) {
@@ -54,7 +55,7 @@ Page({
     }
 
     if (!isEmail(this.data.email)) {
-      wx.showToast({
+      toast.show({
         title: '请输入正确邮箱',
         icon: 'none'
       })
@@ -67,7 +68,7 @@ Page({
         sendType: 3
       })
       this.startCodeCountdown()
-      wx.showToast({
+      toast.show({
         title: '验证码已发送',
         icon: 'none'
       })
@@ -111,7 +112,7 @@ Page({
 
   async submit() {
     if (!this.data.canSubmit) {
-      wx.showToast({
+      toast.show({
         title: '请补全信息并确认密码',
         icon: 'none'
       })
@@ -119,7 +120,7 @@ Page({
     }
 
     if (!isEmail(this.data.email)) {
-      wx.showToast({
+      toast.show({
         title: '请输入正确邮箱',
         icon: 'none'
       })
@@ -145,7 +146,7 @@ Page({
     })
     app.globalData.userInfo = userInfo
     wx.setStorageSync('userInfo', userInfo)
-    wx.showToast({
+    toast.show({
       title: '绑定成功',
       icon: 'none'
     })

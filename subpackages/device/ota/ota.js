@@ -1,5 +1,6 @@
 const api = require('../../../utils/api')
 const otaBle = require('../../../utils/ota-ble')
+const toast = require('../../../utils/toast')
 const system = require('../../../utils/system')
 
 const app = getApp()
@@ -279,7 +280,7 @@ Page({
         statusClass: 'is-latest'
       }, this.deriveViewData(updatedDevice, updatedFirmware)))
 
-      wx.showToast({
+      toast.show({
         title: '升级完成',
         icon: 'none'
       })

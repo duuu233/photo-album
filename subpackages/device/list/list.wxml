@@ -68,4 +68,6 @@
       <view class="empty-device__btn" hover-class="none" bindtap="goBind">添加设备</view>
     </view>
   </view>
+
+  <global-toast id="globalToast"></global-toast>
 </view>

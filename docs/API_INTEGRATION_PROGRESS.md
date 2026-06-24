@@ -18,12 +18,12 @@
 
 ## 模块进度
 
-| 模块                  | 状态         | 代码位置                           | 说明                                                                                      |
-| --------------------- | ------------ | ---------------------------------- | ----------------------------------------------------------------------------------------- |
-| 用户前端-产品接口     | 已完成       | `utils/api.js`                     | 本模块 3 个接口均接入                                                                     |
-| 用户前端-基础功能接口 | 已完成       | `utils/api.js`、`utils/request.js` | App 版本/安卓下载接口跳过；邮箱验证码、设备图片上传、基础数据、基础文件上传已接入         |
-| 用户前端-用户接口     | 页面已接入   | `utils/api.js`、`app.js`、`pages/login/login.js`、`pages/mine/mine.js`、`subpackages/settings/profile/profile.js`、`subpackages/settings/index/index.js` | 微信手机号一键登录、用户信息、昵称/头像、退出、注销已接入；邮箱/PC 相关登录注册跳过 |
-| 用户前端-设备接口     | 页面已接入   | `utils/api.js`、`pages/home/home.js`、`subpackages/device/*`、`subpackages/album/list/list.js`、`subpackages/projection/*` | 设备增删改查、图库、一键清空、投屏记录列表/删除已接入真实接口；轮播/电量/图传/清空设备照片走 BLE 真指令 |
+| 模块                  | 状态       | 代码位置                                                                                                                                                 | 说明                                                                                                    |
+| --------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| 用户前端-产品接口     | 已完成     | `utils/api.js`                                                                                                                                           | 本模块 3 个接口均接入                                                                                   |
+| 用户前端-基础功能接口 | 已完成     | `utils/api.js`、`utils/request.js`                                                                                                                       | App 版本/安卓下载接口跳过；邮箱验证码、设备图片上传、基础数据、基础文件上传已接入                       |
+| 用户前端-用户接口     | 页面已接入 | `utils/api.js`、`app.js`、`pages/login/login.js`、`pages/mine/mine.js`、`subpackages/settings/profile/profile.js`、`subpackages/settings/index/index.js` | 微信手机号一键登录、用户信息、昵称/头像、退出、注销已接入；邮箱/PC 相关登录注册跳过                     |
+| 用户前端-设备接口     | 页面已接入 | `utils/api.js`、`pages/home/home.js`、`subpackages/device/*`、`subpackages/album/list/list.js`、`subpackages/projection/*`                               | 设备增删改查、图库、一键清空、投屏记录列表/删除已接入真实接口；轮播/电量/图传/清空设备照片走 BLE 真指令 |
 
 > 2026-06-11 增量：对照 Swagger 最新接口，补齐用户接口、设备接口及基础新增接口（`getBasicData`、`setFileUpload`），并新增了 Swagger 新出现的投屏记录接口（`getUserProductImgRecordList`、`delUserProductImgRecord`）。接口清单见 [`接口清单.md`](接口清单.md)。
 >
@@ -86,15 +86,15 @@
 
 ### 已接入
 
-| 方法 | 路径                             | `utils/api.js` 方法        | Swagger 摘要                                 |
-| ---- | -------------------------------- | -------------------------- | -------------------------------------------- |
-| POST | `/Client/User/setWechatAppLogin` | `setWechatAppLogin(data)`  | 微信小程序授权手机号一键登录，返回登录 token |
-| GET  | `/Client/User/getUserInfo`       | `getUserInfo()`            | 获取用户信息                                 |
-| POST | `/Client/User/changeNickName`    | `changeNickName(nickName)` | 修改昵称（1-10 字）                          |
-| POST | `/Client/User/changeAvatar`      | `changeAvatar(avatar)`     | 修改头像                                     |
+| 方法 | 路径                             | `utils/api.js` 方法        | Swagger 摘要                                                                                   |
+| ---- | -------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------- |
+| POST | `/Client/User/setWechatAppLogin` | `setWechatAppLogin(data)`  | 微信小程序授权手机号一键登录，返回登录 token                                                   |
+| GET  | `/Client/User/getUserInfo`       | `getUserInfo()`            | 获取用户信息                                                                                   |
+| POST | `/Client/User/changeNickName`    | `changeNickName(nickName)` | 修改昵称（1-10 字）                                                                            |
+| POST | `/Client/User/changeAvatar`      | `changeAvatar(avatar)`     | 修改头像                                                                                       |
 | POST | `/Client/User/changeUserEmail`   | `changeUserEmail(data)`    | 绑定/修改邮箱（小程序共用），`userEmail`+`verifyCode`+`password`+`confirmPassword`（密码 md5） |
-| POST | `/Client/User/loginOut`          | `loginOut()`               | 用户登录退出                                 |
-| POST | `/Client/User/userOff`           | `userOff()`                | 用户注销                                     |
+| POST | `/Client/User/loginOut`          | `loginOut()`               | 用户登录退出                                                                                   |
+| POST | `/Client/User/userOff`           | `userOff()`                | 用户注销                                                                                       |
 
 ### 参数参考
 
@@ -159,13 +159,39 @@
 
 ## 硬件调试台能力接入状态
 
-| 调试台能力 | 真实页面接入 |
-| --- | --- |
-| 扫描/连接设备 | `subpackages/device/bind/bind.js`、`subpackages/device/list/list.js` |
-| 读设备信息/电量/容量/固件 | 绑定页、设备列表、设备详情、投屏结果页 |
-| 设置轮播顺序/随机/关闭 | `subpackages/device/detail/detail.js`、`subpackages/device/slideshow/slideshow.js` |
-| 相册/拍照图片转码并图传 | `subpackages/projection/result/result.js` |
-| 图传前优化连接间隔/保持亮屏/后台中断 | `subpackages/projection/result/result.js` |
-| 图传后刷新屏幕显示 | `subpackages/projection/result/result.js` |
-| 删除设备图片/一键清空 | `subpackages/device/detail/detail.js` |
+| 调试台能力                                         | 真实页面接入                                                                           |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| 扫描/连接设备                                      | `subpackages/device/bind/bind.js`、`subpackages/device/list/list.js`                   |
+| 读设备信息/电量/容量/固件                          | 绑定页、设备列表、设备详情、投屏结果页                                                 |
+| 设置轮播顺序/随机/关闭                             | `subpackages/device/detail/detail.js`、`subpackages/device/slideshow/slideshow.js`     |
+| 相册/拍照图片转码并图传                            | `subpackages/projection/result/result.js`                                              |
+| 图传前优化连接间隔/保持亮屏/后台中断               | `subpackages/projection/result/result.js`                                              |
+| 图传后刷新屏幕显示                                 | `subpackages/projection/result/result.js`                                              |
+| 删除设备图片/一键清空                              | `subpackages/device/detail/detail.js`                                                  |
 | 连接间隔手动读取/设置、彩条测试图、16 进制收发日志 | 仍仅保留在 `subpackages/device/debug/debug.js`，属于硬件联调工具能力，不开放到用户页面 |
+
+太好了，这份文档把最关键的部分给齐了——你之前我担心的"设备 OTA 协议拿不到"的问题，这里 6.3.2 / 6.3.3 章节已经把 DFU 协议完整定义出来了。所以结论很明确：完全可以实现，而且不用去管底层是什么芯片，照着这套自定义协议写就行。
+我先把这份 OTA 协议的要点拆给你看，然后直接给你一份可以塞进小程序项目的代码模块。
+这份协议的关键点
+走的是独立的 OTA 服务，跟图片传输那套 0xAA 帧格式完全无关：
+
+Service 0xFF10，特征 0xFF11（Write Without Response + Notify），所有控制指令和固件数据都在这一根特征上收发。
+不用 CRC16，改用 1 字节累加校验：每个 APP→设备的包，末尾 checksum = 前面所有字节累加 & 0xFF。
+
+整个流程是"信用窗口"机制（PRN=3），比你想象的简单：
+
+APP 发 START（0xF1 + 对象类型 + 固件大小4字节小端 + checksum）→ 设备回 ACK，告诉你 MTU=251、PRN=3。
+APP 按 DATA（0xF2 + 包序号2字节 + 数据 + checksum）发固件，每发 3 包等一次设备的 DATA ACK，ACK 里带"已连续收到的包号"。
+关键细节：APP 不发 END。设备自己累计到固件大小后，自动算 CRC32、校验、写 BootSetting，然后回一个 0xF3 最终结果，约 100ms 后重启跑新固件。
+
+丢包重传也很省事：DATA ACK 的包号没往前走，就说明那一包丢了，从 ACK包号+1 重发即可。
+小程序这边必须注意的几个坑
+最容易翻车的是 MTU。设备说自己支持 251，但安卓侧默认 ATT MTU 只有 23（每次只能写 20 字节），你必须 wx.setBLEMTU 把它拉上去，否则 244 字节的 DATA 包根本写不进去；iOS 是系统自动协商的。每包固件数据大小要根据真实协商到的 MTU 算（MTU - 3(ATT头) - 4(帧开销)）。
+另外写 0xFF11 要用 writeType: 'writeNoResponse'，并且先 notifyBLECharacteristicValueChange 把通知打开。
+固件大小范围 0x3000 ~ 0x3C000（约 12KB ~ 240KB），很小，下载和缓存都没压力。
+下面这份模块把"从后台下载固件 → 拉 MTU → START → 窗口发包 → 等最终结果"整条链路都实现了，你接上自己的 deviceId 就能跑：Created a file, read a fileCreated a file, read a file几个需要你跟固件那边再对一下的点，我在代码里已标注，但单独提醒：
+第一，特征 UUID 的实际格式。小程序在真机上扫到的 service/characteristic UUID 通常是补全后的 128 位大写串（像 0000FF11-0000-...）。你先用 wx.getBLEDeviceCharacteristics 打印一下实际值，跟代码里的常量对齐，否则 write/notify 会找不到特征。
+第二，START 帧里的 OBJ_TYPE 具体值。文档只写了"当前作为固件对象使用"，没给确切数值，我默认填了 0x00，最好确认一下固件期望的是不是这个。
+第三，每包数据大小。我是按协商到的 MTU 动态算的（最大 244 字节），但文档图片传输那套用的是固定 236，OTA 这边没明说固定值。如果固件要求 OTA 也是某个固定长度，把 chunkSize 改成固定值即可。
+剩下的下载、连接、窗口流控、丢包重传都是按文档实现的，逻辑上能直接跑。建议先拿一个小固件在真机上跑通整条链路（开发者工具的蓝牙模拟不靠谱，一定要真机）。
+要不要我再帮你把升级前的版本检查那段也写出来？就是先用 0x03 拿设备当前软件版本，跟后台固件版本比一下，决定要不要升级——这块跟 OTA 是配套的。

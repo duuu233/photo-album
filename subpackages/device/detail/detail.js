@@ -1,4 +1,5 @@
 const api = require('../../../utils/api')
+const toast = require('../../../utils/toast')
 const system = require('../../../utils/system')
 const batteryUtil = require('../../../utils/battery')
 const deviceBle = require('../../../utils/device-ble')
@@ -208,7 +209,7 @@ Page({
   async applyPlayback(mode, intervalHours, carouselEnabled) {
     const device = this.data.device
     if (!device || !device.deviceId) {
-      wx.showToast({
+      toast.show({
         title: '请先连接设备',
         icon: 'none'
       })
@@ -239,9 +240,9 @@ Page({
         playbackLabel: getPlaybackLabel(updated),
         intervalIndex: intervalIndex > -1 ? intervalIndex : this.data.intervalIndex
       })
-      wx.showToast({ title: '已保存', icon: 'none' })
+      toast.show({ title: '已保存', icon: 'none' })
     } catch (error) {
-      wx.showToast({
+      toast.show({
         title: error.message || '保存失败',
         icon: 'none'
       })
@@ -289,7 +290,7 @@ Page({
     }
 
     if (!this.data.device.deviceId) {
-      wx.showToast({
+      toast.show({
         title: '请先连接设备',
         icon: 'none'
       })
@@ -308,7 +309,7 @@ Page({
 
       await api.clearDevicePhotoCopies(this.data.id)
     } catch (error) {
-      wx.showToast({
+      toast.show({
         title: error.message || '清空失败',
         icon: 'none'
       })
@@ -317,7 +318,7 @@ Page({
     }
     wx.hideLoading()
     this.hideClearConfirm() // 带退场动画关闭确认弹窗
-    wx.showToast({
+    toast.show({
       title: '已清空',
       icon: 'none'
     })
@@ -350,7 +351,7 @@ Page({
     if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === this.data.id) {
       app.setSelectedDevice(null)
     }
-    wx.showToast({
+    toast.show({
       title: '已删除',
       icon: 'none'
     })
@@ -373,7 +374,7 @@ Page({
         }
 
         await api.formatDevice(this.data.id)
-        wx.showToast({
+        toast.show({
           title: '格式化完成',
           icon: 'none'
         })

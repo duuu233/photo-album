@@ -1,0 +1,11 @@
+<!-- 全局 Toast：仿原生 wx.showToast 的深色圆角样式，但盒子更宽、文字自动换行，长文案不再每两三个字就折行。
+     通过 utils/toast.js 以 show()/hide() 方法驱动；mask=true 时拦截点击。 -->
+<view class="gtoast" wx:if="{{visible}}">
+  <view wx:if="{{mask}}" class="gtoast__mask" catchtouchmove="noop" bindtap="noop"></view>
+  <view class="gtoast__box {{leaving ? 'is-leaving' : 'is-enter'}} {{iconType ? 'has-icon' : 'text-only'}}">
+    <view wx:if="{{iconType === 'success'}}" class="gtoast__icon gtoast__icon--ok"></view>
+    <view wx:elif="{{iconType === 'error'}}" class="gtoast__icon gtoast__icon--err"></view>
+    <view wx:elif="{{iconType === 'loading'}}" class="gtoast__icon gtoast__icon--loading"></view>
+    <text class="gtoast__text">{{title}}</text>
+  </view>
+</view>

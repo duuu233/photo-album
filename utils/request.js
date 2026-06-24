@@ -1,5 +1,6 @@
 const config = require('./config')
 const mock = require('./mock')
+const toast = require('./toast')
 
 const WECHAT_MINI_PROGRAM_TERMINAL = 3
 const LANGUAGE_CODE_MAP = {
@@ -159,7 +160,7 @@ function showError(message) {
     return
   }
 
-  wx.showToast({
+  toast.show({
     title: message,
     icon: 'none'
   })

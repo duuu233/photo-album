@@ -43,4 +43,6 @@
 
     <view class="settings-primary profile-submit" hover-class="none" bindtap="saveProfile">保存资料</view>
   </view>
+
+  <global-toast id="globalToast"></global-toast>
 </view>

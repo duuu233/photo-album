@@ -1,3 +1,4 @@
+const toast = require('../../utils/toast')
 const app = getApp()
 
 Page({
@@ -64,7 +65,7 @@ Page({
       await app.loginWithWechatPhone(detail)
       // 先提示登录成功，短暂停留后再进入首页，避免生硬的瞬间跳转。
       // 首页是 tabBar 页，只能用 switchTab（无滑动过渡），用 toast + 延时让切换更自然。
-      wx.showToast({
+      toast.show({
         title: '登录成功',
         icon: 'none',
         duration: 1500
@@ -102,7 +103,7 @@ Page({
   },
 
   showToast(title) {
-    wx.showToast({
+    toast.show({
       title,
       icon: 'none'
     })

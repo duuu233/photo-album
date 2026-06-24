@@ -50,4 +50,6 @@
       <view class="empty-record__desc">{{filter === 'success' ? '完成一次照片投屏后会显示在这里。' : '投屏失败时会保留原因，方便排查。'}}</view>
     </view>
   </view>
+
+  <global-toast id="globalToast"></global-toast>
 </view>

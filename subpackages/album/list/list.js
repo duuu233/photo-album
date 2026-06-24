@@ -4,13 +4,13 @@ const system = require('../../../utils/system')
 const deviceBle = require('../../../utils/device-ble')
 const protocol = require('../../../utils/frame-protocol')
 const activeDevice = require('../../../utils/active-device')
+const toast = require('../../../utils/toast')
 
 const app = getApp()
 
 const TOTAL_PLACEHOLDER_COUNT = 0
-const HIDDEN_KEY = 'albumHiddenPhotoIds' // 本地“软删除”记录的缓存键（被删除照片的 id 集合）
-// 筛选项改为按真实设备动态生成（见 buildDeviceFilters），这里只保留默认的「全部」
-const DEFAULT_FILTERS = [{ label: '全部', value: '全部' }]
+// 筛选项按照片里出现的设备名动态生成（见 buildDeviceFilters），不再有「全部」
+const DEFAULT_FILTERS = []
 const DEVICE_NAMES = ['房间相册', '客厅相框', '书房相框']
 const THUMB_TYPES = [
   'tree',
@@ -29,12 +29,6 @@ const THUMB_TYPES = [
   'sea',
   'sunset'
 ]
-
-// 读取本地软删除记录（id -> true 的映射），格式异常时返回空对象
-function readHiddenMap() {
-  const hidden = wx.getStorageSync(HIDDEN_KEY) || {}
-  return hidden && typeof hidden === 'object' ? hidden : {}
-}
 
 // 统一设备名（修正历史命名差异），缺省时按下标循环取占位名
 function normalizeDeviceName(name, index) {
@@ -68,12 +62,13 @@ function buildDisplayPhotos(sourcePhotos, devices) {
     .map(normalizePhoto)
 }
 
-// 由真实设备列表生成筛选项：「全部」+ 各设备名（去重，与照片 deviceName 用同一套归一规则，保证可筛中）
-function buildDeviceFilters(devices) {
-  const filters = [{ label: '全部', value: '全部' }]
+// 由当前照片里出现的设备名生成筛选项（去重，无「全部」）。
+// 直接取自照片的 deviceName，保证每个筛选项都能筛出照片，也不会因设备改名导致筛选与照片对不上。
+function buildDeviceFilters(photos) {
+  const filters = []
 
-  ;(devices || []).forEach((device, index) => {
-    const name = normalizeDeviceName(device.name, index)
+  ;(photos || []).forEach(photo => {
+    const name = photo.deviceName
     if (name && !filters.some(item => item.value === name)) {
       filters.push({ label: name, value: name })
     }
@@ -87,7 +82,7 @@ Page({
     statusBarHeight: 20,
     safeBottom: 0,
     filters: DEFAULT_FILTERS,
-    currentFilter: '全部',
+    currentFilter: '',
     showFilterMenu: false,
     sourcePhotos: [],
     photos: [],
@@ -117,14 +112,15 @@ Page({
       api.getAlbumPhotos(),
       api.getDevices()
     ])
-    const hiddenMap = readHiddenMap()
-    const photos = buildDisplayPhotos(sourcePhotos, devices).filter(item => !hiddenMap[item.id])
+    // 列表以后端返回为准：删除已实际删掉设备(0x12)+后端记录，不再叠加本地软隐藏
+    //（旧的软隐藏是永久的，会把后端仍返回的图一直藏起来，导致「接口有 N 条却只显示 1 条」）
+    const photos = buildDisplayPhotos(sourcePhotos, devices)
 
-    // 按真实设备动态生成筛选项；当前筛选若已不在新设备列表中（设备被删/改名）则回退到「全部」
-    const filters = buildDeviceFilters(devices)
+    // 按照片里的设备名动态生成筛选项；当前筛选若已不在列表里（设备的照片被删光）则回退到第一项
+    const filters = buildDeviceFilters(photos)
     const currentFilter = filters.some(item => item.value === this.data.currentFilter)
       ? this.data.currentFilter
-      : '全部'
+      : (filters[0] ? filters[0].value : '')
 
     this.setData({
       filters,
@@ -139,9 +135,9 @@ Page({
     this.applyFilter(currentFilter, photos)
   },
 
-  // 按设备名筛选照片（'全部'不筛选），切换筛选时清空已选
+  // 按设备名筛选照片（无「全部」选项）；filter 为空（无照片/无设备）时回退展示全部，切换筛选时清空已选
   applyFilter(filter, photos = this.data.photos) {
-    const filteredPhotos = filter === '全部' ? photos : photos.filter(item => item.deviceName === filter)
+    const filteredPhotos = filter ? photos.filter(item => item.deviceName === filter) : photos
 
     this.setData({
       currentFilter: filter,
@@ -203,12 +199,31 @@ Page({
     })
   },
 
+  // 删除前的连接校验：删除要同时删设备(0x12)与后端，二者必须一致，所以必须先连上设备。
+  // 已连接返回 device；未连接则提示「无法删除」并返回 null。
+  ensureConnectedDevice() {
+    const device = activeDevice.getActiveDevice()
+    if (!device || !device.deviceId || !deviceBle.isConnected(device.deviceId)) {
+      toast.show({
+        title: '设备未连接，无法删除',
+        icon: 'none'
+      })
+      return null
+    }
+    return device
+  },
+
   showDeleteDialog() {
     if (!this.data.selectedCount) {
-      wx.showToast({
+      toast.show({
         title: '请选择照片',
         icon: 'none'
       })
+      return
+    }
+
+    // 未连接设备直接提示无法删除，连确认框都不弹
+    if (!this.ensureConnectedDevice()) {
       return
     }
 
@@ -228,7 +243,8 @@ Page({
     }, 220)
   },
 
-  // 删除选中照片：先本地隐藏，随后调用后端删除真实照片记录
+  // 删除选中照片：先把设备固件上对应槽位删掉(CMD 0x12)，设备删成功后再删后端记录，
+  // 保证「列表 / 后端 / 设备」三处一致。设备删除失败则整体中止，避免列表删了但相框里还在。
   async confirmDeleteSelected() {
     const ids = Object.keys(this.data.selectedMap)
 
@@ -237,18 +253,49 @@ Page({
       return
     }
 
-    const realIds = ids
-    const hiddenMap = readHiddenMap()
-    ids.forEach(id => {
-      hiddenMap[id] = true
-    })
-    wx.setStorageSync(HIDDEN_KEY, hiddenMap)
-
-    if (realIds.length) {
-      await api.deleteAlbumPhotos(realIds)
+    // 1) 删除前再判一次连接：未连接无法删除（防止弹确认框期间设备断开导致设备/后端不一致）
+    const device = this.ensureConnectedDevice()
+    if (!device) {
+      this.hideDeleteDialog()
+      return
     }
 
-    wx.showToast({
+    wx.showLoading({ title: '删除中', mask: true })
+    try {
+      // 读固件已占用槽位（升序），用同一份快照把每张选中照片解析成对应槽位；
+      // 不在本设备上的（解析为 -1）跳过，只删能对上的。
+      const info = await deviceBle.readDeviceInfo(device.deviceId)
+      const occupied = protocol.maskToIndexes(info.imgMask)
+      const slotIndexes = ids
+        .map(id => this.resolveDeviceImageIndex(id, device, occupied))
+        .filter(index => index >= 0)
+
+      // 2) 一条 0x12 批量删这些槽位（deleteImage 内部把索引数组转成掩码）
+      if (slotIndexes.length) {
+        await deviceBle.deleteImage(device.deviceId, slotIndexes)
+      }
+    } catch (error) {
+      wx.hideLoading()
+      toast.show({
+        title: (error && error.message) || '设备删除失败',
+        icon: 'none'
+      })
+      return // 设备没删成功就不动本地/后端，避免三处不一致
+    }
+    wx.hideLoading()
+
+    // 3) 设备删除成功后，再删后端记录；删完 loadPhotos 以后端为准刷新（不再做本地软隐藏）
+    try {
+      await api.deleteAlbumPhotos(ids)
+    } catch (error) {
+      toast.show({
+        title: (error && error.message) || '删除照片记录失败',
+        icon: 'none'
+      })
+      return
+    }
+
+    toast.show({
       title: '已删除',
       icon: 'none'
     })
@@ -261,7 +308,7 @@ Page({
     const ids = Object.keys(this.data.selectedMap)
 
     if (!ids.length) {
-      wx.showToast({
+      toast.show({
         title: '请选择图片',
         icon: 'none'
       })
@@ -269,7 +316,7 @@ Page({
     }
 
     if (ids.length > 1) {
-      wx.showToast({
+      toast.show({
         title: '刷新屏幕只能选中一张图片',
         icon: 'none'
       })
@@ -295,7 +342,7 @@ Page({
 
       if (index < 0) {
         wx.hideLoading()
-        wx.showToast({
+        toast.show({
           title: '未找到该图片在设备上的位置',
           icon: 'none'
         })
@@ -305,13 +352,13 @@ Page({
       // CMD=0x24：让固件切换/刷新到指定索引的图片
       await deviceBle.refreshScreen(device.deviceId, index)
       wx.hideLoading()
-      wx.showToast({
+      toast.show({
         title: '已刷新屏幕',
         icon: 'none'
       })
     } catch (error) {
       wx.hideLoading()
-      wx.showToast({
+      toast.show({
         title: (error && error.message) || '刷新失败',
         icon: 'none'
       })
@@ -357,7 +404,7 @@ Page({
       if (error.errMsg && error.errMsg.indexOf('cancel') > -1) {
         return
       }
-      wx.showToast({
+      toast.show({
         title: '选择照片失败',
         icon: 'none'
       })
@@ -371,7 +418,7 @@ Page({
     const device = app.globalData.selectedDevice
 
     if (!device) {
-      wx.showToast({
+      toast.show({
         title: '请先选择设备',
         icon: 'none'
       })

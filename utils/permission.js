@@ -1,3 +1,5 @@
+const toast = require('./toast')
+
 // 用户曾拒绝授权后，引导其跳转到小程序设置页手动开启；返回最新的授权结果
 function showOpenSettingModal(content) {
   return new Promise(resolve => {
@@ -86,7 +88,7 @@ module.exports = {
     try {
       return await getLocation()
     } catch (error) {
-      wx.showToast({
+      toast.show({
         title: '定位获取失败',
         icon: 'none'
       })

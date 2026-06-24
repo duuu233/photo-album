@@ -60,4 +60,6 @@
 
   <!-- 离屏导出用画布（定位到屏幕外不可见）：裁剪时把选区绘制到这里再导出临时文件 -->
   <canvas type="2d" id="cropCanvas" class="crop-canvas"></canvas>
+
+  <global-toast id="globalToast"></global-toast>
 </view>

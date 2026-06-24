@@ -1,5 +1,6 @@
 const api = require('../../../utils/api')
 const system = require('../../../utils/system')
+const toast = require('../../../utils/toast')
 
 const app = getApp()
 
@@ -59,7 +60,7 @@ Page({
   async saveProfile() {
     const userInfo = await api.updateUserProfile(this.data.userInfo)
     this.syncUser(Object.assign({}, this.data.userInfo, userInfo))
-    wx.showToast({
+    toast.show({
       title: '已保存',
       icon: 'none'
     })

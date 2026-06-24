@@ -1,4 +1,5 @@
 const api = require('../../utils/api')
+const toast = require('../../utils/toast')
 const media = require('../../utils/media')
 const batteryUtil = require('../../utils/battery')
 const deviceBle = require('../../utils/device-ble')
@@ -590,7 +591,7 @@ Page({
       if (error && error.errMsg && error.errMsg.indexOf('cancel') > -1) {
         return
       }
-      wx.showToast({
+      toast.show({
         title: '拍照失败',
         icon: 'none'
       })
@@ -606,7 +607,7 @@ Page({
       if (error && error.errMsg && error.errMsg.indexOf('cancel') > -1) {
         return
       }
-      wx.showToast({
+      toast.show({
         title: '选择照片失败',
         icon: 'none'
       })
@@ -656,7 +657,7 @@ Page({
       this.setData({
         avatarUrl: userInfo.avatarUrl || avatarUrl
       })
-      wx.showToast({
+      toast.show({
         title: '头像已更新',
         icon: 'none'
       })
@@ -672,7 +673,7 @@ Page({
       this.setData({
         avatarUrl: fallback
       })
-      wx.showToast({
+      toast.show({
         title: '头像更新失败',
         icon: 'none'
       })

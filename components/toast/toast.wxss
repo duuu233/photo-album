@@ -1,0 +1,137 @@
+/* 居中容器：铺满屏幕但默认不拦截点击（pointer-events:none），只有 mask 层才拦截 */
+.gtoast {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* mask=true 时的透明遮罩：拦截点击与滑动，等价原生 toast 的 mask */
+.gtoast__mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: auto;
+  background: transparent;
+}
+
+/* 提示盒子：深色半透明圆角，仿原生但更宽。关键是 max-width + 自动换行，解决「短内容就折行」 */
+.gtoast__box {
+  position: relative;
+  max-width: 560rpx;
+  min-width: 160rpx;
+  box-sizing: border-box;
+  padding: 22rpx 32rpx;
+  background: rgba(17, 17, 17, 0.82);
+  border-radius: 16rpx;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+/* 带图标时更接近原生方块：上图标下文字，留白更大 */
+.gtoast__box.has-icon {
+  min-width: 240rpx;
+  padding: 32rpx;
+}
+
+.gtoast__text {
+  font-size: 28rpx;
+  line-height: 42rpx;
+  text-align: center;
+  /* 长文案自动换行、按词/字断行，不再被窄盒子挤成每行两三个字 */
+  white-space: normal;
+  word-break: break-word;
+}
+
+.gtoast__box.has-icon .gtoast__text {
+  margin-top: 18rpx;
+}
+
+/* ── 图标（纯 CSS 绘制，避免依赖图片资源）────────────────── */
+.gtoast__icon {
+  width: 72rpx;
+  height: 72rpx;
+}
+
+/* 成功：对勾 */
+.gtoast__icon--ok::after {
+  content: '';
+  display: block;
+  width: 22rpx;
+  height: 44rpx;
+  margin: 4rpx auto 0;
+  border: solid #fff;
+  border-width: 0 6rpx 6rpx 0;
+  transform: rotate(45deg);
+}
+
+/* 失败：叉号 */
+.gtoast__icon--err::before,
+.gtoast__icon--err::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 44rpx;
+  width: 60rpx;
+  height: 6rpx;
+  border-radius: 3rpx;
+  background: #fff;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.gtoast__icon--err::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+/* 加载：旋转圈 */
+.gtoast__icon--loading {
+  box-sizing: border-box;
+  border: 6rpx solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: gtoast-spin 0.7s linear infinite;
+}
+
+/* ── 进出场动画：仿原生淡入 + 轻微缩放 ──────────────────── */
+.gtoast__box.is-enter {
+  animation: gtoast-in 0.18s ease-out both;
+}
+.gtoast__box.is-leaving {
+  animation: gtoast-out 0.18s ease-in both;
+}
+
+@keyframes gtoast-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes gtoast-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes gtoast-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

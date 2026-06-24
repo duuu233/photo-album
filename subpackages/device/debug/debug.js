@@ -9,6 +9,7 @@
 //   1) 连接设备   2) 读设备信息(0x01，拿到屏幕类型/容量/图片掩码/电量)   3) 逐个点其它按钮试。
 
 const permission = require('../../../utils/permission')
+const toast = require('../../../utils/toast')
 const bluetooth = require('../../../utils/bluetooth')
 const deviceBle = require('../../../utils/device-ble')
 const protocol = require('../../../utils/frame-protocol')
@@ -382,7 +383,7 @@ Page({
   // ── 连接 / 扫描 ─────────────────────────────────────────
   requireDevice() {
     if (!this.data.deviceId || !this.data.connected) {
-      wx.showToast({ title: '请先连接设备', icon: 'none' })
+      toast.show({ title: '请先连接设备', icon: 'none' })
       return false
     }
     return true
@@ -397,15 +398,23 @@ Page({
     try {
       const location = await permission.getCurrentLocation()
       if (!location) {
-        wx.showToast({ title: '请先授权定位', icon: 'none' })
+        toast.show({ title: '请先授权定位', icon: 'none' })
         return
       }
       await bluetooth.openAdapter()
       const devices = await bluetooth.discoverDevices({ timeout: 8000 })
       this.setData({ devices })
       this.appendLog({ type: 'act', text: `扫描完成，发现 ${devices.length} 个设备` })
+      if (!devices.length) {
+        bluetooth.showEmptyResultGuide() // 鸿蒙兼容兜底：搜不到时给鸿蒙用户排查引导
+      }
     } catch (error) {
-      wx.showToast({ title: error.message || '扫描失败', icon: 'none' })
+      // 系统级「附近设备」权限被拒：弹引导去系统设置
+      if (error.code === 'PERMISSION_DENIED') {
+        bluetooth.showPermissionGuide()
+      } else {
+        toast.show({ title: error.message || '扫描失败', icon: 'none' })
+      }
     } finally {
       this.setData({ scanning: false })
     }
@@ -444,7 +453,7 @@ Page({
     } catch (error) {
       this.setData({ connected: false })
       this.appendLog({ type: 'err', text: `连接失败：${error.message}` })
-      wx.showToast({ title: error.message || '连接失败', icon: 'none' })
+      toast.show({ title: error.message || '连接失败', icon: 'none' })
     } finally {
       this.setData({ connecting: false })
     }
@@ -491,7 +500,7 @@ Page({
       return
     }
     if (this.data.busy) {
-      wx.showToast({ title: '请等待上一条指令完成', icon: 'none' })
+      toast.show({ title: '请等待上一条指令完成', icon: 'none' })
       return
     }
     this.setData({ busy: true })
@@ -503,11 +512,11 @@ Page({
       if (options && options.refresh) {
         await this.refreshInfoSilently()
       }
-      wx.showToast({ title: '指令成功', icon: 'none' })
+      toast.show({ title: '指令成功', icon: 'none' })
       return result
     } catch (error) {
       this.appendLog({ type: 'err', text: `${label} 失败：${error.message}` })
-      wx.showToast({ title: error.message || '指令失败', icon: 'none' })
+      toast.show({ title: error.message || '指令失败', icon: 'none' })
     } finally {
       this.setData({ busy: false })
     }
@@ -577,7 +586,7 @@ Page({
   cmdSetPlay() {
     const interval = Number(this.data.intervalInput)
     if (!Number.isFinite(interval) || interval < 1) {
-      wx.showToast({ title: '请输入有效的间隔秒数', icon: 'none' })
+      toast.show({ title: '请输入有效的间隔秒数', icon: 'none' })
       return
     }
     this.runCommand('设置播放配置(0x10)', () => deviceBle.setPlayback(this.data.deviceId, this.data.playMode, interval), {
@@ -589,12 +598,12 @@ Page({
   async cmdSetConnInterval() {
     const ms = Number(this.data.connIntervalInput)
     if (!Number.isFinite(ms) || ms <= 0) {
-      wx.showToast({ title: '请输入有效的连接间隔毫秒数', icon: 'none' })
+      toast.show({ title: '请输入有效的连接间隔毫秒数', icon: 'none' })
       return
     }
     const units = protocol.connectionIntervalMsToUnits(ms)
     if (units < protocol.CONN_INTERVAL_MIN_UNITS || units > protocol.CONN_INTERVAL_MAX_UNITS) {
-      wx.showToast({ title: '范围需在 7.5~4000ms', icon: 'none' })
+      toast.show({ title: '范围需在 7.5~4000ms', icon: 'none' })
       return
     }
     const connInterval = await this.runCommand('设置连接间隔(0x13)', () => deviceBle.setConnectionInterval(this.data.deviceId, units), {
@@ -614,12 +623,12 @@ Page({
   cmdSyncConnIntervalToProjection() {
     const ms = Number(this.data.connIntervalInput)
     if (!Number.isFinite(ms) || ms <= 0) {
-      wx.showToast({ title: '请输入有效的连接间隔毫秒数', icon: 'none' })
+      toast.show({ title: '请输入有效的连接间隔毫秒数', icon: 'none' })
       return
     }
     const units = protocol.connectionIntervalMsToUnits(ms)
     if (units < protocol.CONN_INTERVAL_MIN_UNITS || units > protocol.CONN_INTERVAL_MAX_UNITS) {
-      wx.showToast({ title: '范围需在 7.5~4000ms', icon: 'none' })
+      toast.show({ title: '范围需在 7.5~4000ms', icon: 'none' })
       return
     }
     try {
@@ -630,9 +639,9 @@ Page({
         connIntervalInput: String(applied.ms)
       })
       this.appendLog({ type: 'ok', text: `已同步到真实投屏：图传前连接间隔将设为 ${applied.ms}ms（CONN_INTERVAL=${applied.units}）` })
-      wx.showToast({ title: '已同步到投屏', icon: 'success' })
+      toast.show({ title: '已同步到投屏', icon: 'success' })
     } catch (error) {
-      wx.showToast({ title: error.message || '同步失败', icon: 'none' })
+      toast.show({ title: error.message || '同步失败', icon: 'none' })
     }
   },
 
@@ -650,7 +659,7 @@ Page({
   cmdSwitch() {
     const index = Number(this.data.switchInput)
     if (!Number.isInteger(index) || index < 0) {
-      wx.showToast({ title: '请输入要显示的图片索引', icon: 'none' })
+      toast.show({ title: '请输入要显示的图片索引', icon: 'none' })
       return
     }
     this.runCommand('切换显示(0x24)', () => deviceBle.refreshScreen(this.data.deviceId, index), {
@@ -669,7 +678,7 @@ Page({
       .filter(s => s !== '')
       .map(Number)
     if (!indexes.length || indexes.some(n => !Number.isInteger(n) || n < 0 || n > 95)) {
-      wx.showToast({ title: '请输入要删除的索引(0~95，逗号分隔)', icon: 'none' })
+      toast.show({ title: '请输入要删除的索引(0~95，逗号分隔)', icon: 'none' })
       return
     }
     this.runCommand(`删除图片(0x12) 索引[${indexes.join(',')}]`, () => deviceBle.deleteImage(this.data.deviceId, indexes), {
@@ -770,19 +779,19 @@ Page({
 
   saveDeviceCalibrationProfile() {
     if (!this.data.deviceId) {
-      wx.showToast({ title: '请先连接设备', icon: 'none' })
+      toast.show({ title: '请先连接设备', icon: 'none' })
       return
     }
     if (!wx.setStorageSync) {
-      wx.showToast({ title: '当前环境不支持本地保存', icon: 'none' })
+      toast.show({ title: '当前环境不支持本地保存', icon: 'none' })
       return
     }
     try {
       wx.setStorageSync(this.getCalibrationProfileStorageKey(), this.data.calibrationProfileId)
       this.appendLog({ type: 'ok', text: `已保存本设备校准档：${this.data.calibrationProfileName}` })
-      wx.showToast({ title: '已保存本设备校准档', icon: 'none' })
+      toast.show({ title: '已保存本设备校准档', icon: 'none' })
     } catch (error) {
-      wx.showToast({ title: '保存失败：' + error.message, icon: 'none' })
+      toast.show({ title: '保存失败：' + error.message, icon: 'none' })
     }
   },
 
@@ -859,7 +868,7 @@ Page({
       frame = fromImageDataWithDebugCalibration(imageData, info.width, info.height, quantize)
     } catch (error) {
       wx.hideLoading()
-      wx.showToast({ title: '图片转换失败：' + error.message, icon: 'none' })
+      toast.show({ title: '图片转换失败：' + error.message, icon: 'none' })
       return
     }
     wx.hideLoading()
@@ -872,15 +881,15 @@ Page({
       return false
     }
     if (this.data.busy || this.data.uploading) {
-      wx.showToast({ title: '请等待当前操作完成', icon: 'none' })
+      toast.show({ title: '请等待当前操作完成', icon: 'none' })
       return false
     }
     if (!this.data.info || !this.data.info.width) {
-      wx.showToast({ title: '请先点「获取设备信息」', icon: 'none' })
+      toast.show({ title: '请先点「获取设备信息」', icon: 'none' })
       return false
     }
     if (this.data.info.screenType === 0x03) {
-      wx.showToast({ title: '7.3寸为占位型号，固件未实现图传', icon: 'none' })
+      toast.show({ title: '7.3寸为占位型号，固件未实现图传', icon: 'none' })
       return false
     }
     return true
@@ -1151,13 +1160,13 @@ Page({
     if (this.data.uploadIndexInput !== '') {
       index = Number(this.data.uploadIndexInput)
       if (!Number.isInteger(index) || index < 0 || index >= info.capacity) {
-        wx.showToast({ title: `槽位需在 0~${info.capacity - 1}`, icon: 'none' })
+        toast.show({ title: `槽位需在 0~${info.capacity - 1}`, icon: 'none' })
         return
       }
     } else {
       index = protocol.firstFreeIndex(info.imgMask, info.capacity)
       if (index < 0) {
-        wx.showToast({ title: '设备已存满，请先删除图片', icon: 'none' })
+        toast.show({ title: '设备已存满，请先删除图片', icon: 'none' })
         return
       }
     }
@@ -1213,7 +1222,7 @@ Page({
       // 传完顺手刷新屏幕显示这张，便于直接在屏上确认
       await deviceBle.refreshScreen(this.data.deviceId, index)
       await this.refreshInfoSilently()
-      wx.showToast({ title: '上传成功', icon: 'none' })
+      toast.show({ title: '上传成功', icon: 'none' })
     } catch (error) {
       // 失败原因常驻显示在页面上（可长按复制），不用去翻一闪而过的弹窗
       // 只要期间发生过息屏/切后台(_uploadAborted)，无论报的是中止还是写失败，都按"息屏中断"提示

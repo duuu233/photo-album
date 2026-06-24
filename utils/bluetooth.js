@@ -20,6 +20,53 @@ function canUseBluetooth() {
   return Boolean(wx.openBluetoothAdapter && wx.startBluetoothDevicesDiscovery && wx.onBluetoothDeviceFound)
 }
 
+// 是否运行在鸿蒙系统(含纯血鸿蒙 HarmonyOS NEXT，如 Mate 系列)。
+// 鸿蒙把蓝牙扫描的「附近设备」权限独立管控，且存在「权限全开仍打不开/搜不到」的兼容问题，
+// 需要给用户单独的引导文案(关开权限 + 彻底重启微信)。
+function isHarmonyOS() {
+  try {
+    // getDeviceInfo 为新接口，旧基础库降级到 getSystemInfoSync
+    const info = (wx.getDeviceInfo ? wx.getDeviceInfo() : wx.getSystemInfoSync()) || {}
+    const flag = `${info.system || ''} ${info.platform || ''}`.toLowerCase()
+    return flag.indexOf('harmony') > -1 || flag.indexOf('ohos') > -1
+  } catch (e) {
+    return false
+  }
+}
+
+// 微信本体的系统级蓝牙权限入口路径(用于引导文案)。鸿蒙与安卓的设置层级不同。
+function systemSettingsPath() {
+  return isHarmonyOS()
+    ? '设置 → 应用和元服务 → 应用管理 → 微信 → 权限'
+    : '设置 → 应用 → 微信 → 权限'
+}
+
+// openBluetoothAdapter 失败原因归一化：区分「蓝牙没开」「系统权限没给」「其它」，
+// 给「系统权限没给」打上 PERMISSION_DENIED 标记，让页面层弹出系统设置引导。
+// 注意：permission not grant / system permission denied(errno:3) 指的是「微信本体」缺少
+// 系统级「附近设备」权限(安卓12+/鸿蒙把蓝牙扫描权限独立出来)，小程序没有蓝牙 scope，
+// 无法弹窗申请，只能引导用户去系统设置手动开。
+function describeAdapterError(error) {
+  const errMsg = ((error && error.errMsg) || '').toLowerCase()
+  const errCode = error && error.errCode
+
+  // 10001：系统蓝牙不可用，绝大多数是没开手机蓝牙开关
+  if (errCode === 10001 || errMsg.indexOf('not available') > -1) {
+    return { code: 'UNAVAILABLE', message: '请先打开手机蓝牙开关' }
+  }
+
+  // 系统级权限被拒：permission not grant / system permission denied / errno:3
+  if (
+    errMsg.indexOf('permission not grant') > -1 ||
+    errMsg.indexOf('permission denied') > -1 ||
+    (error && error.errno === 3)
+  ) {
+    return { code: 'PERMISSION_DENIED', message: '微信缺少「附近设备」权限，请在系统设置中开启' }
+  }
+
+  return { code: 'UNKNOWN', message: (error && error.errMsg) || '蓝牙初始化失败' }
+}
+
 function openAdapter() {
   return new Promise((resolve, reject) => {
     if (!wx.openBluetoothAdapter) {
@@ -30,11 +77,42 @@ function openAdapter() {
     wx.openBluetoothAdapter({
       success: resolve,
       fail(error) {
-        const message = error.errCode === 10001 ? '请先开启手机蓝牙' : (error.errMsg || '蓝牙初始化失败')
-        reject(new Error(message))
+        const detail = describeAdapterError(error)
+        const err = new Error(detail.message)
+        err.code = detail.code // 供页面层判断是否要弹「去系统设置」引导
+        reject(err)
       }
     })
   })
+}
+
+// 系统级蓝牙权限引导：小程序无法直接申请微信本体的「附近设备」权限(openSetting 也管不到)，
+// 只能弹窗告诉用户去系统设置手动开启；鸿蒙额外提示「关开重启」兜底。
+function showPermissionGuide() {
+  const harmonyTip = isHarmonyOS()
+    ? '\n\n若开关已是开启状态仍报错：请把「附近设备」关闭再打开，并彻底退出微信后重进。'
+    : ''
+  wx.showModal({
+    title: '需要「附近设备」权限',
+    content: `请前往：\n${systemSettingsPath()}\n开启「附近设备」与「位置信息」后重试。${harmonyTip}`,
+    confirmText: '我知道了',
+    showCancel: false
+  })
+}
+
+// 鸿蒙兼容兜底：适配器已打开但一台设备都没搜到时，鸿蒙存在「权限全开仍搜不到」的已知问题，
+// 给鸿蒙用户单独的排查引导(关开附近设备 + 重启微信)。非鸿蒙环境返回 false，保留页面原有空态 UI。
+function showEmptyResultGuide() {
+  if (!isHarmonyOS()) {
+    return false
+  }
+  wx.showModal({
+    title: '没有搜索到设备',
+    content: `请确认相框已开机并贴近手机。鸿蒙系统如反复搜不到，可在：\n${systemSettingsPath()}\n把「附近设备」关闭再打开，并彻底退出微信后重试。`,
+    confirmText: '我知道了',
+    showCancel: false
+  })
+  return true
 }
 
 // 停止搜索并清理监听，避免后台持续扫描耗电与回调泄漏
@@ -160,8 +238,11 @@ function connectDevice(deviceId) {
 
 module.exports = {
   canUseBluetooth,
+  isHarmonyOS,
   openAdapter,
   discoverDevices,
   connectDevice,
-  stopDiscovery
+  stopDiscovery,
+  showPermissionGuide,
+  showEmptyResultGuide
 }

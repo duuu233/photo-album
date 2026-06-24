@@ -6,6 +6,7 @@ const api = require('../../../utils/api')
 const deviceBle = require('../../../utils/device-ble')
 const imageCodec = require('../../../utils/image-codec')
 const protocol = require('../../../utils/frame-protocol')
+const toast = require('../../../utils/toast')
 
 // 真实投屏默认使用当前实机验证效果最好的参数：
 // 1) 跳过 wx.compressImage，直接用原图进 canvas；
@@ -173,22 +174,30 @@ Page({
           throw new Error('设备已存满')
         }
 
-        await deviceBle.uploadImage(deviceId, {
-          screenType: info.screenType,
-          index,
-          width: info.width,
-          height: info.height,
-          data: frame.data,
-          shouldAbort: () => this._aborted,
-          // 单张内的分包进度叠加已完成张数 → 整体百分比，进度条平滑推进
-          onProgress: (done, totalPackets) => {
-            const frac = totalPackets ? done / totalPackets : 0
-            const percent = Math.min(100, Math.floor(((i + frac) / total) * 100))
-            this.setData({ progressPercent: percent })
-          }
-        })
+        // 本张事务：设备图传(BLE) + 后端上传(api) 二者都成功才保留；任一步失败 →
+        // 回滚删掉本张刚传到设备的图，再向外抛出让整体判失败（满足「二边都成功才算成功」）。
+        try {
+          await deviceBle.uploadImage(deviceId, {
+            screenType: info.screenType,
+            index,
+            width: info.width,
+            height: info.height,
+            data: frame.data,
+            shouldAbort: () => this._aborted,
+            // 单张内的分包进度叠加已完成张数 → 整体百分比，进度条平滑推进
+            onProgress: (done, totalPackets) => {
+              const frac = totalPackets ? done / totalPackets : 0
+              const percent = Math.min(100, Math.floor(((i + frac) / total) * 100))
+              this.setData({ progressPercent: percent })
+            }
+          })
 
-        await this.syncUploadedImage(device, image)
+          // 后端上传失败现在会抛出（不再吞掉），从而触发本张回滚
+          await this.syncUploadedImage(device, image)
+        } catch (error) {
+          await this.rollbackDeviceImage(deviceId, index)
+          throw error
+        }
 
         // 传完顺手刷新到这张（失败不影响整体）；并把该槽位记为已用，供下一张选槽位
         try {
@@ -218,22 +227,35 @@ Page({
     }
   },
 
+  // 后端上传本张照片记录。失败会抛出，让本张投屏判为失败并触发设备侧回滚
+  //（与「设备 + 后端二边都成功才算成功」一致；旧逻辑曾吞掉错误，已去除）。
   async syncUploadedImage(device, image) {
     const filePath = image && (image.tempFilePath || image.url)
     const userProductId = device && (device.userProductId || device.id)
 
+    // 远程 url（已是服务端图片）或缺 userProductId：本次无需/无法再传后端，按跳过处理，不阻断本张。
     if (!filePath || /^https?:\/\//i.test(filePath) || !userProductId) {
       return
     }
 
+    await api.setUserProductUpload({
+      filePath,
+      userProductId,
+      deviceUploadState: 1
+    })
+  },
+
+  // 单张投屏失败时的设备侧回滚：删掉本次刚传到设备的这张图（CMD 0x12），让设备与后端回到一致状态。
+  // index 取自 firstFreeIndex，必为本张新占的空闲槽位，删它只影响这次上传、不会误删旧图。
+  // 回滚删除本身失败（息屏/断连下本就发不出指令，设备多半也未真正落盘）不再抛出，避免掩盖真正的失败原因。
+  async rollbackDeviceImage(deviceId, index) {
+    if (!deviceId || !Number.isInteger(index) || index < 0) {
+      return
+    }
     try {
-      await api.setUserProductUpload({
-        filePath,
-        userProductId,
-        deviceUploadState: 1
-      })
+      await deviceBle.deleteImage(deviceId, [index])
     } catch (error) {
-      // 后端记录同步失败不改变已经完成的硬件图传结果。
+      // 回滚删除失败不覆盖原始失败原因
     }
   },
 
@@ -250,7 +272,7 @@ Page({
     wx.setStorageSync('lastProjectionResult', result)
     this.applyStatus('fail', result)
     if (message) {
-      wx.showToast({ title: message, icon: 'none' })
+      toast.show({ title: message, icon: 'none' })
     }
   },
 

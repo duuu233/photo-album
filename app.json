@@ -1,9 +1,5 @@
 {
-  "pages": [
-    "pages/login/login",
-    "pages/home/home",
-    "pages/mine/mine"
-  ],
+  "pages": ["pages/home/home", "pages/login/login", "pages/mine/mine"],
   "subpackages": [
     {
       "root": "subpackages/device",
@@ -18,17 +14,11 @@
     },
     {
       "root": "subpackages/album",
-      "pages": [
-        "list/list"
-      ]
+      "pages": ["list/list"]
     },
     {
       "root": "subpackages/projection",
-      "pages": [
-        "preview/preview",
-        "records/records",
-        "result/result"
-      ]
+      "pages": ["preview/preview", "records/records", "result/result"]
     },
     {
       "root": "subpackages/settings",
@@ -73,9 +63,10 @@
       "desc": "用于搜索并绑定附近的 BoltStar 智能相框"
     }
   },
-  "requiredPrivateInfos": [
-    "getLocation"
-  ],
+  "requiredPrivateInfos": ["getLocation"],
+  "usingComponents": {
+    "global-toast": "/components/toast/toast"
+  },
   "style": "v2",
   "componentFramework": "glass-easel",
   "sitemapLocation": "sitemap.json",

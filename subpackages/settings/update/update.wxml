@@ -21,4 +21,6 @@
 
   <button wx:if="{{state === 'available'}}" class="primary-btn update-btn" hover-class="none" bindtap="startUpdate">立即更新</button>
   <button class="delete-account" hover-class="none">用户注销</button>
+
+  <global-toast id="globalToast"></global-toast>
 </view>

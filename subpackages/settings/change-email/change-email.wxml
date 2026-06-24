@@ -40,4 +40,6 @@
 
     <view class="settings-primary email-submit {{canSubmit ? '' : 'is-disabled'}}" disabled="{{!canSubmit}}" hover-class="none" bindtap="submit">确认修改</view>
   </view>
+
+  <global-toast id="globalToast"></global-toast>
 </view>

@@ -21,4 +21,6 @@
       <view class="article-p">用于提供、维护和优化本应用的核心服务，包括账号安全、设备连接、照片投屏和客户支持。</view>
     </view>
   </scroll-view>
+
+  <global-toast id="globalToast"></global-toast>
 </view>

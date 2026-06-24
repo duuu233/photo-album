@@ -1,4 +1,5 @@
 const api = require('../../../utils/api')
+const toast = require('../../../utils/toast')
 const system = require('../../../utils/system')
 const batteryUtil = require('../../../utils/battery')
 const deviceBle = require('../../../utils/device-ble')
@@ -100,7 +101,7 @@ Page({
 
     if (this.data.selectMode) {
       app.setSelectedDevice(device)
-      wx.showToast({
+      toast.show({
         title: '已切换设备',
         icon: 'none'
       })
@@ -143,7 +144,7 @@ Page({
           connected: false
         }) : item)
       })
-      wx.showToast({ title: '已断开', icon: 'none' })
+      toast.show({ title: '已断开', icon: 'none' })
       return
     }
 
@@ -192,12 +193,17 @@ Page({
           batteryText: typeof updated.battery === 'number' ? `${updated.battery}%` : ''
         }) : item)
       })
-      wx.showToast({ title: '已连接', icon: 'none' })
+      toast.show({ title: '已连接', icon: 'none' })
     } catch (error) {
-      wx.showToast({
-        title: error.message || '连接失败',
-        icon: 'none'
-      })
+      // 系统级「附近设备」权限被拒：弹引导去系统设置，而非笼统的「连接失败」
+      if (error.code === 'PERMISSION_DENIED') {
+        bluetooth.showPermissionGuide()
+      } else {
+        toast.show({
+          title: error.message || '连接失败',
+          icon: 'none'
+        })
+      }
     } finally {
       wx.hideLoading()
     }

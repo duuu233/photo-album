@@ -22,11 +22,18 @@
     "miniprogram": {
       "list": [
         {
-          "name": "绑定邮箱",
-          "pathName": "subpackages/settings/bind-email/bind-email",
+          "name": "我的图库",
+          "pathName": "subpackages/album/list/list",
           "query": "",
           "scene": null,
           "launchMode": "default"
+        },
+        {
+          "name": "绑定邮箱",
+          "pathName": "subpackages/settings/bind-email/bind-email",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
         },
         {
           "name": "投屏管理",

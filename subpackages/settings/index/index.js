@@ -1,4 +1,5 @@
 const api = require('../../../utils/api')
+const toast = require('../../../utils/toast')
 
 const app = getApp()
 
@@ -47,7 +48,7 @@ Page({
     wx.setClipboardData({
       data: this.data.contact,
       success() {
-        wx.showToast({
+        toast.show({
           title: '已复制联系方式',
           icon: 'none'
         })

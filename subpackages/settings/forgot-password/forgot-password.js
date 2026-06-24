@@ -1,4 +1,5 @@
 const api = require('../../../utils/api')
+const toast = require('../../../utils/toast')
 
 function isEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
@@ -53,7 +54,7 @@ Page({
     }
 
     if (!isEmail(this.data.email)) {
-      wx.showToast({
+      toast.show({
         title: '请输入正确邮箱',
         icon: 'none'
       })
@@ -66,7 +67,7 @@ Page({
         sendType: 2
       })
       this.startCodeCountdown()
-      wx.showToast({
+      toast.show({
         title: '验证码已发送',
         icon: 'none'
       })
@@ -108,7 +109,7 @@ Page({
   },
 
   submit() {
-    wx.showToast({
+    toast.show({
       title: '静态页面占位',
       icon: 'none'
     })

@@ -39,4 +39,6 @@
     <view wx:else class="result-primary" hover-class="none" bindtap="retry">重新投屏</view>
     <view class="result-secondary" hover-class="none" bindtap="backHome">返回首页</view>
   </view>
+
+  <global-toast id="globalToast"></global-toast>
 </view>

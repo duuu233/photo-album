@@ -1,4 +1,5 @@
 const api = require('../../../utils/api')
+const toast = require('../../../utils/toast')
 const permission = require('../../../utils/permission')
 const bluetooth = require('../../../utils/bluetooth')
 const deviceBle = require('../../../utils/device-ble')
@@ -64,7 +65,7 @@ Page({
       // 微信要求搜索蓝牙前需有定位权限
       const location = await permission.getCurrentLocation()
       if (!location) {
-        wx.showToast({
+        toast.show({
           title: '请先授权定位',
           icon: 'none'
         })
@@ -91,14 +92,24 @@ Page({
         devices,
         selectedId: devices.length ? devices[0].id || devices[0].deviceId : ''
       })
+
+      // 鸿蒙兼容兜底：一台没搜到时给鸿蒙用户单独排查引导(非鸿蒙保留原空态 UI)
+      if (!devices.length) {
+        bluetooth.showEmptyResultGuide()
+      }
     } catch (error) {
       if (seq !== this.scanSeq) {
         return // 已取消，不再提示错误
       }
-      wx.showToast({
-        title: error.message || '设备搜索失败',
-        icon: 'none'
-      })
+      // 系统级「附近设备」权限被拒：弹引导去系统设置，而非一句模糊的 toast
+      if (error.code === 'PERMISSION_DENIED') {
+        bluetooth.showPermissionGuide()
+      } else {
+        toast.show({
+          title: error.message || '设备搜索失败',
+          icon: 'none'
+        })
+      }
     } finally {
       if (seq === this.scanSeq) {
         this.setData({
@@ -163,7 +174,7 @@ Page({
       return // 绑定进行中，忽略重复点击，避免重复绑定
     }
     if (!this.data.selectedId) {
-      wx.showToast({
+      toast.show({
         title: '请选择要绑定的设备',
         icon: 'none'
       })
@@ -202,7 +213,7 @@ Page({
         }
       } catch (error) {
         console.warn('连接设备/读取设备信息失败', error)
-        wx.showToast({
+        toast.show({
           title: error.message || '设备连接失败',
           icon: 'none'
         })
@@ -214,7 +225,7 @@ Page({
       }
 
       // 连接并读取设备信息成功：先提示「连接成功」，短暂停留让用户看到后，再调用绑定接口
-      wx.showToast({ title: '连接成功', icon: 'none', duration: 800 })
+      toast.show({ title: '连接成功', icon: 'none', duration: 800 })
       await new Promise(resolve => setTimeout(resolve, 800))
     }
 
@@ -230,7 +241,7 @@ Page({
       device = await api.bindDevice(payload)
     } catch (error) {
       // bindDevice 在 productId 解析不到时会抛错（后端必传），这里把原因提示给用户
-      wx.showToast({
+      toast.show({
         title: error.message || '绑定失败',
         icon: 'none'
       })
@@ -239,7 +250,7 @@ Page({
     }
     app.setSelectedDevice(device)
 
-    wx.showToast({
+    toast.show({
       title: '绑定成功',
       icon: 'none'
     })

@@ -42,4 +42,6 @@
       <view wx:if="{{loadError && !loading}}" class="status-retry" hover-class="none" bindtap="loadDevice">重新加载</view>
     </view>
   </view>
+
+  <global-toast id="globalToast"></global-toast>
 </view>

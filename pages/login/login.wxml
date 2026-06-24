@@ -30,4 +30,6 @@
       <text class="login-agreement__link" bindtap="openPrivacyPolicy">《隐私政策》</text>
     </view>
   </view>
+
+  <global-toast id="globalToast"></global-toast>
 </view>

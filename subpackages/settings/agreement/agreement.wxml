@@ -19,4 +19,6 @@
       <view class="article-p">2. 您应妥善保管账号、密码及验证码信息，因您自身原因导致的账号被盗、信息泄露或财产损失，由您自行承担责任。</view>
     </view>
   </scroll-view>
+
+  <global-toast id="globalToast"></global-toast>
 </view>

@@ -53,4 +53,6 @@
   </view>
 
   <custom-tabbar active="mine" safe-bottom="{{safeBottom}}"></custom-tabbar>
+
+  <global-toast id="globalToast"></global-toast>
 </view>

@@ -1,4 +1,5 @@
 const system = require('../../../utils/system')
+const toast = require('../../../utils/toast')
 
 Page({
   data: {
@@ -90,7 +91,7 @@ Page({
     const image = this.data.images[this.data.activeIndex]
     const src = image && (image.tempFilePath || image.url)
     if (!src) {
-      wx.showToast({ title: '暂无可裁剪的图片', icon: 'none' })
+      toast.show({ title: '暂无可裁剪的图片', icon: 'none' })
       return
     }
     // 裁剪基于未旋转的原图，进入裁剪先把预览旋转归零，避免“看到的”和“裁到的”不一致
@@ -101,7 +102,7 @@ Page({
     query.exec((res) => {
       const rect = res && res[0]
       if (!rect || !rect.width) {
-        wx.showToast({ title: '初始化裁剪失败', icon: 'none' })
+        toast.show({ title: '初始化裁剪失败', icon: 'none' })
         return
       }
       wx.getImageInfo({
@@ -126,7 +127,7 @@ Page({
             cropBox: { left, top, width: dispW, height: dispH }
           })
         },
-        fail: () => wx.showToast({ title: '读取图片失败', icon: 'none' })
+        fail: () => toast.show({ title: '读取图片失败', icon: 'none' })
       })
     })
   },
@@ -249,7 +250,7 @@ Page({
       activeTool: '',
       editing: false
     })
-    wx.showToast({
+    toast.show({
       title: '已保存',
       icon: 'none'
     })
@@ -294,7 +295,7 @@ Page({
       const node = res && res[0] && res[0].node
       if (!node) {
         wx.hideLoading()
-        wx.showToast({ title: '裁剪失败：画布不可用', icon: 'none' })
+        toast.show({ title: '裁剪失败：画布不可用', icon: 'none' })
         return
       }
       node.width = outW
@@ -324,17 +325,17 @@ Page({
             })
             this.persistPending(next)
             wx.hideLoading()
-            wx.showToast({ title: '已保存', icon: 'none' })
+            toast.show({ title: '已保存', icon: 'none' })
           },
           fail: () => {
             wx.hideLoading()
-            wx.showToast({ title: '裁剪导出失败', icon: 'none' })
+            toast.show({ title: '裁剪导出失败', icon: 'none' })
           }
         })
       }
       img.onerror = () => {
         wx.hideLoading()
-        wx.showToast({ title: '图片加载失败', icon: 'none' })
+        toast.show({ title: '图片加载失败', icon: 'none' })
       }
       img.src = src
     })
@@ -357,18 +358,18 @@ Page({
     }
 
     if (!this.data.device) {
-      wx.showToast({ title: '请选择设备', icon: 'none' })
+      toast.show({ title: '请选择设备', icon: 'none' })
       return
     }
 
     if (!this.data.images.length) {
-      wx.showToast({ title: '请至少保留一张照片', icon: 'none' })
+      toast.show({ title: '请至少保留一张照片', icon: 'none' })
       return
     }
 
     // 必须有真实蓝牙 deviceId 才能连接图传（绑定时由蓝牙读取写入）
     if (!this.data.device.deviceId) {
-      wx.showToast({ title: '设备未连接，请重新绑定后再投屏', icon: 'none' })
+      toast.show({ title: '设备未连接，请重新绑定后再投屏', icon: 'none' })
       return
     }
 

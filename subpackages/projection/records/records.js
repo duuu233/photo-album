@@ -1,5 +1,6 @@
 const api = require('../../../utils/api')
 const system = require('../../../utils/system')
+const toast = require('../../../utils/toast')
 
 Page({
   data: {
@@ -73,7 +74,7 @@ Page({
   },
 
   retryProjection() {
-    wx.showToast({
+    toast.show({
       title: '请重新选择照片投屏',
       icon: 'none'
     })

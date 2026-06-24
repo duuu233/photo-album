@@ -1,3 +1,5 @@
+const toast = require('../../../utils/toast')
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -38,7 +40,7 @@ Page({
   },
 
   saveLanguage() {
-    wx.showToast({
+    toast.show({
       title: '已保存',
       icon: 'none'
     })

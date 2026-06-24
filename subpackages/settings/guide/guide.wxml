@@ -25,4 +25,6 @@
       </view>
     </view>
   </view>
+
+  <global-toast id="globalToast"></global-toast>
 </view>

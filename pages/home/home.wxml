@@ -228,4 +228,6 @@
       </view>
     </view>
   </block>
+
+  <global-toast id="globalToast"></global-toast>
 </view>

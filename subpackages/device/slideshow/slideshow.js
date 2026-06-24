@@ -1,4 +1,5 @@
 const api = require('../../../utils/api')
+const toast = require('../../../utils/toast')
 const system = require('../../../utils/system')
 const deviceBle = require('../../../utils/device-ble')
 
@@ -105,7 +106,7 @@ Page({
   async applyPlayback(mode, intervalHours, carouselEnabled) {
     const device = this.data.device
     if (!device || !device.deviceId) {
-      wx.showToast({
+      toast.show({
         title: '请先连接设备',
         icon: 'none'
       })
@@ -135,9 +136,9 @@ Page({
         device: updated,
         intervalIndex: intervalIndex > -1 ? intervalIndex : this.data.intervalIndex
       })
-      wx.showToast({ title: '已保存', icon: 'none' })
+      toast.show({ title: '已保存', icon: 'none' })
     } catch (error) {
-      wx.showToast({
+      toast.show({
         title: error.message || '保存失败',
         icon: 'none'
       })

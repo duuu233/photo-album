@@ -75,4 +75,6 @@
       <view class="primary-action" hover-class="none" bindtap="scan">重新扫描</view>
     </view>
   </view>
+
+  <global-toast id="globalToast"></global-toast>
 </view>
