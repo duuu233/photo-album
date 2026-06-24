@@ -257,6 +257,10 @@ Page({
     scanning: false,
     devices: [], // 扫描到的设备列表
 
+    // 小程序全局 BLE 连接状态（不只看本页：真实投屏/绑定等流程留下的未释放会话也会在这里出现）
+    mpConnected: false, // 小程序当前是否持有任意一条 BLE 连接（设备被占用）
+    mpConnections: [], // 每条存活会话的设备信息（deviceId/MTU/写类型等）
+
     // 设备信息（0x01 读回后填充）
     info: null,
     connInterval: null,
@@ -311,6 +315,9 @@ Page({
     // 注册监听器：device-ble 每发送/接收一帧都会回调这里，把 16 进制打到控制台
     deviceBle.setMonitor(record => this.onMonitorFrame(record))
 
+    // 进页面先照一次小程序全局连接状态：若真实业务流程留了残留连接占着设备，这里能立刻看到
+    this.refreshMpConnections()
+
     // 从绑定页跳进来时会带 id/name，直接连接；否则停在「扫描」状态让用户自己挑设备
     if (options && options.id) {
       this.setData({
@@ -319,6 +326,11 @@ Page({
       })
       this.connect()
     }
+  },
+
+  // 每次回到页面都重新核对小程序全局连接状态：从真实投屏页跳回时，能看到那边是否还占着设备
+  onShow() {
+    this.refreshMpConnections()
   },
 
   onUnload() {
@@ -377,6 +389,43 @@ Page({
       time: record.time,
       text: `${arrow} CMD=0x${cmdHex} ${note}${record.hex}`
     })
+  },
+
+  // ── 小程序全局连接状态 ──────────────────────────────────
+  // 刷新「小程序连接状态」模块：读 device-ble 里真实存活的会话（不只本页）。
+  // 设备是单连接，若真实业务(投屏/绑定)流程结束没断开，这里会显示残留会话——它正占着设备，
+  // 导致再次「搜索/连接」搜不到/连不上。可用模块里的「断开全部」释放。
+  refreshMpConnections() {
+    const connections = deviceBle.getActiveConnections().map(conn => ({
+      deviceId: conn.deviceId,
+      shortId: String(conn.deviceId || '').slice(-8) || conn.deviceId, // deviceId 很长，只显示末段便于辨认
+      name: conn.deviceId === this.data.deviceId ? this.data.deviceName : '', // 仅本页连的设备才知道名字
+      isCurrent: conn.deviceId === this.data.deviceId,
+      mtu: conn.mtu,
+      dataChunk: conn.dataChunk,
+      writeType: conn.writeType === 'write' ? '有应答写' : '无应答写'
+    }))
+    this.setData({
+      mpConnected: connections.length > 0,
+      mpConnections: connections
+    })
+  },
+
+  // 断开小程序当前持有的全部 BLE 会话，释放被占用的设备（让它重新广播，能再次被搜索/连接）。
+  disconnectAllConnections() {
+    const ids = deviceBle.disconnectAll()
+    if (!ids.length) {
+      toast.show({ title: '当前没有已连接的设备', icon: 'none' })
+      this.refreshMpConnections()
+      return
+    }
+    // 若断的是本页正在用的设备，同步本页连接态，避免上方还显示「已连接」
+    if (ids.indexOf(this.data.deviceId) > -1) {
+      this.setData({ connected: false, info: null, connInterval: null })
+    }
+    this.appendLog({ type: 'act', text: `已断开全部连接（${ids.length} 个），设备已释放，可重新搜索/连接` })
+    toast.show({ title: `已释放 ${ids.length} 个连接`, icon: 'none' })
+    this.refreshMpConnections()
   },
 
   // ── 连接 / 扫描 ─────────────────────────────────────────
@@ -447,6 +496,7 @@ Page({
     try {
       const session = await deviceBle.ensureConnection(this.data.deviceId)
       this.setData({ connected: true })
+      this.refreshMpConnections() // 连接后同步「小程序连接状态」模块
       this.appendLog({ type: 'ok', text: `已连接：${this.data.deviceName}` })
       // MTU 决定图传每包能塞多少字节，连接后打出来便于排查图传问题
       const writeTypeText = session.writeType === 'write' ? '有应答写(可靠)' : '无应答写'
@@ -468,6 +518,7 @@ Page({
       deviceBle.disconnect(this.data.deviceId)
     }
     this.setData({ connected: false, info: null, connInterval: null })
+    this.refreshMpConnections() // 断开后同步「小程序连接状态」模块
     this.appendLog({ type: 'act', text: '已断开连接' })
   },
 

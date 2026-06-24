@@ -336,47 +336,58 @@ Page({
     try {
       const devices = await api.getDevices()
       const cached = app.globalData.selectedDevice
-      // 优先沿用上次选中的设备，没有则取列表第一个
-      let selected =
-        devices.find(item => cached && item.id === cached.id) || devices[0]
 
-      if (selected && cached && String(selected.id) === String(cached.id)) {
-        selected = Object.assign({}, selected, {
-          deviceId: selected.deviceId || cached.deviceId,
-          bleDeviceId:
-            selected.bleDeviceId || cached.bleDeviceId || cached.deviceId,
-          battery:
-            typeof selected.battery === 'number'
-              ? selected.battery
-              : cached.battery
-        })
-      }
-      const currentDevice = normalizeDevice(selected)
+      // 同一台相框可能被重复绑定出多条记录：按硬件序列号去重，避免轮播重复出现同一台
+      const uniqueDevices = this.dedupeDevices(devices, cached)
+      const cachedSerial = this.deviceSerial(cached)
 
-      if (selected) {
-        app.setSelectedDevice(selected)
-      }
-
-      // 轮播展示全部已绑定设备；找出当前选中设备在列表中的位置作为初始页
-      const deviceList = devices.map(normalizeDevice).filter(Boolean)
-      const list = deviceList.length ? deviceList : [DEFAULT_DEVICE]
-      const currentDeviceIndex = Math.max(
-        0,
-        list.findIndex(item => currentDevice && item.id === currentDevice.id)
-      )
-
-      this.setData({
-        currentDevice: currentDevice || DEFAULT_DEVICE,
-        deviceList: list,
-        currentDeviceIndex,
-        batteryWidth: currentDevice
-          ? currentDevice.battery
-          : DEFAULT_DEVICE.battery,
-        hasDevice: !!currentDevice
+      // 后端不存 BLE deviceId，只有 selectedDevice(自动重连/手动连上时写入)带着它。把它回填到
+      // 列表里对应的那台（id 或序列号匹配），连接状态才判得对——否则即便蓝牙仍连着，列表项因缺
+      // deviceId 也会被 normalizeDevice 错判成「未连接」（之前轮播卡片就是这么一直显示未连接的）。
+      const mergedDevices = uniqueDevices.map(item => {
+        const sameAsCached = !!cached && (
+          String(cached.id) === String(item.id) ||
+          (!!cachedSerial && this.deviceSerial(item) === cachedSerial)
+        )
+        return sameAsCached
+          ? Object.assign({}, item, {
+              deviceId: item.deviceId || cached.deviceId,
+              bleDeviceId: item.bleDeviceId || cached.bleDeviceId || cached.deviceId,
+              battery: typeof item.battery === 'number' ? item.battery : cached.battery
+            })
+          : item
       })
 
-      this.setScene(currentDevice ? SCENES.BOUND : SCENES.UNBOUND, {
-        hasDevice: !!currentDevice
+      const normalizedList = mergedDevices.map(normalizeDevice).filter(Boolean)
+      const hasRealDevice = normalizedList.length > 0
+      const list = hasRealDevice ? normalizedList : [DEFAULT_DEVICE]
+
+      // 轮播优先把「已连接」设备放到可视区域：初始页定位到已连接设备；没有已连接的，
+      // 再沿用上次选中的设备，最后兜底第一台。
+      const cachedId = cached ? String(cached.id) : ''
+      const connectedIndex = list.findIndex(item => item.connected)
+      const cachedIndex = list.findIndex(item =>
+        (cachedId && String(item.id) === cachedId) ||
+        (!!cachedSerial && this.deviceSerial(item) === cachedSerial)
+      )
+      const currentDeviceIndex = connectedIndex >= 0 ? connectedIndex : Math.max(0, cachedIndex)
+      const currentDevice = list[currentDeviceIndex] || DEFAULT_DEVICE
+
+      // 把当前展示设备设为选中设备（带真实 deviceId），供投屏/拍照沿用，避免可视卡片与投屏目标不一致
+      if (hasRealDevice && currentDevice && currentDevice.id) {
+        app.setSelectedDevice(mergedDevices[currentDeviceIndex] || currentDevice)
+      }
+
+      this.setData({
+        currentDevice,
+        deviceList: list,
+        currentDeviceIndex,
+        batteryWidth: currentDevice ? currentDevice.battery : DEFAULT_DEVICE.battery,
+        hasDevice: hasRealDevice
+      })
+
+      this.setScene(hasRealDevice ? SCENES.BOUND : SCENES.UNBOUND, {
+        hasDevice: hasRealDevice
       })
     } catch (error) {
       if (isNetworkError(error)) {
@@ -393,6 +404,33 @@ Page({
         hasDevice: false
       })
     }
+  },
+
+  // 设备硬件序列号(Device_ID)：跨扫描会话稳定，用于去重 / 匹配同一台物理设备。
+  // 归一化（去分隔符 + 大写）以兼容后端与蓝牙广播两侧可能的格式差异。
+  deviceSerial(device) {
+    return String((device && (device.deviceNo || device.productDeviceId)) || '')
+      .replace(/[:\-\s]/g, '')
+      .toUpperCase()
+  },
+
+  // 按硬件序列号去重：同一台设备的多条绑定记录只保留一条；同序列号优先保留当前选中那条。
+  // 没有序列号的记录用 id 兜底单独成键，避免把不同设备误并到一起。
+  dedupeDevices(devices, selected) {
+    const selectedId = selected ? String(selected.id) : ''
+    const map = new Map()
+    const order = []
+    ;(devices || []).forEach(device => {
+      const serial = this.deviceSerial(device)
+      const key = serial ? `sn:${serial}` : `id:${device.id}`
+      if (!map.has(key)) {
+        map.set(key, device)
+        order.push(key)
+      } else if (selectedId && String(device.id) === selectedId) {
+        map.set(key, device)
+      }
+    })
+    return order.map(key => map.get(key))
   },
 
   checkNetworkStatus() {

@@ -55,8 +55,20 @@ Page({
     })
     const sourceDevices = await api.getDevices()
     const selected = app.globalData.selectedDevice
-    const devices = sourceDevices.map(item => {
-      const merged = (!selected || String(selected.id) !== String(item.id))
+
+    // 同一台相框可能被重复绑定出多条记录：按稳定的硬件序列号(Device_ID)去重，只保留一条，
+    // 避免「设备页反复出现同一设备」。同序列号优先保留当前选中(正在用/已连接)的那条。
+    const uniqueDevices = this.dedupeDevices(sourceDevices, selected)
+    const selectedSerial = this.deviceSerial(selected)
+
+    const devices = uniqueDevices.map(item => {
+      // 选中设备的 BLE deviceId（连接用、后端不存）要回填到对应记录，连接状态才显示得对。
+      // 用 id 或序列号匹配：绑定/重连后选中设备与列表项可能不同源，只靠 id 会漏配、错显示成「未连接」。
+      const isSelected = !!selected && (
+        String(selected.id) === String(item.id) ||
+        (!!selectedSerial && this.deviceSerial(item) === selectedSerial)
+      )
+      const merged = !isSelected
         ? item
         : Object.assign({}, item, {
             deviceId: item.deviceId || selected.deviceId,
@@ -85,6 +97,34 @@ Page({
       selectedId: selected ? selected.id : '',
       loading: false
     })
+  },
+
+  // 设备硬件序列号(Device_ID)：跨扫描会话稳定，用于去重 / 匹配同一台物理设备。
+  // 归一化（去分隔符 + 大写）以兼容后端与蓝牙广播两侧可能的格式差异。
+  deviceSerial(device) {
+    return String((device && (device.deviceNo || device.productDeviceId)) || '')
+      .replace(/[:\-\s]/g, '')
+      .toUpperCase()
+  },
+
+  // 按硬件序列号去重：同一台设备的多条绑定记录只保留一条。
+  // 同序列号默认保留先出现的；若其中有当前选中设备，则换成选中的那条（保住连接显示）。
+  // 没有序列号的记录用 id 兜底单独成键，避免把不同设备误并到一起。
+  dedupeDevices(devices, selected) {
+    const selectedId = selected ? String(selected.id) : ''
+    const map = new Map()
+    const order = []
+    ;(devices || []).forEach(device => {
+      const serial = this.deviceSerial(device)
+      const key = serial ? `sn:${serial}` : `id:${device.id}`
+      if (!map.has(key)) {
+        map.set(key, device)
+        order.push(key)
+      } else if (selectedId && String(device.id) === selectedId) {
+        map.set(key, device)
+      }
+    })
+    return order.map(key => map.get(key))
   },
 
   setSystemMetrics() {
@@ -274,6 +314,7 @@ Page({
 
   deleteDevice(e) {
     const id = e.currentTarget.dataset.id
+    const device = this.data.devices.find(item => item.id === id)
 
     wx.showModal({
       title: '删除设备',
@@ -286,7 +327,17 @@ Page({
         }
 
         await api.deleteDevice(id)
-        if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === id) {
+
+        // 删除的是当前已连接的设备：解绑成功后顺手断开 BLE，释放被占用的单连接。
+        // 否则设备会一直被这条会话占着、不再广播，删除后既搜不到也无法重新绑定连接。
+        const selected = app.globalData.selectedDevice
+        const bleId = (device && (device.deviceId || device.bleDeviceId)) ||
+          (selected && String(selected.id) === String(id) ? (selected.deviceId || selected.bleDeviceId) : '')
+        if (bleId && deviceBle.isConnected(bleId)) {
+          deviceBle.disconnect(bleId)
+        }
+
+        if (selected && String(selected.id) === String(id)) {
           app.setSelectedDevice(null)
         }
         this.loadDevices()

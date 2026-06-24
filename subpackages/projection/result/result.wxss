@@ -32,11 +32,25 @@
   line-height: 1.5;
 }
 
+.progress-percent {
+  margin-top: 56rpx;
+  color: #ff6421;
+  font-size: 72rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.progress-percent__sign {
+  margin-left: 4rpx;
+  font-size: 36rpx;
+  font-weight: 600;
+}
+
 .progress-wrap {
   display: flex;
   align-items: center;
   gap: 20rpx;
-  margin-top: 64rpx;
+  margin-top: 28rpx;
 }
 
 .progress-bar {

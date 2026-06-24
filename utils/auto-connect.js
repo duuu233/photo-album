@@ -11,6 +11,8 @@
 //
 // 动作：扫描附近相框 → 用 Device_ID(deviceNo) 与绑定设备列表匹配 → 命中即连接、读一次信息、设为当前设备，
 // 并通过 onChange 通知页面刷新「已连接」显示。
+// 反馈：仅在「匹配命中、真正建立连接」这一小段显示一个 loading；前面的扫描阶段保持静默
+//（避免每次进页面都长时间转圈），连上/失败都会关闭。
 
 const api = require('./api')
 const bluetooth = require('./bluetooth')
@@ -172,6 +174,11 @@ async function run(options) {
     }
 
     const deviceId = matched.scan.deviceId
+    // 已匹配到附近的已绑定设备、开始真正建立连接：给个 loading 作为反馈。
+    // 用非遮罩(mask:false)：后台自动动作，给提示但不冻结界面，连接慢/失败也不至于卡住用户操作。
+    if (wx.showLoading) {
+      wx.showLoading({ title: '正在连接设备…', mask: false })
+    }
     try {
       await deviceBle.ensureConnection(deviceId)
       const info = await deviceBle.readDeviceInfo(deviceId)
@@ -190,6 +197,10 @@ async function run(options) {
     } catch (error) {
       deviceBle.disconnect(deviceId) // 连接/读信息失败：释放可能的半连接，放弃，等下次再试
       return false
+    } finally {
+      if (wx.hideLoading) {
+        wx.hideLoading()
+      }
     }
   } finally {
     running = false

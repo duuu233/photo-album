@@ -11,12 +11,15 @@
     <view class="result-title">{{title}}</view>
     <view class="result-desc">{{desc}}</view>
 
-    <view wx:if="{{status === 'progress'}}" class="progress-wrap">
-      <view class="progress-bar">
-        <view class="progress-fill" style="width: {{progressPercent}}%;"></view>
+    <block wx:if="{{status === 'progress'}}">
+      <view class="progress-percent">{{progressPercent}}<text class="progress-percent__sign">%</text></view>
+      <view class="progress-wrap">
+        <view class="progress-bar">
+          <view class="progress-fill" style="width: {{progressPercent}}%;"></view>
+        </view>
+        <text class="progress-count">{{progressCurrent}}/{{progressTotal}}</text>
       </view>
-      <text class="progress-count">{{progressCurrent}}/{{progressTotal}}</text>
-    </view>
+    </block>
 
     <view wx:else class="info-card glass-panel">
       <view class="info-row">

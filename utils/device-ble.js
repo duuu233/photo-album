@@ -11,6 +11,9 @@ const imageCodec = require('./image-codec')
 
 // 每台设备一个会话：缓存已发现的服务/特征、接收缓冲区与未完成的请求
 const sessions = {}
+// 每台设备「正在建立」的连接 Promise：用于把并发的 ensureConnection 合并成同一次连接，
+// 避免预览页「预热连接」与结果页「正式连接」同时触发各自 createBLEConnection 造成竞态/重复初始化。
+const connecting = {}
 let globalListenerBound = false
 
 // 收发监听器：联调调试台用它把每一帧的 16 进制原始字节打印出来，方便和硬件侧日志对照。
@@ -267,11 +270,25 @@ async function createConnectionWithRetry(deviceId, attempts = 2) {
 }
 
 // 建立连接并发现 FF00 主服务下的写(FF01)/通知(FF02)特征，开启通知。结果缓存到会话。
+// 已连上直接复用；正在连则复用在途 Promise（避免并发重复连接），否则发起一次新连接。
 async function ensureConnection(deviceId) {
   if (sessions[deviceId] && sessions[deviceId].ready) {
     return sessions[deviceId]
   }
+  if (connecting[deviceId]) {
+    return connecting[deviceId]
+  }
+  const promise = establishConnection(deviceId)
+  connecting[deviceId] = promise
+  try {
+    return await promise
+  } finally {
+    delete connecting[deviceId]
+  }
+}
 
+// 真正执行一次连接建立（发现服务/特征、开启通知、协商 MTU、缓存会话）。由 ensureConnection 串行调度。
+async function establishConnection(deviceId) {
   ensureGlobalListener()
   await createConnectionWithRetry(deviceId)
 
@@ -719,6 +736,33 @@ function hasAnyActiveConnection() {
   return Object.keys(sessions).some(id => sessions[id] && sessions[id].ready)
 }
 
+// 列出当前小程序持有的所有可用 BLE 会话（调试页「小程序连接状态」模块用）。
+// 设备是单连接：真实投屏/绑定流程结束若没断开，残留会话会在这里出现——它正占着设备，
+// 导致再次扫描搜不到 / 连不上。返回每条会话的关键信息，供页面展示并据此判断是否需要释放。
+function getActiveConnections() {
+  return Object.keys(sessions)
+    .filter(id => sessions[id] && sessions[id].ready)
+    .map(id => {
+      const session = sessions[id]
+      return {
+        deviceId: id,
+        serviceId: session.serviceId,
+        mtu: session.mtu,
+        dataChunk: session.dataChunk,
+        writeType: session.writeType,
+        pendingCount: Object.keys(session.pending || {}).length
+      }
+    })
+}
+
+// 断开并清理当前小程序持有的全部 BLE 会话，释放被占用的设备（让它重新广播，能再次被搜索/连接）。
+// 返回被断开的 deviceId 列表，方便调用方提示「释放了几个连接」。
+function disconnectAll() {
+  const ids = Object.keys(sessions)
+  ids.forEach(id => disconnect(id))
+  return ids
+}
+
 // 断开连接并清理会话（离开详情/绑定页时调用）
 function disconnect(deviceId) {
   cleanupSession(deviceId, '已主动断开连接')
@@ -748,5 +792,7 @@ module.exports = {
   setMonitor,
   isConnected,
   hasAnyActiveConnection,
+  getActiveConnections,
+  disconnectAll,
   disconnect
 }

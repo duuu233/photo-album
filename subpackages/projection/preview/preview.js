@@ -1,5 +1,6 @@
 const system = require('../../../utils/system')
 const toast = require('../../../utils/toast')
+const deviceBle = require('../../../utils/device-ble')
 
 Page({
   data: {
@@ -32,6 +33,13 @@ Page({
     const images = pending.images || []
     const device = pending.device || null
     this.updateImageState(images, device, 0)
+
+    // 预热连接：用户在预览页裁剪/确认的这几秒里，后台先把设备连上。
+    // 这样点「确认投屏」后，结果页的 ensureConnection 能直接复用已就绪的会话，
+    // 省掉「投屏中」开头那段最耗时的连接等待。失败静默忽略，结果页仍会正常重连。
+    if (device && device.deviceId) {
+      deviceBle.ensureConnection(device.deviceId).catch(() => {})
+    }
   },
 
   // 统一刷新图片相关状态：当前预览图与张数（设备空间是否够由结果页按真实容量/掩码判断）

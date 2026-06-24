@@ -8,11 +8,7 @@ Page({
     safeBottom: 0,
     records: [],
     filteredRecords: [],
-    filter: 'success',
-    counts: {
-      success: 0,
-      fail: 0
-    }
+    filter: 'success'
   },
 
   onLoad() {
@@ -40,37 +36,31 @@ Page({
     })
   },
 
-  // 加载投屏记录：数据已在 api 层归一化，这里只按成功/失败统计供顶部标签使用
-  async loadRecords() {
-    const records = await api.getProjectionRecords()
-    const counts = records.reduce((result, item) => {
-      if (item.status === 'success') {
-        result.success += 1
-      } else {
-        result.fail += 1
-      }
-      return result
-    }, {
-      success: 0,
-      fail: 0
-    })
-
-    this.setData({
-      records,
-      counts
-    })
-    this.applyFilter(this.data.filter, records)
+  // 成功/失败标签 → 设备上传状态参数：成功=1，失败=0
+  filterToUploadState(filter) {
+    return filter === 'success' ? 1 : 0
   },
 
-  applyFilter(filter, records) {
+  // 按当前标签向后端请求对应状态的投屏记录（成功 deviceUploadState=1 / 失败=0），
+  // 不再一次性拉全部再本地筛。数据已在 api 层归一化。
+  async loadRecords(filter = this.data.filter) {
+    const records = await api.getProjectionRecords({
+      deviceUploadState: this.filterToUploadState(filter)
+    })
     this.setData({
       filter,
+      records,
+      // 后端已按状态过滤；再按 status 兜底过滤一层，兼容后端忽略该参数的情况
       filteredRecords: records.filter(item => item.status === filter)
     })
   },
 
   switchFilter(e) {
-    this.applyFilter(e.currentTarget.dataset.filter, this.data.records)
+    const filter = e.currentTarget.dataset.filter
+    if (filter === this.data.filter) {
+      return
+    }
+    this.loadRecords(filter)
   },
 
   retryProjection() {

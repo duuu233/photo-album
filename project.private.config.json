@@ -22,11 +22,25 @@
     "miniprogram": {
       "list": [
         {
-          "name": "我的图库",
-          "pathName": "subpackages/album/list/list",
+          "name": "subpackages/projection/records/records",
+          "pathName": "subpackages/projection/records/records",
           "query": "",
           "scene": null,
           "launchMode": "default"
+        },
+        {
+          "name": "1111",
+          "pathName": "subpackages/device/debug/debug",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
+        },
+        {
+          "name": "我的图库",
+          "pathName": "subpackages/album/list/list",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
         },
         {
           "name": "绑定邮箱",
