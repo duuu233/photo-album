@@ -63,19 +63,52 @@ function wxp(fn, options) {
   })
 }
 
-// 全局只注册一次特征值变化监听，按 deviceId 分发到对应会话
+// 全局只注册一次：特征值变化 + 连接状态变化，均按 deviceId 分发到对应会话
 function ensureGlobalListener() {
-  if (globalListenerBound || !wx.onBLECharacteristicValueChange) {
+  if (globalListenerBound) {
     return
   }
   globalListenerBound = true
-  wx.onBLECharacteristicValueChange(res => {
-    const session = sessions[res.deviceId]
-    if (!session) {
-      return
-    }
-    handleNotify(session, res.value)
+
+  if (wx.onBLECharacteristicValueChange) {
+    wx.onBLECharacteristicValueChange(res => {
+      const session = sessions[res.deviceId]
+      if (!session) {
+        return
+      }
+      handleNotify(session, res.value)
+    })
+  }
+
+  // 监听连接状态：设备主动断开（息屏/休眠/距离过远/被别的手机抢连）时，微信回调 connected=false。
+  // 必须据此清掉本地会话，否则会出现两类「连接不稳定」的假象：
+  //   1) isConnected() 一直谎报「已连接」（首页、调试页 requireDevice 都被骗）；
+  //   2) ensureConnection 见 ready=true 会复用这条已死的会话、不再重连，后续指令全部写失败/超时。
+  // 清掉会话后，下次 ensureConnection 会重新 createBLEConnection，自动恢复可用。
+  if (wx.onBLEConnectionStateChange) {
+    wx.onBLEConnectionStateChange(res => {
+      if (!res.connected) {
+        cleanupSession(res.deviceId, '设备连接已断开')
+      }
+    })
+  }
+}
+
+// 清理某设备的会话：置为未就绪、让所有在等应答的请求立刻失败、并移除会话缓存。
+// 只动内存状态，不调用 closeBLEConnection（断开回调场景下底层连接其实已经没了）。
+function cleanupSession(deviceId, reason) {
+  const session = sessions[deviceId]
+  if (!session) {
+    return
+  }
+  session.ready = false
+  Object.keys(session.pending).forEach(key => {
+    const pending = session.pending[key]
+    clearTimeout(pending.timer)
+    pending.reject(new Error(reason || '连接已断开'))
   })
+  session.pending = {}
+  delete sessions[deviceId]
 }
 
 // 处理一次通知数据：追加到接收缓冲，循环解出完整帧并派发给等待中的请求
@@ -202,6 +235,37 @@ async function discoverCharacteristics(deviceId, serviceId, attempts = 4, interv
   return null
 }
 
+// 建立底层 BLE 连接，带一次自动重试。安卓首连常偶发 10003(connection fail)/10012(操作超时)，
+// 立即重试一次通常即可成功；若底层报「已连接」则直接当成功返回。多次失败才抛出供上层提示。
+async function createConnectionWithRetry(deviceId, attempts = 2) {
+  let lastError = null
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await wxp(wx.createBLEConnection, { deviceId, timeout: 10000 })
+      return
+    } catch (error) {
+      const msg = ((error && error.message) || '').toLowerCase()
+      // 底层仍保有该连接：当成功处理，后续照常发现服务/特征
+      if (msg.indexOf('already') > -1 || msg.indexOf('connected') > -1) {
+        return
+      }
+      lastError = error
+      if (i < attempts - 1) {
+        // 关掉可能残留的半连接，短暂等待后再试一次，显著提升首连成功率
+        if (wx.closeBLEConnection) {
+          try {
+            await wxp(wx.closeBLEConnection, { deviceId })
+          } catch (closeError) {
+            // 没有可关闭的连接，忽略
+          }
+        }
+        await sleep(400)
+      }
+    }
+  }
+  throw lastError || new Error('蓝牙连接失败')
+}
+
 // 建立连接并发现 FF00 主服务下的写(FF01)/通知(FF02)特征，开启通知。结果缓存到会话。
 async function ensureConnection(deviceId) {
   if (sessions[deviceId] && sessions[deviceId].ready) {
@@ -209,7 +273,7 @@ async function ensureConnection(deviceId) {
   }
 
   ensureGlobalListener()
-  await wxp(wx.createBLEConnection, { deviceId, timeout: 10000 })
+  await createConnectionWithRetry(deviceId)
 
   // 设备为单连接（PRD 6.2.3）：连接成功后若服务/特征发现或订阅失败，必须立即断开，
   // 否则设备被占用、不再开启广播，会导致下次扫描不到、再也连不上。
@@ -650,15 +714,14 @@ function isConnected(deviceId) {
   return !!(session && session.ready)
 }
 
+// 是否存在任意一条可用的 BLE 会话。自动重连据此判断「当前是否已连着设备」，已连着就不再扫描重连。
+function hasAnyActiveConnection() {
+  return Object.keys(sessions).some(id => sessions[id] && sessions[id].ready)
+}
+
 // 断开连接并清理会话（离开详情/绑定页时调用）
 function disconnect(deviceId) {
-  const session = sessions[deviceId]
-  if (session) {
-    Object.keys(session.pending).forEach(key => {
-      clearTimeout(session.pending[key].timer)
-    })
-    delete sessions[deviceId]
-  }
+  cleanupSession(deviceId, '已主动断开连接')
   if (wx.closeBLEConnection && deviceId) {
     wx.closeBLEConnection({ deviceId })
   }
@@ -684,5 +747,6 @@ module.exports = {
   uploadImage,
   setMonitor,
   isConnected,
+  hasAnyActiveConnection,
   disconnect
 }

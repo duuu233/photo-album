@@ -3,6 +3,7 @@ const toast = require('../../utils/toast')
 const media = require('../../utils/media')
 const batteryUtil = require('../../utils/battery')
 const deviceBle = require('../../utils/device-ble')
+const autoConnect = require('../../utils/auto-connect')
 
 const app = getApp()
 
@@ -217,6 +218,12 @@ Page({
   onLoad(options = {}) {
     this.scanTimer = null // 模拟扫描的定时器句柄，离开页面时需清除
     this.networkStatusHandler = this.handleNetworkStatusChange.bind(this)
+    // 自动重连成功后刷新首页连接显示（用保存的同一引用，便于 onShow 订阅 / onUnload 退订且不重复）
+    this._onAutoConnected = () => {
+      if (!this.data.sceneFromQuery) {
+        this.loadHomeState()
+      }
+    }
     this.setSystemMetrics()
 
     // 若带 scene 参数进入（设计走查/调试），直接定位到指定场景并跳过自动加载
@@ -243,6 +250,9 @@ Page({
       })
     }
 
+    // 订阅自动重连结果：连上后刷新首页「已连接」显示（onChange 内部去重，重复订阅无副作用）
+    autoConnect.onChange(this._onAutoConnected)
+
     // 仅在非“指定场景”进入时才按真实设备状态刷新首页，避免覆盖调试场景
     if (!this.data.sceneFromQuery) {
       this.loadUserAvatar()
@@ -253,6 +263,7 @@ Page({
       }
 
       this.loadHomeState()
+      autoConnect.run() // 静默尝试自动连接相框（无活动连接 + 蓝牙开 + 已授权定位时才真正扫描）
     }
   },
 
@@ -277,6 +288,7 @@ Page({
 
   onUnload() {
     this.clearScanTimer()
+    autoConnect.offChange(this._onAutoConnected)
 
     if (wx.offNetworkStatusChange && this.networkStatusHandler) {
       wx.offNetworkStatusChange(this.networkStatusHandler)
@@ -555,6 +567,23 @@ Page({
       currentDeviceIndex: index,
       currentDevice: device,
       batteryWidth: device.battery
+    })
+  },
+
+  // 点击设备轮播卡片：进入设备列表页。
+  // 轮播卡片面积大易被快速连点，连点会触发两次 navigateTo，
+  // 第二次路由找不到首次正在切换的 webview 即报 “routeDone with a webviewId X is not found”，
+  // 故加锁：路由完成（complete）前忽略后续点击。
+  goDeviceList() {
+    if (this.navigatingDeviceList) {
+      return
+    }
+    this.navigatingDeviceList = true
+    wx.navigateTo({
+      url: '/subpackages/device/list/list',
+      complete: () => {
+        this.navigatingDeviceList = false
+      }
     })
   },
 

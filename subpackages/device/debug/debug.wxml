@@ -37,6 +37,7 @@
         <text class="card-title">设备信息 (0x01)</text>
         <view class="ghost-btn" bindtap="cmdGetInfo">刷新</view>
       </view>
+      <view class="kv"><text class="k">Device_ID</text><text class="v">{{info.deviceId || '--'}}</text></view>
       <view class="info-grid">
         <view class="info-cell"><text class="k">电量</text><text class="v">{{info.battery}}%</text></view>
         <view class="info-cell"><text class="k">屏幕</text><text class="v">{{info.screen || '--'}}</text></view>

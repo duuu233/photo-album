@@ -5,6 +5,7 @@ const batteryUtil = require('../../../utils/battery')
 const deviceBle = require('../../../utils/device-ble')
 const bluetooth = require('../../../utils/bluetooth')
 const permission = require('../../../utils/permission')
+const autoConnect = require('../../../utils/auto-connect')
 
 const app = getApp()
 
@@ -33,11 +34,18 @@ Page({
     this.setData({
       selectMode
     })
-
+    // 自动重连成功后重新拉列表，刷新连接显示（保存同一引用便于订阅/退订且不重复）
+    this._onAutoConnected = () => this.loadDevices()
   },
 
   onShow() {
+    autoConnect.onChange(this._onAutoConnected)
     this.loadDevices()
+    autoConnect.run() // 静默尝试自动连接相框
+  },
+
+  onUnload() {
+    autoConnect.offChange(this._onAutoConnected)
   },
 
   // 加载设备列表，并为每项附加展示用字段（内存百分比、删除提示）
@@ -48,13 +56,19 @@ Page({
     const sourceDevices = await api.getDevices()
     const selected = app.globalData.selectedDevice
     const devices = sourceDevices.map(item => {
-      if (!selected || String(selected.id) !== String(item.id)) {
-        return item
-      }
-      return Object.assign({}, item, {
-        deviceId: item.deviceId || selected.deviceId,
-        bleDeviceId: item.bleDeviceId || selected.bleDeviceId || selected.deviceId,
-        battery: typeof item.battery === 'number' ? item.battery : selected.battery
+      const merged = (!selected || String(selected.id) !== String(item.id))
+        ? item
+        : Object.assign({}, item, {
+            deviceId: item.deviceId || selected.deviceId,
+            bleDeviceId: item.bleDeviceId || selected.bleDeviceId || selected.deviceId,
+            battery: typeof item.battery === 'number' ? item.battery : selected.battery
+          })
+      // 用 App 当前真实的蓝牙会话状态覆盖后端的 connected：后端并不知道本机的蓝牙连接，
+      // 若直接用它，切到别的页面再回到本页重新拉列表时，即使蓝牙仍连着也会被错显示成「未连接」。
+      // 改用 deviceBle.isConnected 实时判断（与首页一致），切回来只要会话还在就保持「已连接」。
+      const bleId = merged.deviceId || merged.bleDeviceId
+      return Object.assign({}, merged, {
+        connected: !!(bleId && deviceBle.isConnected(bleId))
       })
     })
 
@@ -182,9 +196,9 @@ Page({
         firmwareVersion: info.firmwareVersion || device.firmwareVersion
       })
 
-      if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === id) {
-        app.setSelectedDevice(updated)
-      }
+      // 连接成功即设为当前选中设备：设备是单连接，「正连着的」就是当前在用的。
+      // 这样切到别的页面再回来、或自动重连时，都能据 selectedDevice.deviceId 认出这条活动会话。
+      app.setSelectedDevice(updated)
 
       this.setData({
         devices: this.data.devices.map(item => item.id === id ? Object.assign({}, updated, {

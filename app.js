@@ -1,5 +1,6 @@
 const api = require('./utils/api')
 const system = require('./utils/system')
+const autoConnect = require('./utils/auto-connect')
 
 // 将回调式的 wx.login 封装为 Promise，便于在 async 流程中 await
 function wxLogin() {
@@ -20,6 +21,12 @@ App({
 
     // 启动即从本地缓存恢复上次的登录态与选中设备，避免每次都重新登录
     this.restoreSession()
+  },
+
+  onShow() {
+    // 小程序回到前台/启动后：静默尝试自动重连相框（带节流，条件不满足就放弃，不弹任何弹窗）。
+    // 配合页面订阅 autoConnect.onChange，实现「非手动/物理断开就自动保持连接」。
+    autoConnect.run()
   },
 
   // 把本地缓存里的会话信息读回内存（globalData），作为全局单一数据源

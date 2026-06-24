@@ -35,7 +35,7 @@
           circular="{{deviceList.length > 1}}"
           bindchange="onDeviceChange">
           <swiper-item class="device-swiper-item" wx:for="{{deviceList}}" wx:key="id">
-            <view class="device-carousel">
+            <view class="device-carousel" bindtap="goDeviceList">
                 <image class="device-carousel-bg" src="/assets/images/home-bg01.png" mode="aspectFill"></image>
                 <image class="device-orbit" src="/assets/images/home-icon02.png" mode="aspectFill"></image>
                 <view class="device-info">

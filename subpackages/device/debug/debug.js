@@ -325,9 +325,8 @@ Page({
     deviceBle.setMonitor(null) // 取消监听，避免离开页面后还在往已销毁的页面 setData
     bluetooth.stopDiscovery()
     wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false }) // 离开页面恢复正常息屏
-    if (this.data.deviceId) {
-      deviceBle.disconnect(this.data.deviceId) // 释放连接，让设备能重新广播被别的手机连
-    }
+    // 离开调试页不再主动断开：按用户要求保持连接（非手动/物理断开就一直连着）。
+    // 需要断开时用页面上的「断开连接」按钮(disconnectDevice)。
   },
 
   // 页面进入后台（息屏 / 切到微信外 / 跳走）。图传在后台无法继续（蓝牙被挂起、设备会超时中止），
@@ -402,9 +401,14 @@ Page({
         return
       }
       await bluetooth.openAdapter()
-      const devices = await bluetooth.discoverDevices({ timeout: 8000 })
+      // 调试页放开白名单(allowAll)：收录附近所有蓝牙设备，便于核对相框真实广播名/排查搜不到的问题
+      const devices = await bluetooth.discoverDevices({ timeout: 8000, allowAll: true })
       this.setData({ devices })
-      this.appendLog({ type: 'act', text: `扫描完成，发现 ${devices.length} 个设备` })
+      this.appendLog({ type: 'act', text: `扫描完成（已放开过滤），发现 ${devices.length} 个设备` })
+      // 逐个打印名字+信号，方便和白名单 EF6-370 / EF6-589 对照，确认设备到底叫什么
+      devices.forEach(device => {
+        this.appendLog({ type: 'act', text: `· ${device.name}（信号 ${device.RSSI || '--'}，id 末段 ${String(device.deviceId || '').slice(-5)}）` })
+      })
       if (!devices.length) {
         bluetooth.showEmptyResultGuide() // 鸿蒙兼容兜底：搜不到时给鸿蒙用户排查引导
       }
@@ -530,7 +534,7 @@ Page({
       return info
     }, {
       format: info => info
-        ? `设备信息：电量 ${info.battery}% · ${info.screen} · 容量 ${info.capacity} · 已存 ${info.imgCount} 张 · 固件 ${info.firmwareVersion || '--'}`
+        ? `设备信息：Device_ID ${info.deviceId || '--'} · 电量 ${info.battery}% · ${info.screen} · 容量 ${info.capacity} · 已存 ${info.imgCount} 张 · 固件 ${info.firmwareVersion || '--'}`
         : '设备信息已刷新'
     })
   },

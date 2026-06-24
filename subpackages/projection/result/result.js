@@ -89,9 +89,8 @@ Page({
   onUnload() {
     this._aborted = true
     wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false })
-    if (this._activeDeviceId) {
-      deviceBle.disconnect(this._activeDeviceId) // 释放连接，让设备能重新被连接
-    }
+    // 离开投屏结果页不再主动断开：按用户要求保持连接（非手动/物理断开就一直连着）。
+    this._activeDeviceId = ''
   },
 
   applyStatus(status, result) {
@@ -222,7 +221,8 @@ Page({
       this.failResult(device, uploaded, message)
     } finally {
       wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false })
-      deviceBle.disconnect(deviceId) // 传完/失败都断开，释放连接
+      // 不再传完即断：保持连接（设备单连接，下次投屏可直接复用、省去重新扫描+连接）。
+      // 仅在物理断开(onBLEConnectionStateChange 清理)或用户手动断开时才真正断开。
       this._activeDeviceId = ''
     }
   },

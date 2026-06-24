@@ -128,6 +128,12 @@ function stopDiscovery() {
   foundHandler = null
 }
 
+// 是否正在扫描附近设备（foundHandler 非空即扫描中）。
+// 自动重连据此避让用户的手动扫描，避免两路 startBluetoothDevicesDiscovery 并发互相干扰。
+function isDiscovering() {
+  return !!foundHandler
+}
+
 // 将系统返回的原始蓝牙设备结构裁剪为业务统一字段（取广播服务 UUID 作为设备编号兜底）
 function normalizeDevice(device) {
   // 无名设备用 deviceId 末段兜底展示，方便靠信号强度认出自己的设备
@@ -156,6 +162,10 @@ function normalizeDevice(device) {
 // 在 timeout 时间内持续收集附近的蓝牙相框，到点后返回去重后的设备列表
 function discoverDevices(options) {
   const timeout = options && options.timeout ? options.timeout : 8000
+  // allowAll：放开广播名白名单，收录附近所有蓝牙设备。仅供硬件调试页排查用
+  //（比如设备搜不到时，先看它真实广播名到底是不是 EF6-370 / EF6-589）。
+  // 绑定/列表等正式入口不传此项，保持只显示目标相框。
+  const allowAll = !!(options && options.allowAll)
 
   return new Promise((resolve, reject) => {
     if (!canUseBluetooth()) {
@@ -187,7 +197,8 @@ function discoverDevices(options) {
         if (!device.deviceId) {
           return
         }
-        if (!foundMap[device.deviceId] && !isAllowedFrame(device)) {
+        // allowAll(调试) 时不做白名单筛选，收录所有设备；正式入口仍只收目标相框
+        if (!allowAll && !foundMap[device.deviceId] && !isAllowedFrame(device)) {
           return
         }
         foundMap[device.deviceId] = normalizeDevice(device)
@@ -243,6 +254,7 @@ module.exports = {
   discoverDevices,
   connectDevice,
   stopDiscovery,
+  isDiscovering,
   showPermissionGuide,
   showEmptyResultGuide
 }

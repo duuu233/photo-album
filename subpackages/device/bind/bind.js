@@ -196,11 +196,14 @@ Page({
     this.setData({ binding: true })
 
     let info = null
+    // 绑定成功后是否保留这条 BLE 连接：保留则返回首页直接显示「已连接」，免去用户再手动点连接
+    let bleConnected = false
     // 真实蓝牙设备：连接并读取设备信息；连接失败则中止绑定（不再有模拟兜底）
     if (scanDevice.realBluetooth && scanDevice.deviceId) {
       wx.showLoading({ title: '连接设备中', mask: true })
       try {
         info = await deviceBle.readDeviceInfo(scanDevice.deviceId)
+        bleConnected = true // ensureConnection 已建立可复用会话，绑定成功后将沿用它
         try {
           const conn = await deviceBle.getConnectionInterval(
             scanDevice.deviceId
@@ -213,16 +216,17 @@ Page({
         }
       } catch (error) {
         console.warn('连接设备/读取设备信息失败', error)
+        // 连接/读取失败：断开以释放被占用的单连接、让设备能重新广播，再提示并中止绑定
+        deviceBle.disconnect(scanDevice.deviceId)
+        wx.hideLoading()
         toast.show({
           title: error.message || '设备连接失败',
           icon: 'none'
         })
         this.setData({ binding: false })
         return
-      } finally {
-        deviceBle.disconnect(scanDevice.deviceId)
-        wx.hideLoading()
       }
+      wx.hideLoading()
 
       // 连接并读取设备信息成功：先提示「连接成功」，短暂停留让用户看到后，再调用绑定接口
       toast.show({ title: '连接成功', icon: 'none', duration: 800 })
@@ -240,6 +244,10 @@ Page({
     try {
       device = await api.bindDevice(payload)
     } catch (error) {
+      // 绑定失败仍停留在本页：已连过就断开，避免占着设备的单连接妨碍重试
+      if (bleConnected) {
+        deviceBle.disconnect(scanDevice.deviceId)
+      }
       // bindDevice 在 productId 解析不到时会抛错（后端必传），这里把原因提示给用户
       toast.show({
         title: error.message || '绑定失败',
@@ -254,7 +262,8 @@ Page({
       title: '绑定成功',
       icon: 'none'
     })
-    // 成功后保持 binding=true 直到返回上一页，避免 500ms 窗口内被重复点击触发二次绑定
+    // 绑定成功后不再断开上面建立的连接：返回首页即显示「已连接」，无需用户手动点连接。
+    // 同时保持 binding=true 直到返回上一页，避免 500ms 窗口内被重复点击触发二次绑定
     setTimeout(() => {
       wx.navigateBack()
     }, 500)
