@@ -148,6 +148,9 @@ function normalizeDevice(device) {
     name: device.name || device.displayName || '相框',
     // 「已连接」按真实蓝牙会话显示（即连即传，无活动会话即未连接），不再恒为 true
     connected: !!(device.deviceId && deviceBle.isConnected(device.deviceId)),
+    // 屏幕分辨率：投屏预览页裁剪按此 width/height 锁定比例，透传给下游（接口就绪后即生效）
+    width: device.width,
+    height: device.height,
     battery,
     batteryIcon: batteryUtil.getBatteryIcon(battery)
   }

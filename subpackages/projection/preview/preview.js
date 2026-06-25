@@ -1,6 +1,10 @@
 const system = require('../../../utils/system')
 const toast = require('../../../utils/toast')
 
+// 设备屏幕分辨率（width×height）：列表/详情接口都会返回，裁剪框据此锁定宽高比（如 500x500 → 1:1）。
+// 接口暂未返回该字段，这里先给默认值便于联调测试（如需 1:1 改成 { width: 500, height: 500 }）。
+const DEFAULT_DEVICE_SIZE = { width: 480, height: 720 }
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -22,7 +26,8 @@ Page({
     stageW: 0,
     stageH: 0,
     cropNaturalW: 0, // 原图真实像素宽
-    cropNaturalH: 0 // 原图真实像素高
+    cropNaturalH: 0, // 原图真实像素高
+    cropRatio: 1 // 裁剪框锁定的宽高比 = 设备 width / height
   },
 
   onLoad() {
@@ -86,7 +91,19 @@ Page({
     }
   },
 
-  // 进入裁剪：量出舞台尺寸 + 图片真实尺寸，算出图片「适应」显示矩形作为裁剪坐标基准，默认裁剪框=整张图。
+  // 当前连接设备的屏幕分辨率(width×height)：列表/详情接口都会返回，这里直接取投屏页拿到的设备对象。
+  // 接口未就绪/字段缺省时退回默认值，保证裁剪比例始终可用（便于联调测试）。
+  getDeviceCropSize() {
+    const device = this.data.device || {}
+    const w = Number(device.width)
+    const h = Number(device.height)
+    return {
+      width: w > 0 ? w : DEFAULT_DEVICE_SIZE.width,
+      height: h > 0 ? h : DEFAULT_DEVICE_SIZE.height
+    }
+  },
+
+  // 进入裁剪：量出舞台尺寸 + 图片真实尺寸，算出图片「适应」显示矩形作为裁剪坐标基准，裁剪框锁定设备比例。
   enterCrop() {
     const image = this.data.images[this.data.activeIndex]
     const src = image && (image.tempFilePath || image.url)
@@ -117,14 +134,27 @@ Page({
           const left = (stageW - dispW) / 2
           const top = (stageH - dispH) / 2
           const imageRect = { left, top, width: dispW, height: dispH }
+          // 设备屏幕比例：裁剪框锁定为该比例（如 500x500 → 1:1）
+          const size = this.getDeviceCropSize()
+          const ratio = size.width / size.height
+          // 初始裁剪框：在图片显示矩形内取「该比例的最大居中框」
+          let boxW = dispW
+          let boxH = boxW / ratio
+          if (boxH > dispH) {
+            boxH = dispH
+            boxW = boxH * ratio
+          }
+          const boxLeft = left + (dispW - boxW) / 2
+          const boxTop = top + (dispH - boxH) / 2
           this.setData({
             cropping: true,
             stageW,
             stageH,
             cropNaturalW: info.width,
             cropNaturalH: info.height,
+            cropRatio: ratio,
             cropImageRect: imageRect,
-            cropBox: { left, top, width: dispW, height: dispH }
+            cropBox: { left: boxLeft, top: boxTop, width: boxW, height: boxH }
           })
         },
         fail: () => toast.show({ title: '读取图片失败', icon: 'none' })
@@ -143,65 +173,114 @@ Page({
     }
   },
 
-  // 裁剪框拖拽中：按手柄类型调整裁剪框，并约束在图片显示矩形内、不小于最小尺寸
+  // 裁剪框拖拽中：move 在图片范围内平移；四角缩放锁定设备比例（改宽则高按比例自适应）
   onCropTouchMove(e) {
     if (!this._cropDrag) {
       return
     }
-    const MIN = 60 // 裁剪框最小边长(px)
     const t = e.touches[0]
     const dx = t.clientX - this._cropDrag.x
     const dy = t.clientY - this._cropDrag.y
-    const img = this.data.cropImageRect
     const start = this._cropDrag.box
+    const handle = this._cropDrag.handle
+
+    if (handle === 'move') {
+      const img = this.data.cropImageRect
+      const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, hi))
+      const left = clamp(start.left + dx, img.left, img.left + img.width - start.width)
+      const top = clamp(start.top + dy, img.top, img.top + img.height - start.height)
+      this.setData({
+        cropBox: { left, top, width: start.width, height: start.height }
+      })
+      return
+    }
+
+    this.setData({ cropBox: this.resizeCropBox(handle, dx, dy, start) })
+  },
+
+  // 四角缩放：锁定设备宽高比(cropRatio = width / height)，对角顶点固定。
+  // 按手指拖动量取主导边、另一边按比例推导，再约束在图片范围内与最小尺寸内。
+  resizeCropBox(handle, dx, dy, start) {
+    const MIN = 60 // 较短边最小边长(px)
+    const img = this.data.cropImageRect
+    const ratio = this.data.cropRatio || start.width / start.height
     const imgRight = img.left + img.width
     const imgBottom = img.top + img.height
     const startRight = start.left + start.width
     const startBottom = start.top + start.height
-    const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, hi))
 
-    let left = start.left
-    let top = start.top
-    let width = start.width
-    let height = start.height
-
-    switch (this._cropDrag.handle) {
-      case 'move':
-        left = clamp(start.left + dx, img.left, imgRight - start.width)
-        top = clamp(start.top + dy, img.top, imgBottom - start.height)
+    // 锚点（对角顶点固定）确定的最大可用空间，与随手指变化的候选宽高
+    let maxW
+    let maxH
+    let cw
+    let ch
+    switch (handle) {
+      case 'br': // 锚点：左上
+        maxW = imgRight - start.left
+        maxH = imgBottom - start.top
+        cw = start.width + dx
+        ch = start.height + dy
         break
-      case 'tl':
-        left = clamp(start.left + dx, img.left, startRight - MIN)
-        top = clamp(start.top + dy, img.top, startBottom - MIN)
-        width = startRight - left
-        height = startBottom - top
+      case 'tr': // 锚点：左下
+        maxW = imgRight - start.left
+        maxH = startBottom - img.top
+        cw = start.width + dx
+        ch = start.height - dy
         break
-      case 'tr': {
-        top = clamp(start.top + dy, img.top, startBottom - MIN)
-        const right = clamp(startRight + dx, start.left + MIN, imgRight)
-        width = right - start.left
-        height = startBottom - top
+      case 'bl': // 锚点：右上
+        maxW = startRight - img.left
+        maxH = imgBottom - start.top
+        cw = start.width - dx
+        ch = start.height + dy
         break
-      }
-      case 'bl': {
-        left = clamp(start.left + dx, img.left, startRight - MIN)
-        const bottom = clamp(startBottom + dy, start.top + MIN, imgBottom)
-        width = startRight - left
-        height = bottom - start.top
+      case 'tl': // 锚点：右下
+        maxW = startRight - img.left
+        maxH = startBottom - img.top
+        cw = start.width - dx
+        ch = start.height - dy
         break
-      }
-      case 'br': {
-        const right = clamp(startRight + dx, start.left + MIN, imgRight)
-        const bottom = clamp(startBottom + dy, start.top + MIN, imgBottom)
-        width = right - start.left
-        height = bottom - start.top
-        break
-      }
       default:
-        return
+        return start
     }
 
-    this.setData({ cropBox: { left, top, width, height } })
+    // 1) 取主导边，另一边按比例推导（对角拖动更跟手）
+    let width
+    let height
+    if (cw >= ch * ratio) {
+      width = cw
+      height = cw / ratio
+    } else {
+      height = ch
+      width = ch * ratio
+    }
+    // 2) 限制在图片显示范围内（保持比例）
+    if (width > maxW) {
+      width = maxW
+      height = width / ratio
+    }
+    if (height > maxH) {
+      height = maxH
+      width = height * ratio
+    }
+    // 3) 最小尺寸（作用于较短边，保持比例）
+    const minW = ratio >= 1 ? MIN * ratio : MIN
+    const minH = ratio >= 1 ? MIN : MIN / ratio
+    if (width < minW || height < minH) {
+      width = minW
+      height = minH
+    }
+    // 4) 按锚点（对角固定）定位
+    let left = start.left
+    let top = start.top
+    if (handle === 'tr') {
+      top = startBottom - height
+    } else if (handle === 'bl') {
+      left = startRight - width
+    } else if (handle === 'tl') {
+      left = startRight - width
+      top = startBottom - height
+    }
+    return { left, top, width, height }
   },
 
   onCropTouchEnd() {
