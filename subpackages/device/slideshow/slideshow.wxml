@@ -11,7 +11,7 @@
     <view class="slideshow-card glass-panel">
       <view class="switch-row">
         <view class="setting-title">开启轮播</view>
-        <switch checked="{{device.carouselEnabled}}" color="#ff6a20" bindchange="toggleCarousel" />
+        <switch checked="{{carouselOn}}" color="#ff6a20" bindchange="toggleCarousel" />
       </view>
 
       <view class="setting-tip">
@@ -21,12 +21,13 @@
 
       <view class="thin-divider"></view>
 
-      <view class="mode-title">轮播方式</view>
-      <view class="mode-option {{device.playbackMode === 'order' ? 'is-active' : ''}}" hover-class="none" data-mode="order" bindtap="changePlayback">
+      <view class="mode-title {{carouselOn ? '' : 'is-disabled'}}">轮播方式</view>
+      <!-- 未开启轮播时，轮播方式不可选择（changePlayback 内已做拦截，这里同步置灰） -->
+      <view class="mode-option {{carouselOn && device.playbackMode === 'order' ? 'is-active' : ''}} {{carouselOn ? '' : 'is-disabled'}}" hover-class="none" data-mode="order" bindtap="changePlayback">
         <view class="radio-dot"><view></view></view>
         <text>顺序轮播</text>
       </view>
-      <view class="mode-option {{device.playbackMode === 'random' ? 'is-active' : ''}}" hover-class="none" data-mode="random" bindtap="changePlayback">
+      <view class="mode-option {{carouselOn && device.playbackMode === 'random' ? 'is-active' : ''}} {{carouselOn ? '' : 'is-disabled'}}" hover-class="none" data-mode="random" bindtap="changePlayback">
         <view class="radio-dot"><view></view></view>
         <text>随机轮播</text>
       </view>

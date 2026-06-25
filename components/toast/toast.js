@@ -26,7 +26,7 @@ Component({
       const title = opts.title == null ? '' : String(opts.title)
       const icon = opts.icon || 'none'
       const iconType = ['success', 'error', 'loading'].indexOf(icon) > -1 ? icon : ''
-      const duration = opts.duration === undefined ? 1500 : Number(opts.duration)
+      const duration = opts.duration === undefined ? 2000 : Number(opts.duration)
       const mask = !!opts.mask
 
       this.clearTimers()

@@ -4,6 +4,9 @@ const system = require('../../../utils/system')
 const batteryUtil = require('../../../utils/battery')
 const deviceBle = require('../../../utils/device-ble')
 const protocol = require('../../../utils/frame-protocol')
+const media = require('../../../utils/media')
+const bluetooth = require('../../../utils/bluetooth')
+const permission = require('../../../utils/permission')
 
 const app = getApp()
 
@@ -249,6 +252,133 @@ Page({
     } finally {
       wx.hideLoading()
     }
+  },
+
+  // 顶部「投屏」：要求设备已连接，选当前设备相册照片 → 进入投屏预览（连接图传由预览/结果页复用本会话）
+  async startProjection() {
+    const device = this.data.device
+    if (!device) {
+      return
+    }
+    const bleId = device.deviceId || device.bleDeviceId
+    if (!(bleId && deviceBle.isConnected(bleId))) {
+      toast.show({ title: '请先连接设备', icon: 'none' })
+      return
+    }
+
+    // 设为当前选中设备，预览/结果页据此连接并图传
+    app.setSelectedDevice(device)
+
+    let images
+    try {
+      images = await media.chooseFromAlbum()
+    } catch (error) {
+      if (error && error.errMsg && error.errMsg.indexOf('cancel') > -1) {
+        return // 用户取消选择不算错误
+      }
+      toast.show({ title: '选择照片失败', icon: 'none' })
+      return
+    }
+    if (!images || !images.length) {
+      return
+    }
+
+    wx.setStorageSync('pendingProjection', { device, images })
+    wx.navigateTo({
+      url: '/subpackages/projection/preview/preview'
+    })
+  },
+
+  // 顶部「连接 / 断开」：已连接则断开；未连接则重扫匹配本设备并连接（BLE deviceId 每次扫描会话才有效）。
+  async toggleConnection() {
+    const device = this.data.device
+    if (!device) {
+      return
+    }
+
+    if (device.connected) {
+      if (device.deviceId) {
+        deviceBle.disconnect(device.deviceId)
+      }
+      const updated = Object.assign({}, device, { connected: false })
+      if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === updated.id) {
+        app.setSelectedDevice(updated)
+      }
+      this.setData({ device: updated })
+      toast.show({ title: '已断开', icon: 'none' })
+      return
+    }
+
+    wx.showLoading({ title: '搜索设备中', mask: true })
+    try {
+      const location = await permission.getCurrentLocation()
+      if (!location) {
+        throw new Error('请先授权定位后再连接')
+      }
+      await bluetooth.openAdapter()
+      const found = await bluetooth.discoverDevices({ timeout: 6000 })
+      const target = this.matchScannedDevice(found, device)
+      if (!target) {
+        throw new Error('未搜索到该设备，请确认设备已开机并在附近')
+      }
+
+      wx.showLoading({ title: '连接设备中', mask: true })
+      await deviceBle.ensureConnection(target.deviceId)
+      const info = await deviceBle.readDeviceInfo(target.deviceId)
+      const updated = Object.assign({}, device, {
+        deviceId: target.deviceId,
+        bleDeviceId: target.deviceId,
+        connected: true,
+        battery: info.battery,
+        usedMemory: info.imgCount,
+        totalMemory: info.capacity,
+        playbackMode: info.playMode,
+        intervalSeconds: info.intervalSeconds,
+        intervalHours: info.intervalSeconds ? Math.max(1, Math.round(info.intervalSeconds / 3600)) : device.intervalHours,
+        firmwareVersion: info.firmwareVersion || device.firmwareVersion
+      })
+      app.setSelectedDevice(updated)
+
+      const hasBattery = typeof updated.battery === 'number'
+      this.setData({
+        device: updated,
+        memoryPercent: memoryPercent(updated),
+        batteryIcon: batteryUtil.getBatteryIcon(hasBattery ? updated.battery : batteryUtil.DEFAULT_BATTERY),
+        batteryText: hasBattery ? `${updated.battery}%` : '--',
+        memoryText: updated.totalMemory ? `${updated.usedMemory}/${updated.totalMemory}` : '--',
+        playbackLabel: getPlaybackLabel(updated),
+        firmwareVersion: updated.firmwareVersion || '--'
+      })
+      toast.show({ title: '已连接', icon: 'none' })
+    } catch (error) {
+      if (error && error.code === 'PERMISSION_DENIED') {
+        bluetooth.showPermissionGuide()
+      } else {
+        toast.show({ title: (error && error.message) || '连接失败', icon: 'none' })
+      }
+    } finally {
+      wx.hideLoading()
+    }
+  },
+
+  // 把后端设备(序列号/名称)与扫描结果匹配，返回带「本次会话有效 deviceId」的那条（序列号优先，名称兜底）。
+  matchScannedDevice(found, device) {
+    const list = found || []
+    const serial = String((device && (device.deviceNo || device.productDeviceId)) || '').trim()
+    if (serial) {
+      const bySerial = list.find(item => String(item.deviceNo || '').trim() === serial)
+      if (bySerial) {
+        return bySerial
+      }
+    }
+    const name = String((device && device.name) || '').trim()
+    if (name) {
+      const byName = list.find(item => String(item.name || '').trim() === name)
+      if (byName) {
+        return byName
+      }
+    }
+    return null
   },
 
   goSlideshow() {

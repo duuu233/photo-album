@@ -48,6 +48,11 @@
                     <image class="battery-level-icon" src="{{item.batteryIcon}}" mode="aspectFit"></image>
                     <text>{{item.battery}}%</text>
                   </view>
+                  <!-- 未连接时展示「连接蓝牙」按钮；catchtap 阻止冒泡到卡片的进入设备列表 -->
+                  <view wx:if="{{!item.connected}}" class="device-connect-btn" hover-class="none" catchtap="connectCurrentDevice">
+                    <image class="device-connect-icon" src="/assets/images/bluetooth-connection.png" mode="aspectFit"></image>
+                    <text>连接蓝牙</text>
+                  </view>
                 </view>
             </view>
           </swiper-item>
@@ -124,37 +129,6 @@
       </view>
     </view>
 
-    <!-- 弹层③：拍照/相册选择（已绑定时点击投屏入口弹出） -->
-    <view wx:if="{{isMediaSheet}}" class="home-mask" catchtouchmove="noop">
-      <view class="bottom-sheet media-sheet {{sheetClosing ? 'pop-closing-sheet' : ''}}">
-        <view class="media-sheet-title">选择投屏方式</view>
-        <view class="media-option" hover-class="none" bindtap="chooseCamera">
-        <view class="media-option-left"> 
-
-          <image class="media-art mini camera-art" src="/assets/images/home-media-mini01.png" mode="aspectFit"></image>
-          <view class="media-option-copy">
-            <view>拍照</view>
-            <text>调用手机相机拍照</text>
-          </view>
-        
-        </view>
-        
-          <image class="round-arrow " src="/assets/images/home-camera-card-right-icon.png" mode="aspectFit"></image>
-        </view>
-        <view class="media-option" hover-class="none" bindtap="chooseAlbum">
-          <view class="media-option-left">
-          <image class="media-art mini album-art" src="/assets/images/home-media-mini02.png" mode="aspectFit"></image>
-          <view class="media-option-copy">
-            <view>相册</view>
-            <text>从手机相册选择照片</text>
-          </view>
-            </view>
-          <image class="round-arrow " src="/assets/images/home-album-card-right-icon.png" mode="aspectFit"></image>
-         
-        </view>
-        <view class="cancel-action" hover-class="none" bindtap="closeHomeSheet">取消</view>
-      </view>
-    </view>
   </block>
 
   <!-- ===== 分支二：绑定设备流程（搜索中 / 已发现 / 未发现），与首页场景互斥 ===== -->

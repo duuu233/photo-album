@@ -890,6 +890,36 @@ function disconnect(deviceId) {
   }
 }
 
+// 给「设备返回 / 蓝牙链路」类错误统一加「设备-」前缀，便于和接口错误(「接口-」)区分。
+// 幂等：已带「接口-」「设备-」前缀，或为纯大写下划线的内部控制信号(如 UPLOAD_ABORTED/IMG_ACK_TIMEOUT) 时原样返回。
+function prefixDeviceError(error) {
+  const e = error instanceof Error ? error : new Error((error && error.message) || '设备操作失败')
+  const msg = e.message || '设备操作失败'
+  if (/^接口-|^设备-/.test(msg) || /^[A-Z][A-Z0-9_]*$/.test(msg)) {
+    return e
+  }
+  e.message = '设备-' + msg
+  return e
+}
+
+// 包裹设备方法：同步抛出或 Promise 拒绝的错误都补上「设备-」前缀
+function wrapDevice(fn) {
+  return function (...args) {
+    let ret
+    try {
+      ret = fn.apply(this, args)
+    } catch (error) {
+      throw prefixDeviceError(error)
+    }
+    if (ret && typeof ret.then === 'function') {
+      return ret.then(undefined, error => {
+        throw prefixDeviceError(error)
+      })
+    }
+    return ret
+  }
+}
+
 module.exports = {
   ensureConnection,
   request,
@@ -915,3 +945,26 @@ module.exports = {
   disconnectAll,
   disconnect
 }
+
+// 统一给会真正和设备/蓝牙交互的异步方法加「设备-」错误前缀（同步只读方法 isConnected 等不需要）
+;[
+  'ensureConnection',
+  'request',
+  'readDeviceInfo',
+  'readBattery',
+  'setPlayback',
+  'getPlayConfig',
+  'getSwVersion',
+  'getConnectionInterval',
+  'setConnectionInterval',
+  'setConnectionIntervalMs',
+  'optimizeConnectionIntervalForTransfer',
+  'setTime',
+  'deleteImage',
+  'refreshScreen',
+  'uploadImage'
+].forEach(name => {
+  if (typeof module.exports[name] === 'function') {
+    module.exports[name] = wrapDevice(module.exports[name])
+  }
+})

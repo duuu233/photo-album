@@ -168,7 +168,16 @@ function showError(message) {
 
 // 统一的错误处理：默认弹 toast 提示；遇到 401 清除本地登录态后再抛给调用方
 function handleBusinessError(error, options) {
-  const message = error && error.message ? error.message : '请求失败'
+  let message = error && error.message ? error.message : '请求失败'
+
+  // 接口报错统一加「接口-」前缀，方便和「设备-」(蓝牙/设备返回) 错误区分；幂等避免重复加。
+  // 同时写回 error.message，让用 showError:false 自行 toast 的调用方也带上前缀。
+  if (!/^接口-/.test(message)) {
+    message = '接口-' + message
+  }
+  if (error) {
+    error.message = message
+  }
 
   // 调用方可通过 options.showError === false 关闭自动提示（自行处理错误）
   if (options.showError !== false) {

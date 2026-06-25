@@ -34,6 +34,19 @@
         </view>
       </view>
 
+      <!-- 顶部「投屏 / 连接」操作，样式同「我的设备」的轮播设置和连接模块 -->
+      <view class="device-actions">
+        <view class="device-action projection-action" hover-class="none" catchtap="startProjection">
+          <image class="action-frame-icon" src="/assets/images/projection-result-icon01.png" mode="aspectFit"></image>
+          <text>投屏</text>
+        </view>
+        <view class="device-action-divider"></view>
+        <view class="device-action connection-action {{device.connected ? 'disconnect' : 'connect'}}" hover-class="none" catchtap="toggleConnection">
+          <image class="action-bt-icon" src="{{device.connected ? '/assets/images/disconnect-icon01.png' : '/assets/images/bluetooth-connection.png'}}" mode="aspectFit"></image>
+          <text>{{device.connected ? '断开' : '连接'}}</text>
+        </view>
+      </view>
+
       <view class="detail-list glass-panel">
         <view class="detail-row" hover-class="none" bindtap="goSlideshow">
           <view class="row-left">

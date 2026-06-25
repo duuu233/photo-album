@@ -259,8 +259,8 @@ Page({
         return
       }
 
-      // 不再进首页就自动扫描重连：连接改为点「拍照/相册」时按需连接当前选中设备
-      // （见 ensureSelectedDeviceConnected）。loadHomeState 仍用真实蓝牙会话显示「已连接」。
+      // 不再进首页就自动扫描重连：连接改为点设备卡片的「连接蓝牙」按钮按需连接当前选中设备
+      // （见 connectCurrentDevice）；点「拍照/相册」只校验是否已连接。loadHomeState 仍用真实蓝牙会话显示「已连接」。
       this.loadHomeState()
     }
   },
@@ -622,65 +622,84 @@ Page({
     })
   },
 
-  // 点击拍照/相册入口（两者一致）：未登录先跳登录；未绑定设备先引导绑定；
-  // 已绑定则先按需连接当前选中设备，连上才弹出拍照/相册选择层，连不上切到「重新连接」场景。
+  // 点击「拍照」入口：登录/绑定/连接校验通过后，直接调起相机（不再弹「拍照/相册」二选一层）。
   tapCameraEntry() {
-    this.openMediaSheet()
-  },
-
-  tapAlbumEntry() {
-    this.openMediaSheet()
-  },
-
-  async openMediaSheet() {
-    if (!app.requireLogin()) {
+    if (!this.ensureCanProject()) {
       return
+    }
+    this.chooseCamera()
+  },
+
+  // 点击「相册」入口：校验通过后直接调起相册选择（不再弹「拍照/相册」二选一层）。
+  tapAlbumEntry() {
+    if (!this.ensureCanProject()) {
+      return
+    }
+    this.chooseAlbum()
+  },
+
+  // 拍照/相册前的统一校验：未登录先跳登录；未绑定先引导绑定；当前选中设备未连接则提示先连接。
+  // 任一不满足返回 false，调用方不再继续（连接走设备卡片「连接蓝牙」按钮，不在此自动扫描连接）。
+  ensureCanProject() {
+    if (!app.requireLogin()) {
+      return false
     }
     if (!this.data.isBoundHome) {
       this.showBindNowSheet()
-      return
+      return false
     }
-    const connected = await this.ensureSelectedDeviceConnected()
-    if (!connected) {
-      return // 连不上：ensureSelectedDeviceConnected 已切到 UNBOUND_RECONNECT 场景
+    if (!this.isCurrentDeviceConnected()) {
+      toast.show({ title: '请先连接设备', icon: 'none' })
+      return false
     }
-    this.setScene(SCENES.MEDIA_SHEET)
+    return true
   },
 
-  // 连接当前选中(轮播展示中)的设备。已连接直接放行；未连接则扫描匹配该设备并连接，
-  // 连上后把首页该设备标记「已连接」并提示，返回 true；连不上(权限/蓝牙/扫描不到/连接失败任一)
-  // 统一切到「首页-未绑定设备-重新连接」(UNBOUND_RECONNECT) 场景并返回 false。
-  async ensureSelectedDeviceConnected() {
+  // 当前展示选中的设备是否已建立真实蓝牙会话（拍照/相册前据此判断是否需要先连接）
+  isCurrentDeviceConnected() {
+    const selected = app.globalData.selectedDevice || this.data.currentDevice
+    const id = selected && (selected.deviceId || selected.bleDeviceId)
+    return !!(id && deviceBle.isConnected(id))
+  },
+
+  // 设备卡片「连接蓝牙」按钮：扫描匹配当前展示选中的设备并连接，连上后把卡片标记「已连接」。
+  // 已有活动会话直接复用；连不上(权限/蓝牙/扫描不到/连接失败)只 toast 提示，不切场景，留在已绑定首页。
+  // 与列表页一致——BLE deviceId 是本次扫描会话临时分配的，后端只存序列号，必须先重扫拿到有效 deviceId 再连。
+  async connectCurrentDevice() {
+    if (!app.requireLogin()) {
+      return
+    }
     const selected = app.globalData.selectedDevice || this.data.currentDevice
     const existingId = selected && (selected.deviceId || selected.bleDeviceId)
-    // 已有活动会话直接复用：设备是单连接，连着的就是当前在用的，无需重复扫描连接
     if (existingId && deviceBle.isConnected(existingId)) {
       this.markCurrentDeviceConnected(existingId, null)
-      return true
+      toast.show({ title: '设备已连接', icon: 'none' })
+      return
     }
 
     wx.showLoading({ title: '连接设备中', mask: true })
     try {
-      // BLE deviceId 是「本次扫描会话」临时分配的，后端只存序列号，必须先重扫拿到当下有效的 deviceId 再连
       const location = await permission.getCurrentLocation()
       if (!location) {
-        throw new Error('LOCATION_DENIED')
+        throw new Error('请先授权定位后再连接')
       }
       await bluetooth.openAdapter()
       const found = await bluetooth.discoverDevices({ timeout: 6000 })
       const target = this.matchScannedDevice(found, selected)
       if (!target) {
-        throw new Error('DEVICE_NOT_FOUND')
+        throw new Error('未搜索到该设备，请确认设备已开机并在附近')
       }
       await deviceBle.ensureConnection(target.deviceId)
       const info = await deviceBle.readDeviceInfo(target.deviceId)
       this.markCurrentDeviceConnected(target.deviceId, info)
       toast.show({ title: '已连接设备', icon: 'none' })
-      return true
     } catch (error) {
-      // 连不上(任何原因)：按需求切到「重新连接」场景，不进入拍照/相册选择层
-      this.setScene(SCENES.UNBOUND_RECONNECT)
-      return false
+      // 系统级「附近设备」权限被拒：引导去系统设置；其余原因 toast 提示，停留在已绑定首页
+      if (error && error.code === 'PERMISSION_DENIED') {
+        bluetooth.showPermissionGuide()
+      } else {
+        toast.show({ title: (error && error.message) || '连接失败', icon: 'none' })
+      }
     } finally {
       wx.hideLoading()
     }

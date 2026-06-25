@@ -76,6 +76,15 @@
   border-color: #ff6a20;
 }
 
+/* 未开启轮播时：标题与轮播方式选项置灰，提示不可选择 */
+.mode-title.is-disabled {
+  opacity: 0.45;
+}
+
+.mode-option.is-disabled {
+  opacity: 0.45;
+}
+
 .radio-dot {
   display: flex;
   align-items: center;

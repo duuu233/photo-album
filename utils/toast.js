@@ -32,7 +32,7 @@ function show(options) {
   wx.showToast({
     title: opts.title == null ? '' : String(opts.title),
     icon: opts.icon || 'none',
-    duration: opts.duration === undefined ? 1500 : opts.duration,
+    duration: opts.duration === undefined ? 2000 : opts.duration,
     mask: !!opts.mask
   })
 }

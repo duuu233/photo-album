@@ -144,9 +144,21 @@ Page({
       toast.show({ title: '暂无可裁剪的图片', icon: 'none' })
       return
     }
-    // 裁剪基于未旋转的原图，进入裁剪先把预览旋转归零，避免“看到的”和“裁到的”不一致
-    this.setData({ activeTool: 'crop', editing: true, rotation: 0 })
+    // 进入裁剪前先把已选旋转烘焙进图片，再基于旋转后的图测量裁剪框，避免「旋转后再裁剪」丢失旋转
+    this.bakeRotation().then(() => {
+      this.setData({ activeTool: 'crop', editing: true, rotation: 0 })
+      this.measureCropLayout()
+    })
+  },
 
+  // 量出舞台尺寸 + 当前图片真实尺寸，算出图片「适应」显示矩形作为裁剪坐标基准，裁剪框锁定设备比例。
+  // 读取的是当前最新的图片源（可能已被 bakeRotation 旋转导出过）。
+  measureCropLayout() {
+    const image = this.data.images[this.data.activeIndex]
+    const src = image && (image.tempFilePath || image.url)
+    if (!src) {
+      return
+    }
     const query = wx.createSelectorQuery()
     query.select('.preview-swiper').boundingClientRect()
     query.exec((res) => {
@@ -356,10 +368,19 @@ Page({
     })
   },
 
-  // 保存编辑：裁剪态把选区真正裁出来写回当前图片；其它编辑（旋转）仅退出编辑态
+  // 保存编辑：裁剪态把选区真正裁出来写回当前图片；旋转态把旋转角度真正烘焙进图片
+  //（保证投屏的「设备图传」与「后端上传」用的都是处理后的图——含裁剪、含旋转）。
   savePhoto() {
     if (this.data.cropping) {
       this.applyCrop()
+      return
+    }
+    const angle = ((this.data.rotation % 360) + 360) % 360
+    if (angle !== 0) {
+      this.bakeRotation().then(() => {
+        this.setData({ activeTool: '', editing: false })
+        toast.show({ title: '已保存', icon: 'none' })
+      })
       return
     }
     this.setData({
@@ -369,6 +390,92 @@ Page({
     toast.show({
       title: '已保存',
       icon: 'none'
+    })
+  },
+
+  // 把当前已选旋转角度(0/90/180/270)真正绘制进图片并导出为新临时文件，写回当前图片并持久化。
+  // 返回 Promise（rotation=0 或无图时直接 resolve）。投屏用的是这里导出的处理图，故旋转会随之生效。
+  bakeRotation() {
+    return new Promise((resolve) => {
+      const angle = ((this.data.rotation % 360) + 360) % 360
+      const { activeIndex, images } = this.data
+      const image = images[activeIndex]
+      const src = image && (image.tempFilePath || image.url)
+      if (angle === 0 || !src) {
+        this.setData({ rotation: 0 })
+        resolve()
+        return
+      }
+
+      wx.showLoading({ title: '处理中', mask: true })
+      wx.getImageInfo({
+        src,
+        success: (info) => {
+          const swap = angle === 90 || angle === 270
+          const outW = swap ? info.height : info.width
+          const outH = swap ? info.width : info.height
+          const query = wx.createSelectorQuery()
+          query.select('#cropCanvas').fields({ node: true }).exec((res) => {
+            const node = res && res[0] && res[0].node
+            if (!node) {
+              wx.hideLoading()
+              toast.show({ title: '旋转失败：画布不可用', icon: 'none' })
+              resolve()
+              return
+            }
+            node.width = outW
+            node.height = outH
+            const ctx = node.getContext('2d')
+            const img = node.createImage()
+            img.onload = () => {
+              ctx.clearRect(0, 0, outW, outH)
+              // 以输出画布中心为原点旋转，再按原图尺寸居中绘制（90/270 时画布已宽高互换）
+              ctx.save()
+              ctx.translate(outW / 2, outH / 2)
+              ctx.rotate((angle * Math.PI) / 180)
+              ctx.drawImage(img, -info.width / 2, -info.height / 2, info.width, info.height)
+              ctx.restore()
+              wx.canvasToTempFilePath({
+                canvas: node,
+                success: (r) => {
+                  const next = images.slice()
+                  const updated = Object.assign({}, next[activeIndex])
+                  // 首次编辑时备份原图源，供「原图」还原
+                  if (!updated._origSrc) {
+                    updated._origSrc = updated.tempFilePath || updated.url || ''
+                  }
+                  updated.tempFilePath = r.tempFilePath
+                  // 旋转后真实宽高变化，重算 photo-wrap 展示尺寸
+                  updated.cropW = outW
+                  updated.cropH = outH
+                  updated.wrapStyle = this.computeWrapStyle(outW, outH)
+                  next[activeIndex] = updated
+                  this.setData({ images: next, activeImage: updated, rotation: 0 })
+                  this.persistPending(next)
+                  wx.hideLoading()
+                  resolve()
+                },
+                fail: () => {
+                  wx.hideLoading()
+                  toast.show({ title: '旋转导出失败', icon: 'none' })
+                  resolve()
+                }
+              })
+            }
+            img.onerror = () => {
+              wx.hideLoading()
+              toast.show({ title: '图片加载失败', icon: 'none' })
+              resolve()
+            }
+            img.src = src
+          })
+        },
+        fail: () => {
+          wx.hideLoading()
+          toast.show({ title: '读取图片失败', icon: 'none' })
+          resolve()
+        }
+      })
     })
   },
 

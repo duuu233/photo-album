@@ -12,6 +12,63 @@
   padding: 26rpx 40rpx;
 }
 
+/* 顶部「投屏 / 连接」操作模块，样式对齐「我的设备」列表卡片的轮播设置和连接 */
+.device-actions {
+  display: grid;
+  grid-template-columns: 1fr 1rpx 1fr;
+  align-items: center;
+  height: 84rpx;
+  border: 1px solid rgba(255, 255, 255, 0.31);
+  border-radius: 40rpx;
+  background: linear-gradient(
+    88deg,
+    rgba(255, 255, 255, 0.38) 2.41%,
+    rgba(255, 255, 255, 0.55) 96.27%
+  );
+  box-shadow: 0 4px 12.1px 0 rgba(44, 63, 97, 0.03);
+  backdrop-filter: blur(7.95px);
+}
+
+.device-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  min-height: 84rpx;
+  color: #777e88;
+  font-size: 24rpx;
+  font-weight: 500;
+}
+
+.device-action-divider {
+  height: 38rpx;
+  background: #dadddf;
+}
+
+.projection-action {
+  color: #eb5f1b;
+}
+
+.connection-action.disconnect {
+  color: #eb5f1b;
+}
+
+.connection-action.connect {
+  color: #2079fc;
+}
+
+.action-frame-icon {
+  flex: 0 0 auto;
+  width: 32rpx;
+  height: 30rpx;
+}
+
+.action-bt-icon {
+  flex: 0 0 auto;
+  width: 28rpx;
+  height: 28rpx;
+}
+
 .summary-icon {
   display: flex;
   align-items: center;
