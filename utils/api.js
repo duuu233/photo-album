@@ -269,6 +269,9 @@ module.exports = {
     })
   },
 
+  // BLE 图片转换上传：form-data 上传原图，后端按 targetWidth×targetHeight 把图片转换成设备需要的帧数据(.bin)
+  // 并存到 OSS，返回 { url(可下载的 .bin 地址)、taskId(任务id，更新设备上传状态用)、upirId(投屏记录id)、name }。
+  // device/terminal/language/userToken 由 request.js 经 header/query 自动注入，业务只传文件与目标宽高。
   setUserProductUpload(options = {}) {
     const filePaths = normalizeFilePaths(
       options.filePaths || options.files || options.filePath
@@ -280,12 +283,16 @@ module.exports = {
       name: 'fileParam',
       query: {
         userProductId: options.userProductId,
-        deviceUploadState: options.deviceUploadState
+        deviceUploadState: options.deviceUploadState,
+        targetWidth: options.targetWidth,
+        targetHeight: options.targetHeight
       },
       formData: options.formData,
       mock: false,
-      loading: true,
-      loadingText: '上传中'
+      // 投屏结果页自管进度文案(setData desc)，按需传 loading:false 关掉全局 loading 遮罩、showError:false 自行处理错误
+      loading: options.loading !== false,
+      loadingText: options.loadingText || '上传中',
+      showError: options.showError
     })
   },
 
@@ -480,6 +487,24 @@ module.exports = {
     return http.get('/Client/UserProduct/getUserProductImgRecordList', params, {
       mock: false
     })
+  },
+
+  // 编辑投屏记录：BLE 图传到设备成功后调用，用上传接口返回的 taskId/upirId 把该条投屏记录的
+  // 设备上传状态置为成功(deviceUploadState=1)。设备图传失败则不调用（记录保持失败态）。
+  // body 只传业务字段；device/language/terminal/userToken 由 request.js 经 header/query 注入。
+  editUserProductImgRecord(data = {}) {
+    return http.post(
+      '/Client/UserProduct/editUserProductImgRecord',
+      {
+        upirId: data.upirId,
+        taskId: data.taskId,
+        deviceUploadState: data.deviceUploadState
+      },
+      {
+        mock: false,
+        showError: data.showError
+      }
+    )
   },
 
   // 删除产品投屏记录，id=upirId。可传 id 或 { id }

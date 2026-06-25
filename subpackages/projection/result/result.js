@@ -1,30 +1,14 @@
 // 投屏结果页：进入时（status=progress）真实连接设备并走 BLE 图传，进度条与张数为真实进度；
-// 传完按真实结果切到「成功 / 失败」。链路与调试台一致：
-//   连接 → 读真实设备信息(0x01) → 逐张：解码→量化六色帧→图传(0x20/0x21/0x22)→刷新显示(0x24)。
+// 传完按真实结果切到「成功 / 失败」。已改为「后端转换 + BLE 图传」链路（图片处理放到服务器，画质更稳）：
+//   连接 → 读真实设备信息(0x01) → 逐张：
+//     原图传后端转换(setUserProductUpload，得 .bin 下载地址 + taskId + upirId)
+//     → 下载 .bin 帧数据 → 图传到设备(0x20/0x21/0x22)
+//     → 设备成功才编辑投屏记录(editUserProductImgRecord 置 deviceUploadState=1) → 刷新显示(0x24)。
 const system = require('../../../utils/system')
 const api = require('../../../utils/api')
 const deviceBle = require('../../../utils/device-ble')
-const imageCodec = require('../../../utils/image-codec')
 const protocol = require('../../../utils/frame-protocol')
 const toast = require('../../../utils/toast')
-
-// 真实投屏默认使用当前实机验证效果最好的参数：
-// 1) 跳过 wx.compressImage，直接用原图进 canvas；
-// 2) imageToImageData 内保持单步 drawImage 缩放；
-// 3) 量化使用调试页「实拍 2026-06-22」校准档。
-const PROJECTION_QUANTIZE_OPTIONS = {
-  dither: true,
-  contrast: 1.12,
-  saturation: 1.28,
-  palette: [
-    { nibble: 0x0, rgb: [0, 0, 0], name: '黑' },
-    { nibble: 0x1, rgb: [255, 255, 255], name: '白' },
-    { nibble: 0x2, rgb: [255, 250, 0], name: '黄' },
-    { nibble: 0x3, rgb: [97, 0, 0], name: '红' },
-    { nibble: 0x5, rgb: [20, 56, 180], name: '蓝' },
-    { nibble: 0x6, rgb: [57, 104, 57], name: '绿' }
-  ]
-}
 
 const STATUS_TEXT = {
   progress: {
@@ -130,6 +114,7 @@ Page({
 
     const total = images.length
     this.setData({ progressTotal: total, progressCurrent: 0, progressPercent: 0 })
+    console.log(`[投屏] 开始：deviceId=${deviceId}，待投 ${total} 张`)
 
     let uploaded = 0
     try {
@@ -139,6 +124,14 @@ Page({
       await deviceBle.ensureConnection(deviceId)
       this.setData({ desc: '正在读取设备信息…' })
       const info = await deviceBle.readDeviceInfo(deviceId)
+      console.log('[投屏] 设备信息：', {
+        screenType: info.screenType,
+        width: info.width,
+        height: info.height,
+        capacity: info.capacity,
+        imgCount: info.imgCount,
+        firmware: info.firmwareVersion
+      })
 
       // v1.4 固件支持主动设置 BLE 连接间隔。图传前切到 30ms，可减少默认慢连接间隔造成的写入排队/卡顿。
       // 旧固件或链路暂不支持时继续走原有图传逻辑，避免把优化能力变成硬依赖。
@@ -155,39 +148,56 @@ Page({
       // 设备空间校验：剩余可存张数 = 容量 - 已存张数（掩码置位数）
       let usedIndexes = protocol.maskToIndexes(info.imgMask)
       const free = (info.capacity || 0) - usedIndexes.length
+      console.log(`[投屏] 设备空间：容量 ${info.capacity}，已存 ${usedIndexes.length}，剩余 ${free}`)
       if (free < total) {
         throw new Error(`设备空间不足：剩余 ${Math.max(0, free)} 张，待投 ${total} 张`)
       }
 
-      // 2) 逐张：解码到目标尺寸 → 量化成六色帧 → 选空闲槽位 → 图传 → 刷新显示
+      // 2) 逐张：原图传后端转换得 .bin → 下载帧数据 → 选空闲槽位 → 图传 → 设备成功才写投屏记录 → 刷新显示
       for (let i = 0; i < total; i++) {
         if (this._aborted) {
           throw new Error('UPLOAD_ABORTED')
         }
         const image = images[i]
-        // 先「处理照片」(解码+六色量化，CPU 较重)，再「投屏」(BLE 图传)，文案区分两个阶段，
+        // 先「转换照片」(传后端按设备尺寸转换 + 下载 .bin)，再「投屏」(BLE 图传)，文案区分两个阶段，
         // 让用户知道开头这段不是卡死，而是在处理第一张图。
-        this.setData({ desc: `正在处理第 ${i + 1}/${total} 张照片…` })
+        this.setData({ desc: `正在转换第 ${i + 1}/${total} 张照片…` })
 
-        const srcPath = image.tempFilePath || image.url
-        const imageData = await this.imageToImageData(srcPath, info.width, info.height)
-        const frame = imageCodec.fromImageData(imageData, info.width, info.height, PROJECTION_QUANTIZE_OPTIONS)
+        // 后端转换：返回可下载的 .bin 地址 + taskId(更新设备上传状态用) + upirId(投屏记录id)
+        const { url, taskId, upirId } = await this.convertOnServer(image, device, info)
+        // 后端按设备分辨率直接返回六色 4bpp 帧；下载后原样走 BLE 图传（客户端不做任何图像转换）
+        const frameData = await this.downloadFrameBin(url)
+        const head = protocol.bytesToHex(frameData.subarray(0, 16))
+        const expected4bpp = Math.ceil((info.width * info.height) / 2)
+        console.log(
+          `[投屏] 第 ${i + 1}/${total} 张 .bin=${frameData.length} 字节 头16=${head} 设备需六色4bpp=${expected4bpp} 字节`
+        )
+        // 字节数必须 = 六色4bpp(宽×高÷2)；对不上直接报清晰错误（设备会回含糊的「参数错误」），便于核对后端返回格式
+        if (frameData.length !== expected4bpp) {
+          throw new Error(
+            `后端返回的不是设备要的六色4bpp帧：收到 ${frameData.length} 字节(头16=${head})，设备 ${info.width}×${info.height} 需要 ${expected4bpp} 字节`
+          )
+        }
         this.setData({ desc: `正在投第 ${i + 1}/${total} 张…` })
 
         const index = protocol.firstFreeIndex(protocol.indexesToMask(usedIndexes), info.capacity)
         if (index < 0) {
           throw new Error('设备已存满')
         }
+        console.log(
+          `[投屏] 第 ${i + 1}/${total} 张 图传(0x20)：index=${index} screenType=${info.screenType} ` +
+            `${info.width}x${info.height} dataSize=${frameData.length}`
+        )
 
-        // 本张事务：设备图传(BLE) + 后端上传(api) 二者都成功才保留；任一步失败 →
-        // 回滚删掉本张刚传到设备的图，再向外抛出让整体判失败（满足「二边都成功才算成功」）。
+        // 本张事务：BLE 图传成功 → 才编辑投屏记录置成功(deviceUploadState=1)；任一步失败 →
+        // 回滚删掉本张刚传到设备的图，再向外抛出让整体判失败、跳到失败场景（设备失败时不写成功记录）。
         try {
-          await deviceBle.uploadImage(deviceId, {
+          const summary = await deviceBle.uploadImage(deviceId, {
             screenType: info.screenType,
             index,
             width: info.width,
             height: info.height,
-            data: frame.data,
+            data: frameData,
             shouldAbort: () => this._aborted,
             // 单张内的分包进度叠加已完成张数 → 整体百分比，进度条平滑推进
             onProgress: (done, totalPackets) => {
@@ -196,10 +206,18 @@ Page({
               this.setData({ progressPercent: percent })
             }
           })
+          console.log(`[投屏] 第 ${i + 1}/${total} 张 设备图传成功`, summary)
 
-          // 后端上传失败现在会抛出（不再吞掉），从而触发本张回滚
-          await this.syncUploadedImage(device, image)
+          // 设备图传成功后才编辑投屏记录（设备失败则不调用，记录保持失败态）；失败会抛出触发本张回滚
+          await api.editUserProductImgRecord({
+            upirId,
+            taskId,
+            deviceUploadState: 1,
+            showError: false
+          })
+          console.log(`[投屏] 第 ${i + 1}/${total} 张 投屏记录已置成功：upirId=${upirId} taskId=${taskId}`)
         } catch (error) {
+          console.error(`[投屏] 第 ${i + 1}/${total} 张 图传/记录更新失败，回滚 index=${index}：`, error)
           await this.rollbackDeviceImage(deviceId, index)
           throw error
         }
@@ -218,12 +236,14 @@ Page({
         })
       }
 
+      console.log(`[投屏] 全部完成：成功 ${uploaded}/${total} 张`)
       this.successResult(device, uploaded)
     } catch (error) {
       const aborted = this._aborted || (error && error.message === 'UPLOAD_ABORTED')
       const message = aborted
         ? '投屏已中断：上传时手机息屏/切到后台，蓝牙会被挂起。请保持亮屏后重新投屏。'
         : (error && error.message) || '投屏失败'
+      console.error(`[投屏] 失败（已成功 ${uploaded}/${total} 张）：${message}`, error)
       this.failResult(device, uploaded, message)
     } finally {
       wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false })
@@ -233,30 +253,86 @@ Page({
     }
   },
 
-  // 后端上传本张照片记录。失败会抛出，让本张投屏判为失败并触发设备侧回滚
-  //（与「设备 + 后端二边都成功才算成功」一致；旧逻辑曾吞掉错误，已去除）。
-  async syncUploadedImage(device, image) {
-    // 本地新图（相机/相册/裁剪导出）走 tempFilePath。注意：iOS 上 tempFilePath 常是 http://tmp/xxx 这种
-    // 「本地 http 路径」，绝不能因为它以 http(s) 开头就当成云端图跳过上传——否则设备图传成功了，
-    // 后端却没收到图，「我的图库(getUserProductImgList)」就一直看不到这张投屏成功的照片。
-    const localPath = image && image.tempFilePath
-    const remoteUrl = image && image.url
+  // 本张照片传后端转换：上传原图 → 后端按设备宽高(targetWidth×targetHeight)转换成设备帧并存 OSS，
+  // 返回 { url(.bin 下载地址)、taskId、upirId }。初始按「未成功(0)」建记录，设备图传成功后再 editUserProductImgRecord 置 1。
+  // 失败会抛出，让本张投屏判为失败并跳到失败场景。
+  async convertOnServer(image, device, info) {
     const userProductId = device && (device.userProductId || device.id)
-
-    // 缺 userProductId 无法归属，跳过；只有「纯云端图」（没有本地文件、仅有 https 远程地址，
-    // 多为重复投屏已在服务器上的图）才跳过。其余本地图一律上传后端，确保进「我的图库」。
-    if (!userProductId) {
-      return
-    }
-    const filePath = localPath || remoteUrl
-    if (!filePath || (!localPath && /^https?:\/\//i.test(remoteUrl))) {
-      return
+    const filePath = await this.resolveLocalFilePath(image)
+    if (!filePath) {
+      throw new Error('图片文件不可用，无法转换')
     }
 
-    await api.setUserProductUpload({
+    console.log(`[投屏] 上传原图转换：userProductId=${userProductId} target=${info.width}x${info.height} file=${filePath}`)
+    const res = await api.setUserProductUpload({
       filePath,
       userProductId,
-      deviceUploadState: 1
+      targetWidth: info.width,
+      targetHeight: info.height,
+      deviceUploadState: 0,
+      loading: false, // 结果页用 setData desc 自管进度，关掉全局 loading 遮罩
+      showError: false // 失败统一走本页失败场景，不额外弹 toast
+    })
+
+    // 单文件上传返回的就是该对象；保险起见也兼容数组返回
+    const item = Array.isArray(res) ? res[0] : res
+    console.log('[投屏] 转换接口返回：', item)
+    const url = item && (item.url || item.fileUrl || item.path)
+    if (!url) {
+      throw new Error('服务器未返回转换结果')
+    }
+    return {
+      url,
+      taskId: item.taskId,
+      upirId: item.upirId
+    }
+  },
+
+  // 解析出可上传的本地文件路径：本地图（相机/相册/裁剪导出）直接用 tempFilePath；
+  // 仅有 https 远程地址的（重复投屏云端图）先 downloadFile 落到本地临时文件再上传。
+  resolveLocalFilePath(image) {
+    const localPath = image && image.tempFilePath
+    if (localPath) {
+      return Promise.resolve(localPath)
+    }
+    const remoteUrl = image && image.url
+    if (remoteUrl && /^https?:\/\//i.test(remoteUrl)) {
+      return new Promise((resolve, reject) => {
+        wx.downloadFile({
+          url: remoteUrl,
+          success: res => {
+            if (res.statusCode === 200 && res.tempFilePath) {
+              resolve(res.tempFilePath)
+            } else {
+              reject(new Error('原图下载失败'))
+            }
+          },
+          fail: error => reject(new Error((error && error.errMsg) || '原图下载失败'))
+        })
+      })
+    }
+    return Promise.resolve(remoteUrl || '')
+  },
+
+  // 下载后端按设备分辨率转换好的六色 4bpp 帧(.bin)，读成 Uint8Array 直接喂给 BLE 图传。
+  // 注意：生产环境需把 OSS 域名加入小程序「downloadFile 合法域名」白名单（开发期 urlCheck=false 不校验）。
+  downloadFrameBin(url) {
+    return new Promise((resolve, reject) => {
+      wx.downloadFile({
+        url,
+        success: res => {
+          if (res.statusCode !== 200 || !res.tempFilePath) {
+            reject(new Error('转换结果下载失败'))
+            return
+          }
+          wx.getFileSystemManager().readFile({
+            filePath: res.tempFilePath,
+            success: r => resolve(new Uint8Array(r.data)),
+            fail: () => reject(new Error('转换结果读取失败'))
+          })
+        },
+        fail: error => reject(new Error((error && error.errMsg) || '转换结果下载失败'))
+      })
     })
   },
 
@@ -289,76 +365,6 @@ Page({
     if (message) {
       toast.show({ title: message, icon: 'none' })
     }
-  },
-
-  // 大图预压缩：原图长边明显大于目标显示尺寸时，按比例压一遍再解码，给离屏 canvas 解码减负。
-  // 任何环节失败都退回原图，绝不阻断投屏。
-  shrinkIfHuge(path, targetW, targetH) {
-    return new Promise(resolve => {
-      if (!wx.compressImage) {
-        resolve(path)
-        return
-      }
-      wx.getImageInfo({
-        src: path,
-        success: ({ width, height }) => {
-          // 长边上限取「目标长边 ×2.5」并兜底 1600：给目标分辨率留 2 倍以上过采样(下采样越多越锐)，
-          // 同时把超大图(12MP+)的解码内存压住。只有真超过上限才预缩，普通手机照片原样通过。
-          const maxEdge = Math.max(1600, Math.round(Math.max(targetW, targetH) * 2.5))
-          const srcMax = Math.max(width, height)
-          if (!srcMax || srcMax <= maxEdge) {
-            resolve(path)
-            return
-          }
-          const scale = maxEdge / srcMax
-          wx.compressImage({
-            src: path,
-            compressedWidth: Math.round(width * scale),
-            compressedHeight: Math.round(height * scale),
-            quality: 92, // 仅超大图才会走到，质量拉高减少二次 JPEG 损失
-            success: res => resolve(res.tempFilePath),
-            fail: () => resolve(path)
-          })
-        },
-        fail: () => resolve(path)
-      })
-    })
-  },
-
-  // 用离屏 canvas 把图片解码并缩放到目标尺寸，取出 RGBA 像素（ImageData）
-  imageToImageData(path, width, height) {
-    return new Promise((resolve, reject) => {
-      if (!wx.createOffscreenCanvas) {
-        reject(new Error('当前微信版本不支持离屏 canvas'))
-        return
-      }
-      const canvas = wx.createOffscreenCanvas({ type: '2d', width, height })
-      const ctx = canvas.getContext('2d')
-      const img = canvas.createImage()
-      img.onload = () => {
-        ctx.clearRect(0, 0, width, height)
-        // 开高质量缩放：大图一步缩到屏幕尺寸时默认平滑会发糊/锯齿，high 明显更锐(APP 用原生双线性)。
-        ctx.imageSmoothingEnabled = true
-        ctx.imageSmoothingQuality = 'high'
-        // 中心裁剪「覆盖」(与 APP 的 centerCropCover 一致)：等比缩放铺满目标后从原图正中取，
-        // 保持宽高比、不拉伸变形。用户在预览页手动裁过的图已是目标比例，这里几乎无裁切。
-        const iw = img.width || width
-        const ih = img.height || height
-        const scale = Math.max(width / iw, height / ih)
-        const sw = width / scale
-        const sh = height / scale
-        const sx = (iw - sw) / 2
-        const sy = (ih - sh) / 2
-        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height)
-        try {
-          resolve(ctx.getImageData(0, 0, width, height))
-        } catch (error) {
-          reject(error)
-        }
-      }
-      img.onerror = () => reject(new Error('图片解码失败'))
-      img.src = path
-    })
   },
 
   goBack() {
