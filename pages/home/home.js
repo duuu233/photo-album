@@ -3,7 +3,8 @@ const toast = require('../../utils/toast')
 const media = require('../../utils/media')
 const batteryUtil = require('../../utils/battery')
 const deviceBle = require('../../utils/device-ble')
-const autoConnect = require('../../utils/auto-connect')
+const bluetooth = require('../../utils/bluetooth')
+const permission = require('../../utils/permission')
 
 const app = getApp()
 
@@ -145,6 +146,8 @@ function normalizeDevice(device) {
   return {
     id: device.id || DEFAULT_DEVICE.id,
     deviceId: device.deviceId || '', // 真实蓝牙 deviceId：投屏页据此连接设备并图传
+    // 硬件序列号(Device_ID)：跨扫描会话稳定，按需连接时据此匹配扫描结果，须随设备一路带下去
+    deviceNo: device.deviceNo || device.productDeviceId || '',
     name: device.name || device.displayName || '相框',
     // 「已连接」按真实蓝牙会话显示（即连即传，无活动会话即未连接），不再恒为 true
     connected: !!(device.deviceId && deviceBle.isConnected(device.deviceId)),
@@ -221,12 +224,6 @@ Page({
   onLoad(options = {}) {
     this.scanTimer = null // 模拟扫描的定时器句柄，离开页面时需清除
     this.networkStatusHandler = this.handleNetworkStatusChange.bind(this)
-    // 自动重连成功后刷新首页连接显示（用保存的同一引用，便于 onShow 订阅 / onUnload 退订且不重复）
-    this._onAutoConnected = () => {
-      if (!this.data.sceneFromQuery) {
-        this.loadHomeState()
-      }
-    }
     this.setSystemMetrics()
 
     // 若带 scene 参数进入（设计走查/调试），直接定位到指定场景并跳过自动加载
@@ -253,9 +250,6 @@ Page({
       })
     }
 
-    // 订阅自动重连结果：连上后刷新首页「已连接」显示（onChange 内部去重，重复订阅无副作用）
-    autoConnect.onChange(this._onAutoConnected)
-
     // 仅在非“指定场景”进入时才按真实设备状态刷新首页，避免覆盖调试场景
     if (!this.data.sceneFromQuery) {
       this.loadUserAvatar()
@@ -265,8 +259,9 @@ Page({
         return
       }
 
+      // 不再进首页就自动扫描重连：连接改为点「拍照/相册」时按需连接当前选中设备
+      // （见 ensureSelectedDeviceConnected）。loadHomeState 仍用真实蓝牙会话显示「已连接」。
       this.loadHomeState()
-      autoConnect.run() // 静默尝试自动连接相框（无活动连接 + 蓝牙开 + 已授权定位时才真正扫描）
     }
   },
 
@@ -291,7 +286,6 @@ Page({
 
   onUnload() {
     this.clearScanTimer()
-    autoConnect.offChange(this._onAutoConnected)
 
     if (wx.offNetworkStatusChange && this.networkStatusHandler) {
       wx.offNetworkStatusChange(this.networkStatusHandler)
@@ -628,27 +622,120 @@ Page({
     })
   },
 
-  // 点击拍照入口：未登录先跳登录；未绑定设备时再引导绑定，否则弹出拍照/相册选择层
+  // 点击拍照/相册入口（两者一致）：未登录先跳登录；未绑定设备先引导绑定；
+  // 已绑定则先按需连接当前选中设备，连上才弹出拍照/相册选择层，连不上切到「重新连接」场景。
   tapCameraEntry() {
+    this.openMediaSheet()
+  },
+
+  tapAlbumEntry() {
+    this.openMediaSheet()
+  },
+
+  async openMediaSheet() {
     if (!app.requireLogin()) {
       return
     }
     if (!this.data.isBoundHome) {
       this.showBindNowSheet()
       return
+    }
+    const connected = await this.ensureSelectedDeviceConnected()
+    if (!connected) {
+      return // 连不上：ensureSelectedDeviceConnected 已切到 UNBOUND_RECONNECT 场景
     }
     this.setScene(SCENES.MEDIA_SHEET)
   },
 
-  tapAlbumEntry() {
-    if (!app.requireLogin()) {
+  // 连接当前选中(轮播展示中)的设备。已连接直接放行；未连接则扫描匹配该设备并连接，
+  // 连上后把首页该设备标记「已连接」并提示，返回 true；连不上(权限/蓝牙/扫描不到/连接失败任一)
+  // 统一切到「首页-未绑定设备-重新连接」(UNBOUND_RECONNECT) 场景并返回 false。
+  async ensureSelectedDeviceConnected() {
+    const selected = app.globalData.selectedDevice || this.data.currentDevice
+    const existingId = selected && (selected.deviceId || selected.bleDeviceId)
+    // 已有活动会话直接复用：设备是单连接，连着的就是当前在用的，无需重复扫描连接
+    if (existingId && deviceBle.isConnected(existingId)) {
+      this.markCurrentDeviceConnected(existingId, null)
+      return true
+    }
+
+    wx.showLoading({ title: '连接设备中', mask: true })
+    try {
+      // BLE deviceId 是「本次扫描会话」临时分配的，后端只存序列号，必须先重扫拿到当下有效的 deviceId 再连
+      const location = await permission.getCurrentLocation()
+      if (!location) {
+        throw new Error('LOCATION_DENIED')
+      }
+      await bluetooth.openAdapter()
+      const found = await bluetooth.discoverDevices({ timeout: 6000 })
+      const target = this.matchScannedDevice(found, selected)
+      if (!target) {
+        throw new Error('DEVICE_NOT_FOUND')
+      }
+      await deviceBle.ensureConnection(target.deviceId)
+      const info = await deviceBle.readDeviceInfo(target.deviceId)
+      this.markCurrentDeviceConnected(target.deviceId, info)
+      toast.show({ title: '已连接设备', icon: 'none' })
+      return true
+    } catch (error) {
+      // 连不上(任何原因)：按需求切到「重新连接」场景，不进入拍照/相册选择层
+      this.setScene(SCENES.UNBOUND_RECONNECT)
+      return false
+    } finally {
+      wx.hideLoading()
+    }
+  },
+
+  // 把后端设备(序列号/名称)与扫描结果匹配，返回带「本次会话有效 deviceId」的那条。
+  // 序列号(deviceNo，对应广播 Device_ID)优先精确匹配；取不到再按名称兜底(扫描已按信号降序)。
+  matchScannedDevice(found, device) {
+    const list = found || []
+    const serial = String((device && (device.deviceNo || device.productDeviceId)) || '').trim()
+    if (serial) {
+      const bySerial = list.find(item => String(item.deviceNo || '').trim() === serial)
+      if (bySerial) {
+        return bySerial
+      }
+    }
+    const name = String((device && device.name) || '').trim()
+    if (name) {
+      const byName = list.find(item => String(item.name || '').trim() === name)
+      if (byName) {
+        return byName
+      }
+    }
+    return null
+  },
+
+  // 把首页当前展示的设备标记为「已连接」，回填本次会话有效的 deviceId（及可选的实时信息），
+  // 并设为全局选中设备(保留 deviceNo 等后端字段)，供投屏页复用同一条 BLE 会话。
+  markCurrentDeviceConnected(deviceId, info) {
+    const index = this.data.currentDeviceIndex
+    const list = this.data.deviceList.slice()
+    const current = list[index] || this.data.currentDevice
+    if (!current) {
       return
     }
-    if (!this.data.isBoundHome) {
-      this.showBindNowSheet()
-      return
-    }
-    this.setScene(SCENES.MEDIA_SHEET)
+    const battery = info && typeof info.battery === 'number'
+      ? clampBattery(info.battery)
+      : current.battery
+    const updated = Object.assign({}, current, {
+      deviceId,
+      connected: true,
+      battery,
+      batteryIcon: batteryUtil.getBatteryIcon(battery)
+    })
+    list[index] = updated
+    this.setData({
+      deviceList: list,
+      currentDevice: updated,
+      currentDeviceIndex: index,
+      batteryWidth: updated.battery
+    })
+    // 合并到选中设备：以 selectedDevice 为底(带 deviceNo/序列号)，叠加最新连接态与 deviceId
+    app.setSelectedDevice(Object.assign({}, app.globalData.selectedDevice || {}, updated, {
+      bleDeviceId: deviceId
+    }))
   },
 
   async chooseCamera() {

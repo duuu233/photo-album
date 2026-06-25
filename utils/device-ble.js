@@ -536,7 +536,8 @@ function normalizeConnectionIntervalUnits(units) {
 async function getConnectionInterval(deviceId) {
   const ack = await request(deviceId, protocol.CMD.GET_CONN_INTERVAL)
   if (ack.result !== 0x00) {
-    throw new Error(`读取连接间隔失败：${protocol.resultText(ack.result)}`)
+    // 设备返回什么就提示什么：直接抛设备结果码的协议含义，不加 App 自造前缀
+    throw new Error(protocol.resultText(ack.result))
   }
   return protocol.parseConnectionInterval(ack.data)
 }
@@ -546,7 +547,8 @@ async function setConnectionInterval(deviceId, units) {
   const value = normalizeConnectionIntervalUnits(units)
   const ack = await request(deviceId, protocol.CMD.SET_CONN_INTERVAL, protocol.buildSetConnectionIntervalPayload(value))
   if (ack.result !== 0x00) {
-    throw new Error(`设置连接间隔失败：${protocol.resultText(ack.result)}`)
+    // 设备返回什么就提示什么：直接抛设备结果码的协议含义，不加 App 自造前缀
+    throw new Error(protocol.resultText(ack.result))
   }
   return {
     result: ack.result,
@@ -649,7 +651,8 @@ async function uploadImage(deviceId, options) {
     crc32
   }), 10000)
   if (startAck.result !== 0x00) {
-    throw new Error(`帧头被拒绝(0x20)：${protocol.resultText(startAck.result)}`)
+    // 设备返回什么就提示什么：直接抛设备结果码的协议含义，不加 App 自造前缀
+    throw new Error(protocol.resultText(startAck.result))
   }
 
   // 2) 0x21 数据：每片大小按协商到的 MTU 决定（上限 236）；窗口 5 包，发满 5 包等一次 0x23(ACK_SEQ)。
@@ -717,7 +720,8 @@ async function uploadImage(deviceId, options) {
   // 大图算整图 CRC32 + 落盘可能要好几秒，这里给足 20s 等待，避免误判超时。
   const endAck = await request(deviceId, protocol.CMD.IMG_END, [], 20000)
   if (endAck.result !== 0x00) {
-    throw new Error(`结束校验失败(0x22)：${protocol.resultText(endAck.result)}`)
+    // 设备返回什么就提示什么：直接抛设备结果码的协议含义，不加 App 自造前缀
+    throw new Error(protocol.resultText(endAck.result))
   }
   const summary = Object.assign({ result: endAck.result }, protocol.parseImgEndResult(endAck.data))
   onProgress(totalPackets, totalPackets, 'done')

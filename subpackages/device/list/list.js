@@ -5,7 +5,6 @@ const batteryUtil = require('../../../utils/battery')
 const deviceBle = require('../../../utils/device-ble')
 const bluetooth = require('../../../utils/bluetooth')
 const permission = require('../../../utils/permission')
-const autoConnect = require('../../../utils/auto-connect')
 
 const app = getApp()
 
@@ -34,18 +33,13 @@ Page({
     this.setData({
       selectMode
     })
-    // 自动重连成功后重新拉列表，刷新连接显示（保存同一引用便于订阅/退订且不重复）
-    this._onAutoConnected = () => this.loadDevices()
   },
 
   onShow() {
-    autoConnect.onChange(this._onAutoConnected)
+    // 不再在本页自动扫描重连：已建立的连接是 device-ble 里的全局会话，切到本页/返回都不会断，
+    // loadDevices 用 deviceBle.isConnected 实时显示连接态即可。需要新连接时走列表项的「连接」按钮，
+    // 或首页点拍照/相册时按需连接当前选中设备。
     this.loadDevices()
-    autoConnect.run() // 静默尝试自动连接相框
-  },
-
-  onUnload() {
-    autoConnect.offChange(this._onAutoConnected)
   },
 
   // 加载设备列表，并为每项附加展示用字段（内存百分比、删除提示）
