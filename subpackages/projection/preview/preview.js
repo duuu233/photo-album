@@ -6,6 +6,11 @@ const deviceBle = require('../../../utils/device-ble')
 // 接口暂未返回该字段，这里先给默认值便于联调测试（如需 1:1 改成 { width: 500, height: 500 }）。
 const DEFAULT_DEVICE_SIZE = { width: 480, height: 720 }
 
+// 预览舞台（.preview-stage）的可用区域，单位 rpx：宽 = 屏宽 750 - 左右各 46 边距；高 = swiper 高度。
+// 裁剪后按此区域把图片「等比缩放」铺满 photo-wrap，保证整张裁剪图完整显示且不留白。
+const STAGE_W_RPX = 658
+const STAGE_H_RPX = 760
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -28,7 +33,8 @@ Page({
     stageH: 0,
     cropNaturalW: 0, // 原图真实像素宽
     cropNaturalH: 0, // 原图真实像素高
-    cropRatio: 1 // 裁剪框锁定的宽高比 = 设备 width / height
+    cropRatio: 1, // 裁剪框锁定的宽高比 = 设备 width / height
+    deviceWrapStyle: '' // 未裁剪图片的 photo-wrap 初始尺寸：按设备比例铺，作为预览
   },
 
   onLoad() {
@@ -50,13 +56,16 @@ Page({
   // 统一刷新图片相关状态：当前预览图与张数（设备空间是否够由结果页按真实容量/掩码判断）
   updateImageState(images, device, activeIndex) {
     const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1)) // 防止下标越界
+    // 未裁剪图片的初始展示比例 = 当前绑定设备的比例（与裁剪锁定的比例一致），作为投屏预览
+    const size = this.getDeviceCropSize(device)
 
     this.setData({
       device,
       images,
       activeIndex: safeIndex,
       activeImage: images[safeIndex] || null,
-      imageCount: images.length
+      imageCount: images.length,
+      deviceWrapStyle: this.computeWrapStyle(size.width, size.height)
     })
   },
 
@@ -101,14 +110,30 @@ Page({
 
   // 当前连接设备的屏幕分辨率(width×height)：列表/详情接口都会返回，这里直接取投屏页拿到的设备对象。
   // 接口未就绪/字段缺省时退回默认值，保证裁剪比例始终可用（便于联调测试）。
-  getDeviceCropSize() {
-    const device = this.data.device || {}
-    const w = Number(device.width)
-    const h = Number(device.height)
+  getDeviceCropSize(device) {
+    const d = device || this.data.device || {}
+    const w = Number(d.width)
+    const h = Number(d.height)
     return {
       width: w > 0 ? w : DEFAULT_DEVICE_SIZE.width,
       height: h > 0 ? h : DEFAULT_DEVICE_SIZE.height
     }
+  },
+
+  // 由裁剪后图片的真实像素宽高，算出 photo-wrap 的展示尺寸（rpx）：在舞台内等比缩放。
+  // 返回内联 style 字符串；未裁剪(传入非法宽高)时返回空串，让 photo-wrap 回到 CSS 默认尺寸。
+  computeWrapStyle(w, h) {
+    if (!(w > 0) || !(h > 0)) {
+      return ''
+    }
+    const aspect = w / h
+    let dispW = STAGE_W_RPX
+    let dispH = dispW / aspect
+    if (dispH > STAGE_H_RPX) {
+      dispH = STAGE_H_RPX
+      dispW = dispH * aspect
+    }
+    return `width:${dispW.toFixed(2)}rpx;height:${dispH.toFixed(2)}rpx;`
   },
 
   // 进入裁剪：量出舞台尺寸 + 图片真实尺寸，算出图片「适应」显示矩形作为裁剪坐标基准，裁剪框锁定设备比例。
@@ -313,6 +338,10 @@ Page({
         if (updated._origSrc) {
           updated.tempFilePath = updated._origSrc
         }
+        // 还原即非裁剪态：清掉裁剪宽高与展示尺寸，photo-wrap 回到默认满铺
+        updated.cropW = 0
+        updated.cropH = 0
+        updated.wrapStyle = ''
         next[activeIndex] = updated
         this.setData({
           images: next,
@@ -402,6 +431,10 @@ Page({
               updated._origSrc = updated.tempFilePath || updated.url || ''
             }
             updated.tempFilePath = r.tempFilePath
+            // 记录裁剪后真实宽高，并预算 photo-wrap 展示尺寸：展示当前图时按裁剪比例铺满
+            updated.cropW = outW
+            updated.cropH = outH
+            updated.wrapStyle = this.computeWrapStyle(outW, outH)
             next[activeIndex] = updated
             this.setData({
               images: next,

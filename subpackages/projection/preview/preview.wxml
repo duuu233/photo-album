@@ -14,7 +14,7 @@
   <view class="preview-stage">
     <swiper wx:if="{{images.length}}" class="preview-swiper" current="{{activeIndex}}" bindchange="onSwiperChange">
       <swiper-item wx:for="{{images}}" wx:key="index">
-        <view class="photo-wrap">
+        <view class="photo-wrap" style="{{item.wrapStyle || deviceWrapStyle}}">
           <image wx:if="{{item.tempFilePath || item.url}}" class="photo-img" src="{{item.tempFilePath || item.url}}" mode="aspectFill" style="transform: rotate({{index === activeIndex ? rotation : 0}}deg);"></image>
           <view wx:else class="photo-img photo-placeholder">图片占位</view>
         </view>

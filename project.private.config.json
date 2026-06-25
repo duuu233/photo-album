@@ -22,11 +22,18 @@
     "miniprogram": {
       "list": [
         {
-          "name": "subpackages/projection/records/records",
-          "pathName": "subpackages/projection/records/records",
+          "name": "22",
+          "pathName": "subpackages/projection/preview/preview",
           "query": "",
           "scene": null,
           "launchMode": "default"
+        },
+        {
+          "name": "subpackages/projection/records/records",
+          "pathName": "subpackages/projection/records/records",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
         },
         {
           "name": "1111",

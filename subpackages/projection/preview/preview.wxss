@@ -43,6 +43,13 @@
   height: 760rpx;
 }
 
+/* 裁剪后 photo-wrap 会按裁剪比例缩小，这里让它在 swiper-item 内居中 */
+.preview-swiper swiper-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .photo-wrap {
   position: relative;
   width: 100%;
