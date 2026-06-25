@@ -45,7 +45,10 @@ function reportFrame(dir, deviceId, cmd, bytes, note) {
 
 // 微信返回的 UUID 是 128 位全大写串（如 0000FF01-0000-...），只取其中的 16 位短码做匹配
 function short16(uuid) {
-  return String(uuid || '').toUpperCase().replace(/-/g, '').slice(4, 8)
+  return String(uuid || '')
+    .toUpperCase()
+    .replace(/-/g, '')
+    .slice(4, 8)
 }
 
 // 兼容设备上报的多种 UUID 形态：
@@ -53,16 +56,21 @@ function short16(uuid) {
 //   - 直接上报的 16 位短 UUID（"FF00" / "0000FF00"）：整体比对。
 function matchUuid(uuid, shortCode) {
   const code = String(shortCode || '').toUpperCase()
-  const norm = String(uuid || '').toUpperCase().replace(/-/g, '')
+  const norm = String(uuid || '')
+    .toUpperCase()
+    .replace(/-/g, '')
   return norm.slice(4, 8) === code || norm === code
 }
 
 function wxp(fn, options) {
   return new Promise((resolve, reject) => {
-    fn(Object.assign({}, options, {
-      success: resolve,
-      fail: error => reject(new Error((error && error.errMsg) || '蓝牙操作失败'))
-    }))
+    fn(
+      Object.assign({}, options, {
+        success: resolve,
+        fail: error =>
+          reject(new Error((error && error.errMsg) || '蓝牙操作失败'))
+      })
+    )
   })
 }
 
@@ -128,7 +136,13 @@ function handleNotify(session, value) {
     session.rxBuffer = session.rxBuffer.slice(parsed.consumed)
 
     const frame = parsed.frame
-    reportFrame('RX', session.deviceId, frame.cmd, rawBytes, frame.crcOk ? '' : 'CRC校验失败')
+    reportFrame(
+      'RX',
+      session.deviceId,
+      frame.cmd,
+      rawBytes,
+      frame.crcOk ? '' : 'CRC校验失败'
+    )
 
     // 先把帧广播给临时监听者（图传的 0x23 应答靠它接收）。复制一份再遍历，避免回调里增删数组出错。
     session.frameListeners.slice().forEach(listener => {
@@ -210,6 +224,8 @@ async function discoverMainService(deviceId, attempts = 6, interval = 250) {
     lastUuids = services.map(s => s.uuid)
     const service = services.find(s => matchUuid(s.uuid, protocol.SERVICE_UUID))
     if (service) {
+      // 每次连接都打印设备实际暴露的服务 UUID 列表，便于核对 FF00/FF10 等
+      console.log('[BLE] 设备暴露的服务 UUID 列表：', lastUuids)
       return { service, uuids: lastUuids }
     }
     if (i < attempts - 1) {
@@ -217,17 +233,32 @@ async function discoverMainService(deviceId, attempts = 6, interval = 250) {
     }
   }
   // 重试后仍未发现 FF00：打印设备实际暴露的服务 UUID，便于判断是「短码匹配问题」还是「设备根本没有 FF00」
-  console.warn('[BLE] 未匹配到 FF00 主服务，设备实际暴露的服务 UUID 列表：', lastUuids)
+  console.warn(
+    '[BLE] 未匹配到 FF00 主服务，设备实际暴露的服务 UUID 列表：',
+    lastUuids
+  )
   return { service: null, uuids: lastUuids }
 }
 
 // 发现主服务下的写(FF01)/通知(FF02)特征，同样对「特征尚未就绪」做短重试。
-async function discoverCharacteristics(deviceId, serviceId, attempts = 4, interval = 200) {
+async function discoverCharacteristics(
+  deviceId,
+  serviceId,
+  attempts = 4,
+  interval = 200
+) {
   for (let i = 0; i < attempts; i++) {
-    const charsRes = await wxp(wx.getBLEDeviceCharacteristics, { deviceId, serviceId })
+    const charsRes = await wxp(wx.getBLEDeviceCharacteristics, {
+      deviceId,
+      serviceId
+    })
     const chars = charsRes.characteristics || []
-    const writeChar = chars.find(c => matchUuid(c.uuid, protocol.CHAR_WRITE_UUID))
-    const notifyChar = chars.find(c => matchUuid(c.uuid, protocol.CHAR_NOTIFY_UUID))
+    const writeChar = chars.find(c =>
+      matchUuid(c.uuid, protocol.CHAR_WRITE_UUID)
+    )
+    const notifyChar = chars.find(c =>
+      matchUuid(c.uuid, protocol.CHAR_NOTIFY_UUID)
+    )
     if (writeChar && notifyChar) {
       return { writeChar, notifyChar }
     }
@@ -298,14 +329,14 @@ async function establishConnection(deviceId) {
     // 连接成功后服务/特征可能尚未发现完成，带短重试地查找，避免误报「未找到主服务/特征」
     const { service, uuids } = await discoverMainService(deviceId)
     if (!service) {
-      // 设备只暴露 OTA 服务(FF10) 而没有业务服务(FF00)：说明设备处于固件升级/引导(DFU)模式，未运行业务固件
+      // 只描述「检测到什么」，不臆测原因/不给建议：仅暴露 OTA 服务(FF10) 没有业务服务(FF00) 时点明这一事实
       const onlyOta =
         uuids.some(u => matchUuid(u, protocol.OTA_SERVICE_UUID)) &&
         !uuids.some(u => matchUuid(u, protocol.SERVICE_UUID))
       throw new Error(
         onlyOta
-          ? '设备处于固件升级(OTA/DFU)模式，未运行相框业务固件，请先完成固件烧录/升级后再绑定'
-          : '未找到相框主服务(FF00)，请确认是相框设备'
+          ? '设备只暴露 OTA 服务(FF10)，未发现相框主服务(FF00)'
+          : '未发现相框主服务(FF00)'
       )
     }
 
@@ -417,7 +448,12 @@ async function writePacket(session, seq, chunk) {
   let attempt = 0
   for (;;) {
     try {
-      await writeFrame(session, protocol.CMD.IMG_DATA, protocol.buildImgDataPayload(seq, chunk), session.writeType)
+      await writeFrame(
+        session,
+        protocol.CMD.IMG_DATA,
+        protocol.buildImgDataPayload(seq, chunk),
+        session.writeType
+      )
       return
     } catch (error) {
       if (++attempt > 4) {
@@ -508,8 +544,19 @@ async function readBattery(deviceId) {
 
 // 设置播放模式/间隔（CMD=0x10）。成功后设备回带最新 IMG_MASK，这里顺带解析出来。
 async function setPlayback(deviceId, mode, intervalSeconds) {
-  const ack = await request(deviceId, protocol.CMD.SET_PLAY, protocol.buildSetPlaybackPayload(mode, intervalSeconds))
-  return Object.assign({ result: ack.result }, protocol.parseMaskResult(ack.data))
+  const ack = await request(
+    deviceId,
+    protocol.CMD.SET_PLAY,
+    protocol.buildSetPlaybackPayload(mode, intervalSeconds)
+  )
+  // 设备拒绝(result≠0)时抛设备结果码的协议含义，避免「设备没设置成功却显示成功」
+  if (ack.result !== 0x00) {
+    throw new Error(protocol.resultText(ack.result))
+  }
+  return Object.assign(
+    { result: ack.result },
+    protocol.parseMaskResult(ack.data)
+  )
 }
 
 // 读播放配置（CMD=0x02）：播放模式 + 切换间隔
@@ -526,8 +573,14 @@ async function getSwVersion(deviceId) {
 
 function normalizeConnectionIntervalUnits(units) {
   const value = Number(units)
-  if (!Number.isInteger(value) || value < protocol.CONN_INTERVAL_MIN_UNITS || value > protocol.CONN_INTERVAL_MAX_UNITS) {
-    throw new Error(`连接间隔需在 ${protocol.CONN_INTERVAL_MIN_UNITS}~${protocol.CONN_INTERVAL_MAX_UNITS} 之间`)
+  if (
+    !Number.isInteger(value) ||
+    value < protocol.CONN_INTERVAL_MIN_UNITS ||
+    value > protocol.CONN_INTERVAL_MAX_UNITS
+  ) {
+    throw new Error(
+      `连接间隔需在 ${protocol.CONN_INTERVAL_MIN_UNITS}~${protocol.CONN_INTERVAL_MAX_UNITS} 之间`
+    )
   }
   return value
 }
@@ -545,7 +598,11 @@ async function getConnectionInterval(deviceId) {
 // 设置 BLE 连接间隔（CMD=0x13）。入参是协议原始 units，1 unit = 1.25ms。
 async function setConnectionInterval(deviceId, units) {
   const value = normalizeConnectionIntervalUnits(units)
-  const ack = await request(deviceId, protocol.CMD.SET_CONN_INTERVAL, protocol.buildSetConnectionIntervalPayload(value))
+  const ack = await request(
+    deviceId,
+    protocol.CMD.SET_CONN_INTERVAL,
+    protocol.buildSetConnectionIntervalPayload(value)
+  )
   if (ack.result !== 0x00) {
     // 设备返回什么就提示什么：直接抛设备结果码的协议含义，不加 App 自造前缀
     throw new Error(protocol.resultText(ack.result))
@@ -559,7 +616,10 @@ async function setConnectionInterval(deviceId, units) {
 
 // 设置 BLE 连接间隔（毫秒便捷入口）。会按 1.25ms 单位四舍五入。
 async function setConnectionIntervalMs(deviceId, ms) {
-  return setConnectionInterval(deviceId, protocol.connectionIntervalMsToUnits(ms))
+  return setConnectionInterval(
+    deviceId,
+    protocol.connectionIntervalMsToUnits(ms)
+  )
 }
 
 // 真实投屏图传前要用的连接间隔(ms)：优先用调试页「同步投屏」存下的值，否则用默认 30ms。
@@ -579,7 +639,9 @@ function getTransferConnIntervalMs() {
 // 先按协议 1.25ms 单位归一并校验范围，越界直接抛错，避免把无效值同步给投屏。
 // 返回归一后的 { ms, units }，方便调用方回显「实际生效值」。
 function setTransferConnIntervalMs(ms) {
-  const units = normalizeConnectionIntervalUnits(protocol.connectionIntervalMsToUnits(ms))
+  const units = normalizeConnectionIntervalUnits(
+    protocol.connectionIntervalMsToUnits(ms)
+  )
   const value = protocol.connectionIntervalUnitsToMs(units)
   wx.setStorageSync(TRANSFER_CONN_INTERVAL_STORAGE_KEY, value)
   return { ms: value, units }
@@ -589,7 +651,9 @@ function setTransferConnIntervalMs(ms) {
 // 未显式传 ms 时，用「同步投屏」存下的值（没同步过则默认 30ms）。
 // 兼容旧固件/异常链路：调用方可捕获错误后继续走原图传逻辑。
 async function optimizeConnectionIntervalForTransfer(deviceId, ms) {
-  const targetUnits = normalizeConnectionIntervalUnits(protocol.connectionIntervalMsToUnits(ms || getTransferConnIntervalMs()))
+  const targetUnits = normalizeConnectionIntervalUnits(
+    protocol.connectionIntervalMsToUnits(ms || getTransferConnIntervalMs())
+  )
   const previous = await getConnectionInterval(deviceId)
   if (previous.units === targetUnits) {
     return {
@@ -608,7 +672,15 @@ async function optimizeConnectionIntervalForTransfer(deviceId, ms) {
 
 // 校时（CMD=0x11）：把手机当前时间（或指定时间）写进设备 RTC
 async function setTime(deviceId, date) {
-  const ack = await request(deviceId, protocol.CMD.SET_TIME, protocol.buildSetTimePayload(date))
+  const ack = await request(
+    deviceId,
+    protocol.CMD.SET_TIME,
+    protocol.buildSetTimePayload(date)
+  )
+  // 设备拒绝(result≠0)时抛设备结果码的协议含义，避免「校时没成功却显示成功」
+  if (ack.result !== 0x00) {
+    throw new Error(protocol.resultText(ack.result))
+  }
   return { result: ack.result }
 }
 
@@ -617,14 +689,28 @@ async function setTime(deviceId, date) {
 async function deleteImage(deviceId, indexes) {
   const mask = protocol.indexesToMask(indexes)
   const ack = await request(deviceId, protocol.CMD.DELETE_IMG, mask)
-  return Object.assign({ result: ack.result }, protocol.parseMaskResult(ack.data))
+  // 设备拒绝(result≠0)时抛设备结果码的协议含义，避免「设备没删成功却显示成功」
+  if (ack.result !== 0x00) {
+    throw new Error(protocol.resultText(ack.result))
+  }
+  return Object.assign(
+    { result: ack.result },
+    protocol.parseMaskResult(ack.data)
+  )
 }
 
 // 切换/刷新当前显示（CMD=0x24）：指定要显示的图片索引；0xFF 表示保持不变。
 async function refreshScreen(deviceId, index) {
   const value = index === undefined || index === null ? 0xff : index & 0xff
   const ack = await request(deviceId, protocol.CMD.SET_CUR_IMG, [value])
-  return Object.assign({ result: ack.result }, protocol.parseRefreshResult(ack.data))
+  // 设备拒绝(result≠0)时抛设备结果码的协议含义，避免「切换/刷新没成功却显示成功」
+  if (ack.result !== 0x00) {
+    throw new Error(protocol.resultText(ack.result))
+  }
+  return Object.assign(
+    { result: ack.result },
+    protocol.parseRefreshResult(ack.data)
+  )
 }
 
 // 上传一张图片（图传协议 6.8：0x20 帧头 → 0x21 窗口分包 + 0x23 累计应答 → 0x22 结束校验）。
@@ -632,24 +718,40 @@ async function refreshScreen(deviceId, index) {
 // 返回结束应答里的 { result, imgMask, imgCount, storageFree }。任一步失败会 throw。
 async function uploadImage(deviceId, options) {
   const session = await ensureConnection(deviceId)
-  const data = options.data instanceof Uint8Array ? options.data : new Uint8Array(options.data)
+  const data =
+    options.data instanceof Uint8Array
+      ? options.data
+      : new Uint8Array(options.data)
   const dataSize = data.length
-  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : function () {}
+  const onProgress =
+    typeof options.onProgress === 'function'
+      ? options.onProgress
+      : function () {}
   // 中止钩子：返回 true 时立即停止图传（页面在息屏/切后台时会让它返回 true）。
   // 图传在后台无法继续（蓝牙被挂起、设备 1s 超时会自行中止），所以及时干净地停掉，给出清晰提示。
-  const shouldAbort = typeof options.shouldAbort === 'function' ? options.shouldAbort : function () { return false }
+  const shouldAbort =
+    typeof options.shouldAbort === 'function'
+      ? options.shouldAbort
+      : function () {
+          return false
+        }
 
   // 1) 0x20 帧头：告诉设备屏幕类型/索引/宽高/数据大小/整图 CRC32，等设备点头(RESULT=0x00)再发数据。
   const crc32 = imageCodec.crc32Mpeg2(data)
-  const startAck = await request(deviceId, protocol.CMD.IMG_START, protocol.buildImgStartPayload({
-    screenType: options.screenType,
-    index: options.index,
-    width: options.width,
-    height: options.height,
-    format: 0x01,
-    dataSize,
-    crc32
-  }), 10000)
+  const startAck = await request(
+    deviceId,
+    protocol.CMD.IMG_START,
+    protocol.buildImgStartPayload({
+      screenType: options.screenType,
+      index: options.index,
+      width: options.width,
+      height: options.height,
+      format: 0x01,
+      dataSize,
+      crc32
+    }),
+    10000
+  )
   if (startAck.result !== 0x00) {
     // 设备返回什么就提示什么：直接抛设备结果码的协议含义，不加 App 自造前缀
     throw new Error(protocol.resultText(startAck.result))
@@ -659,7 +761,9 @@ async function uploadImage(deviceId, options) {
   const CHUNK = session.dataChunk || 236
   const WINDOW = 5
   // 每包发送间隔(ms)：可由调用方传 pace 调速；越小越快，但太小设备会跟不上而丢包/卡住。默认走保守值。
-  const pace = Number.isFinite(options.pace) ? Math.max(0, options.pace) : PACKET_PACE_MS
+  const pace = Number.isFinite(options.pace)
+    ? Math.max(0, options.pace)
+    : PACKET_PACE_MS
   const totalPackets = Math.ceil(dataSize / CHUNK)
   let nextSeq = 0 // 下一个要发送的包号（= 已确认的最后包号 + 1）
   let retries = 0 // 同一窗口的重试次数，连续失败则判定连接中断
@@ -683,7 +787,10 @@ async function uploadImage(deviceId, options) {
       const windowEnd = Math.min(nextSeq + burst, totalPackets)
       // 逐包发送：每包之间留间隔做流控，避免冲爆发送缓冲导致写失败/丢包。
       for (let seq = nextSeq; seq < windowEnd; seq++) {
-        const chunk = data.subarray(seq * CHUNK, Math.min((seq + 1) * CHUNK, dataSize))
+        const chunk = data.subarray(
+          seq * CHUNK,
+          Math.min((seq + 1) * CHUNK, dataSize)
+        )
         await writePacket(session, seq, chunk)
         if (sendPace > 0) {
           await sleep(sendPace)
@@ -698,11 +805,16 @@ async function uploadImage(deviceId, options) {
       } catch (error) {
         // 没等到推进：可能丢包或 ACK 迟到。立刻（极短退避）重发，务必赶在设备 1s 超时前把数据送到。
         if (++retries > 15) {
-          throw new Error(`图传中断：设备停在已接收第 ${tracker.last} 包不再前进。可能设备忙或处理不过来。当前 MTU=${session.mtu}、每包 ${CHUNK} 字节`)
+          throw new Error(
+            `图传中断：设备停在已接收第 ${tracker.last} 包不再前进。可能设备忙或处理不过来。当前 MTU=${session.mtu}、每包 ${CHUNK} 字节`
+          )
         }
         // 把卡顿实况抛给页面：停在第几包(stuckAt)、第几次重发。便于判断是「设备中断(stuckAt 死住不动)」
         // 还是「链路慢(stuckAt 缓慢推进)」——这是向硬件提问时最关键的证据。
-        onProgress(Math.min(nextSeq, totalPackets), totalPackets, 'retry', { stuckAt: tracker.last, retries })
+        onProgress(Math.min(nextSeq, totalPackets), totalPackets, 'retry', {
+          stuckAt: tracker.last,
+          retries
+        })
         await sleep(Math.min(150, 50 * retries)) // 极短退避(≤150ms)：保证「等待+退避」远小于设备 1s 超时
         continue
       }
@@ -723,7 +835,10 @@ async function uploadImage(deviceId, options) {
     // 设备返回什么就提示什么：直接抛设备结果码的协议含义，不加 App 自造前缀
     throw new Error(protocol.resultText(endAck.result))
   }
-  const summary = Object.assign({ result: endAck.result }, protocol.parseImgEndResult(endAck.data))
+  const summary = Object.assign(
+    { result: endAck.result },
+    protocol.parseImgEndResult(endAck.data)
+  )
   onProgress(totalPackets, totalPackets, 'done')
   return summary
 }

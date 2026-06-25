@@ -1274,8 +1274,14 @@ Page({
       const okText = `图传完成 ✓ 设备现存 ${summary.imgCount} 张，剩余 ${summary.storageFree} 字节`
       this.appendLog({ type: 'ok', text: okText })
       this.setData({ uploadStatus: okText, uploadStatusType: 'ok' })
-      // 传完顺手刷新屏幕显示这张，便于直接在屏上确认
-      await deviceBle.refreshScreen(this.data.deviceId, index)
+      // 传完顺手刷新屏幕显示这张，便于直接在屏上确认。
+      // refreshScreen 现在会在设备拒绝(0x24 result≠0)时抛错——但图传本身已确认成功，
+      // 这步只是「顺手刷新」，失败不该把成功翻成失败，单独 try 掉并记日志即可。
+      try {
+        await deviceBle.refreshScreen(this.data.deviceId, index)
+      } catch (refreshError) {
+        this.appendLog({ type: 'err', text: `传后刷新屏幕失败：${refreshError.message}` })
+      }
       await this.refreshInfoSilently()
       toast.show({ title: '上传成功', icon: 'none' })
     } catch (error) {
