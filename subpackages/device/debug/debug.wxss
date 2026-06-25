@@ -29,7 +29,9 @@
   font-size: 24rpx;
   line-height: 1.5;
 }
-
+button {
+  width: 160rpx !important;
+}
 /* 通用卡片 */
 .card {
   margin-bottom: 22rpx;
@@ -98,6 +100,48 @@
   flex: 1;
   color: #2a2d32;
   word-break: break-all;
+}
+
+/* 小程序连接状态 */
+.conn-item {
+  margin-top: 14rpx;
+  padding: 16rpx 20rpx;
+  background: #f7f9fd;
+  border-radius: 16rpx;
+}
+
+.conn-line {
+  display: flex;
+  align-items: center;
+}
+
+.conn-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: #2a2d32;
+  font-size: 26rpx;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.conn-id {
+  flex: 0 0 auto;
+  margin-left: 14rpx;
+  color: #8b9098;
+  font-family: "Consolas", "Menlo", "Courier New", monospace;
+  font-size: 22rpx;
+}
+
+.conn-meta {
+  margin-top: 6rpx;
+  color: #8b9098;
+  font-size: 22rpx;
+}
+
+.conn-release {
+  margin-top: 18rpx;
 }
 
 /* 设备信息网格 */

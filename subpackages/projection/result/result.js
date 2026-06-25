@@ -133,8 +133,11 @@ Page({
 
     let uploaded = 0
     try {
-      // 1) 连接并读取真实设备信息（屏幕尺寸/类型/容量/已存掩码）
+      // 1) 连接并读取真实设备信息（屏幕尺寸/类型/容量/已存掩码）。
+      // 这几步在第一包数据发出前要花点时间（连接尤其慢），逐步更新文案，避免页面看起来卡在 0% 不动。
+      this.setData({ desc: '正在连接设备…' })
       await deviceBle.ensureConnection(deviceId)
+      this.setData({ desc: '正在读取设备信息…' })
       const info = await deviceBle.readDeviceInfo(deviceId)
 
       // v1.4 固件支持主动设置 BLE 连接间隔。图传前切到 30ms，可减少默认慢连接间隔造成的写入排队/卡顿。
@@ -162,11 +165,14 @@ Page({
           throw new Error('UPLOAD_ABORTED')
         }
         const image = images[i]
-        this.setData({ desc: `正在投第 ${i + 1}/${total} 张…` })
+        // 先「处理照片」(解码+六色量化，CPU 较重)，再「投屏」(BLE 图传)，文案区分两个阶段，
+        // 让用户知道开头这段不是卡死，而是在处理第一张图。
+        this.setData({ desc: `正在处理第 ${i + 1}/${total} 张照片…` })
 
         const srcPath = image.tempFilePath || image.url
         const imageData = await this.imageToImageData(srcPath, info.width, info.height)
         const frame = imageCodec.fromImageData(imageData, info.width, info.height, PROJECTION_QUANTIZE_OPTIONS)
+        this.setData({ desc: `正在投第 ${i + 1}/${total} 张…` })
 
         const index = protocol.firstFreeIndex(protocol.indexesToMask(usedIndexes), info.capacity)
         if (index < 0) {
@@ -230,11 +236,20 @@ Page({
   // 后端上传本张照片记录。失败会抛出，让本张投屏判为失败并触发设备侧回滚
   //（与「设备 + 后端二边都成功才算成功」一致；旧逻辑曾吞掉错误，已去除）。
   async syncUploadedImage(device, image) {
-    const filePath = image && (image.tempFilePath || image.url)
+    // 本地新图（相机/相册/裁剪导出）走 tempFilePath。注意：iOS 上 tempFilePath 常是 http://tmp/xxx 这种
+    // 「本地 http 路径」，绝不能因为它以 http(s) 开头就当成云端图跳过上传——否则设备图传成功了，
+    // 后端却没收到图，「我的图库(getUserProductImgList)」就一直看不到这张投屏成功的照片。
+    const localPath = image && image.tempFilePath
+    const remoteUrl = image && image.url
     const userProductId = device && (device.userProductId || device.id)
 
-    // 远程 url（已是服务端图片）或缺 userProductId：本次无需/无法再传后端，按跳过处理，不阻断本张。
-    if (!filePath || /^https?:\/\//i.test(filePath) || !userProductId) {
+    // 缺 userProductId 无法归属，跳过；只有「纯云端图」（没有本地文件、仅有 https 远程地址，
+    // 多为重复投屏已在服务器上的图）才跳过。其余本地图一律上传后端，确保进「我的图库」。
+    if (!userProductId) {
+      return
+    }
+    const filePath = localPath || remoteUrl
+    if (!filePath || (!localPath && /^https?:\/\//i.test(remoteUrl))) {
       return
     }
 

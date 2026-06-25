@@ -168,6 +168,34 @@ Page({
     })
   },
 
+  // 设备硬件序列号(Device_ID)：跨扫描会话稳定，用于判断「这台是否已绑定」。
+  // 归一化（去分隔符 + 大写）以兼容后端与蓝牙广播两侧可能的格式差异。
+  deviceSerial(value) {
+    return String(value == null ? '' : value).replace(/[:\-\s]/g, '').toUpperCase()
+  },
+
+  // 查当前用户是否已绑定这台设备（按硬件 Device_ID 匹配），命中则返回那条已绑定记录。
+  // 取不到列表 / 匹配不到都返回 null —— 一律按新设备正常绑定，绝不因为这步出错而挡住绑定。
+  async findBoundDevice(scanDevice, info) {
+    // 候选序列号：优先用连上读到的 Device_ID，其次扫描广播里的 deviceNo（当初绑定存的就是它）
+    const candidates = [info && info.deviceId, scanDevice.deviceNo, scanDevice.productDeviceId]
+      .map(value => this.deviceSerial(value))
+      .filter(Boolean)
+    if (!candidates.length) {
+      return null
+    }
+    let devices = []
+    try {
+      devices = await api.getDevices()
+    } catch (error) {
+      return null // 拉列表失败：按新设备正常绑定，不阻断
+    }
+    return devices.find(item => {
+      const serial = this.deviceSerial(item.deviceNo || item.productDeviceId)
+      return serial && candidates.indexOf(serial) > -1
+    }) || null
+  },
+
   // 底部「立即绑定」：绑定当前选中的设备
   confirmBind() {
     if (this.data.binding) {
@@ -231,6 +259,22 @@ Page({
       // 连接并读取设备信息成功：先提示「连接成功」，短暂停留让用户看到后，再调用绑定接口
       toast.show({ title: '连接成功', icon: 'none', duration: 800 })
       await new Promise(resolve => setTimeout(resolve, 800))
+    }
+
+    // 避免同一台设备被重复绑定（设备页会因此出现多条同款记录）：用刚连上读到的硬件 Device_ID
+    // 去已绑定列表里找，命中就复用那条、不再新建，并沿用刚建立的连接（绑定成功 = 已连接）。
+    const existed = await this.findBoundDevice(scanDevice, info)
+    if (existed) {
+      const reused = Object.assign({}, existed, {
+        deviceId: scanDevice.deviceId, // 本次会话有效的 BLE deviceId，供后续断开/图传复用
+        bleDeviceId: scanDevice.deviceId,
+        battery: info && typeof info.battery === 'number' ? info.battery : existed.battery
+      })
+      app.setSelectedDevice(reused)
+      toast.show({ title: '该设备已绑定，已为你连接', icon: 'none' })
+      // 保持 binding=true 直到返回上一页，避免窗口内被重复点击触发二次操作
+      setTimeout(() => wx.navigateBack(), 500)
+      return
     }
 
     // 合并：扫描得到的蓝牙标识 + 连接后读到的真实设备信息（保留蓝牙 deviceId 供后续重连）

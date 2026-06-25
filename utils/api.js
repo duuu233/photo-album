@@ -223,6 +223,16 @@ module.exports = {
     })
   },
 
+  // 拉取产品列表里每个产品的 broadcastId（广播名），用于蓝牙搜索时按它过滤目标相框。
+  // 返回去重后的非空字符串数组；拉取失败由调用方兜底（不在此处吞错）。
+  async getProductBroadcastIds() {
+    const data = await module.exports.getProductList({ pageIndex: 1, pageSize: 100 })
+    const ids = pageData(data)
+      .map(item => String((item && item.broadcastId) || '').trim())
+      .filter(Boolean)
+    return ids.filter((id, index) => ids.indexOf(id) === index)
+  },
+
   getProductFaqList(params = {}) {
     return http.get('/Client/Product/getProductFaqList', params, {
       mock: false
@@ -443,17 +453,20 @@ module.exports = {
     })
   },
 
-  // 删除产品图片，支持多选，id=uProductImgId。可传单 id、id 数组或 { ids }
+  // 删除产品图片，支持多选，id=uProductImgId。可传单 id、id 数组或 { idList }/{ ids }。
+  // 后端约定的字段名是 idList（不是 ids）。
   delUserProductImg(ids) {
     const list = Array.isArray(ids)
       ? ids
-      : ids && Array.isArray(ids.ids)
-        ? ids.ids
-        : [ids]
+      : ids && Array.isArray(ids.idList)
+        ? ids.idList
+        : ids && Array.isArray(ids.ids)
+          ? ids.ids
+          : [ids]
 
     return http.post(
       '/Client/UserProduct/delUserProductImg',
-      { ids: list.filter(item => item !== undefined && item !== null) },
+      { idList: list.filter(item => item !== undefined && item !== null) },
       {
         mock: false,
         loading: true,
@@ -735,12 +748,19 @@ module.exports = {
     })
   },
 
-  getProjectionRecords() {
+  // 投屏记录列表。可传 deviceUploadState 过滤设备上传状态：1=成功 / 0=失败；不传则取全部。
+  getProjectionRecords(params = {}) {
+    const query = {
+      pageIndex: 1,
+      pageSize: 100
+    }
+    // 仅在明确传 0/1 时带上该参数，避免把 undefined 发给后端
+    if (params.deviceUploadState === 0 || params.deviceUploadState === 1) {
+      query.deviceUploadState = params.deviceUploadState
+    }
+
     return module.exports
-      .getUserProductImgRecordList({
-        pageIndex: 1,
-        pageSize: 100
-      })
+      .getUserProductImgRecordList(query)
       .then(data => pageData(data).map(normalizeProjectionRecord))
   },
 

@@ -1,18 +1,43 @@
 const protocol = require('./frame-protocol')
+const api = require('./api')
 
 // 保存当前的“发现设备”监听回调引用，停止搜索时用它来精确解绑（off 需要传入同一函数引用）
 let foundHandler = null
 
 // 仅保留目标相框：按广播名（name / localName）做白名单筛选，其余蓝牙设备一律不进搜索结果。
-//   3.7 寸：EF6-370    5.89 寸：EF6-589
+// 白名单不再写死，而是取自产品列表接口(/Client/Product/getProductList)里每个产品的 broadcastId 字段，
+// 后端新增/调整支持的机型时无需改前端。拉取失败（未登录/网络异常）时退回内置广播名兜底，保证仍能搜到设备。
+//   兜底：3.7 寸 EF6-370 / 5.89 寸 EF6-589
 // 屏幕类型/电量若广播包带了厂商数据就顺带解析出来（frame-protocol.parseAdvertising）。
-const ALLOWED_BROADCAST_NAMES = ['EF6-370', 'EF6-589']
+const FALLBACK_BROADCAST_IDS = ['EF6-370', 'EF6-589']
+
+// 产品列表 broadcastId 白名单缓存：首次扫描拉取后整次会话复用；失败不缓存，便于下次重试。
+let cachedBroadcastIds = null
+
+// 取允许的 broadcastId 白名单：优先用产品列表接口返回的；拉不到/为空则退回内置兜底。
+async function loadAllowedBroadcastIds() {
+  if (cachedBroadcastIds && cachedBroadcastIds.length) {
+    return cachedBroadcastIds
+  }
+  try {
+    const ids = (await api.getProductBroadcastIds())
+      .map(id => String(id || '').trim().toUpperCase())
+      .filter(Boolean)
+    if (ids.length) {
+      cachedBroadcastIds = ids
+      return cachedBroadcastIds
+    }
+  } catch (error) {
+    // 拉产品列表失败：退回内置广播名，扫描照常进行
+  }
+  return FALLBACK_BROADCAST_IDS
+}
 
 // 广播名是否命中白名单：大小写不敏感，允许带前后缀，故用包含匹配。
 // name 与 localName 都查，因为真机有时只在后续广播包里带上 localName。
-function isAllowedFrame(device) {
+function isAllowedFrame(device, allowedIds) {
   const name = `${device.name || ''} ${device.localName || ''}`.toUpperCase()
-  return ALLOWED_BROADCAST_NAMES.some(allowed => name.indexOf(allowed) > -1)
+  return (allowedIds || []).some(allowed => allowed && name.indexOf(allowed) > -1)
 }
 
 // 检测当前微信运行环境是否具备完整的蓝牙搜索能力
@@ -160,12 +185,14 @@ function normalizeDevice(device) {
 }
 
 // 在 timeout 时间内持续收集附近的蓝牙相框，到点后返回去重后的设备列表
-function discoverDevices(options) {
+async function discoverDevices(options) {
   const timeout = options && options.timeout ? options.timeout : 8000
   // allowAll：放开广播名白名单，收录附近所有蓝牙设备。仅供硬件调试页排查用
-  //（比如设备搜不到时，先看它真实广播名到底是不是 EF6-370 / EF6-589）。
+  //（比如设备搜不到时，先看它真实广播名到底命中了产品列表里的哪个 broadcastId）。
   // 绑定/列表等正式入口不传此项，保持只显示目标相框。
   const allowAll = !!(options && options.allowAll)
+  // 正式入口：先取产品列表的 broadcastId 白名单（带缓存，多为命中缓存无网络开销）；allowAll 不过滤。
+  const allowedIds = allowAll ? [] : await loadAllowedBroadcastIds()
 
   return new Promise((resolve, reject) => {
     if (!canUseBluetooth()) {
@@ -189,7 +216,7 @@ function discoverDevices(options) {
     }
 
     // 每次发现设备的回调：累积到 foundMap，搜索期间不立即返回。
-    // 新设备必须广播名命中白名单（EF6-370 / EF6-589）才收录；已收录的目标设备后续广播包继续刷新
+    // 新设备必须广播名命中白名单（产品列表的 broadcastId）才收录；已收录的目标设备后续广播包继续刷新
     // （电量/名称/信号常在后续包才带全），避免因某个包暂时缺 localName 而漏更新。
     foundHandler = res => {
       const devices = res.devices || []
@@ -197,8 +224,8 @@ function discoverDevices(options) {
         if (!device.deviceId) {
           return
         }
-        // allowAll(调试) 时不做白名单筛选，收录所有设备；正式入口仍只收目标相框
-        if (!allowAll && !foundMap[device.deviceId] && !isAllowedFrame(device)) {
+        // allowAll(调试) 时不做白名单筛选，收录所有设备；正式入口仍只收命中 broadcastId 的目标相框
+        if (!allowAll && !foundMap[device.deviceId] && !isAllowedFrame(device, allowedIds)) {
           return
         }
         foundMap[device.deviceId] = normalizeDevice(device)

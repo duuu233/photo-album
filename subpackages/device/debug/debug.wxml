@@ -31,6 +31,33 @@
       </block>
     </view>
 
+    <!-- 小程序连接状态：不只看本页，真实投屏/绑定流程留下的未释放连接也会显示。
+         设备是单连接，残留连接会一直占着设备，导致再次「搜索/连接」搜不到/连不上——这里能看到并一键释放。 -->
+    <view class="card">
+      <view class="card-head">
+        <view class="dot {{mpConnected ? 'dot-on' : 'dot-off'}}"></view>
+        <text class="card-title">小程序连接状态</text>
+        <view class="ghost-btn" bindtap="refreshMpConnections">刷新</view>
+      </view>
+      <view class="kv">
+        <text class="k">是否占用设备</text>
+        <text class="v">{{mpConnected ? '是 · 当前持有 ' + mpConnections.length + ' 个 BLE 连接' : '否 · 当前无任何连接'}}</text>
+      </view>
+
+      <block wx:if="{{mpConnected}}">
+        <view wx:for="{{mpConnections}}" wx:key="deviceId" class="conn-item">
+          <view class="conn-line">
+            <text class="conn-name">{{item.name || '未知设备'}}{{item.isCurrent ? '（本页连接）' : ''}}</text>
+            <text class="conn-id">…{{item.shortId}}</text>
+          </view>
+          <view class="conn-meta">MTU {{item.mtu}} · 每包 {{item.dataChunk}} 字节 · {{item.writeType}}</view>
+        </view>
+        <button class="btn btn-soft conn-release" bindtap="disconnectAllConnections">断开全部并释放设备</button>
+        <view class="row-tip">设备为单连接：真实投屏/绑定流程若结束没断开，会一直占着设备，导致再次「搜索/连接」失败。点上方按钮断开全部即可让设备重新广播、可再次搜索连接。</view>
+      </block>
+      <view wx:else class="row-tip">当前没有占用设备，可以正常搜索并连接。</view>
+    </view>
+
     <!-- 设备信息卡片 -->
     <view wx:if="{{info}}" class="card">
       <view class="card-head">

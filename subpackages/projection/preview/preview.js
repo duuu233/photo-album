@@ -1,5 +1,6 @@
 const system = require('../../../utils/system')
 const toast = require('../../../utils/toast')
+const deviceBle = require('../../../utils/device-ble')
 
 // 设备屏幕分辨率（width×height）：列表/详情接口都会返回，裁剪框据此锁定宽高比（如 500x500 → 1:1）。
 // 接口暂未返回该字段，这里先给默认值便于联调测试（如需 1:1 改成 { width: 500, height: 500 }）。
@@ -37,6 +38,13 @@ Page({
     const images = pending.images || []
     const device = pending.device || null
     this.updateImageState(images, device, 0)
+
+    // 预热连接：用户在预览页裁剪/确认的这几秒里，后台先把设备连上。
+    // 这样点「确认投屏」后，结果页的 ensureConnection 能直接复用已就绪的会话，
+    // 省掉「投屏中」开头那段最耗时的连接等待。失败静默忽略，结果页仍会正常重连。
+    if (device && device.deviceId) {
+      deviceBle.ensureConnection(device.deviceId).catch(() => {})
+    }
   },
 
   // 统一刷新图片相关状态：当前预览图与张数（设备空间是否够由结果页按真实容量/掩码判断）
