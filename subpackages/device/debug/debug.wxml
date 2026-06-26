@@ -204,6 +204,8 @@
         <button class="btn btn-primary" disabled="{{busy || uploading}}" bindtap="cmdUploadTest">上传彩条测试图</button>
         <button class="btn btn-primary" disabled="{{busy || uploading}}" bindtap="cmdUploadAlbum">上传相册图片</button>
       </view>
+      <button class="btn btn-soft" disabled="{{busy || uploading}}" bindtap="cmdUploadLocalRaw">上传手机上的 .raw 直发</button>
+      <view class="row-tip">把已打包好的 .raw（字节数 = 宽×高÷2，EF6-370=172800）原样发给设备，不旋转/不转换——与正式投屏的 demo.raw 直发同源。选不到文件时：电脑微信把 .raw 发给「文件传输助手」，手机再来这里从聊天文件里选。</view>
       <view wx:if="{{uploading}}" class="progress">
         <view class="progress-bar"><view class="progress-fill" style="width: {{uploadPercent}}%"></view></view>
         <text class="progress-text">图传中 {{uploadPercent}}%</text>
