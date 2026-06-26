@@ -152,10 +152,22 @@
 }
 
 .quick-icon {
+  width: 68rpx;
+  height: 68rpx;
+  border-radius: 0;
+}
+.quick-icon-bg {
   width: 112rpx;
   height: 112rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background-color: rgba(255, 175, 139, 0.1);
 }
-
+.quick-icon-bg-blue {
+  background-color: #e7f2ff;
+}
 .service-icon {
   flex: 0 0 52rpx;
   width: 52rpx;

@@ -37,7 +37,7 @@
       <!-- 顶部「投屏 / 连接」操作，样式同「我的设备」的轮播设置和连接模块 -->
       <view class="device-actions glass-panel">
         <view class="device-action projection-action" hover-class="none" catchtap="startProjection">
-          <image class="action-frame-icon" src="/assets/images/projection-result-icon01.png" mode="aspectFit"></image>
+          <image class="action-frame-icon" src="/assets/images/screen-casting-icon01.png" mode="aspectFit"></image>
           <text>投屏</text>
         </view>
         <view class="device-action-divider"></view>

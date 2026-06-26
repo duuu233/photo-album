@@ -20,20 +20,23 @@
   <view class="section-title functions-title">常用功能</view>
   <view class="quick-grid">
     <view class="quick-card" hover-class="none" bindtap="goAlbum">
-      <!-- <image class="quick-card-bg" src="/assets/images/mine-bg02.png" mode="aspectFill"></image> -->
-      <image class="quick-icon" src="/assets/images/mine-icon01.png" mode="aspectFit"></image>
+      <view class="quick-icon-bg"  >
+      <image class="quick-icon" src="/assets/images/mine-icon06.png" mode="aspectFit"></image>
+      </view>
       <view class="quick-title">我的图库</view>
       <view class="quick-desc">{{photoCount}}张照片</view>
     </view>
     <view class="quick-card" hover-class="none" bindtap="goDevices">
-      <image class="quick-card-bg" src="/assets/images/mine-bg02.png" mode="aspectFill"></image>
-      <image class="quick-icon" src="/assets/images/mine-icon02.png" mode="aspectFit"></image>
+           <view class="quick-icon-bg quick-icon-bg-blue"  > 
+      <image class="quick-icon" src="/assets/images/mine-icon07.png" mode="aspectFit"></image>
+       </view>
       <view class="quick-title">我的设备</view>
       <view class="quick-desc">{{deviceCount}}个设备</view>
     </view>
     <view class="quick-card" hover-class="none" bindtap="goRecords">
-      <image class="quick-card-bg" src="/assets/images/mine-bg02.png" mode="aspectFill"></image>
-      <image class="quick-icon" src="/assets/images/mine-icon03.png" mode="aspectFit"></image>
+          <view class="quick-icon-bg"  > 
+      <image class="quick-icon" src="/assets/images/mine-icon08.png" mode="aspectFit"></image>
+       </view>
       <view class="quick-title">投屏管理</view>
     </view>
   </view>
