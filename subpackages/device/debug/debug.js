@@ -197,7 +197,8 @@ function spreadDebugError(buf, x, y, width, height, er, eg, eb, weight) {
   buf[i + 2] += eb * weight
 }
 
-function fromImageDataWithDebugCalibration(imageData, width, height, options) {
+// screenType：透传给打包层，3.7寸(EF6-370)按「横向源图」布局打包（见 image-codec.buildScreenFrameBytes）。
+function fromImageDataWithDebugCalibration(imageData, width, height, options, screenType) {
   const settings = Object.assign({}, DEFAULT_DEBUG_QUANTIZE, options || {})
   const palette = settings.palette || DEFAULT_DEBUG_PROFILE.palette
   const px = imageData.data
@@ -209,7 +210,7 @@ function fromImageDataWithDebugCalibration(imageData, width, height, options) {
       const [r, g, b] = enhanceDebugPixel(px[i * 4], px[i * 4 + 1], px[i * 4 + 2], settings)
       nibbles[i] = palette[nearestDebugPaletteIndex(r, g, b, settings)].nibble
     }
-    const data = imageCodec.packNibbles(nibbles)
+    const data = imageCodec.buildScreenFrameBytes(nibbles, width, height, screenType)
     return { data, width, height, dataSize: data.length }
   }
 
@@ -240,7 +241,7 @@ function fromImageDataWithDebugCalibration(imageData, width, height, options) {
     }
   }
 
-  const data = imageCodec.packNibbles(nibbles)
+  const data = imageCodec.buildScreenFrameBytes(nibbles, width, height, screenType)
   return { data, width, height, dataSize: data.length }
 }
 
@@ -876,7 +877,9 @@ Page({
       return
     }
     const info = this.data.info
-    const frame = imageCodec.buildColorBars(info.width, info.height)
+    // 传 screenType：3.7寸(EF6-370)彩条会按「横向源图」布局打包（固件旋转 90° 上屏）。
+    // 若上屏后竖彩条变成横彩条，说明旋转方向反了，调 image-codec.THREE_INCH_SOURCE_ROTATION。
+    const frame = imageCodec.buildColorBars(info.width, info.height, info.screenType)
     this.uploadFrame(frame, '上传彩条测试图(0x20~0x22)')
   },
 
@@ -920,7 +923,7 @@ Page({
         type: 'act',
         text: `调试页色准量化：${quantize.calibrationProfileName} / ${quantize.distanceMetric} / 裁剪${cropMode} / 缩放${resizeMode === 'single' ? 'APP单步' : '分阶段'} / 预压缩${skipCompressImage ? '跳过' : '自动'} / 抖动${quantize.dither ? '开' : '关'}${quantize.dither ? `(${DEFAULT_DEBUG_QUANTIZE.ditherStrength})` : ''} / 对比度${quantize.contrast.toFixed(2)} / 饱和度${quantize.saturation.toFixed(2)} / 低饱和保护${quantize.achromaticChromaMax >= 0 ? `≤${quantize.achromaticChromaMax}` : '关'}`
       })
-      frame = fromImageDataWithDebugCalibration(imageData, info.width, info.height, quantize)
+      frame = fromImageDataWithDebugCalibration(imageData, info.width, info.height, quantize, info.screenType)
     } catch (error) {
       wx.hideLoading()
       toast.show({ title: '图片转换失败：' + error.message, icon: 'none' })

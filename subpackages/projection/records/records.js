@@ -8,7 +8,8 @@ Page({
     safeBottom: 0,
     records: [],
     filteredRecords: [],
-    filter: 'success'
+    filter: 'success',
+    loading: true
   },
 
   onLoad() {
@@ -44,15 +45,23 @@ Page({
   // 按当前标签向后端请求对应状态的投屏记录（成功 deviceUploadState=1 / 失败=0），
   // 不再一次性拉全部再本地筛。数据已在 api 层归一化。
   async loadRecords(filter = this.data.filter) {
-    const records = await api.getProjectionRecords({
-      deviceUploadState: this.filterToUploadState(filter)
-    })
-    this.setData({
-      filter,
-      records,
-      // 后端已按状态过滤；再按 status 兜底过滤一层，兼容后端忽略该参数的情况
-      filteredRecords: records.filter(item => item.status === filter)
-    })
+    // 首屏渲染即 loading=true，等接口返回再决定展示列表还是空态，避免空态先闪一下。
+    // 切换标签/二次进入时已有内容，不再回到 loading，沿用旧内容直到新数据到位。
+    try {
+      const records = await api.getProjectionRecords({
+        deviceUploadState: this.filterToUploadState(filter)
+      })
+      this.setData({
+        filter,
+        records,
+        // 后端已按状态过滤；再按 status 兜底过滤一层，兼容后端忽略该参数的情况
+        filteredRecords: records.filter(item => item.status === filter),
+        loading: false
+      })
+    } catch (error) {
+      // 接口失败时 api 层已 toast 提示，这里仅结束 loading，落到空态
+      this.setData({ loading: false })
+    }
   },
 
   switchFilter(e) {

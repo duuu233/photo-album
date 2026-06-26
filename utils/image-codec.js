@@ -33,6 +33,22 @@ const PALETTE = [
 // true：每字节高 4 位放「左边/靠前」的像素；false：反过来。
 const HIGH_NIBBLE_FIRST = true
 
+// 3.7 寸（EF6-370）屏幕类型值（与 frame-protocol.SCREEN_TYPES 一致）。
+// 它的图传数据布局与其它尺寸不同：见 buildScreenFrameBytes 的说明。
+const SCREEN_TYPE_3_7 = 0x01
+
+// 3.7 寸「横向源图」相对于最终屏幕画面的旋转方向（PRD《3.7寸图片数据》一节）：
+//   固件会把收到的「横向源图」旋转 90° 后显示到 480×720 竖屏。我们要发的就是这张横向源图，
+//   因此把「用户期望在屏幕上正立看到的 480×720 画面」反向旋转，得到 720×480 的横向源图再打包。
+//   规格书的角点对应是「源图左上角 → 屏幕左下角」，据此推得：源图 = 屏幕画面顺时针(CW)旋转 90°。
+//   ⚠️ 真机联调若图像上下颠倒(整体 180°)，把这里改成 'ccw' 即可（两种 90° 旋转相差 180°，不会镜像）。
+const THREE_INCH_SOURCE_ROTATION = 'cw'
+
+// 是否需要按「横向源图」布局发送（目前只有 3.7 寸需要）。
+function needsLandscapeSource(screenType) {
+  return screenType === SCREEN_TYPE_3_7
+}
+
 // 一张图需要多少字节 = 宽 × 高 ÷ 2（每像素 4bit）
 function bytesPerImage(width, height) {
   return Math.ceil((width * height) / 2)
@@ -47,6 +63,52 @@ function packNibbles(nibbles) {
     out[i] = HIGH_NIBBLE_FIRST ? (a << 4) | b : (b << 4) | a
   }
   return out
+}
+
+// 把「屏幕画面」的 nibble 网格（宽 width、高 height，行优先）旋转成 3.7 寸固件要的「横向源图」nibble 网格。
+//   屏幕 S：宽 W、高 H（3.7 寸为 480×720）。索引 s(x,y)=y*W+x。
+//   横向源图 R：宽 H、高 W（720×480）。索引 r(u,v)=v*H+u，u∈[0,H)，v∈[0,W)。
+//   默认顺时针(cw)：R(u,v)=S(x=v, y=H-1-u)（即把屏幕画面顺时针转 90° 得到源图）。
+//   逆时针(ccw)：   R(u,v)=S(x=W-1-v, y=u)。两者相差 180°。
+// 旋转后总像素数不变（W*H），仍是 4bpp 打包前的 nibble 数组。
+function rotateNibblesToLandscape(nibbles, width, height, clockwise) {
+  const out = new Uint8Array(width * height)
+  const W = width
+  const H = height
+  // 源图宽 = H，行优先按 (v 行, u 列) 写出
+  for (let v = 0; v < W; v++) {
+    for (let u = 0; u < H; u++) {
+      let x
+      let y
+      if (clockwise) {
+        x = v
+        y = H - 1 - u
+      } else {
+        x = W - 1 - v
+        y = u
+      }
+      out[v * H + u] = nibbles[y * W + x] & 0x0f
+    }
+  }
+  return out
+}
+
+// 按屏幕类型把「屏幕画面」nibble 网格打包成固件要的 4bpp 帧字节流。
+//   · 普通屏（5.89 寸等）：直接按屏幕行优先打包（每行 width/2 字节）。
+//   · 3.7 寸（EF6-370）：固件要的是「横向源图」——480 行、每行 720 像素(=360 字节)，
+//     是把屏幕画面旋转 90° 后的布局。所以先旋转 nibble 网格再打包，字节总数不变(width*height/2)。
+//   注意：返回的只是 DATA 布局变了；图传帧头(0x20)的 WIDTH/HEIGHT 仍按屏幕尺寸 480×720 发送（见 PRD：帧头宽高固定 480×720）。
+function buildScreenFrameBytes(nibbles, width, height, screenType) {
+  if (needsLandscapeSource(screenType)) {
+    const landscape = rotateNibblesToLandscape(
+      nibbles,
+      width,
+      height,
+      THREE_INCH_SOURCE_ROTATION === 'cw'
+    )
+    return packNibbles(landscape)
+  }
+  return packNibbles(nibbles)
 }
 
 // 找出与给定 RGB 最接近的调色板颜色，返回其在 PALETTE 中的下标（欧氏距离最近）。
@@ -68,8 +130,10 @@ function nearestPaletteIndex(r, g, b, palette) {
 
 // 生成彩条测试图：把屏幕按竖条均分成 6 段，依次铺 6 种颜色。
 // 联调首选——不依赖任何图片，数据尺寸天然正确，肉眼就能核对颜色与左右方向。
+// width/height 为屏幕尺寸；3.7 寸会按横向源图布局打包（彩条仍按屏幕竖条生成，
+// 上屏后若彩条变成横条而非竖条，即旋转方向反了，可据此判断/调 THREE_INCH_SOURCE_ROTATION）。
 // 返回 { data: Uint8Array, width, height, dataSize }
-function buildColorBars(width, height) {
+function buildColorBars(width, height, screenType) {
   const nibbles = new Uint8Array(width * height)
   const bandWidth = width / PALETTE.length
   for (let y = 0; y < height; y++) {
@@ -78,14 +142,14 @@ function buildColorBars(width, height) {
       nibbles[y * width + x] = PALETTE[band].nibble
     }
   }
-  const data = packNibbles(nibbles)
+  const data = buildScreenFrameBytes(nibbles, width, height, screenType)
   return { data, width, height, dataSize: data.length }
 }
 
 // 生成纯色测试图（例如整屏白），用于最小化验证刷新是否生效
-function buildSolid(width, height, nibble) {
+function buildSolid(width, height, nibble, screenType) {
   const nibbles = new Uint8Array(width * height).fill(nibble & 0x0f)
-  const data = packNibbles(nibbles)
+  const data = buildScreenFrameBytes(nibbles, width, height, screenType)
   return { data, width, height, dataSize: data.length }
 }
 
@@ -124,7 +188,9 @@ function enhancePixel(r, g, b, contrast, saturation) {
 // 把「原色 - 量化色」的误差按 7/16、3/16、5/16、1/16 扩散到右/左下/下/右下相邻像素，肉眼会把密集色点
 // 空间混合成中间色，缓解 6 色硬量化的大色块/断层，渐变、肤色等过渡更自然。
 // options：dither===false 关抖动；contrast / saturation 自定增强强度（默认 1.12 / 1.28，传 1 即不增强）；
-//          palette 可传自定义六色调色板（默认用 PALETTE，用于不改默认值就试别的实测校准色）。
+//          palette 可传自定义六色调色板（默认用 PALETTE，用于不改默认值就试别的实测校准色）；
+//          screenType 屏幕类型：3.7 寸(0x01)会把数据按「横向源图」布局打包（见 buildScreenFrameBytes），
+//          其余尺寸按屏幕行优先打包。width/height 始终传屏幕尺寸（3.7 寸即 480×720）。
 function fromImageData(imageData, width, height, options) {
   const px = imageData.data // [r,g,b,a, r,g,b,a, ...]
   const count = width * height
@@ -141,7 +207,7 @@ function fromImageData(imageData, width, height, options) {
       const [r, g, b] = enhancePixel(px[i * 4], px[i * 4 + 1], px[i * 4 + 2], contrast, saturation)
       nibbles[i] = palette[nearestPaletteIndex(r, g, b, palette)].nibble
     }
-    const data = packNibbles(nibbles)
+    const data = buildScreenFrameBytes(nibbles, width, height, opt.screenType)
     return { data, width, height, dataSize: data.length }
   }
 
@@ -174,7 +240,7 @@ function fromImageData(imageData, width, height, options) {
     }
   }
 
-  const data = packNibbles(nibbles)
+  const data = buildScreenFrameBytes(nibbles, width, height, opt.screenType)
   return { data, width, height, dataSize: data.length }
 }
 
@@ -199,8 +265,13 @@ function crc32Mpeg2(input) {
 module.exports = {
   PALETTE,
   HIGH_NIBBLE_FIRST,
+  SCREEN_TYPE_3_7,
+  THREE_INCH_SOURCE_ROTATION,
+  needsLandscapeSource,
   bytesPerImage,
   packNibbles,
+  rotateNibblesToLandscape,
+  buildScreenFrameBytes,
   buildColorBars,
   buildSolid,
   fromImageData,

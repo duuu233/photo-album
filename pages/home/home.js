@@ -218,6 +218,9 @@ Page({
     sceneFromQuery: false,
     networkOffline: false,
     sheetClosing: false, // 底部弹层是否正在播放退场动画
+    // 首屏拉设备列表（判断已绑定/未绑定）前为 true，先展示 loading，
+    // 等 loadHomeState 走到 setScene 落定场景再关闭，避免「未绑定」空态先闪一下再变「已绑定」。
+    pageLoading: true,
     ...sceneState(SCENES.UNBOUND)
   },
 
@@ -489,6 +492,8 @@ Page({
       navTitle: getNavigationTitle(scene),
       ...sceneState(scene),
       hasDevice: nextHasDevice,
+      // 场景已落定即关闭首屏 loading（含游客/已绑定/未绑定/离线/调试场景），不再展示 loading 占位
+      pageLoading: false,
       ...extra
     })
   },

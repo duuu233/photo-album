@@ -5,8 +5,14 @@
 
   <page-nav title="我的图库"></page-nav>
 
+  <!-- 加载中：等接口返回再决定展示照片网格还是空态，避免空态先闪一下 -->
+  <view wx:if="{{loading}}" class="page-loading">
+    <view class="page-loading__spinner"></view>
+    <view class="page-loading__text">加载中…</view>
+  </view>
+
   <!-- 有照片：工具栏（数量+设备筛选）→ 照片网格 → 选中后出现的底部操作栏 -->
-  <block wx:if="{{filteredPhotos.length}}">
+  <block wx:elif="{{filteredPhotos.length}}">
     <view class="album-toolbar">
       <view class="toolbar-left">
         <view class="select-all-btn" hover-class="none" bindtap="toggleSelectAll">全选</view>

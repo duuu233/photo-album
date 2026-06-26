@@ -91,7 +91,8 @@ Page({
     selectedCount: 0,
     totalCount: TOTAL_PLACEHOLDER_COUNT,
     showDeleteConfirm: false,
-    deleteClosing: false // 删除确认弹窗是否正在播放退场动画
+    deleteClosing: false, // 删除确认弹窗是否正在播放退场动画
+    loading: true // 首屏接口返回前为 true，避免空态先闪一下
   },
 
   onLoad() {
@@ -108,10 +109,20 @@ Page({
 
   // 加载图库：合并真实+占位照片，并过滤掉本地已软删除的项
   async loadPhotos() {
-    const [sourcePhotos, devices] = await Promise.all([
-      api.getAlbumPhotos(),
-      api.getDevices()
-    ])
+    // 首屏渲染即 loading=true，等接口返回再决定展示照片网格还是空态，避免空态先闪一下
+    let result
+    try {
+      result = await Promise.all([
+        api.getAlbumPhotos(),
+        api.getDevices()
+      ])
+    } catch (error) {
+      // 接口失败时 api 层已 toast 提示，这里仅结束 loading，落到空态
+      this.setData({ loading: false })
+      return
+    }
+    const sourcePhotos = result[0]
+    const devices = result[1]
     // 列表以后端返回为准：删除已实际删掉设备(0x12)+后端记录，不再叠加本地软隐藏
     //（旧的软隐藏是永久的，会把后端仍返回的图一直藏起来，导致「接口有 N 条却只显示 1 条」）
     const photos = buildDisplayPhotos(sourcePhotos, devices)
@@ -130,7 +141,8 @@ Page({
       totalCount: photos.length,
       selectedMap: {},
       selectedCount: 0,
-      showDeleteConfirm: false
+      showDeleteConfirm: false,
+      loading: false
     })
     this.applyFilter(currentFilter, photos)
   },

@@ -45,6 +45,8 @@ Page({
     showDeleteConfirm: false,
     clearClosing: false, // 清空确认弹窗是否正在播放退场动画
     deleteClosing: false, // 删除确认弹窗是否正在播放退场动画
+    showMediaSheet: false, // 「拍照/相册」选择弹层是否展示
+    mediaSheetClosing: false, // 选择弹层是否正在播放退场动画
     loading: true,
     loadError: false
   },
@@ -254,8 +256,8 @@ Page({
     }
   },
 
-  // 顶部「投屏」：要求设备已连接，选当前设备相册照片 → 进入投屏预览（连接图传由预览/结果页复用本会话）
-  async startProjection() {
+  // 顶部「投屏」：要求设备已连接，弹出「拍照/相册」二选一，由用户选择投屏方式（与首页一致）。
+  startProjection() {
     const device = this.data.device
     if (!device) {
       return
@@ -268,13 +270,44 @@ Page({
 
     // 设为当前选中设备，预览/结果页据此连接并图传
     app.setSelectedDevice(device)
+    this.setData({ showMediaSheet: true, mediaSheetClosing: false })
+  },
+
+  // 关闭「拍照/相册」选择弹层（带退场动画，与删除/清空确认弹窗一致）
+  hideMediaSheet() {
+    if (this.data.mediaSheetClosing) {
+      return
+    }
+    this.setData({ mediaSheetClosing: true })
+    setTimeout(() => {
+      this.setData({ showMediaSheet: false, mediaSheetClosing: false })
+    }, 220)
+  },
+
+  // 选「拍照」：调起相机拍一张后进入投屏
+  chooseCamera() {
+    this.pickAndProject(() => media.chooseFromCamera())
+  },
+
+  // 选「相册」：从相册选图后进入投屏
+  chooseAlbum() {
+    this.pickAndProject(() => media.chooseFromAlbum())
+  },
+
+  // 选图（拍照/相册）后跳投屏预览：用户取消选择不报错；选到图先关弹层再带数据跳转，
+  // 避免弹层 flag 残留导致从预览返回详情页时弹层又冒出来。
+  async pickAndProject(pickImages) {
+    const device = this.data.device
+    if (!device) {
+      return
+    }
 
     let images
     try {
-      images = await media.chooseFromAlbum()
+      images = await pickImages()
     } catch (error) {
       if (error && error.errMsg && error.errMsg.indexOf('cancel') > -1) {
-        return // 用户取消选择不算错误
+        return // 用户取消选择不算错误，保留弹层让其重新选择
       }
       toast.show({ title: '选择照片失败', icon: 'none' })
       return
@@ -283,6 +316,7 @@ Page({
       return
     }
 
+    this.setData({ showMediaSheet: false, mediaSheetClosing: false })
     wx.setStorageSync('pendingProjection', { device, images })
     wx.navigateTo({
       url: '/subpackages/projection/preview/preview'

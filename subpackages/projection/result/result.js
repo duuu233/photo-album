@@ -171,7 +171,9 @@ Page({
 
         const srcPath = image.tempFilePath || image.url
         const imageData = await this.imageToImageData(srcPath, info.width, info.height)
-        const frame = imageCodec.fromImageData(imageData, info.width, info.height, PROJECTION_QUANTIZE_OPTIONS)
+        // screenType 透传给编码层：3.7寸(EF6-370)会把数据按「横向源图」布局打包（固件再旋转 90° 上屏），
+        // 帧头宽高仍按屏幕 480×720（见 image-codec.buildScreenFrameBytes / uploadImage）。
+        const frame = imageCodec.fromImageData(imageData, info.width, info.height, Object.assign({}, PROJECTION_QUANTIZE_OPTIONS, { screenType: info.screenType }))
         this.setData({ desc: `正在投第 ${i + 1}/${total} 张…` })
 
         const index = protocol.firstFreeIndex(protocol.indexesToMask(usedIndexes), info.capacity)

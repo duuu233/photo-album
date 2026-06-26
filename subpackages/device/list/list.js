@@ -43,11 +43,17 @@ Page({
   },
 
   // 加载设备列表，并为每项附加展示用字段（内存百分比、删除提示）
+  // 首屏渲染即 loading=true（见 data），等接口返回再决定展示列表还是空态，避免空态先闪一下；
+  // 二次进入（如绑定后返回）已有内容，沿用旧列表直到新数据到位，不再回到 loading。
   async loadDevices() {
-    this.setData({
-      loading: true
-    })
-    const sourceDevices = await api.getDevices()
+    let sourceDevices
+    try {
+      sourceDevices = await api.getDevices()
+    } catch (error) {
+      // 接口失败时 api 层已 toast 提示，这里仅结束 loading，落到空态
+      this.setData({ loading: false })
+      return
+    }
     const selected = app.globalData.selectedDevice
 
     // 同一台相框可能被重复绑定出多条记录：按稳定的硬件序列号(Device_ID)去重，只保留一条，

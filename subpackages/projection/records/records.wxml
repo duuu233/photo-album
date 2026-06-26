@@ -13,6 +13,13 @@
       <view class="record-tab {{filter === 'fail' ? 'is-active' : ''}}" hover-class="none" data-filter="fail" bindtap="switchFilter">投屏失败</view>
     </view>
 
+    <!-- 加载中：等接口返回再决定展示列表还是空态，避免空态先闪一下 -->
+    <view wx:if="{{loading}}" class="page-loading">
+      <view class="page-loading__spinner"></view>
+      <view class="page-loading__text">加载中…</view>
+    </view>
+
+    <block wx:else>
     <view class="record-count">共 {{filteredRecords.length}} 条记录</view>
 
     <view wx:if="{{filteredRecords.length}}" class="record-list">
@@ -49,6 +56,7 @@
       <view class="empty-record__title">{{filter === 'success' ? '暂无成功记录' : '暂无失败记录'}}</view>
       <view class="empty-record__desc">{{filter === 'success' ? '完成一次照片投屏后会显示在这里。' : '投屏失败时会保留原因，方便排查。'}}</view>
     </view>
+    </block>
   </view>
 
   <global-toast id="globalToast"></global-toast>

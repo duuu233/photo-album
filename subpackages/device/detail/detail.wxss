@@ -18,14 +18,14 @@
   grid-template-columns: 1fr 1rpx 1fr;
   align-items: center;
   height: 84rpx;
-  border: 1px solid rgba(255, 255, 255, 0.31);
-  border-radius: 40rpx;
-  background: linear-gradient(
+  /* border: 1px solid rgba(255, 255, 255, 0.31); */
+  border-radius: 28rpx;
+  /* background: linear-gradient(
     88deg,
     rgba(255, 255, 255, 0.38) 2.41%,
     rgba(255, 255, 255, 0.55) 96.27%
   );
-  box-shadow: 0 4px 12.1px 0 rgba(44, 63, 97, 0.03);
+  box-shadow: 0 4px 12.1px 0 rgba(44, 63, 97, 0.03); */
   backdrop-filter: blur(7.95px);
 }
 
@@ -390,4 +390,105 @@
   box-shadow: 0 16rpx 32rpx rgba(255, 102, 31, 0.22);
   font-size: 28rpx;
   font-weight: 600;
+}
+
+/* ── 「拍照 / 相册」选择弹层（与首页 media-sheet 同款样式，点投屏后弹出）────── */
+.media-mask {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  background: rgba(42, 43, 43, 0.5);
+}
+
+.bottom-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #ffffff;
+  border-radius: 32rpx 32rpx 0 0;
+  animation: popSheetSlideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.media-sheet {
+  height: 706rpx;
+  padding: 42rpx 48rpx 0;
+}
+
+.media-sheet-title {
+  margin-bottom: 46rpx;
+  color: #2a2b2b;
+  font-size: 40rpx;
+  font-weight: 500;
+}
+
+.media-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 128rpx;
+  margin-bottom: 20rpx;
+  padding: 0 24rpx;
+  background: #f8f9fb;
+  border-radius: 28rpx;
+}
+
+.media-option-left {
+  display: flex;
+  align-items: center;
+}
+
+.media-art.mini {
+  position: relative;
+  width: 98rpx;
+  height: 96rpx;
+}
+
+.media-option-copy {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  flex-direction: column;
+  padding-left: 28rpx;
+}
+
+.media-option-copy view {
+  color: #2a2d32;
+  font-size: 32rpx;
+  font-weight: 500;
+}
+
+.media-option-copy text {
+  display: block;
+  margin-top: 12rpx;
+  color: #858b96;
+  font-size: 22rpx;
+  line-height: 1;
+}
+
+.round-arrow {
+  width: 118rpx;
+  height: 118rpx;
+}
+
+.cancel-action {
+  position: absolute;
+  right: 48rpx;
+  bottom: 108rpx;
+  left: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: 112rpx;
+  color: #2a2d32;
+  background: #ededed;
+  border-radius: 999rpx;
+  font-size: 36rpx;
+  font-weight: 500;
 }

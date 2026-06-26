@@ -6,13 +6,19 @@
   <page-nav title="{{selectMode ? '选择相框' : '我的设备'}}"></page-nav>
 
   <view class="mock-content device-content">
-    <view class="device-toolbar" wx:if="{{devices.length}}">
+    <view class="device-toolbar" wx:if="{{!loading && devices.length}}">
       <view class="device-add-btn" hover-class="device-add-btn--hover" aria-label="添加设备" bindtap="goBind">
         <image class="device-add-btn__icon" src="/assets/images/home-add-icon.png" mode="aspectFit"></image>
       </view>
     </view>
 
-    <view wx:if="{{devices.length}}" class="device-list">
+    <!-- 加载中：等接口返回再决定展示设备列表还是空态，避免空态先闪一下 -->
+    <view wx:if="{{loading}}" class="page-loading">
+      <view class="page-loading__spinner"></view>
+      <view class="page-loading__text">加载中…</view>
+    </view>
+
+    <view wx:elif="{{devices.length}}" class="device-list">
       <view class="device-card glass-panel {{item.connected ? '' : 'is-offline'}}" wx:for="{{devices}}" wx:key="id" wx:for-index="index" data-id="{{item.id}}" bindtap="selectDevice">
         <view class="device-card__main">
           <view class="device-logo {{item.connected ? 'device-logo-is-connected' : ''}}">

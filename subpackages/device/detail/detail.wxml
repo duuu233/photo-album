@@ -35,7 +35,7 @@
       </view>
 
       <!-- 顶部「投屏 / 连接」操作，样式同「我的设备」的轮播设置和连接模块 -->
-      <view class="device-actions">
+      <view class="device-actions glass-panel">
         <view class="device-action projection-action" hover-class="none" catchtap="startProjection">
           <image class="action-frame-icon" src="/assets/images/projection-result-icon01.png" mode="aspectFit"></image>
           <text>投屏</text>
@@ -147,6 +147,35 @@
           <view class="confirm-cancel" hover-class="none" bindtap="hideClearConfirm">取消</view>
           <view class="confirm-primary" hover-class="none" bindtap="confirmClearCopies">确认</view>
         </view>
+      </view>
+    </view>
+
+    <!-- 「拍照 / 相册」选择弹层：点「投屏」后弹出，由用户选择投屏方式（与首页一致）。
+         点遮罩关闭；点弹层内部用 catchtap="noop" 阻止冒泡，避免误关 -->
+    <view class="media-mask" wx:if="{{showMediaSheet}}" catchtouchmove="noop" bindtap="hideMediaSheet">
+      <view class="bottom-sheet media-sheet {{mediaSheetClosing ? 'pop-closing-sheet' : ''}}" catchtap="noop">
+        <view class="media-sheet-title">选择投屏方式</view>
+        <view class="media-option" hover-class="none" bindtap="chooseCamera">
+          <view class="media-option-left">
+            <image class="media-art mini camera-art" src="/assets/images/home-media-mini01.png" mode="aspectFit"></image>
+            <view class="media-option-copy">
+              <view>拍照</view>
+              <text>调用手机相机拍照</text>
+            </view>
+          </view>
+          <image class="round-arrow" src="/assets/images/home-camera-card-right-icon.png" mode="aspectFit"></image>
+        </view>
+        <view class="media-option" hover-class="none" bindtap="chooseAlbum">
+          <view class="media-option-left">
+            <image class="media-art mini album-art" src="/assets/images/home-media-mini02.png" mode="aspectFit"></image>
+            <view class="media-option-copy">
+              <view>相册</view>
+              <text>从手机相册选择照片</text>
+            </view>
+          </view>
+          <image class="round-arrow" src="/assets/images/home-album-card-right-icon.png" mode="aspectFit"></image>
+        </view>
+        <view class="cancel-action" hover-class="none" bindtap="hideMediaSheet">取消</view>
       </view>
     </view>
   </block>

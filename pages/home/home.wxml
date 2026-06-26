@@ -7,8 +7,14 @@
 
   <page-nav title="{{navTitle}}" show-back="{{showNavBack}}" custom-back="{{showNavBack}}" bind:backtap="backFromBinding"></page-nav>
 
+  <!-- 首屏加载中：拉设备列表确定已绑定/未绑定前先展示 loading，避免「未绑定」空态先闪一下 -->
+  <view wx:if="{{pageLoading}}" class="page-loading">
+    <view class="page-loading__spinner"></view>
+    <view class="page-loading__text">加载中…</view>
+  </view>
+
   <!-- ===== 分支一：首页场景（已绑定 / 未绑定）。isHomeScene 由 sceneState 派生 ===== -->
-  <block wx:if="{{isHomeScene}}">
+  <block wx:elif="{{isHomeScene}}">
     <!-- 主内容区：hasHomeOverlay 为真时（有弹层）加 content-dimmed 变暗 -->
     <view
       class="home-content {{isBoundHome ? 'bound-home' : 'unbound-home'}} {{hasHomeOverlay ? 'content-dimmed' : ''}}">
