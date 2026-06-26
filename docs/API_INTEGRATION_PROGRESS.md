@@ -57,7 +57,7 @@
 | ---- | ------------------------------------ | ---------------------------------------------------- | --------------------------------------- |
 | POST | `/Client/Basic/sendEmail`            | 发送邮箱验证码,10分钟有效期                          | 已接入：`sendEmail(data)`               |
 | POST | `/Client/Basic/sendEmailToken`       | 发送邮箱验证码(已登录的用户传userToken),10分钟有效期 | 已接入：`sendEmailToken(data)`          |
-| POST | `/Client/Basic/setUserProductUpload` | 设备上传，form-data 文件上传                         | 已接入：`setUserProductUpload(options)` |
+| POST | `/Client/Basic/setUserProductUpload` | BLE 图片转换上传，form-data 上传原图，后端转换帧并存 OSS，返回 url/taskId/upirId | 已接入：`setUserProductUpload(options)` |
 | GET  | `/Client/Basic/getBasicData`         | 获取基础数据                                         | 已接入：`getBasicData(params)`          |
 | POST | `/Client/Basic/setFileUpload`        | 基础上传(无关业务)，form-data 文件上传               | 已接入：`setFileUpload(options)`        |
 
@@ -66,13 +66,13 @@
 - `subpackages/settings/bind-email/bind-email.js`：获取验证码调用 `sendEmail({ userEmail, sendType: 3 })`。
 - `subpackages/settings/change-email/change-email.js`：获取验证码调用 `sendEmail({ userEmail, sendType: 3 })`。
 - `subpackages/settings/forgot-password/forgot-password.js`：获取验证码调用 `sendEmail({ userEmail, sendType: 2 })`。
-- `subpackages/projection/result/result.js`：BLE 图传成功后调用 `setUserProductUpload({ userProductId, deviceUploadState: 1, filePath })` 同步后端图库/投屏记录。
+- `subpackages/projection/result/result.js`：投屏链路改为「后端转换 + BLE 图传」。逐张先调 `setUserProductUpload({ filePath, userProductId, targetWidth, targetHeight, deviceUploadState: 0 })` 把原图传后端按设备宽高转换成帧(.bin)并存 OSS，拿到返回的 `url`(下载地址)/`taskId`/`upirId`；`wx.downloadFile` 下载 `.bin` 后用现有 `deviceBle.uploadImage` 图传给设备；设备图传成功后才调 `editUserProductImgRecord({ upirId, taskId, deviceUploadState: 1 })` 把投屏记录置为成功（设备失败则不调用，记录保持失败态并跳到失败场景）。
 
 ### 参数参考
 
 - `sendEmail(data)`：`userEmail`、`sendType`。`sendType` 参考 Swagger：`1=注册邮件`、`2=找回密码邮件/修改密码`、`3=修改邮箱`。
 - `sendEmailToken(data)`：按 Swagger 为已登录验证码接口；公共 `userToken` 会通过 header 传递。
-- `setUserProductUpload(options)`：`filePath` 或 `filePaths/files`、`userProductId`、`deviceUploadState`、可选 `formData`。
+- `setUserProductUpload(options)`：`filePath` 或 `filePaths/files`、`userProductId`、`deviceUploadState`、`targetWidth`/`targetHeight`(目标像素宽高)、可选 `formData`；可传 `loading:false` 关闭全局 loading、`showError:false` 自行处理错误。返回 `{ url, taskId, upirId, name }`。
 - 微信小程序原生 `wx.uploadFile` 单次稳定上传一个文件字段；当前封装支持传多个文件路径，并使用同一个 `fileParam` 字段逐个上传。
 
 ### 小程序跳过
@@ -136,6 +136,7 @@
 | POST | `/Client/UserProduct/delUserProductImg`           | `delUserProductImg(ids)`              | 删除产品图片,id=uProductImgId（支持多选） |
 | GET  | `/Client/UserProduct/getUserProductImgRecordList` | `getUserProductImgRecordList(params)` | 产品投屏记录列表（新出现接口）            |
 | POST | `/Client/UserProduct/delUserProductImgRecord`     | `delUserProductImgRecord(upirId)`     | 删除产品投屏记录,id=upirId（新出现接口）  |
+| POST | `/Client/UserProduct/editUserProductImgRecord`    | `editUserProductImgRecord(data)`      | 编辑投屏记录（设备图传成功后置设备上传状态）|
 
 ### 参数参考
 
@@ -146,6 +147,7 @@
 - `delUserProduct/clearUserProductImg(userProductId)`：可传 `id` 或 `{ id }`。
 - `delUserProductImg(ids)`：可传单个 id、id 数组或 `{ ids }`。
 - `delUserProductImgRecord(upirId)`：可传 `id` 或 `{ id }`。
+- `editUserProductImgRecord(data)`：`{ upirId(投屏记录id), taskId(上传接口返回的任务id), deviceUploadState(0=失败,1=成功) }`；`device/language/terminal/userToken` 由 `request.js` 经 header/query 注入。设备图传成功后调用置 `deviceUploadState:1`。
 
 ### 页面接入
 
