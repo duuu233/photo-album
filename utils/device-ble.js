@@ -421,9 +421,9 @@ function sleep(ms) {
 //   2) 设备端（BLE 收包 + 写 Flash）跟不上 → 收一阵就不再前进（ACK_SEQ 卡住）。
 // 留足间隔让两边都喘得过气。先求稳（值偏大），联调通了再往小调提速。
 const PACKET_PACE_MS = 45
-// 图传前尝试把 BLE 连接间隔调到此值（默认 30ms / CONN_INTERVAL=24）。失败时不阻断旧图传链路。
-// 调试页「同步投屏」会把输入框的值写进下面这个存储键；真实投屏图传前优先读它，没同步过则回落默认 30ms。
-const TRANSFER_CONN_INTERVAL_MS = 30
+// 图传前尝试把 BLE 连接间隔调到此值（默认 7.5ms / CONN_INTERVAL=6，即 BLE 允许的最快连接间隔）。失败时不阻断旧图传链路。
+// 调试页「同步投屏」会把输入框的值写进下面这个存储键；真实投屏图传前优先读它，没同步过则回落默认 7.5ms。
+const TRANSFER_CONN_INTERVAL_MS = 7.5
 const TRANSFER_CONN_INTERVAL_STORAGE_KEY = 'transferConnIntervalMs'
 
 // 裸写一帧（默认写类型，由特征支持的属性决定——本设备 FF01 为无应答写）。
@@ -622,7 +622,7 @@ async function setConnectionIntervalMs(deviceId, ms) {
   )
 }
 
-// 真实投屏图传前要用的连接间隔(ms)：优先用调试页「同步投屏」存下的值，否则用默认 30ms。
+// 真实投屏图传前要用的连接间隔(ms)：优先用调试页「同步投屏」存下的值，否则用默认 7.5ms。
 function getTransferConnIntervalMs() {
   try {
     const saved = Number(wx.getStorageSync(TRANSFER_CONN_INTERVAL_STORAGE_KEY))
@@ -648,7 +648,7 @@ function setTransferConnIntervalMs(ms) {
 }
 
 // 图传前的连接参数优化：读当前值，必要时切到更快的连接间隔。
-// 未显式传 ms 时，用「同步投屏」存下的值（没同步过则默认 30ms）。
+// 未显式传 ms 时，用「同步投屏」存下的值（没同步过则默认 7.5ms）。
 // 兼容旧固件/异常链路：调用方可捕获错误后继续走原图传逻辑。
 async function optimizeConnectionIntervalForTransfer(deviceId, ms) {
   const targetUnits = normalizeConnectionIntervalUnits(

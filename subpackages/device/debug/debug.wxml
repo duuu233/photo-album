@@ -109,11 +109,11 @@
       </view>
       <view class="row">
         <text class="row-label">连接间隔</text>
-        <input class="input" type="digit" value="{{connIntervalInput}}" bindinput="onConnIntervalInput" placeholder="ms,如 30" />
+        <input class="input" type="digit" value="{{connIntervalInput}}" bindinput="onConnIntervalInput" placeholder="ms,如 7.5" />
         <button class="btn btn-mini btn-compact" disabled="{{busy}}" bindtap="cmdSetConnInterval">应用 0x13</button>
         <button class="btn btn-mini btn-compact btn-sync" bindtap="cmdSyncConnIntervalToProjection">同步投屏</button>
       </view>
-      <view class="row-tip">BLE 连接间隔单位为 1.25ms，允许 7.5~4000ms；图传建议先试 30ms。每次图传前会自动按此值设置并复读确认（0x05→0x13→0x05），卡住时据此区分「间隔没生效」还是「设备吃不下速率」。<text class="row-tip-strong">「同步投屏」</text>把当前输入值写给真实投屏：之后正式投屏图传前会按这个值设连接间隔（当前投屏用 {{projectionConnIntervalMs}}ms），不点则维持默认 30ms。</view>
+      <view class="row-tip">BLE 连接间隔单位为 1.25ms，允许 7.5~4000ms；默认 7.5ms（最快，真实业务同此默认）。每次图传前会自动按此值设置并复读确认（0x05→0x13→0x05），卡住时据此区分「间隔没生效」还是「设备吃不下速率」。<text class="row-tip-strong">「同步投屏」</text>把当前输入值写给真实投屏：之后正式投屏图传前会按这个值设连接间隔（当前投屏用 {{projectionConnIntervalMs}}ms），不点则维持默认 7.5ms。</view>
       <view class="row">
         <text class="row-label">系统校时</text>
         <text class="row-hint">把手机当前时间同步给设备 RTC</text>
@@ -152,6 +152,28 @@
           <button class="btn btn-mini btn-compact" disabled="{{uploading || !deviceId}}" bindtap="saveDeviceCalibrationProfile">保存本机</button>
         </view>
         <view class="profile-note">{{calibrationProfileNote}}</view>
+        <view class="custom-palette">
+          <view class="custom-palette-head">
+            <text class="custom-palette-title">自定义六色 RGB</text>
+            <text class="custom-palette-hint">选套餐自动回填，可逐项微调</text>
+          </view>
+          <view wx:for="{{customColors}}" wx:key="nibble" class="color-row">
+            <view class="color-swatch" style="background: {{item.css}}"></view>
+            <text class="color-name">{{item.name}}</text>
+            <view class="channel">
+              <text class="channel-label">R</text>
+              <input class="channel-input" type="number" maxlength="3" value="{{item.r}}" data-index="{{index}}" data-channel="r" disabled="{{uploading}}" bindinput="onCustomColorInput" />
+            </view>
+            <view class="channel">
+              <text class="channel-label">G</text>
+              <input class="channel-input" type="number" maxlength="3" value="{{item.g}}" data-index="{{index}}" data-channel="g" disabled="{{uploading}}" bindinput="onCustomColorInput" />
+            </view>
+            <view class="channel">
+              <text class="channel-label">B</text>
+              <input class="channel-input" type="number" maxlength="3" value="{{item.b}}" data-index="{{index}}" data-channel="b" disabled="{{uploading}}" bindinput="onCustomColorInput" />
+            </view>
+          </view>
+        </view>
         <view class="row row-tight">
           <text class="row-label">色差算法</text>
           <text class="row-hint">{{debugDistanceMetric}}；默认先对齐 APP 端量化逻辑</text>
@@ -199,6 +221,11 @@
           <slider class="tune-slider" value="{{debugSaturationPercent}}" min="80" max="180" step="1" disabled="{{uploading}}" bindchanging="onDebugSaturationChange" bindchange="onDebugSaturationChange" activeColor="#ff621f" backgroundColor="#edf1f7" block-size="22" block-color="#ffffff" />
         </view>
         <view class="row-tip">{{cropMode}} · 缩放{{debugResizeMode === 'single' ? 'APP单步' : '分阶段'}} · 预压缩{{debugSkipCompressImage ? '跳过' : '自动'}} · 抖动{{debugDither ? '开' : '关'}} · C{{debugContrastText}} / S{{debugSaturationText}}。只影响相册图片转换；彩条测试图仍直接写入协议六色。</view>
+        <view class="row row-tight sync-row">
+          <button class="btn btn-mini sync-btn" disabled="{{uploading}}" bindtap="cmdSyncQuantizeToProjection">同步到真实投屏</button>
+          <button class="btn btn-mini btn-compact reset-btn" disabled="{{uploading}}" bindtap="cmdResetProjectionQuantize">恢复默认</button>
+        </view>
+        <view class="row-tip"><text class="row-tip-strong">「同步到真实投屏」</text>把上面的自定义六色 + 抖动 + 对比度 + 饱和度写给正式投屏：之后在「我的相框」正式投屏时按这套参数量化上屏。「恢复默认」清除同步、回到代码内置参数。</view>
       </view>
       <view class="btn-grid">
         <button class="btn btn-primary" disabled="{{busy || uploading}}" bindtap="cmdUploadTest">上传彩条测试图</button>

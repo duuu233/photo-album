@@ -145,6 +145,43 @@ function findDebugCalibrationProfile(id) {
   return DEBUG_CALIBRATION_PROFILES.find(profile => profile.id === id) || null
 }
 
+// 把单个 0~255 通道值解析并钳位：非法/空串按 0 处理（用于把输入框字符串转成可计算的整数）。
+function clampChannelInput(v) {
+  const n = Math.round(Number(v))
+  return Number.isFinite(n) ? clamp255(n) : 0
+}
+
+// 调色板(含 rgb 数组) → 页面可编辑的六色行 {nibble,name,r,g,b,css}。
+// r/g/b 用字符串绑定输入框；css 为色块预览背景（按当前值实时算）。nibble 严格沿用协议编码值，不可改。
+function paletteToCustomColors(palette) {
+  return palette.map(entry => {
+    const r = clampChannelInput(entry.rgb[0])
+    const g = clampChannelInput(entry.rgb[1])
+    const b = clampChannelInput(entry.rgb[2])
+    return {
+      nibble: entry.nibble,
+      name: entry.name,
+      r: String(r),
+      g: String(g),
+      b: String(b),
+      css: `rgb(${r}, ${g}, ${b})`
+    }
+  })
+}
+
+// 页面可编辑的六色行 → 带 lab 的调色板（供调试页量化 / 同步投屏使用）。非法通道按 0 处理。
+function customColorsToPalette(customColors) {
+  return customColors.map(entry => {
+    const rgb = [clampChannelInput(entry.r), clampChannelInput(entry.g), clampChannelInput(entry.b)]
+    return {
+      nibble: entry.nibble,
+      name: entry.name,
+      rgb,
+      lab: rgbToLab(rgb[0], rgb[1], rgb[2])
+    }
+  })
+}
+
 function nearestDebugPaletteIndex(r, g, b, settings) {
   const palette = settings.palette || DEFAULT_DEBUG_PROFILE.palette
   const useAchromaticGuard = Number.isFinite(settings.achromaticChromaMax) && settings.achromaticChromaMax >= 0
@@ -271,8 +308,8 @@ Page({
     // 指令输入框
     playMode: 'order', // 'order' 顺序 / 'random' 随机
     intervalInput: '60', // 切换间隔(秒)
-    connIntervalInput: '30', // BLE 连接间隔(ms)，协议会换算为 1.25ms 单位
-    projectionConnIntervalMs: 30, // 真实投屏图传前要设的连接间隔(ms)，由「同步投屏」写入，onLoad 时回显
+    connIntervalInput: '7.5', // BLE 连接间隔(ms)，协议会换算为 1.25ms 单位；默认 7.5ms（最快）
+    projectionConnIntervalMs: 7.5, // 真实投屏图传前要设的连接间隔(ms)，由「同步投屏」写入，onLoad 时回显
     switchInput: '0', // 0x24 要显示的图片索引
     deleteInput: '', // 0x12 要删除的图片索引，逗号分隔，如 "0,2"
     uploadIndexInput: '', // 上传槽位，留空则自动选空闲位
@@ -291,6 +328,8 @@ Page({
     calibrationProfileId: DEFAULT_DEBUG_PROFILE.id,
     calibrationProfileName: DEFAULT_DEBUG_PROFILE.name,
     calibrationProfileNote: DEFAULT_DEBUG_PROFILE.note,
+    // 自定义六色：套餐只是「一键回填」的预设，真正参与量化/同步的是下面这份可逐项编辑的 RGB。
+    customColors: paletteToCustomColors(DEFAULT_DEBUG_PROFILE.palette),
 
     // 状态
     busy: false, // 有指令正在等应答，避免并发
@@ -306,7 +345,7 @@ Page({
     this.setData(system.getLayoutMetrics())
     this._logId = 0
 
-    // 回显当前真实投屏要用的连接间隔（同步过则是同步值，否则默认 30ms），让输入框与投屏保持一致
+    // 回显当前真实投屏要用的连接间隔（同步过则是同步值，否则默认 7.5ms），让输入框与投屏保持一致
     const projectionConnIntervalMs = deviceBle.getTransferConnIntervalMs()
     this.setData({
       projectionConnIntervalMs,
@@ -675,7 +714,7 @@ Page({
 
   // 同步投屏：把当前「连接间隔」输入值持久化给真实投屏。
   // 之后正式投屏(result.js → optimizeConnectionIntervalForTransfer)图传前会按这个值设链路间隔，
-  // 而不是写死的默认 30ms。这里只写本地存储、不依赖蓝牙连接，所以未连接设备也能同步。
+  // 而不是默认的 7.5ms。这里只写本地存储、不依赖蓝牙连接，所以未连接设备也能同步。
   cmdSyncConnIntervalToProjection() {
     const ms = Number(this.data.connIntervalInput)
     if (!Number.isFinite(ms) || ms <= 0) {
@@ -805,11 +844,35 @@ Page({
       calibrationProfileIndex: index >= 0 ? index : DEFAULT_DEBUG_PROFILE_INDEX,
       calibrationProfileId: profile.id,
       calibrationProfileName: profile.name,
-      calibrationProfileNote: profile.note
+      calibrationProfileNote: profile.note,
+      // 切换套餐 = 把该套餐的六色 RGB 回填到下面的自定义输入，之后可继续逐项微调
+      customColors: paletteToCustomColors(profile.palette)
     })
     if (options && options.log) {
       this.appendLog({ type: 'act', text: `${options.log}：${profile.name} · ${profile.note}` })
     }
+  },
+
+  // 单个颜色的 R/G/B 输入：只保留数字、上限钳到 255，并实时刷新色块预览。
+  onCustomColorInput(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const channel = e.currentTarget.dataset.channel
+    if (!Number.isInteger(index) || index < 0 || index >= this.data.customColors.length) {
+      return
+    }
+    if (channel !== 'r' && channel !== 'g' && channel !== 'b') {
+      return
+    }
+    let text = String(e.detail.value).replace(/[^0-9]/g, '')
+    if (text !== '' && Number(text) > 255) {
+      text = '255' // 超 255 直接钳住，避免输入无意义大数
+    }
+    const customColors = this.data.customColors.slice()
+    const entry = Object.assign({}, customColors[index])
+    entry[channel] = text
+    entry.css = `rgb(${clampChannelInput(entry.r)}, ${clampChannelInput(entry.g)}, ${clampChannelInput(entry.b)})`
+    customColors[index] = entry
+    this.setData({ customColors })
   },
 
   onCalibrationProfileChange(e) {
@@ -823,14 +886,59 @@ Page({
       return
     }
     try {
-      const savedId = wx.getStorageSync(this.getCalibrationProfileStorageKey())
-      const profile = findDebugCalibrationProfile(savedId)
-      if (profile) {
-        this.applyCalibrationProfile(profile, { log: '已恢复本设备校准档' })
+      const saved = wx.getStorageSync(this.getCalibrationProfileStorageKey())
+      if (!saved) {
+        return
+      }
+      // 旧版本只存了套餐 id（字符串）：找回套餐并回填其六色。
+      if (typeof saved === 'string') {
+        const profile = findDebugCalibrationProfile(saved)
+        if (profile) {
+          this.applyCalibrationProfile(profile, { log: '已恢复本设备校准档' })
+        }
+        return
+      }
+      // 新版本存的是完整自定义配置对象（套餐 + 自定义六色 + 抖动 + 对比度 + 饱和度）。
+      if (typeof saved === 'object') {
+        this.restoreSavedCustomConfig(saved)
       }
     } catch (error) {
       // 读取本地调试配置失败不影响上传链路。
     }
+  },
+
+  // 还原「保存本机」存下的完整自定义配置：套餐标签 + 自定义六色 + 抖动 + 对比度 + 饱和度。
+  restoreSavedCustomConfig(saved) {
+    const profile = findDebugCalibrationProfile(saved.profileId) || DEFAULT_DEBUG_PROFILE
+    const profileIndex = Math.max(0, DEBUG_CALIBRATION_PROFILES.findIndex(item => item.id === profile.id))
+    const hasColors = Array.isArray(saved.colors) && saved.colors.length === DEFAULT_DEBUG_PROFILE.palette.length
+    const customColors = hasColors
+      ? paletteToCustomColors(saved.colors.map((color, i) => ({
+        nibble: DEFAULT_DEBUG_PROFILE.palette[i].nibble,
+        name: DEFAULT_DEBUG_PROFILE.palette[i].name,
+        rgb: [color.r, color.g, color.b]
+      })))
+      : paletteToCustomColors(profile.palette)
+    const patch = {
+      calibrationProfileIndex: profileIndex,
+      calibrationProfileId: profile.id,
+      calibrationProfileName: profile.name,
+      calibrationProfileNote: profile.note,
+      customColors
+    }
+    if (typeof saved.dither === 'boolean') {
+      patch.debugDither = saved.dither
+    }
+    if (Number.isFinite(saved.contrastPercent)) {
+      patch.debugContrastPercent = saved.contrastPercent
+      patch.debugContrastText = this.formatTuningValue(saved.contrastPercent)
+    }
+    if (Number.isFinite(saved.saturationPercent)) {
+      patch.debugSaturationPercent = saved.saturationPercent
+      patch.debugSaturationText = this.formatTuningValue(saved.saturationPercent)
+    }
+    this.setData(patch)
+    this.appendLog({ type: 'act', text: `已恢复本设备校准配置：${profile.name}（含自定义六色）` })
   },
 
   saveDeviceCalibrationProfile() {
@@ -843,9 +951,22 @@ Page({
       return
     }
     try {
-      wx.setStorageSync(this.getCalibrationProfileStorageKey(), this.data.calibrationProfileId)
-      this.appendLog({ type: 'ok', text: `已保存本设备校准档：${this.data.calibrationProfileName}` })
-      toast.show({ title: '已保存本设备校准档', icon: 'none' })
+      const colors = this.data.customColors.map(color => ({
+        nibble: color.nibble,
+        r: clampChannelInput(color.r),
+        g: clampChannelInput(color.g),
+        b: clampChannelInput(color.b)
+      }))
+      wx.setStorageSync(this.getCalibrationProfileStorageKey(), {
+        v: 2,
+        profileId: this.data.calibrationProfileId,
+        colors,
+        dither: !!this.data.debugDither,
+        contrastPercent: Number(this.data.debugContrastPercent),
+        saturationPercent: Number(this.data.debugSaturationPercent)
+      })
+      this.appendLog({ type: 'ok', text: `已保存本设备校准配置：${this.data.calibrationProfileName}（含自定义六色）` })
+      toast.show({ title: '已保存本设备配置', icon: 'none' })
     } catch (error) {
       toast.show({ title: '保存失败：' + error.message, icon: 'none' })
     }
@@ -864,10 +985,45 @@ Page({
       contrast: Number.isFinite(contrast) ? contrast : DEFAULT_DEBUG_QUANTIZE.contrast,
       saturation: Number.isFinite(saturation) ? saturation : DEFAULT_DEBUG_QUANTIZE.saturation,
       distanceMetric: DEFAULT_DEBUG_QUANTIZE.distanceMetric,
-      palette: profile.palette,
+      // 量化用「自定义六色」而非套餐原值：套餐只是回填的起点，用户的逐项微调要真正生效
+      palette: customColorsToPalette(this.data.customColors),
       calibrationProfileId: profile.id,
       calibrationProfileName: profile.name,
       achromaticChromaMax: DEFAULT_DEBUG_QUANTIZE.achromaticChromaMax
+    }
+  },
+
+  // 同步到真实投屏：把「自定义六色 + 抖动 + 对比度 + 饱和度」持久化给正式投屏。
+  // 之后在「我的相框」正式投屏(result.js)量化上屏时会优先读这套参数，而不是代码内置默认。
+  // 只写本地存储、不依赖蓝牙连接，所以未连接设备也能同步。
+  cmdSyncQuantizeToProjection() {
+    const contrast = Number(this.data.debugContrastPercent) / 100
+    const saturation = Number(this.data.debugSaturationPercent) / 100
+    const palette = customColorsToPalette(this.data.customColors)
+    try {
+      imageCodec.setTransferQuantizeOptions({
+        dither: !!this.data.debugDither,
+        contrast: Number.isFinite(contrast) ? contrast : DEFAULT_DEBUG_QUANTIZE.contrast,
+        saturation: Number.isFinite(saturation) ? saturation : DEFAULT_DEBUG_QUANTIZE.saturation,
+        palette
+      })
+      const summary = palette.map(p => `${p.name}(${p.rgb.join(',')})`).join(' · ')
+      this.appendLog({ type: 'ok', text: `已同步到真实投屏：抖动${this.data.debugDither ? '开' : '关'} · 对比度${this.data.debugContrastText} · 饱和度${this.data.debugSaturationText}` })
+      this.appendLog({ type: 'act', text: `六色：${summary}` })
+      toast.show({ title: '已同步到真实投屏', icon: 'success' })
+    } catch (error) {
+      toast.show({ title: error.message || '同步失败', icon: 'none' })
+    }
+  },
+
+  // 清除同步：让正式投屏回到代码内置默认参数（实拍 2026-06-22 校准 + 抖动）。
+  cmdResetProjectionQuantize() {
+    try {
+      imageCodec.clearTransferQuantizeOptions()
+      this.appendLog({ type: 'act', text: '已清除真实投屏的同步参数：恢复为代码内置默认（实拍 2026-06-22 校准 + 抖动）' })
+      toast.show({ title: '已恢复默认', icon: 'none' })
+    } catch (error) {
+      toast.show({ title: error.message || '操作失败', icon: 'none' })
     }
   },
 

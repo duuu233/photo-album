@@ -140,7 +140,7 @@ Page({
       this.setData({ desc: '正在读取设备信息…' })
       const info = await deviceBle.readDeviceInfo(deviceId)
 
-      // v1.4 固件支持主动设置 BLE 连接间隔。图传前切到 30ms，可减少默认慢连接间隔造成的写入排队/卡顿。
+      // v1.4 固件支持主动设置 BLE 连接间隔。图传前切到默认 7.5ms（或调试页「同步投屏」设的值），可减少默认慢连接间隔造成的写入排队/卡顿。
       // 旧固件或链路暂不支持时继续走原有图传逻辑，避免把优化能力变成硬依赖。
       try {
         await deviceBle.optimizeConnectionIntervalForTransfer(deviceId)
@@ -151,6 +151,14 @@ Page({
       if (info.screenType === 0x03 || !info.width || !info.height) {
         throw new Error('该型号暂不支持图传')
       }
+
+      // 量化参数：优先用调试页「同步到真实投屏」存下的自定义六色 + 抖动 + 对比度 + 饱和度，
+      // 没同步过(返回 null)则回落本页内置默认 PROJECTION_QUANTIZE_OPTIONS。整张投屏共用同一套。
+      const quantizeOptions = Object.assign(
+        {},
+        PROJECTION_QUANTIZE_OPTIONS,
+        imageCodec.getTransferQuantizeOptions() || {}
+      )
 
       // 设备空间校验：剩余可存张数 = 容量 - 已存张数（掩码置位数）
       let usedIndexes = protocol.maskToIndexes(info.imgMask)
@@ -173,7 +181,7 @@ Page({
         const imageData = await this.imageToImageData(srcPath, info.width, info.height)
         // screenType 透传给编码层：3.7寸(EF6-370)会把数据按「横向源图」布局打包（固件再旋转 90° 上屏），
         // 帧头宽高仍按屏幕 480×720（见 image-codec.buildScreenFrameBytes / uploadImage）。
-        const frame = imageCodec.fromImageData(imageData, info.width, info.height, Object.assign({}, PROJECTION_QUANTIZE_OPTIONS, { screenType: info.screenType }))
+        const frame = imageCodec.fromImageData(imageData, info.width, info.height, Object.assign({}, quantizeOptions, { screenType: info.screenType }))
         this.setData({ desc: `正在投第 ${i + 1}/${total} 张…` })
 
         const index = protocol.firstFreeIndex(protocol.indexesToMask(usedIndexes), info.capacity)
