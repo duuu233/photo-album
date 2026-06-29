@@ -186,6 +186,14 @@ Page({
     })
   },
 
+  // 取消选择：清空所有已选，底部操作栏随之收起
+  cancelSelect() {
+    this.setData({
+      selectedMap: {},
+      selectedCount: 0
+    })
+  },
+
   // 全选/取消全选：仅作用于当前筛选结果。已全选则取消，否则全选
   toggleSelectAll() {
     if (!this.data.filteredPhotos.length) {

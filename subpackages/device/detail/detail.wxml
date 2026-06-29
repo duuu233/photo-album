@@ -78,13 +78,13 @@
         </view>
         <view class="thin-divider"></view>
 
-        <view class="detail-row" hover-class="none" bindtap="goOtaUpgrade">
+        <view class="detail-row" hover-class="none" bindtap="goOtaUpgrade" bindlongpress="goOtaTest">
           <view class="row-left">
             <image class="row-icon" src="/assets/images/device-detail-icon04.png" mode="aspectFit"></image>
             <text>OTA升级</text>
           </view>
           <view class="row-right">
-            <text>版本{{firmwareVersion}}</text>
+            <text>版本{{newVersionNo}}</text>
             <view class="ui-chevron"></view>
           </view>
         </view>

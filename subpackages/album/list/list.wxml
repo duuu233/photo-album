@@ -49,11 +49,15 @@
     </view>
 
     <view class="album-bottom-bar" wx:if="{{selectedCount}}">
-      <view class="delete-selected-btn" hover-class="none" aria-label="删除照片" bindtap="showDeleteDialog">
-        <image class="trash-icon" src="/assets/images/del-icon.png" mode="aspectFit"></image>
+      <view class="bottom-action action-refresh" hover-class="none" aria-label="刷新屏幕" bindtap="refreshScreen">
+        <image class="action-icon" src="/assets/images/album-icon01.png" mode="aspectFit"></image>
       </view>
-      <view class="selected-copy">已选 <text>{{selectedCount}}</text> 张</view>
-      <view class="project-btn" hover-class="none" bindtap="refreshScreen">刷新屏幕</view>
+      <view class="bottom-action action-delete" hover-class="none" aria-label="删除照片" bindtap="showDeleteDialog">
+        <image class="action-icon" src="/assets/images/album-icon02.png" mode="aspectFit"></image>
+      </view>
+      <view class="bottom-action action-cancel" hover-class="none" aria-label="取消" bindtap="cancelSelect">
+        <image class="action-icon action-icon--cancel" src="/assets/images/album-icon03.png" mode="aspectFit"></image>
+      </view>
     </view>
   </block>
 

@@ -15,11 +15,18 @@ function memoryPercent(device) {
   if (!device || !device.totalMemory) {
     return 0
   }
-  return Math.min(100, Math.round((device.usedMemory / device.totalMemory) * 100))
+  return Math.min(
+    100,
+    Math.round((device.usedMemory / device.totalMemory) * 100)
+  )
 }
 
 function getPlaybackLabel(device) {
-  if (!device || device.playbackMode === 'manual' || device.carouselEnabled === false) {
+  if (
+    !device ||
+    device.playbackMode === 'manual' ||
+    device.carouselEnabled === false
+  ) {
     return '已关闭'
   }
   return device.playbackMode === 'random' ? '随机轮播' : '顺序轮播'
@@ -36,7 +43,7 @@ Page({
     deviceCode: '',
     memoryText: '',
     macAddress: '',
-    firmwareVersion: '--',
+    newVersionNo: '--',
     batteryText: '--',
     playbackLabel: '',
     intervalOptions: [1, 2, 4, 8, 24],
@@ -104,8 +111,10 @@ Page({
     if (selected && String(selected.id) === String(device && device.id)) {
       device = Object.assign({}, device, {
         deviceId: device.deviceId || selected.deviceId,
-        bleDeviceId: device.bleDeviceId || selected.bleDeviceId || selected.deviceId,
-        battery: typeof device.battery === 'number' ? device.battery : selected.battery
+        bleDeviceId:
+          device.bleDeviceId || selected.bleDeviceId || selected.deviceId,
+        battery:
+          typeof device.battery === 'number' ? device.battery : selected.battery
       })
     }
 
@@ -119,28 +128,40 @@ Page({
           totalMemory: info.capacity,
           playbackMode: info.playMode,
           intervalSeconds: info.intervalSeconds,
-          intervalHours: info.intervalSeconds ? Math.max(1, Math.round(info.intervalSeconds / 3600)) : device.intervalHours,
-          firmwareVersion: info.firmwareVersion || device.firmwareVersion
+          intervalHours: info.intervalSeconds
+            ? Math.max(1, Math.round(info.intervalSeconds / 3600))
+            : device.intervalHours,
+          newVersionNo: info.newVersionNo || device.newVersionNo
         })
       } catch (error) {
         // 详情展示不因刷新蓝牙状态失败而中断。
       }
     }
     // 把当前间隔小时数映射到选择器下标，缺省落到第 1 项（2 小时）
-    const intervalIndex = this.data.intervalOptions.indexOf(device ? device.intervalHours : 2)
+    const intervalIndex = this.data.intervalOptions.indexOf(
+      device ? device.intervalHours : 2
+    )
     // 设备编号取末 6 位数字作为展示码；真实数据缺失时用 -- 占位（不再用假的 123456）
-    const digitId = device && device.deviceNo ? String(device.deviceNo).replace(/\D/g, '').slice(-6) : ''
+    const digitId =
+      device && device.deviceNo
+        ? String(device.deviceNo).replace(/\D/g, '').slice(-6)
+        : ''
     const hasBattery = device && typeof device.battery === 'number'
 
     this.setData({
       device,
       memoryPercent: memoryPercent(device),
-      batteryIcon: batteryUtil.getBatteryIcon(hasBattery ? device.battery : batteryUtil.DEFAULT_BATTERY),
+      batteryIcon: batteryUtil.getBatteryIcon(
+        hasBattery ? device.battery : batteryUtil.DEFAULT_BATTERY
+      ),
       batteryText: hasBattery ? `${device.battery}%` : '--',
       deviceCode: digitId || '--',
-      memoryText: device && device.totalMemory ? `${device.usedMemory}/${device.totalMemory}` : '--',
+      memoryText:
+        device && device.totalMemory
+          ? `${device.usedMemory}/${device.totalMemory}`
+          : '--',
       macAddress: device && device.macAddress ? device.macAddress : '--',
-      firmwareVersion: device && device.firmwareVersion ? device.firmwareVersion : '--',
+      newVersionNo: device && device.newVersionNo ? device.newVersionNo : '--',
       playbackLabel: getPlaybackLabel(device),
       intervalIndex: intervalIndex > -1 ? intervalIndex : 1,
       loading: false,
@@ -165,7 +186,10 @@ Page({
         }
 
         const device = await api.renameDevice(this.data.id, res.content.trim())
-        if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === device.id) {
+        if (
+          app.globalData.selectedDevice &&
+          app.globalData.selectedDevice.id === device.id
+        ) {
           app.setSelectedDevice(device)
         }
         this.setData({
@@ -181,9 +205,10 @@ Page({
       return
     }
 
-    const currentMode = this.data.device.playbackMode === 'manual'
-      ? 'order'
-      : this.data.device.playbackMode
+    const currentMode =
+      this.data.device.playbackMode === 'manual'
+        ? 'order'
+        : this.data.device.playbackMode
     await this.applyPlayback(
       e.detail.value ? currentMode || 'order' : 'manual',
       this.data.device.intervalHours,
@@ -208,7 +233,11 @@ Page({
     }
 
     const intervalHours = this.data.intervalOptions[Number(e.detail.value)]
-    await this.applyPlayback(this.data.device.playbackMode || 'order', intervalHours, this.data.device.carouselEnabled !== false)
+    await this.applyPlayback(
+      this.data.device.playbackMode || 'order',
+      intervalHours,
+      this.data.device.carouselEnabled !== false
+    )
   },
 
   async applyPlayback(mode, intervalHours, carouselEnabled) {
@@ -236,14 +265,18 @@ Page({
       })
       const intervalIndex = this.data.intervalOptions.indexOf(hours)
 
-      if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === updated.id) {
+      if (
+        app.globalData.selectedDevice &&
+        app.globalData.selectedDevice.id === updated.id
+      ) {
         app.setSelectedDevice(updated)
       }
 
       this.setData({
         device: updated,
         playbackLabel: getPlaybackLabel(updated),
-        intervalIndex: intervalIndex > -1 ? intervalIndex : this.data.intervalIndex
+        intervalIndex:
+          intervalIndex > -1 ? intervalIndex : this.data.intervalIndex
       })
       toast.show({ title: '已保存', icon: 'none' })
     } catch (error) {
@@ -335,7 +368,10 @@ Page({
         deviceBle.disconnect(device.deviceId)
       }
       const updated = Object.assign({}, device, { connected: false })
-      if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === updated.id) {
+      if (
+        app.globalData.selectedDevice &&
+        app.globalData.selectedDevice.id === updated.id
+      ) {
         app.setSelectedDevice(updated)
       }
       this.setData({ device: updated })
@@ -368,8 +404,10 @@ Page({
         totalMemory: info.capacity,
         playbackMode: info.playMode,
         intervalSeconds: info.intervalSeconds,
-        intervalHours: info.intervalSeconds ? Math.max(1, Math.round(info.intervalSeconds / 3600)) : device.intervalHours,
-        firmwareVersion: info.firmwareVersion || device.firmwareVersion
+        intervalHours: info.intervalSeconds
+          ? Math.max(1, Math.round(info.intervalSeconds / 3600))
+          : device.intervalHours,
+        newVersionNo: info.newVersionNo || device.newVersionNo
       })
       app.setSelectedDevice(updated)
 
@@ -377,18 +415,25 @@ Page({
       this.setData({
         device: updated,
         memoryPercent: memoryPercent(updated),
-        batteryIcon: batteryUtil.getBatteryIcon(hasBattery ? updated.battery : batteryUtil.DEFAULT_BATTERY),
+        batteryIcon: batteryUtil.getBatteryIcon(
+          hasBattery ? updated.battery : batteryUtil.DEFAULT_BATTERY
+        ),
         batteryText: hasBattery ? `${updated.battery}%` : '--',
-        memoryText: updated.totalMemory ? `${updated.usedMemory}/${updated.totalMemory}` : '--',
+        memoryText: updated.totalMemory
+          ? `${updated.usedMemory}/${updated.totalMemory}`
+          : '--',
         playbackLabel: getPlaybackLabel(updated),
-        firmwareVersion: updated.firmwareVersion || '--'
+        newVersionNo: updated.newVersionNo || '--'
       })
       toast.show({ title: '已连接', icon: 'none' })
     } catch (error) {
       if (error && error.code === 'PERMISSION_DENIED') {
         bluetooth.showPermissionGuide()
       } else {
-        toast.show({ title: (error && error.message) || '连接失败', icon: 'none' })
+        toast.show({
+          title: (error && error.message) || '连接失败',
+          icon: 'none'
+        })
       }
     } finally {
       wx.hideLoading()
@@ -398,9 +443,13 @@ Page({
   // 把后端设备(序列号/名称)与扫描结果匹配，返回带「本次会话有效 deviceId」的那条（序列号优先，名称兜底）。
   matchScannedDevice(found, device) {
     const list = found || []
-    const serial = String((device && (device.deviceNo || device.productDeviceId)) || '').trim()
+    const serial = String(
+      (device && (device.deviceNo || device.productDeviceId)) || ''
+    ).trim()
     if (serial) {
-      const bySerial = list.find(item => String(item.deviceNo || '').trim() === serial)
+      const bySerial = list.find(
+        item => String(item.deviceNo || '').trim() === serial
+      )
       if (bySerial) {
         return bySerial
       }
@@ -424,6 +473,28 @@ Page({
   goOtaUpgrade() {
     wx.navigateTo({
       url: `/subpackages/device/ota/ota?id=${this.data.id}`
+    })
+  },
+
+  // 长按「OTA升级」进入本地固件测试流程：用代码包内的测试 .bin 走真实 DFU（设备已连接）
+  // 或干跑校验（未连接）。先把当前设备设为全局选中，OTA 页据此拿到 bleDeviceId。
+  goOtaTest() {
+    if (this.data.device) {
+      app.setSelectedDevice(this.data.device)
+    }
+    wx.showModal({
+      title: '本地固件测试',
+      content:
+        '将使用代码包内的测试固件进入 OTA 流程：设备已连接则执行真实蓝牙 DFU 升级，未连接则仅做干跑校验（不写设备）。是否继续？',
+      confirmText: '进入测试',
+      confirmColor: '#ff6a20',
+      success: res => {
+        if (res.confirm) {
+          wx.navigateTo({
+            url: `/subpackages/device/ota/ota?id=${this.data.id}&test=1`
+          })
+        }
+      }
     })
   },
 
@@ -512,7 +583,10 @@ Page({
     }
 
     await api.deleteDevice(this.data.id)
-    if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === this.data.id) {
+    if (
+      app.globalData.selectedDevice &&
+      app.globalData.selectedDevice.id === this.data.id
+    ) {
       app.setSelectedDevice(null)
     }
     toast.show({

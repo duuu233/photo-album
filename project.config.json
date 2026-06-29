@@ -3,7 +3,12 @@
   "libVersion": "3.16.1",
   "packOptions": {
     "ignore": [],
-    "include": []
+    "include": [
+      {
+        "type": "file",
+        "value": "docs/BR1601A02_260609_r8122_5139_5D89_V100_OTA.bin"
+      }
+    ]
   },
   "setting": {
     "coverView": true,

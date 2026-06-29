@@ -441,44 +441,51 @@
   bottom: 0;
   left: 0;
   z-index: 8;
-  display: grid;
-  grid-template-columns: 120rpx 1fr 210rpx;
-  align-items: center;
-  min-height: 96rpx;
-  padding: 16rpx 46rpx calc(16rpx + var(--safe-bottom, 0px));
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 -12rpx 34rpx rgba(126, 150, 184, 0.14);
-}
-
-.delete-selected-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 88rpx;
-  height: 88rpx;
-  color: #777e88;
-  background: #ffffff;
+  gap: 90rpx;
+  min-height: 96rpx;
+  padding: 24rpx 46rpx calc(24rpx + var(--safe-bottom, 0px));
+  background: rgba(255, 255, 255, 0);
+  /* box-shadow: 0 -12rpx 34rpx rgba(126, 150, 184, 0.14); */
+}
+
+/* 底部三枚圆形操作按钮：刷新屏幕（橙）/删除（红）/取消（深色） */
+.bottom-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96rpx;
+  height: 96rpx;
   border-radius: 50%;
-  box-shadow: 0 10rpx 26rpx rgba(126, 150, 184, 0.15);
 }
 
-.trash-icon {
-  position: relative;
-  width: 48rpx;
-  height: 48rpx;
+.action-icon {
+  width: 56rpx;
+  height: 56rpx;
 }
 
-.selected-copy {
-  color: #2a2d32;
-  font-size: 28rpx;
-  text-align: center;
+.action-icon--cancel {
+  width: 40rpx;
+  height: 40rpx;
 }
 
-.selected-copy text {
-  color: #ff5f1f;
+.action-refresh {
+  background: linear-gradient(180deg, #ff8b3d 0%, #ff641f 100%);
+  box-shadow: 0 12rpx 26rpx rgba(255, 100, 31, 0.32);
 }
 
-.project-btn,
+.action-delete {
+  background: linear-gradient(180deg, #ff5b56 0%, #f5322c 100%);
+  box-shadow: 0 12rpx 26rpx rgba(245, 50, 44, 0.3);
+}
+
+.action-cancel {
+  background: #2f3033;
+  box-shadow: 0 12rpx 26rpx rgba(47, 48, 51, 0.28);
+}
+
 .empty-action {
   display: flex;
   align-items: center;
@@ -487,11 +494,6 @@
   background: linear-gradient(180deg, #ff8b3d 0%, #ff641f 100%);
   border-radius: 999rpx;
   font-weight: 700;
-}
-
-.project-btn {
-  height: 88rpx;
-  font-size: 34rpx;
 }
 
 .album-empty {
