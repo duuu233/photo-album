@@ -32,46 +32,6 @@ const STATUS_ART = {
   success: '/assets/images/upload-icon03.png'
 }
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║ 【本地 .raw 直发测试】临时调试用，正式上线前请整块删除（见 docs/local-raw-test.md）║
-// ╚══════════════════════════════════════════════════════════════════════════╝
-// true：投屏不走「后端转换 + 下载 .bin」，改为把 assets/demo.raw 的字节原样发给设备，
-//       用于真机直接验证某份「六色 4bpp 帧」的真实显示效果（朝向/颜色/裁剪）。测完改回 false 即走真实流程。
-// 为什么内嵌 base64：小程序读不了代码包内任意文件，故 demo.raw 编译期编进 demo-raw-base64.js；
-//       换别的 .raw 后执行 `node scripts/gen-demo-raw-base64.js` 重新生成。
-// 注意：字节数必须 = 所连设备 宽×高÷2（EF6-370 480×720 = 172800），否则被长度校验拦下。
-const USE_LOCAL_DEMO_RAW = false
-const DEMO_RAW_BASE64 = require('./demo-raw-base64')
-const B64_CHARS =
-  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-let B64_LOOKUP = null
-function base64ToUint8Array(b64) {
-  if (!B64_LOOKUP) {
-    B64_LOOKUP = new Uint8Array(256)
-    for (let i = 0; i < B64_CHARS.length; i++) {
-      B64_LOOKUP[B64_CHARS.charCodeAt(i)] = i
-    }
-  }
-  const len = b64.length
-  let pad = 0
-  if (len && b64[len - 1] === '=') pad++
-  if (len > 1 && b64[len - 2] === '=') pad++
-  const byteLen = (len >> 2) * 3 - pad
-  const out = new Uint8Array(byteLen)
-  let p = 0
-  for (let i = 0; i < len; i += 4) {
-    const a = B64_LOOKUP[b64.charCodeAt(i)]
-    const b = B64_LOOKUP[b64.charCodeAt(i + 1)]
-    const c = B64_LOOKUP[b64.charCodeAt(i + 2)]
-    const d = B64_LOOKUP[b64.charCodeAt(i + 3)]
-    out[p++] = (a << 2) | (b >> 4)
-    if (p < byteLen) out[p++] = ((b & 15) << 4) | (c >> 2)
-    if (p < byteLen) out[p++] = ((c & 3) << 6) | d
-  }
-  return out
-}
-// ╚════════════════════════════ 测试块结束 ════════════════════════════╝
-
 Page({
   data: {
     statusBarHeight: 20,
@@ -191,14 +151,6 @@ Page({
         throw new Error('该型号暂不支持图传')
       }
 
-      // 量化参数：优先用调试页「同步到真实投屏」存下的自定义六色 + 抖动 + 对比度 + 饱和度，
-      // 没同步过(返回 null)则回落本页内置默认 PROJECTION_QUANTIZE_OPTIONS。整张投屏共用同一套。
-      const quantizeOptions = Object.assign(
-        {},
-        PROJECTION_QUANTIZE_OPTIONS,
-        imageCodec.getTransferQuantizeOptions() || {}
-      )
-
       // 设备空间校验：剩余可存张数 = 容量 - 已存张数（掩码置位数）
       let usedIndexes = protocol.maskToIndexes(info.imgMask)
       const free = (info.capacity || 0) - usedIndexes.length
@@ -218,8 +170,7 @@ Page({
         }
         const image = images[i]
         // 取本张要发给设备的六色 4bpp 帧 + 后端记录 id（见 acquireFrame）：
-        //   · 正常：传后端转换 → 下载 .bin（taskId/upirId 有值）
-        //   · 本地直发测试：直接读内嵌 demo.raw 原样发（taskId/upirId 为空，不写后端记录）
+        //   原图传后端转换 → 下载 .bin（含 taskId/upirId）
         const { frameData, taskId, upirId } = await this.acquireFrame(
           image,
           device,
@@ -275,22 +226,15 @@ Page({
           console.log(`[投屏] 第 ${i + 1}/${total} 张 设备图传成功`, summary)
 
           // 设备图传成功后才编辑投屏记录（设备失败则不调用，记录保持失败态）；失败会抛出触发本张回滚。
-          // 【本地 .raw 直发测试】测试模式没有后端记录(upirId/taskId)，跳过这步（删测试块时把 if 还原成无条件调用）。
-          if (!USE_LOCAL_DEMO_RAW && upirId) {
-            await api.editUserProductImgRecord({
-              upirId,
-              taskId,
-              deviceUploadState: 1,
-              showError: false
-            })
-            console.log(
-              `[投屏] 第 ${i + 1}/${total} 张 投屏记录已置成功：upirId=${upirId} taskId=${taskId}`
-            )
-          } else if (USE_LOCAL_DEMO_RAW) {
-            console.log(
-              `[投屏][测试] 第 ${i + 1}/${total} 张 本地直发模式：跳过后端投屏记录更新`
-            )
-          }
+          await api.editUserProductImgRecord({
+            upirId,
+            taskId,
+            deviceUploadState: 1,
+            showError: false
+          })
+          console.log(
+            `[投屏] 第 ${i + 1}/${total} 张 投屏记录已置成功：upirId=${upirId} taskId=${taskId}`
+          )
         } catch (error) {
           console.error(
             `[投屏] 第 ${i + 1}/${total} 张 图传/记录更新失败，回滚 index=${index}：`,
@@ -335,19 +279,8 @@ Page({
     }
   },
 
-  // 取本张要发给设备的六色 4bpp 帧 + 后端记录 id。
-  // 【本地 .raw 直发测试】USE_LOCAL_DEMO_RAW=true 时直接用内嵌 demo.raw，不走后端（删测试块时此分支一并删）。
+  // 取本张要发给设备的六色 4bpp 帧 + 后端记录 id（原图传后端转换 → 下载 .bin）。
   async acquireFrame(image, device, info, i, total) {
-    if (USE_LOCAL_DEMO_RAW) {
-      this.setData({
-        desc: `测试：使用本地帧 demo.raw（第 ${i + 1}/${total} 张）…`
-      })
-      const frameData = base64ToUint8Array(DEMO_RAW_BASE64)
-      console.log(
-        `[投屏][测试] 使用内嵌 demo.raw，${frameData.length} 字节，原样发送（不经后端、不旋转/转换）`
-      )
-      return { frameData, taskId: undefined, upirId: undefined }
-    }
     // 先「转换照片」(传后端按设备尺寸转换 + 下载 .bin)，再「投屏」(BLE 图传)，文案区分两个阶段，
     // 让用户知道开头这段不是卡死，而是在处理第一张图。
     this.setData({ desc: `正在转换第 ${i + 1}/${total} 张照片…` })
