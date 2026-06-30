@@ -32,6 +32,63 @@ function getPlaybackLabel(device) {
   return device.playbackMode === 'random' ? '随机轮播' : '顺序轮播'
 }
 
+function hexStringToBytes(hex) {
+  return String(hex || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(part => parseInt(part, 16))
+    .filter(value => Number.isFinite(value))
+}
+
+function formatHexByte(value) {
+  return Number(value || 0)
+    .toString(16)
+    .padStart(2, '0')
+    .toUpperCase()
+}
+
+function logClearDeviceFrame(traceId, record) {
+  if (!record) {
+    return
+  }
+  const cmdHex = formatHexByte(record.cmd)
+  const dirText = record.dir === 'TX' ? '发送给设备' : '设备返回'
+  const note = record.note ? ' ' + record.note : ''
+  let ackText = ''
+
+  if (record.dir === 'RX' && Number(record.cmd) === protocol.ACK) {
+    const parsed = protocol.tryParseFrame(hexStringToBytes(record.hex))
+    if (parsed && parsed.frame) {
+      const ack = protocol.parseAck(parsed.frame.payload)
+      ackText =
+        ' ACK_CMD=0x' +
+        formatHexByte(ack.ackCmd) +
+        ' RESULT=0x' +
+        formatHexByte(ack.result) +
+        '(' +
+        protocol.resultText(ack.result) +
+        ')'
+    }
+  }
+
+  console.log(
+    '[一键清空][' +
+      traceId +
+      '] ' +
+      dirText +
+      ' CMD=0x' +
+      cmdHex +
+      ackText +
+      note +
+      ': ' +
+      record.hex
+  )
+}
+
+function logClearDeviceData(traceId, label, data) {
+  console.log('[一键清空][' + traceId + '] ' + label + ':', data)
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -532,32 +589,70 @@ Page({
       return
     }
 
+    const traceId = Date.now().toString(36)
+    const deviceId = this.data.device.deviceId
+    logClearDeviceData(traceId, '点击确认，开始清空设备图片', {
+      pageDeviceId: this.data.id,
+      bleDeviceId: deviceId
+    })
+    deviceBle.setMonitor(record => logClearDeviceFrame(traceId, record))
+    let clearSucceeded = false
+
     wx.showLoading({ title: '清空中', mask: true })
     try {
-      await deviceBle.ensureConnection(this.data.device.deviceId)
-      const info = await deviceBle.readDeviceInfo(this.data.device.deviceId)
+      await deviceBle.ensureConnection(deviceId)
+      logClearDeviceData(traceId, 'BLE 连接已就绪', { deviceId })
+
+      const info = await deviceBle.readDeviceInfo(deviceId)
       const indexes = protocol.maskToIndexes(info.imgMask)
+      logClearDeviceData(traceId, '设备信息(0x01/0x03解析结果)', Object.assign({}, info, {
+        imgMaskHex: protocol.bytesToHex(info.imgMask),
+        existingIndexes: indexes
+      }))
 
       if (indexes.length) {
-        await deviceBle.deleteImage(this.data.device.deviceId, indexes)
+        const deleteMask = protocol.indexesToMask(indexes)
+        logClearDeviceData(traceId, '准备发送删除全部图片指令(0x12)', {
+          indexes,
+          imgIndexMask: deleteMask,
+          imgIndexMaskHex: protocol.bytesToHex(deleteMask)
+        })
+        const deleteResult = await deviceBle.deleteImage(deviceId, indexes)
+        logClearDeviceData(traceId, '删除图片应答(0x12解析结果)', Object.assign({}, deleteResult, {
+          imgMaskHex: protocol.bytesToHex(deleteResult.imgMask)
+        }))
+      } else {
+        logClearDeviceData(traceId, '设备本地没有图片，不发送删除指令(0x12)', { indexes })
       }
 
-      await api.clearDevicePhotoCopies(this.data.id)
+      await api.clearUserProductImg(this.data.id)
+      logClearDeviceData(traceId, '后端清空记录完成', { id: this.data.id })
+      clearSucceeded = true
     } catch (error) {
+      console.error('[一键清空][' + traceId + '] 清空失败:', error)
       toast.show({
         title: error.message || '清空失败',
         icon: 'none'
       })
-      wx.hideLoading()
       return
+    } finally {
+      wx.hideLoading()
+      if (!clearSucceeded) {
+        deviceBle.setMonitor(null)
+      }
     }
-    wx.hideLoading()
+
     this.hideClearConfirm() // 带退场动画关闭确认弹窗
     toast.show({
       title: '已清空',
       icon: 'none'
     })
-    this.loadDetail()
+    try {
+      await this.loadDetail()
+    } finally {
+      logClearDeviceData(traceId, '一键清空设备指令打印结束')
+      deviceBle.setMonitor(null)
+    }
   },
 
   showDeleteConfirm() {

@@ -302,6 +302,7 @@ Page({
     // 设备信息（0x01 读回后填充）
     info: null,
     connInterval: null,
+    firmwareVersion: '', // 当前页面已读取到的软件/固件版本（0x03）
     existingIndexes: '', // 设备上已有图片的索引列表，便于决定删哪张/传到哪
     autoUploadIndex: -1, // 自动挑选的空闲槽位
 
@@ -522,7 +523,10 @@ Page({
     }
     this.setData({
       deviceId: device.deviceId,
-      deviceName: device.name || device.deviceId
+      deviceName: device.name || device.deviceId,
+      info: null,
+      connInterval: null,
+      firmwareVersion: ''
     })
     this.connect()
   },
@@ -557,7 +561,12 @@ Page({
     if (this.data.deviceId) {
       deviceBle.disconnect(this.data.deviceId)
     }
-    this.setData({ connected: false, info: null, connInterval: null })
+    this.setData({
+      connected: false,
+      info: null,
+      connInterval: null,
+      firmwareVersion: ''
+    })
     this.refreshMpConnections() // 断开后同步「小程序连接状态」模块
     this.appendLog({ type: 'act', text: '已断开连接' })
   },
@@ -569,6 +578,7 @@ Page({
       const indexes = protocol.maskToIndexes(info.imgMask)
       this.setData({
         info,
+        firmwareVersion: info.firmwareVersion || '',
         existingIndexes: indexes.length ? indexes.join(', ') : '无',
         autoUploadIndex: protocol.firstFreeIndex(info.imgMask, info.capacity)
       })
@@ -636,10 +646,19 @@ Page({
     })
   },
 
-  cmdGetVersion() {
-    this.runCommand('获取软件版本(0x03)', () => deviceBle.getSwVersion(this.data.deviceId), {
-      format: ver => `固件版本：${ver || '(空)'}`
+  async cmdGetVersion() {
+    const firmwareVersion = await this.runCommand('获取软件版本(0x03)', () => deviceBle.getSwVersion(this.data.deviceId), {
+      format: ver => '固件版本：' + (ver || '(空)')
     })
+    if (firmwareVersion !== undefined) {
+      const patch = { firmwareVersion: firmwareVersion || '' }
+      if (this.data.info) {
+        patch.info = Object.assign({}, this.data.info, {
+          firmwareVersion: firmwareVersion || ''
+        })
+      }
+      this.setData(patch)
+    }
   },
 
   cmdGetBattery() {

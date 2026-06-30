@@ -18,6 +18,7 @@
         <view wx:if="{{connected}}" class="ghost-btn" bindtap="disconnectDevice">断开</view>
       </view>
       <view wx:if="{{deviceId}}" class="kv"><text class="k">设备</text><text class="v">{{deviceName}}</text></view>
+      <view wx:if="{{connected}}" class="kv"><text class="k">固件版本</text><text class="v">{{firmwareVersion || '--'}}</text></view>
 
       <block wx:if="{{!connected}}">
         <button class="btn btn-primary" loading="{{scanning}}" disabled="{{scanning || connecting}}" bindtap="scan">{{scanning ? '搜索中…' : '搜索附近设备'}}</button>
@@ -74,7 +75,7 @@
         <view class="info-cell"><text class="k">当前显示</text><text class="v">{{info.curImgIndex === 255 ? '无' : info.curImgIndex}}</text></view>
         <view class="info-cell"><text class="k">播放</text><text class="v">{{info.playMode === 'random' ? '随机' : (info.playMode === 'manual' ? '手动' : '顺序')}} / {{info.intervalSeconds}}s</text></view>
         <view class="info-cell"><text class="k">连接间隔</text><text class="v">{{connInterval ? connInterval.ms + 'ms / ' + connInterval.units : '--'}}</text></view>
-        <view class="info-cell"><text class="k">固件</text><text class="v">{{info.firmwareVersion || '--'}}</text></view>
+        <view class="info-cell"><text class="k">固件</text><text class="v">{{firmwareVersion || info.firmwareVersion || '--'}}</text></view>
       </view>
       <view class="kv"><text class="k">已有图片索引</text><text class="v">{{existingIndexes}}</text></view>
     </view>
