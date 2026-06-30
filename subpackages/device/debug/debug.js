@@ -61,15 +61,26 @@ const DEBUG_CALIBRATION_PROFILE_SOURCE = [
 ]
 
 const DEBUG_PROFILE_STORAGE_PREFIX = 'debug:image-calibration-profile:'
-const DEBUG_CALIBRATION_PROFILES = DEBUG_CALIBRATION_PROFILE_SOURCE.map(profile => Object.assign({}, profile, {
-  palette: withLabPalette(profile.palette)
-}))
-const DEBUG_CALIBRATION_PROFILE_OPTIONS = DEBUG_CALIBRATION_PROFILES.map(profile => profile.name)
+const DEBUG_CALIBRATION_PROFILES = DEBUG_CALIBRATION_PROFILE_SOURCE.map(
+  profile =>
+    Object.assign({}, profile, {
+      palette: withLabPalette(profile.palette)
+    })
+)
+const DEBUG_CALIBRATION_PROFILE_OPTIONS = DEBUG_CALIBRATION_PROFILES.map(
+  profile => profile.name
+)
 const DEBUG_DISTANCE_RGB = 'APP RGB 欧氏距离'
 const DEBUG_DISTANCE_LAB = 'Lab ΔE76'
 const DEFAULT_DEBUG_PROFILE_ID = 'app-6color'
-const DEFAULT_DEBUG_PROFILE_INDEX = Math.max(0, DEBUG_CALIBRATION_PROFILES.findIndex(profile => profile.id === DEFAULT_DEBUG_PROFILE_ID))
-const DEFAULT_DEBUG_PROFILE = DEBUG_CALIBRATION_PROFILES[DEFAULT_DEBUG_PROFILE_INDEX]
+const DEFAULT_DEBUG_PROFILE_INDEX = Math.max(
+  0,
+  DEBUG_CALIBRATION_PROFILES.findIndex(
+    profile => profile.id === DEFAULT_DEBUG_PROFILE_ID
+  )
+)
+const DEFAULT_DEBUG_PROFILE =
+  DEBUG_CALIBRATION_PROFILES[DEFAULT_DEBUG_PROFILE_INDEX]
 
 const DEFAULT_DEBUG_QUANTIZE = {
   dither: true,
@@ -89,7 +100,7 @@ const DEBUG_RESAMPLE = {
 }
 
 function clamp255(v) {
-  return v < 0 ? 0 : (v > 255 ? 255 : v)
+  return v < 0 ? 0 : v > 255 ? 255 : v
 }
 
 function enhanceDebugPixel(r, g, b, settings) {
@@ -111,7 +122,7 @@ function srgbToLinear(v) {
 }
 
 function xyzPivot(v) {
-  return v > 0.008856 ? Math.pow(v, 1 / 3) : (7.787 * v) + (16 / 116)
+  return v > 0.008856 ? Math.pow(v, 1 / 3) : 7.787 * v + 16 / 116
 }
 
 function rgbToLab(r, g, b) {
@@ -119,12 +130,12 @@ function rgbToLab(r, g, b) {
   const lg = srgbToLinear(g)
   const lb = srgbToLinear(b)
   const x = (0.4124564 * lr + 0.3575761 * lg + 0.1804375 * lb) / 0.95047
-  const y = (0.2126729 * lr + 0.7151522 * lg + 0.0721750 * lb) / 1.00000
-  const z = (0.0193339 * lr + 0.1191920 * lg + 0.9503041 * lb) / 1.08883
+  const y = (0.2126729 * lr + 0.7151522 * lg + 0.072175 * lb) / 1.0
+  const z = (0.0193339 * lr + 0.119192 * lg + 0.9503041 * lb) / 1.08883
   const fx = xyzPivot(x)
   const fy = xyzPivot(y)
   const fz = xyzPivot(z)
-  return [(116 * fy) - 16, 500 * (fx - fy), 200 * (fy - fz)]
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)]
 }
 
 function labDistance(lab, entry) {
@@ -136,24 +147,74 @@ function labDistance(lab, entry) {
 }
 
 function withLabPalette(palette) {
-  return palette.map(entry => Object.assign({}, entry, {
-    lab: rgbToLab(entry.rgb[0], entry.rgb[1], entry.rgb[2])
-  }))
+  return palette.map(entry =>
+    Object.assign({}, entry, {
+      lab: rgbToLab(entry.rgb[0], entry.rgb[1], entry.rgb[2])
+    })
+  )
 }
 
 function findDebugCalibrationProfile(id) {
   return DEBUG_CALIBRATION_PROFILES.find(profile => profile.id === id) || null
 }
 
+// 把单个 0~255 通道值解析并钳位：非法/空串按 0 处理（用于把输入框字符串转成可计算的整数）。
+function clampChannelInput(v) {
+  const n = Math.round(Number(v))
+  return Number.isFinite(n) ? clamp255(n) : 0
+}
+
+// 调色板(含 rgb 数组) → 页面可编辑的六色行 {nibble,name,r,g,b,css}。
+// r/g/b 用字符串绑定输入框；css 为色块预览背景（按当前值实时算）。nibble 严格沿用协议编码值，不可改。
+function paletteToCustomColors(palette) {
+  return palette.map(entry => {
+    const r = clampChannelInput(entry.rgb[0])
+    const g = clampChannelInput(entry.rgb[1])
+    const b = clampChannelInput(entry.rgb[2])
+    return {
+      nibble: entry.nibble,
+      name: entry.name,
+      r: String(r),
+      g: String(g),
+      b: String(b),
+      css: `rgb(${r}, ${g}, ${b})`
+    }
+  })
+}
+
+// 页面可编辑的六色行 → 带 lab 的调色板（供调试页量化 / 同步投屏使用）。非法通道按 0 处理。
+function customColorsToPalette(customColors) {
+  return customColors.map(entry => {
+    const rgb = [
+      clampChannelInput(entry.r),
+      clampChannelInput(entry.g),
+      clampChannelInput(entry.b)
+    ]
+    return {
+      nibble: entry.nibble,
+      name: entry.name,
+      rgb,
+      lab: rgbToLab(rgb[0], rgb[1], rgb[2])
+    }
+  })
+}
+
 function nearestDebugPaletteIndex(r, g, b, settings) {
   const palette = settings.palette || DEFAULT_DEBUG_PROFILE.palette
-  const useAchromaticGuard = Number.isFinite(settings.achromaticChromaMax) && settings.achromaticChromaMax >= 0
+  const useAchromaticGuard =
+    Number.isFinite(settings.achromaticChromaMax) &&
+    settings.achromaticChromaMax >= 0
   if (settings.distanceMetric !== DEBUG_DISTANCE_LAB) {
     const rr = Number(r) || 0
     const gg = Number(g) || 0
     const bb = Number(b) || 0
-    const chroma = Math.max(clamp255(rr), clamp255(gg), clamp255(bb)) - Math.min(clamp255(rr), clamp255(gg), clamp255(bb))
-    const paletteLength = useAchromaticGuard && chroma <= settings.achromaticChromaMax ? 2 : palette.length
+    const chroma =
+      Math.max(clamp255(rr), clamp255(gg), clamp255(bb)) -
+      Math.min(clamp255(rr), clamp255(gg), clamp255(bb))
+    const paletteLength =
+      useAchromaticGuard && chroma <= settings.achromaticChromaMax
+        ? 2
+        : palette.length
     let best = 0
     let bestDist = Infinity
     for (let i = 0; i < paletteLength; i++) {
@@ -173,7 +234,10 @@ function nearestDebugPaletteIndex(r, g, b, settings) {
   const cg = clamp255(g)
   const cb = clamp255(b)
   const chroma = Math.max(cr, cg, cb) - Math.min(cr, cg, cb)
-  const paletteLength = useAchromaticGuard && chroma <= settings.achromaticChromaMax ? 2 : palette.length
+  const paletteLength =
+    useAchromaticGuard && chroma <= settings.achromaticChromaMax
+      ? 2
+      : palette.length
   const lab = rgbToLab(cr, cg, cb)
   let best = 0
   let bestDist = Infinity
@@ -198,7 +262,13 @@ function spreadDebugError(buf, x, y, width, height, er, eg, eb, weight) {
 }
 
 // screenType：透传给打包层，3.7寸(EF6-370)按「横向源图」布局打包（见 image-codec.buildScreenFrameBytes）。
-function fromImageDataWithDebugCalibration(imageData, width, height, options, screenType) {
+function fromImageDataWithDebugCalibration(
+  imageData,
+  width,
+  height,
+  options,
+  screenType
+) {
   const settings = Object.assign({}, DEFAULT_DEBUG_QUANTIZE, options || {})
   const palette = settings.palette || DEFAULT_DEBUG_PROFILE.palette
   const px = imageData.data
@@ -207,16 +277,31 @@ function fromImageDataWithDebugCalibration(imageData, width, height, options, sc
 
   if (!settings.dither) {
     for (let i = 0; i < count; i++) {
-      const [r, g, b] = enhanceDebugPixel(px[i * 4], px[i * 4 + 1], px[i * 4 + 2], settings)
+      const [r, g, b] = enhanceDebugPixel(
+        px[i * 4],
+        px[i * 4 + 1],
+        px[i * 4 + 2],
+        settings
+      )
       nibbles[i] = palette[nearestDebugPaletteIndex(r, g, b, settings)].nibble
     }
-    const data = imageCodec.buildScreenFrameBytes(nibbles, width, height, screenType)
+    const data = imageCodec.buildScreenFrameBytes(
+      nibbles,
+      width,
+      height,
+      screenType
+    )
     return { data, width, height, dataSize: data.length }
   }
 
   const buf = new Float32Array(count * 3)
   for (let i = 0; i < count; i++) {
-    const [r, g, b] = enhanceDebugPixel(px[i * 4], px[i * 4 + 1], px[i * 4 + 2], settings)
+    const [r, g, b] = enhanceDebugPixel(
+      px[i * 4],
+      px[i * 4 + 1],
+      px[i * 4 + 2],
+      settings
+    )
     buf[i * 3] = r
     buf[i * 3 + 1] = g
     buf[i * 3 + 2] = b
@@ -241,7 +326,12 @@ function fromImageDataWithDebugCalibration(imageData, width, height, options, sc
     }
   }
 
-  const data = imageCodec.buildScreenFrameBytes(nibbles, width, height, screenType)
+  const data = imageCodec.buildScreenFrameBytes(
+    nibbles,
+    width,
+    height,
+    screenType
+  )
   return { data, width, height, dataSize: data.length }
 }
 
@@ -265,6 +355,7 @@ Page({
     // 设备信息（0x01 读回后填充）
     info: null,
     connInterval: null,
+    firmwareVersion: '', // 当前页面已读取到的软件/固件版本（0x03）
     existingIndexes: '', // 设备上已有图片的索引列表，便于决定删哪张/传到哪
     autoUploadIndex: -1, // 自动挑选的空闲槽位
 
@@ -291,6 +382,8 @@ Page({
     calibrationProfileId: DEFAULT_DEBUG_PROFILE.id,
     calibrationProfileName: DEFAULT_DEBUG_PROFILE.name,
     calibrationProfileNote: DEFAULT_DEBUG_PROFILE.note,
+    // 自定义六色：套餐只是「一键回填」的预设，真正参与量化/同步的是下面这份可逐项编辑的 RGB。
+    customColors: paletteToCustomColors(DEFAULT_DEBUG_PROFILE.palette),
 
     // 状态
     busy: false, // 有指令正在等应答，避免并发
@@ -379,7 +472,10 @@ Page({
 
   // device-ble 上报的每一帧原始字节。图传数据包(0x21)与其应答(0x23)数量巨大，不逐条刷屏，用进度条体现。
   onMonitorFrame(record) {
-    if (record.cmd === protocol.CMD.IMG_DATA || record.cmd === protocol.CMD.IMG_ACK) {
+    if (
+      record.cmd === protocol.CMD.IMG_DATA ||
+      record.cmd === protocol.CMD.IMG_ACK
+    ) {
       return
     }
     const cmdHex = record.cmd.toString(16).padStart(2, '0').toUpperCase()
@@ -424,7 +520,10 @@ Page({
     if (ids.indexOf(this.data.deviceId) > -1) {
       this.setData({ connected: false, info: null, connInterval: null })
     }
-    this.appendLog({ type: 'act', text: `已断开全部连接（${ids.length} 个），设备已释放，可重新搜索/连接` })
+    this.appendLog({
+      type: 'act',
+      text: `已断开全部连接（${ids.length} 个），设备已释放，可重新搜索/连接`
+    })
     toast.show({ title: `已释放 ${ids.length} 个连接`, icon: 'none' })
     this.refreshMpConnections()
   },
@@ -452,12 +551,21 @@ Page({
       }
       await bluetooth.openAdapter()
       // 调试页放开白名单(allowAll)：收录附近所有蓝牙设备，便于核对相框真实广播名/排查搜不到的问题
-      const devices = await bluetooth.discoverDevices({ timeout: 8000, allowAll: true })
+      const devices = await bluetooth.discoverDevices({
+        timeout: 8000,
+        allowAll: true
+      })
       this.setData({ devices })
-      this.appendLog({ type: 'act', text: `扫描完成（已放开过滤），发现 ${devices.length} 个设备` })
+      this.appendLog({
+        type: 'act',
+        text: `扫描完成（已放开过滤），发现 ${devices.length} 个设备`
+      })
       // 逐个打印名字+信号，方便和白名单 EF6-370 / EF6-589 对照，确认设备到底叫什么
       devices.forEach(device => {
-        this.appendLog({ type: 'act', text: `· ${device.name}（信号 ${device.RSSI || '--'}，id 末段 ${String(device.deviceId || '').slice(-5)}）` })
+        this.appendLog({
+          type: 'act',
+          text: `· ${device.name}（信号 ${device.RSSI || '--'}，id 末段 ${String(device.deviceId || '').slice(-5)}）`
+        })
       })
       if (!devices.length) {
         bluetooth.showEmptyResultGuide() // 鸿蒙兼容兜底：搜不到时给鸿蒙用户排查引导
@@ -477,13 +585,18 @@ Page({
   // 选中某个扫描结果并连接
   selectDevice(e) {
     const id = e.currentTarget.dataset.id
-    const device = this.data.devices.find(item => item.id === id || item.deviceId === id)
+    const device = this.data.devices.find(
+      item => item.id === id || item.deviceId === id
+    )
     if (!device) {
       return
     }
     this.setData({
       deviceId: device.deviceId,
-      deviceName: device.name || device.deviceId
+      deviceName: device.name || device.deviceId,
+      info: null,
+      connInterval: null,
+      firmwareVersion: ''
     })
     this.connect()
   },
@@ -500,8 +613,12 @@ Page({
       this.refreshMpConnections() // 连接后同步「小程序连接状态」模块
       this.appendLog({ type: 'ok', text: `已连接：${this.data.deviceName}` })
       // MTU 决定图传每包能塞多少字节，连接后打出来便于排查图传问题
-      const writeTypeText = session.writeType === 'write' ? '有应答写(可靠)' : '无应答写'
-      this.appendLog({ type: 'act', text: `协商 MTU=${session.mtu} 字节，图传每包数据 ${session.dataChunk} 字节，写入方式：${writeTypeText}` })
+      const writeTypeText =
+        session.writeType === 'write' ? '有应答写(可靠)' : '无应答写'
+      this.appendLog({
+        type: 'act',
+        text: `协商 MTU=${session.mtu} 字节，图传每包数据 ${session.dataChunk} 字节，写入方式：${writeTypeText}`
+      })
       await this.refreshInfoSilently()
       this.loadSavedCalibrationProfile()
       await this.refreshConnectionIntervalSilently()
@@ -518,7 +635,12 @@ Page({
     if (this.data.deviceId) {
       deviceBle.disconnect(this.data.deviceId)
     }
-    this.setData({ connected: false, info: null, connInterval: null })
+    this.setData({
+      connected: false,
+      info: null,
+      connInterval: null,
+      firmwareVersion: ''
+    })
     this.refreshMpConnections() // 断开后同步「小程序连接状态」模块
     this.appendLog({ type: 'act', text: '已断开连接' })
   },
@@ -530,6 +652,7 @@ Page({
       const indexes = protocol.maskToIndexes(info.imgMask)
       this.setData({
         info,
+        firmwareVersion: info.firmwareVersion || '',
         existingIndexes: indexes.length ? indexes.join(', ') : '无',
         autoUploadIndex: protocol.firstFreeIndex(info.imgMask, info.capacity)
       })
@@ -540,7 +663,9 @@ Page({
 
   async refreshConnectionIntervalSilently() {
     try {
-      const connInterval = await deviceBle.getConnectionInterval(this.data.deviceId)
+      const connInterval = await deviceBle.getConnectionInterval(
+        this.data.deviceId
+      )
       this.setData({
         connInterval,
         connIntervalInput: String(connInterval.ms)
@@ -563,7 +688,8 @@ Page({
     this.appendLog({ type: 'act', text: `点击：${label}` })
     try {
       const result = await fn()
-      const text = options && options.format ? options.format(result) : `${label} 成功`
+      const text =
+        options && options.format ? options.format(result) : `${label} 成功`
       this.appendLog({ type: 'ok', text })
       if (options && options.refresh) {
         await this.refreshInfoSilently()
@@ -580,39 +706,71 @@ Page({
 
   // ── 读取类指令 ──────────────────────────────────────────
   cmdGetInfo() {
-    this.runCommand('获取设备信息(0x01)', async () => {
-      await this.refreshInfoSilently()
-      const info = this.data.info
-      return info
-    }, {
-      format: info => info
-        ? `设备信息：Device_ID ${info.deviceId || '--'} · 电量 ${info.battery}% · ${info.screen} · 容量 ${info.capacity} · 已存 ${info.imgCount} 张 · 固件 ${info.firmwareVersion || '--'}`
-        : '设备信息已刷新'
-    })
+    this.runCommand(
+      '获取设备信息(0x01)',
+      async () => {
+        await this.refreshInfoSilently()
+        const info = this.data.info
+        return info
+      },
+      {
+        format: info =>
+          info
+            ? `设备信息：Device_ID ${info.deviceId || '--'} · 电量 ${info.battery}% · ${info.screen} · 容量 ${info.capacity} · 已存 ${info.imgCount} 张 · 固件 ${info.firmwareVersion || '--'}`
+            : '设备信息已刷新'
+      }
+    )
   },
 
   cmdGetPlay() {
-    this.runCommand('获取播放配置(0x02)', () => deviceBle.getPlayConfig(this.data.deviceId), {
-      format: cfg => `播放配置：${this.playModeText(cfg.playMode)} · 间隔 ${cfg.intervalSeconds} 秒`
-    })
+    this.runCommand(
+      '获取播放配置(0x02)',
+      () => deviceBle.getPlayConfig(this.data.deviceId),
+      {
+        format: cfg =>
+          `播放配置：${this.playModeText(cfg.playMode)} · 间隔 ${cfg.intervalSeconds} 秒`
+      }
+    )
   },
 
-  cmdGetVersion() {
-    this.runCommand('获取软件版本(0x03)', () => deviceBle.getSwVersion(this.data.deviceId), {
-      format: ver => `固件版本：${ver || '(空)'}`
-    })
+  async cmdGetVersion() {
+    const firmwareVersion = await this.runCommand(
+      '获取软件版本(0x03)',
+      () => deviceBle.getSwVersion(this.data.deviceId),
+      {
+        format: ver => '固件版本：' + (ver || '(空)')
+      }
+    )
+    if (firmwareVersion !== undefined) {
+      const patch = { firmwareVersion: firmwareVersion || '' }
+      if (this.data.info) {
+        patch.info = Object.assign({}, this.data.info, {
+          firmwareVersion: firmwareVersion || ''
+        })
+      }
+      this.setData(patch)
+    }
   },
 
   cmdGetBattery() {
-    this.runCommand('获取电量(0x04)', () => deviceBle.readBattery(this.data.deviceId), {
-      format: battery => `当前电量：${battery}%`
-    })
+    this.runCommand(
+      '获取电量(0x04)',
+      () => deviceBle.readBattery(this.data.deviceId),
+      {
+        format: battery => `当前电量：${battery}%`
+      }
+    )
   },
 
   async cmdGetConnInterval() {
-    const connInterval = await this.runCommand('获取连接间隔(0x05)', () => deviceBle.getConnectionInterval(this.data.deviceId), {
-      format: value => `连接间隔：${value.ms}ms · CONN_INTERVAL=${value.units}`
-    })
+    const connInterval = await this.runCommand(
+      '获取连接间隔(0x05)',
+      () => deviceBle.getConnectionInterval(this.data.deviceId),
+      {
+        format: value =>
+          `连接间隔：${value.ms}ms · CONN_INTERVAL=${value.units}`
+      }
+    )
     if (connInterval) {
       this.setData({
         connInterval,
@@ -624,7 +782,7 @@ Page({
   // ── 设置类指令 ──────────────────────────────────────────
   // 播放模式中文名：order 顺序 / random 随机 / manual 手动
   playModeText(mode) {
-    return mode === 'random' ? '随机' : (mode === 'manual' ? '手动' : '顺序')
+    return mode === 'random' ? '随机' : mode === 'manual' ? '手动' : '顺序'
   },
 
   onPlayModeChange(e) {
@@ -645,10 +803,16 @@ Page({
       toast.show({ title: '请输入有效的间隔秒数', icon: 'none' })
       return
     }
-    this.runCommand('设置播放配置(0x10)', () => deviceBle.setPlayback(this.data.deviceId, this.data.playMode, interval), {
-      refresh: true,
-      format: () => `已设为 ${this.playModeText(this.data.playMode)} 播放 · 间隔 ${interval} 秒`
-    })
+    this.runCommand(
+      '设置播放配置(0x10)',
+      () =>
+        deviceBle.setPlayback(this.data.deviceId, this.data.playMode, interval),
+      {
+        refresh: true,
+        format: () =>
+          `已设为 ${this.playModeText(this.data.playMode)} 播放 · 间隔 ${interval} 秒`
+      }
+    )
   },
 
   async cmdSetConnInterval() {
@@ -658,13 +822,21 @@ Page({
       return
     }
     const units = protocol.connectionIntervalMsToUnits(ms)
-    if (units < protocol.CONN_INTERVAL_MIN_UNITS || units > protocol.CONN_INTERVAL_MAX_UNITS) {
+    if (
+      units < protocol.CONN_INTERVAL_MIN_UNITS ||
+      units > protocol.CONN_INTERVAL_MAX_UNITS
+    ) {
       toast.show({ title: '范围需在 7.5~4000ms', icon: 'none' })
       return
     }
-    const connInterval = await this.runCommand('设置连接间隔(0x13)', () => deviceBle.setConnectionInterval(this.data.deviceId, units), {
-      format: value => `已设连接间隔：${value.ms}ms · CONN_INTERVAL=${value.units}`
-    })
+    const connInterval = await this.runCommand(
+      '设置连接间隔(0x13)',
+      () => deviceBle.setConnectionInterval(this.data.deviceId, units),
+      {
+        format: value =>
+          `已设连接间隔：${value.ms}ms · CONN_INTERVAL=${value.units}`
+      }
+    )
     if (connInterval) {
       this.setData({
         connInterval,
@@ -683,7 +855,10 @@ Page({
       return
     }
     const units = protocol.connectionIntervalMsToUnits(ms)
-    if (units < protocol.CONN_INTERVAL_MIN_UNITS || units > protocol.CONN_INTERVAL_MAX_UNITS) {
+    if (
+      units < protocol.CONN_INTERVAL_MIN_UNITS ||
+      units > protocol.CONN_INTERVAL_MAX_UNITS
+    ) {
       toast.show({ title: '范围需在 7.5~4000ms', icon: 'none' })
       return
     }
@@ -694,7 +869,10 @@ Page({
         projectionConnIntervalMs: applied.ms,
         connIntervalInput: String(applied.ms)
       })
-      this.appendLog({ type: 'ok', text: `已同步到真实投屏：图传前连接间隔将设为 ${applied.ms}ms（CONN_INTERVAL=${applied.units}）` })
+      this.appendLog({
+        type: 'ok',
+        text: `已同步到真实投屏：图传前连接间隔将设为 ${applied.ms}ms（CONN_INTERVAL=${applied.units}）`
+      })
       toast.show({ title: '已同步到投屏', icon: 'success' })
     } catch (error) {
       toast.show({ title: error.message || '同步失败', icon: 'none' })
@@ -702,9 +880,14 @@ Page({
   },
 
   cmdSetTime() {
-    this.runCommand('校准时间(0x11)', () => deviceBle.setTime(this.data.deviceId, new Date()), {
-      format: () => `已把手机当前时间同步给设备：${new Date().toLocaleString()}`
-    })
+    this.runCommand(
+      '校准时间(0x11)',
+      () => deviceBle.setTime(this.data.deviceId, new Date()),
+      {
+        format: () =>
+          `已把手机当前时间同步给设备：${new Date().toLocaleString()}`
+      }
+    )
   },
 
   // ── 图片类指令 ──────────────────────────────────────────
@@ -718,10 +901,15 @@ Page({
       toast.show({ title: '请输入要显示的图片索引', icon: 'none' })
       return
     }
-    this.runCommand('切换显示(0x24)', () => deviceBle.refreshScreen(this.data.deviceId, index), {
-      refresh: true,
-      format: res => `屏幕已切到索引 ${res.curImgIndex === 0xff ? '保持不变' : res.curImgIndex}`
-    })
+    this.runCommand(
+      '切换显示(0x24)',
+      () => deviceBle.refreshScreen(this.data.deviceId, index),
+      {
+        refresh: true,
+        format: res =>
+          `屏幕已切到索引 ${res.curImgIndex === 0xff ? '保持不变' : res.curImgIndex}`
+      }
+    )
   },
 
   onDeleteInput(e) {
@@ -733,14 +921,22 @@ Page({
       .split(/[,，\s]+/)
       .filter(s => s !== '')
       .map(Number)
-    if (!indexes.length || indexes.some(n => !Number.isInteger(n) || n < 0 || n > 95)) {
+    if (
+      !indexes.length ||
+      indexes.some(n => !Number.isInteger(n) || n < 0 || n > 95)
+    ) {
       toast.show({ title: '请输入要删除的索引(0~95，逗号分隔)', icon: 'none' })
       return
     }
-    this.runCommand(`删除图片(0x12) 索引[${indexes.join(',')}]`, () => deviceBle.deleteImage(this.data.deviceId, indexes), {
-      refresh: true,
-      format: res => `删除完成，设备现存 ${protocol.maskToIndexes(res.imgMask).length} 张`
-    })
+    this.runCommand(
+      `删除图片(0x12) 索引[${indexes.join(',')}]`,
+      () => deviceBle.deleteImage(this.data.deviceId, indexes),
+      {
+        refresh: true,
+        format: res =>
+          `删除完成，设备现存 ${protocol.maskToIndexes(res.imgMask).length} 张`
+      }
+    )
   },
 
   onUploadIndexInput(e) {
@@ -758,11 +954,15 @@ Page({
   },
 
   onCropModeChange(e) {
-    this.setData({ cropMode: e.detail.value === 'contain' ? 'contain' : 'cover' })
+    this.setData({
+      cropMode: e.detail.value === 'contain' ? 'contain' : 'cover'
+    })
   },
 
   onDebugResizeModeChange(e) {
-    this.setData({ debugResizeMode: e.detail.value === 'single' ? 'single' : 'staged' })
+    this.setData({
+      debugResizeMode: e.detail.value === 'single' ? 'single' : 'staged'
+    })
   },
 
   onDebugDitherChange(e) {
@@ -800,16 +1000,49 @@ Page({
   },
 
   applyCalibrationProfile(profile, options) {
-    const index = DEBUG_CALIBRATION_PROFILES.findIndex(item => item.id === profile.id)
+    const index = DEBUG_CALIBRATION_PROFILES.findIndex(
+      item => item.id === profile.id
+    )
     this.setData({
       calibrationProfileIndex: index >= 0 ? index : DEFAULT_DEBUG_PROFILE_INDEX,
       calibrationProfileId: profile.id,
       calibrationProfileName: profile.name,
-      calibrationProfileNote: profile.note
+      calibrationProfileNote: profile.note,
+      // 切换套餐 = 把该套餐的六色 RGB 回填到下面的自定义输入，之后可继续逐项微调
+      customColors: paletteToCustomColors(profile.palette)
     })
     if (options && options.log) {
-      this.appendLog({ type: 'act', text: `${options.log}：${profile.name} · ${profile.note}` })
+      this.appendLog({
+        type: 'act',
+        text: `${options.log}：${profile.name} · ${profile.note}`
+      })
     }
+  },
+
+  // 单个颜色的 R/G/B 输入：只保留数字、上限钳到 255，并实时刷新色块预览。
+  onCustomColorInput(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const channel = e.currentTarget.dataset.channel
+    if (
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= this.data.customColors.length
+    ) {
+      return
+    }
+    if (channel !== 'r' && channel !== 'g' && channel !== 'b') {
+      return
+    }
+    let text = String(e.detail.value).replace(/[^0-9]/g, '')
+    if (text !== '' && Number(text) > 255) {
+      text = '255' // 超 255 直接钳住，避免输入无意义大数
+    }
+    const customColors = this.data.customColors.slice()
+    const entry = Object.assign({}, customColors[index])
+    entry[channel] = text
+    entry.css = `rgb(${clampChannelInput(entry.r)}, ${clampChannelInput(entry.g)}, ${clampChannelInput(entry.b)})`
+    customColors[index] = entry
+    this.setData({ customColors })
   },
 
   onCalibrationProfileChange(e) {
@@ -823,14 +1056,72 @@ Page({
       return
     }
     try {
-      const savedId = wx.getStorageSync(this.getCalibrationProfileStorageKey())
-      const profile = findDebugCalibrationProfile(savedId)
-      if (profile) {
-        this.applyCalibrationProfile(profile, { log: '已恢复本设备校准档' })
+      const saved = wx.getStorageSync(this.getCalibrationProfileStorageKey())
+      if (!saved) {
+        return
+      }
+      // 旧版本只存了套餐 id（字符串）：找回套餐并回填其六色。
+      if (typeof saved === 'string') {
+        const profile = findDebugCalibrationProfile(saved)
+        if (profile) {
+          this.applyCalibrationProfile(profile, { log: '已恢复本设备校准档' })
+        }
+        return
+      }
+      // 新版本存的是完整自定义配置对象（套餐 + 自定义六色 + 抖动 + 对比度 + 饱和度）。
+      if (typeof saved === 'object') {
+        this.restoreSavedCustomConfig(saved)
       }
     } catch (error) {
       // 读取本地调试配置失败不影响上传链路。
     }
+  },
+
+  // 还原「保存本机」存下的完整自定义配置：套餐标签 + 自定义六色 + 抖动 + 对比度 + 饱和度。
+  restoreSavedCustomConfig(saved) {
+    const profile =
+      findDebugCalibrationProfile(saved.profileId) || DEFAULT_DEBUG_PROFILE
+    const profileIndex = Math.max(
+      0,
+      DEBUG_CALIBRATION_PROFILES.findIndex(item => item.id === profile.id)
+    )
+    const hasColors =
+      Array.isArray(saved.colors) &&
+      saved.colors.length === DEFAULT_DEBUG_PROFILE.palette.length
+    const customColors = hasColors
+      ? paletteToCustomColors(
+          saved.colors.map((color, i) => ({
+            nibble: DEFAULT_DEBUG_PROFILE.palette[i].nibble,
+            name: DEFAULT_DEBUG_PROFILE.palette[i].name,
+            rgb: [color.r, color.g, color.b]
+          }))
+        )
+      : paletteToCustomColors(profile.palette)
+    const patch = {
+      calibrationProfileIndex: profileIndex,
+      calibrationProfileId: profile.id,
+      calibrationProfileName: profile.name,
+      calibrationProfileNote: profile.note,
+      customColors
+    }
+    if (typeof saved.dither === 'boolean') {
+      patch.debugDither = saved.dither
+    }
+    if (Number.isFinite(saved.contrastPercent)) {
+      patch.debugContrastPercent = saved.contrastPercent
+      patch.debugContrastText = this.formatTuningValue(saved.contrastPercent)
+    }
+    if (Number.isFinite(saved.saturationPercent)) {
+      patch.debugSaturationPercent = saved.saturationPercent
+      patch.debugSaturationText = this.formatTuningValue(
+        saved.saturationPercent
+      )
+    }
+    this.setData(patch)
+    this.appendLog({
+      type: 'act',
+      text: `已恢复本设备校准配置：${profile.name}（含自定义六色）`
+    })
   },
 
   saveDeviceCalibrationProfile() {
@@ -843,16 +1134,35 @@ Page({
       return
     }
     try {
-      wx.setStorageSync(this.getCalibrationProfileStorageKey(), this.data.calibrationProfileId)
-      this.appendLog({ type: 'ok', text: `已保存本设备校准档：${this.data.calibrationProfileName}` })
-      toast.show({ title: '已保存本设备校准档', icon: 'none' })
+      const colors = this.data.customColors.map(color => ({
+        nibble: color.nibble,
+        r: clampChannelInput(color.r),
+        g: clampChannelInput(color.g),
+        b: clampChannelInput(color.b)
+      }))
+      wx.setStorageSync(this.getCalibrationProfileStorageKey(), {
+        v: 2,
+        profileId: this.data.calibrationProfileId,
+        colors,
+        dither: !!this.data.debugDither,
+        contrastPercent: Number(this.data.debugContrastPercent),
+        saturationPercent: Number(this.data.debugSaturationPercent)
+      })
+      this.appendLog({
+        type: 'ok',
+        text: `已保存本设备校准配置：${this.data.calibrationProfileName}（含自定义六色）`
+      })
+      toast.show({ title: '已保存本设备配置', icon: 'none' })
     } catch (error) {
       toast.show({ title: '保存失败：' + error.message, icon: 'none' })
     }
   },
 
   getSelectedCalibrationProfile() {
-    return findDebugCalibrationProfile(this.data.calibrationProfileId) || DEFAULT_DEBUG_PROFILE
+    return (
+      findDebugCalibrationProfile(this.data.calibrationProfileId) ||
+      DEFAULT_DEBUG_PROFILE
+    )
   },
 
   getDebugQuantizeOptions() {
@@ -861,13 +1171,64 @@ Page({
     const profile = this.getSelectedCalibrationProfile()
     return {
       dither: !!this.data.debugDither,
-      contrast: Number.isFinite(contrast) ? contrast : DEFAULT_DEBUG_QUANTIZE.contrast,
-      saturation: Number.isFinite(saturation) ? saturation : DEFAULT_DEBUG_QUANTIZE.saturation,
+      contrast: Number.isFinite(contrast)
+        ? contrast
+        : DEFAULT_DEBUG_QUANTIZE.contrast,
+      saturation: Number.isFinite(saturation)
+        ? saturation
+        : DEFAULT_DEBUG_QUANTIZE.saturation,
       distanceMetric: DEFAULT_DEBUG_QUANTIZE.distanceMetric,
-      palette: profile.palette,
+      // 量化用「自定义六色」而非套餐原值：套餐只是回填的起点，用户的逐项微调要真正生效
+      palette: customColorsToPalette(this.data.customColors),
       calibrationProfileId: profile.id,
       calibrationProfileName: profile.name,
       achromaticChromaMax: DEFAULT_DEBUG_QUANTIZE.achromaticChromaMax
+    }
+  },
+
+  // 同步到真实投屏：把「自定义六色 + 抖动 + 对比度 + 饱和度」持久化给正式投屏。
+  // 之后在「我的相框」正式投屏(result.js)量化上屏时会优先读这套参数，而不是代码内置默认。
+  // 只写本地存储、不依赖蓝牙连接，所以未连接设备也能同步。
+  cmdSyncQuantizeToProjection() {
+    const contrast = Number(this.data.debugContrastPercent) / 100
+    const saturation = Number(this.data.debugSaturationPercent) / 100
+    const palette = customColorsToPalette(this.data.customColors)
+    try {
+      imageCodec.setTransferQuantizeOptions({
+        dither: !!this.data.debugDither,
+        contrast: Number.isFinite(contrast)
+          ? contrast
+          : DEFAULT_DEBUG_QUANTIZE.contrast,
+        saturation: Number.isFinite(saturation)
+          ? saturation
+          : DEFAULT_DEBUG_QUANTIZE.saturation,
+        palette
+      })
+      const summary = palette
+        .map(p => `${p.name}(${p.rgb.join(',')})`)
+        .join(' · ')
+      this.appendLog({
+        type: 'ok',
+        text: `已同步到真实投屏：抖动${this.data.debugDither ? '开' : '关'} · 对比度${this.data.debugContrastText} · 饱和度${this.data.debugSaturationText}`
+      })
+      this.appendLog({ type: 'act', text: `六色：${summary}` })
+      toast.show({ title: '已同步到真实投屏', icon: 'success' })
+    } catch (error) {
+      toast.show({ title: error.message || '同步失败', icon: 'none' })
+    }
+  },
+
+  // 清除同步：让正式投屏回到代码内置默认参数（实拍 2026-06-22 校准 + 抖动）。
+  cmdResetProjectionQuantize() {
+    try {
+      imageCodec.clearTransferQuantizeOptions()
+      this.appendLog({
+        type: 'act',
+        text: '已清除真实投屏的同步参数：恢复为代码内置默认（实拍 2026-06-22 校准 + 抖动）'
+      })
+      toast.show({ title: '已恢复默认', icon: 'none' })
+    } catch (error) {
+      toast.show({ title: error.message || '操作失败', icon: 'none' })
     }
   },
 
@@ -879,7 +1240,11 @@ Page({
     const info = this.data.info
     // 传 screenType：3.7寸(EF6-370)彩条会按「横向源图」布局打包（固件旋转 90° 上屏）。
     // 若上屏后竖彩条变成横彩条，说明旋转方向反了，调 image-codec.THREE_INCH_SOURCE_ROTATION。
-    const frame = imageCodec.buildColorBars(info.width, info.height, info.screenType)
+    const frame = imageCodec.buildColorBars(
+      info.width,
+      info.height,
+      info.screenType
+    )
     this.uploadFrame(frame, '上传彩条测试图(0x20~0x22)')
   },
 
@@ -894,7 +1259,13 @@ Page({
       media = await new Promise((resolve, reject) => {
         // sizeType 取 'original'：拿原图而不是微信压缩过的低清版。'compressed' 会先被微信降分辨率+重压一遍，
         // 是「上屏发糊」最大的源头(APP 走的就是原图)。原图偏大时由下面 shrinkIfHuge 仅做防 OOM 的轻量预缩。
-        wx.chooseMedia({ count: 1, mediaType: ['image'], sizeType: ['original'], success: resolve, fail: reject })
+        wx.chooseMedia({
+          count: 1,
+          mediaType: ['image'],
+          sizeType: ['original'],
+          success: resolve,
+          fail: reject
+        })
       })
     } catch (error) {
       return // 用户取消选择
@@ -907,14 +1278,26 @@ Page({
       // 大图先按比例压一遍再解码：超大原图(几千万像素)在离屏 canvas 全分辨率解码时易内存吃紧/失败。
       // 注意：这步只为让解码更稳，不改变上传量——上传的是定长六色帧缓存(宽×高÷2)，与原图大小无关。
       const skipCompressImage = !!this.data.debugSkipCompressImage
-      const srcPath = skipCompressImage ? tempPath : await this.shrinkIfHuge(tempPath, info.width, info.height)
+      const srcPath = skipCompressImage
+        ? tempPath
+        : await this.shrinkIfHuge(tempPath, info.width, info.height)
       if (skipCompressImage) {
-        this.appendLog({ type: 'act', text: '已跳过 wx.compressImage：直接使用 chooseMedia 原图进入 canvas 解码缩放' })
+        this.appendLog({
+          type: 'act',
+          text: '已跳过 wx.compressImage：直接使用 chooseMedia 原图进入 canvas 解码缩放'
+        })
       }
       const cropMode = this.data.cropMode === 'contain' ? 'contain' : 'cover'
-      const resizeMode = this.data.debugResizeMode === 'single' ? 'single' : 'staged'
+      const resizeMode =
+        this.data.debugResizeMode === 'single' ? 'single' : 'staged'
       const quantize = this.getDebugQuantizeOptions()
-      const decoded = await this.imageToImageData(srcPath, info.width, info.height, cropMode, resizeMode)
+      const decoded = await this.imageToImageData(
+        srcPath,
+        info.width,
+        info.height,
+        cropMode,
+        resizeMode
+      )
       const imageData = decoded.imageData
       if (decoded.resampleLog) {
         this.appendLog({ type: 'act', text: decoded.resampleLog })
@@ -923,7 +1306,13 @@ Page({
         type: 'act',
         text: `调试页色准量化：${quantize.calibrationProfileName} / ${quantize.distanceMetric} / 裁剪${cropMode} / 缩放${resizeMode === 'single' ? 'APP单步' : '分阶段'} / 预压缩${skipCompressImage ? '跳过' : '自动'} / 抖动${quantize.dither ? '开' : '关'}${quantize.dither ? `(${DEFAULT_DEBUG_QUANTIZE.ditherStrength})` : ''} / 对比度${quantize.contrast.toFixed(2)} / 饱和度${quantize.saturation.toFixed(2)} / 低饱和保护${quantize.achromaticChromaMax >= 0 ? `≤${quantize.achromaticChromaMax}` : '关'}`
       })
-      frame = fromImageDataWithDebugCalibration(imageData, info.width, info.height, quantize, info.screenType)
+      frame = fromImageDataWithDebugCalibration(
+        imageData,
+        info.width,
+        info.height,
+        quantize,
+        info.screenType
+      )
     } catch (error) {
       wx.hideLoading()
       toast.show({ title: '图片转换失败：' + error.message, icon: 'none' })
@@ -971,12 +1360,23 @@ Page({
               toast.show({ title: '文件尺寸不符，已拦下', icon: 'none' })
               return
             }
-            this.appendLog({ type: 'act', text: `已读取本地 .raw：${name}，${data.length} 字节，原样直发（不旋转/不转换）` })
-            const frame = { data, width: info.width, height: info.height, dataSize: data.length }
+            this.appendLog({
+              type: 'act',
+              text: `已读取本地 .raw：${name}，${data.length} 字节，原样直发（不旋转/不转换）`
+            })
+            const frame = {
+              data,
+              width: info.width,
+              height: info.height,
+              dataSize: data.length
+            }
             this.uploadFrame(frame, '上传本地 .raw 直发(0x20~0x22)')
           },
           fail: err => {
-            this.appendLog({ type: 'err', text: `读取 .raw 失败：${err.errMsg || '未知错误'}` })
+            this.appendLog({
+              type: 'err',
+              text: `读取 .raw 失败：${err.errMsg || '未知错误'}`
+            })
             toast.show({ title: '读取文件失败', icon: 'none' })
           }
         })
@@ -1009,7 +1409,10 @@ Page({
 
   computeAppLikeSample(width, height, targetW, targetH) {
     let sample = 1
-    while (width / (sample * 2) >= targetW && height / (sample * 2) >= targetH) {
+    while (
+      width / (sample * 2) >= targetW &&
+      height / (sample * 2) >= targetH
+    ) {
       sample *= 2
     }
     return sample
@@ -1074,9 +1477,16 @@ Page({
     const finalH = Math.max(1, Math.round(plan.dh))
     const stages = []
 
-    while (sw > finalW * 2 || sh > finalH * 2 || Math.max(sw, sh) > DEBUG_RESAMPLE.maxStageEdge) {
+    while (
+      sw > finalW * 2 ||
+      sh > finalH * 2 ||
+      Math.max(sw, sh) > DEBUG_RESAMPLE.maxStageEdge
+    ) {
       const maxEdge = Math.max(sw, sh)
-      const capScale = maxEdge > DEBUG_RESAMPLE.maxStageEdge ? DEBUG_RESAMPLE.maxStageEdge / maxEdge : 1
+      const capScale =
+        maxEdge > DEBUG_RESAMPLE.maxStageEdge
+          ? DEBUG_RESAMPLE.maxStageEdge / maxEdge
+          : 1
       const stepScale = Math.min(DEBUG_RESAMPLE.stageScale, capScale)
       const nextW = Math.max(finalW, Math.round(sw * stepScale))
       const nextH = Math.max(finalH, Math.round(sh * stepScale))
@@ -1113,20 +1523,31 @@ Page({
       wx.getImageInfo({
         src: path,
         success: ({ width, height }) => {
-          const sample = this.computeAppLikeSample(width, height, targetW, targetH)
+          const sample = this.computeAppLikeSample(
+            width,
+            height,
+            targetW,
+            targetH
+          )
           if (sample <= 1) {
             resolve(path) // APP 也不会下采样的尺寸，直接保留原图细节
             return
           }
           const compressedWidth = Math.max(targetW, Math.round(width / sample))
-          const compressedHeight = Math.max(targetH, Math.round(height / sample))
+          const compressedHeight = Math.max(
+            targetH,
+            Math.round(height / sample)
+          )
           wx.compressImage({
             src: path,
             compressedWidth,
             compressedHeight,
             quality: DEBUG_RESAMPLE.predecodeQuality,
             success: res => {
-              this.appendLog({ type: 'act', text: `APP式预采样：原图 ${width}×${height}，sample=${sample}，预解码约 ${compressedWidth}×${compressedHeight}` })
+              this.appendLog({
+                type: 'act',
+                text: `APP式预采样：原图 ${width}×${height}，sample=${sample}，预解码约 ${compressedWidth}×${compressedHeight}`
+              })
               resolve(res.tempFilePath)
             },
             fail: () => resolve(path) // 压缩失败退回原图
@@ -1162,7 +1583,17 @@ Page({
             ctx.fillRect(0, 0, width, height)
           }
           if (resizeMode === 'single') {
-            ctx.drawImage(img, plan.sx, plan.sy, plan.sw, plan.sh, plan.dx, plan.dy, plan.dw, plan.dh)
+            ctx.drawImage(
+              img,
+              plan.sx,
+              plan.sy,
+              plan.sw,
+              plan.sh,
+              plan.dx,
+              plan.dy,
+              plan.dw,
+              plan.dh
+            )
           } else {
             try {
               stages = this.drawImageResampled(ctx, img, plan)
@@ -1172,18 +1603,30 @@ Page({
                 ctx.fillStyle = '#fff'
                 ctx.fillRect(0, 0, width, height)
               }
-              ctx.drawImage(img, plan.sx, plan.sy, plan.sw, plan.sh, plan.dx, plan.dy, plan.dw, plan.dh)
+              ctx.drawImage(
+                img,
+                plan.sx,
+                plan.sy,
+                plan.sw,
+                plan.sh,
+                plan.dx,
+                plan.dy,
+                plan.dw,
+                plan.dh
+              )
               fallbackLog = `分阶段缩放不可用，已退回单步缩放：${resampleError.message || resampleError}`
             }
           }
           const imageData = ctx.getImageData(0, 0, width, height)
           const sourceText = `${Math.round(plan.sw)}×${Math.round(plan.sh)}`
           const targetText = `${Math.round(plan.dw)}×${Math.round(plan.dh)}`
-          const resampleLog = fallbackLog || (resizeMode === 'single'
-            ? `APP单步缩放：原图 ${iw}×${ih}，${cropMode} 取样 ${sourceText} → ${targetText}`
-            : (stages.length
+          const resampleLog =
+            fallbackLog ||
+            (resizeMode === 'single'
+              ? `APP单步缩放：原图 ${iw}×${ih}，${cropMode} 取样 ${sourceText} → ${targetText}`
+              : stages.length
                 ? `分阶段缩放：原图 ${iw}×${ih}，${cropMode} 取样 ${sourceText} → ${stages.join(' → ')} → ${targetText}`
-                : `分阶段缩放未触发：原图 ${iw}×${ih}，${cropMode} 取样 ${sourceText} → ${targetText}`))
+                : `分阶段缩放未触发：原图 ${iw}×${ih}，${cropMode} 取样 ${sourceText} → ${targetText}`)
           resolve({ imageData, resampleLog })
         } catch (error) {
           reject(error)
@@ -1209,7 +1652,10 @@ Page({
     let before
     try {
       before = await deviceBle.getConnectionInterval(deviceId)
-      this.appendLog({ type: 'act', text: `图传前 连接间隔(0x05)=${before.ms}ms · units=${before.units}` })
+      this.appendLog({
+        type: 'act',
+        text: `图传前 连接间隔(0x05)=${before.ms}ms · units=${before.units}`
+      })
     } catch (error) {
       const verdict = `设备不支持读取连接间隔(0x05)：${error.message}`
       this.appendLog({ type: 'err', text: verdict })
@@ -1293,15 +1739,22 @@ Page({
       uploadStatus: `传输中：槽位 ${index}，共 ${totalPackets} 包…（请保持屏幕常亮，勿锁屏/切后台）`,
       uploadStatusType: 'info'
     })
-    this.appendLog({ type: 'act', text: `${label} → 槽位 ${index}，数据 ${frame.dataSize} 字节 / ${totalPackets} 包` })
+    this.appendLog({
+      type: 'act',
+      text: `${label} → 槽位 ${index}，数据 ${frame.dataSize} 字节 / ${totalPackets} 包`
+    })
 
     // 图传前：按「连接间隔」输入框的值把链路间隔设好并复读确认。卡住时据此区分
     // 「连接间隔没生效」还是「设备吃不下速率」（结论见 applyAndVerifyConnInterval / connDiagConclusion）。
     let connDiag = null
     const targetMs = Number(this.data.connIntervalInput)
     const targetUnits = protocol.connectionIntervalMsToUnits(targetMs)
-    if (Number.isFinite(targetMs) && targetMs > 0 &&
-        targetUnits >= protocol.CONN_INTERVAL_MIN_UNITS && targetUnits <= protocol.CONN_INTERVAL_MAX_UNITS) {
+    if (
+      Number.isFinite(targetMs) &&
+      targetMs > 0 &&
+      targetUnits >= protocol.CONN_INTERVAL_MIN_UNITS &&
+      targetUnits <= protocol.CONN_INTERVAL_MAX_UNITS
+    ) {
       connDiag = await this.applyAndVerifyConnInterval(targetMs)
     }
 
@@ -1337,14 +1790,18 @@ Page({
       try {
         await deviceBle.refreshScreen(this.data.deviceId, index)
       } catch (refreshError) {
-        this.appendLog({ type: 'err', text: `传后刷新屏幕失败：${refreshError.message}` })
+        this.appendLog({
+          type: 'err',
+          text: `传后刷新屏幕失败：${refreshError.message}`
+        })
       }
       await this.refreshInfoSilently()
       toast.show({ title: '上传成功', icon: 'none' })
     } catch (error) {
       // 失败原因常驻显示在页面上（可长按复制），不用去翻一闪而过的弹窗
       // 只要期间发生过息屏/切后台(_uploadAborted)，无论报的是中止还是写失败，都按"息屏中断"提示
-      const aborted = this._uploadAborted || (error && error.message === 'UPLOAD_ABORTED')
+      const aborted =
+        this._uploadAborted || (error && error.message === 'UPLOAD_ABORTED')
       let text = aborted
         ? '图传已中断：上传时手机息屏/切到后台，蓝牙在后台会暂停、设备也会超时。请保持屏幕常亮后重新上传。'
         : `图传失败：${error.message}`

@@ -244,6 +244,92 @@ function fromImageData(imageData, width, height, options) {
   return { data, width, height, dataSize: data.length }
 }
 
+// ── 真实投屏量化参数（调试页「同步到真实投屏」写入，result.js 读取）────────────────
+// 调试页把调好的「自定义六色 + 抖动 + 对比度 + 饱和度」存到这个键；正式投屏图传前优先读它，
+// 没同步过则回落 result.js 内置默认。只读写本地存储、不碰蓝牙，所以未连接设备也能同步。
+const TRANSFER_QUANTIZE_STORAGE_KEY = 'transferQuantizeOptions'
+
+// 校验并归一一份来自调试页的六色调色板：必须恰好 6 项；nibble 一律强制用本模块 PALETTE 的协议编码值
+// （绝不信任外部传入的 nibble），rgb 三通道钳到 0~255。任一不合法返回 null。
+function normalizeTransferPalette(palette) {
+  if (!Array.isArray(palette) || palette.length !== PALETTE.length) {
+    return null
+  }
+  const out = []
+  for (let i = 0; i < palette.length; i++) {
+    const entry = palette[i] || {}
+    const rgb = entry.rgb
+    if (!Array.isArray(rgb) || rgb.length < 3) {
+      return null
+    }
+    out.push({
+      nibble: PALETTE[i].nibble, // nibble 固定按 PRD 颜色值表，不可被外部覆盖
+      name: PALETTE[i].name,
+      rgb: [
+        clamp255(Math.round(Number(rgb[0]) || 0)),
+        clamp255(Math.round(Number(rgb[1]) || 0)),
+        clamp255(Math.round(Number(rgb[2]) || 0))
+      ]
+    })
+  }
+  return out
+}
+
+// 读取调试页同步过来的真实投屏量化参数。无同步 / 存储损坏 / 调色板不合法都返回 null，
+// 让调用方回落自己的内置默认（绝不因这层失败而阻断投屏）。
+function getTransferQuantizeOptions() {
+  try {
+    const saved = wx.getStorageSync(TRANSFER_QUANTIZE_STORAGE_KEY)
+    if (!saved || typeof saved !== 'object') {
+      return null
+    }
+    const palette = normalizeTransferPalette(saved.palette)
+    if (!palette) {
+      return null
+    }
+    const options = { palette }
+    if (typeof saved.dither === 'boolean') {
+      options.dither = saved.dither
+    }
+    if (Number.isFinite(saved.contrast)) {
+      options.contrast = saved.contrast
+    }
+    if (Number.isFinite(saved.saturation)) {
+      options.saturation = saved.saturation
+    }
+    return options
+  } catch (error) {
+    return null
+  }
+}
+
+// 把调试页调好的量化参数持久化给真实投屏。调色板不合法直接抛错，避免把无效配置同步出去。
+// 返回实际落库的对象，方便调用方回显。
+function setTransferQuantizeOptions(options) {
+  const opt = options || {}
+  const palette = normalizeTransferPalette(opt.palette)
+  if (!palette) {
+    throw new Error('六色调色板不合法（需 6 项，每项含 rgb 三通道）')
+  }
+  const value = { palette }
+  if (typeof opt.dither === 'boolean') {
+    value.dither = opt.dither
+  }
+  if (Number.isFinite(opt.contrast)) {
+    value.contrast = opt.contrast
+  }
+  if (Number.isFinite(opt.saturation)) {
+    value.saturation = opt.saturation
+  }
+  wx.setStorageSync(TRANSFER_QUANTIZE_STORAGE_KEY, value)
+  return value
+}
+
+// 清除同步参数：让真实投屏回到内置默认。
+function clearTransferQuantizeOptions() {
+  wx.removeStorageSync(TRANSFER_QUANTIZE_STORAGE_KEY)
+}
+
 // 整图 CRC32-MPEG2（6.8.1 的 IMG_CRC32）：
 //   初值 0xFFFFFFFF，多项式 0x04C11DB7，输入/输出都不反转，最终不异或。与 CRC16 的 Modbus 不是一回事。
 function crc32Mpeg2(input) {
@@ -275,5 +361,8 @@ module.exports = {
   buildColorBars,
   buildSolid,
   fromImageData,
+  getTransferQuantizeOptions,
+  setTransferQuantizeOptions,
+  clearTransferQuantizeOptions,
   crc32Mpeg2
 }

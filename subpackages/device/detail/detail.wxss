@@ -36,7 +36,7 @@
   gap: 10rpx;
   min-height: 84rpx;
   color: #777e88;
-  font-size: 24rpx;
+  font-size: 28rpx;
   font-weight: 500;
 }
 
@@ -59,14 +59,14 @@
 
 .action-frame-icon {
   flex: 0 0 auto;
-  width: 32rpx;
-  height: 30rpx;
+  width: 40rpx;
+  height: 40rpx;
 }
 
 .action-bt-icon {
   flex: 0 0 auto;
-  width: 28rpx;
-  height: 28rpx;
+  width: 32rpx;
+  height: 32rpx;
 }
 
 .summary-icon {

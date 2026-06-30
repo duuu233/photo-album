@@ -30,7 +30,7 @@
   line-height: 1.5;
 }
 button {
-  width: 160rpx !important;
+  width: 200rpx !important;
 }
 /* 通用卡片 */
 .card {
@@ -357,6 +357,97 @@ button {
 
 .convert-panel .radio-row {
   flex-wrap: wrap;
+}
+
+/* 自定义六色 RGB */
+.custom-palette {
+  margin-top: 14rpx;
+  padding: 14rpx;
+  background: #ffffff;
+  border: 2rpx solid #edf1f7;
+  border-radius: 14rpx;
+}
+
+.custom-palette-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.custom-palette-title {
+  color: #2a2d32;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.custom-palette-hint {
+  color: #8b9098;
+  font-size: 20rpx;
+}
+
+.color-row {
+  display: flex;
+  align-items: center;
+  margin-top: 12rpx;
+}
+
+.color-swatch {
+  flex: 0 0 auto;
+  width: 40rpx;
+  height: 40rpx;
+  border: 2rpx solid #d8dde6;
+  border-radius: 8rpx;
+}
+
+.color-name {
+  flex: 0 0 44rpx;
+  margin-left: 12rpx;
+  color: #2a2d32;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.channel {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  margin-left: 10rpx;
+}
+
+.channel-label {
+  flex: 0 0 auto;
+  margin-right: 6rpx;
+  color: #8b9098;
+  font-size: 22rpx;
+}
+
+.channel-input {
+  flex: 1;
+  min-width: 0;
+  height: 56rpx;
+  padding: 0 8rpx;
+  color: #2a2d32;
+  font-size: 24rpx;
+  text-align: center;
+  background: #f2f5fc;
+  border-radius: 10rpx;
+}
+
+/* 同步到真实投屏 / 恢复默认 */
+.sync-row {
+  display: flex;
+  align-items: center;
+}
+
+.sync-btn {
+  flex: 1;
+  background: linear-gradient(90deg, #36c2a6, #1aa886);
+}
+
+.reset-btn {
+  margin-left: 12rpx;
+  color: #6b7280;
+  background: #eef1f6;
 }
 
 .switch-row {
