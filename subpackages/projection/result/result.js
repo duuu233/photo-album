@@ -341,6 +341,41 @@ Page({
     }
   },
 
+  // downloadFile 通用封装：单次尝试带超时，弱网下「downloadFile:fail timeout」/网络抖动自动退避重试。
+  // 一次 timeout 就把整单判失败太脆（投屏常在户外弱网下进行）；这里对超时/连接类失败重试几次，
+  // 仍失败才抛出，错误信息沿用最后一次。HTTP 状态码错误（如 404/403）属确定性失败，不重试直接抛出。
+  downloadFileWithRetry(url, label, attempts = 3, timeout = 20000) {
+    const once = () =>
+      new Promise((resolve, reject) => {
+        wx.downloadFile({
+          url,
+          timeout,
+          success: res => {
+            if (res.statusCode === 200 && res.tempFilePath) {
+              resolve(res.tempFilePath)
+            } else {
+              reject(new Error(`${label}(${res.statusCode})`))
+            }
+          },
+          fail: error => reject(new Error((error && error.errMsg) || label))
+        })
+      })
+    const run = left =>
+      once().catch(error => {
+        // 仅超时/连接/网络类失败才重试；白名单、HTTP 状态码等确定性失败不重试
+        const retriable = /timeout|connect|网络|ERR_/i.test(error.message || '')
+        if (left > 1 && retriable) {
+          console.warn(
+            `[投屏] ${label}，将重试（剩余 ${left - 1} 次）：`,
+            error.message
+          )
+          return new Promise(r => setTimeout(r, 800)).then(() => run(left - 1))
+        }
+        throw error
+      })
+    return run(attempts)
+  },
+
   // 解析出可上传的本地文件路径：本地图（相机/相册/裁剪导出）直接用 tempFilePath；
   // 仅有 https 远程地址的（重复投屏云端图）先 downloadFile 落到本地临时文件再上传。
   resolveLocalFilePath(image) {
@@ -350,43 +385,20 @@ Page({
     }
     const remoteUrl = image && image.url
     if (remoteUrl && /^https?:\/\//i.test(remoteUrl)) {
-      return new Promise((resolve, reject) => {
-        wx.downloadFile({
-          url: remoteUrl,
-          success: res => {
-            if (res.statusCode === 200 && res.tempFilePath) {
-              resolve(res.tempFilePath)
-            } else {
-              reject(new Error('原图下载失败'))
-            }
-          },
-          fail: error =>
-            reject(new Error((error && error.errMsg) || '原图下载失败'))
-        })
-      })
+      return this.downloadFileWithRetry(remoteUrl, '原图下载失败')
     }
     return Promise.resolve(remoteUrl || '')
   },
 
   // 下载后端按设备分辨率转换好的六色 4bpp 帧(.bin)，读成 Uint8Array 直接喂给 BLE 图传。
   // 注意：生产环境需把 OSS 域名加入小程序「downloadFile 合法域名」白名单（开发期 urlCheck=false 不校验）。
-  downloadFrameBin(url) {
+  async downloadFrameBin(url) {
+    const tempFilePath = await this.downloadFileWithRetry(url, '转换结果下载失败')
     return new Promise((resolve, reject) => {
-      wx.downloadFile({
-        url,
-        success: res => {
-          if (res.statusCode !== 200 || !res.tempFilePath) {
-            reject(new Error('转换结果下载失败'))
-            return
-          }
-          wx.getFileSystemManager().readFile({
-            filePath: res.tempFilePath,
-            success: r => resolve(new Uint8Array(r.data)),
-            fail: () => reject(new Error('转换结果读取失败'))
-          })
-        },
-        fail: error =>
-          reject(new Error((error && error.errMsg) || '转换结果下载失败'))
+      wx.getFileSystemManager().readFile({
+        filePath: tempFilePath,
+        success: r => resolve(new Uint8Array(r.data)),
+        fail: () => reject(new Error('转换结果读取失败'))
       })
     })
   },
