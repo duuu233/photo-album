@@ -12,7 +12,7 @@ const toast = require('../../../utils/toast')
 
 const STATUS_TEXT = {
   progress: {
-    title: '投屏中',
+    title: '图片转码中',
     desc: '投屏过程中请不要关闭手机'
   },
   success: {
@@ -37,7 +37,7 @@ Page({
     statusBarHeight: 20,
     safeBottom: 0,
     status: 'progress',
-    title: '投屏中',
+    title: '图片转码中',
     desc: STATUS_TEXT.progress.desc,
     artImage: STATUS_ART.progress,
     deviceName: '相框',
