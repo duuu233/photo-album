@@ -203,8 +203,8 @@ Page({
             `${info.width}x${info.height} dataSize=${frameData.length}`
         )
 
-        // 本张事务：BLE 图传成功 → 才编辑投屏记录置成功(deviceUploadState=1)；任一步失败 →
-        // 回滚删掉本张刚传到设备的图，再向外抛出让整体判失败、跳到失败场景（设备失败时不写成功记录）。
+        // 本张设备事务：只有 BLE 图传失败才回滚删掉刚传到设备的图、再向外抛出让整单判失败。
+        // 图传成功后照片已物理写入相框，本张即算成功——后续写记录是后端记账，已与设备状态解耦。
         try {
           const summary = await deviceBle.uploadImage(deviceId, {
             screenType: info.screenType,
@@ -224,8 +224,19 @@ Page({
             }
           })
           console.log(`[投屏] 第 ${i + 1}/${total} 张 设备图传成功`, summary)
+        } catch (error) {
+          console.error(
+            `[投屏] 第 ${i + 1}/${total} 张 设备图传失败，回滚 index=${index}：`,
+            error
+          )
+          await this.rollbackDeviceImage(deviceId, index)
+          throw error
+        }
 
-          // 设备图传成功后才编辑投屏记录（设备失败则不调用，记录保持失败态）；失败会抛出触发本张回滚。
+        // 设备图传成功 → 才调 editUserProductImgRecord 编辑投屏记录置成功(deviceUploadState=1)，
+        // 后端按 taskId 定位记录。尽力而为：记账失败只记日志，不回滚设备、不把整单判失败，
+        // 避免设备已传成功却被误删/误判失败。
+        try {
           await api.editUserProductImgRecord({
             upirId,
             taskId,
@@ -233,15 +244,13 @@ Page({
             showError: false
           })
           console.log(
-            `[投屏] 第 ${i + 1}/${total} 张 投屏记录已置成功：upirId=${upirId} taskId=${taskId}`
+            `[投屏] 第 ${i + 1}/${total} 张 投屏记录已置成功：taskId=${taskId}`
           )
         } catch (error) {
           console.error(
-            `[投屏] 第 ${i + 1}/${total} 张 图传/记录更新失败，回滚 index=${index}：`,
+            `[投屏] 第 ${i + 1}/${total} 张 投屏记录置成功失败（设备已传成功，不影响本张）：`,
             error
           )
-          await this.rollbackDeviceImage(deviceId, index)
-          throw error
         }
 
         // 传完顺手刷新到这张（失败不影响整体）；并把该槽位记为已用，供下一张选槽位
