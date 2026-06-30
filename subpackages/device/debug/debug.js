@@ -933,6 +933,60 @@ Page({
     this.uploadFrame(frame, '上传相册图片(0x20~0x22)')
   },
 
+  // 上传手机上的 .raw 文件，直发设备（与正式投屏 result.js 的 demo.raw 直发同源）。
+  // .raw 必须是「已打包好的六色 4bpp 帧」：字节数 = 宽×高÷2（EF6-370 480×720 = 172800），
+  // 3.7 寸的横向源图旋转也已烘进文件里，这里原样发送、不旋转/不转换。
+  //
+  // 为什么用 chooseMessageFile：小程序被沙箱限制，读不了手机上任意目录的文件，
+  // 只能从「微信聊天会话」里选文件。最快的拿文件办法——电脑微信把 .raw 发给「文件传输助手」，
+  // 手机上就能在这里的选择器里选到。该 API 在体验版/正式版都可用，无需特殊权限。
+  cmdUploadLocalRaw() {
+    if (!this.ensureUploadReady()) {
+      return
+    }
+    if (!wx.chooseMessageFile || !wx.getFileSystemManager) {
+      toast.show({ title: '当前微信版本不支持选择文件', icon: 'none' })
+      return
+    }
+    const info = this.data.info
+    const expectBytes = Math.floor((info.width * info.height) / 2)
+    wx.chooseMessageFile({
+      count: 1,
+      type: 'file', // 聊天里的普通文件（非图片/视频）；.raw 归此类
+      success: res => {
+        const file = res.tempFiles && res.tempFiles[0]
+        if (!file) {
+          return
+        }
+        const name = file.name || '(未命名)'
+        // 体验/正式版无法对聊天文件按扩展名强过滤，故用「字节数 == 宽×高÷2」兜底校验，文件名仅作提示。
+        wx.getFileSystemManager().readFile({
+          filePath: file.path,
+          success: r => {
+            const data = new Uint8Array(r.data)
+            if (data.length !== expectBytes) {
+              const msg = `.raw 字节数不符：选中「${name}」${data.length} 字节，本设备 ${info.width}×${info.height} 需 ${expectBytes} 字节。请确认是该尺寸的六色 4bpp 帧（宽×高÷2）。`
+              this.appendLog({ type: 'err', text: msg })
+              this.setData({ uploadStatus: msg, uploadStatusType: 'err' })
+              toast.show({ title: '文件尺寸不符，已拦下', icon: 'none' })
+              return
+            }
+            this.appendLog({ type: 'act', text: `已读取本地 .raw：${name}，${data.length} 字节，原样直发（不旋转/不转换）` })
+            const frame = { data, width: info.width, height: info.height, dataSize: data.length }
+            this.uploadFrame(frame, '上传本地 .raw 直发(0x20~0x22)')
+          },
+          fail: err => {
+            this.appendLog({ type: 'err', text: `读取 .raw 失败：${err.errMsg || '未知错误'}` })
+            toast.show({ title: '读取文件失败', icon: 'none' })
+          }
+        })
+      },
+      fail: () => {
+        // 用户取消选择，无需提示
+      }
+    })
+  },
+
   // 上传前置检查：必须已连接且已读到设备信息（拿到屏幕尺寸/容量/掩码才能组帧头、选槽位）
   ensureUploadReady() {
     if (!this.requireDevice()) {
