@@ -1,6 +1,6 @@
 // 设备固件 OTA(DFU) 升级会话层 —— 依据《产品需求规格书》6.3.2 / 6.3.3 的自定义 DFU 协议实现。
-// 与图传(FF00 主服务、0xAA 串行帧)完全无关：OTA 走独立的 OTA 服务 FF10，控制指令与固件数据都在
-// 同一根特征 FF11(Write Without Response + Notify)上收发。
+// 与图传(FF00 主服务、0xAA 串行帧)完全无关：OTA 走独立的 OTA 服务 FF10。
+// v1.4 文档定义 FF11 为控制特征、FF12 为数据特征；旧固件若只暴露 FF11，则回退为单特征收发。
 //
 // 协议要点：
 //   1) 校验：每个 APP→设备的包，末尾 1 字节累加校验 checksum = 前面所有字节之和 & 0xFF（不是 CRC16）。
@@ -24,7 +24,10 @@ const imageCodec = require('./image-codec')
 
 // ── 协议常量 ──────────────────────────────────────────────
 const OTA_SERVICE_UUID = 'FF10'
-const OTA_CHAR_UUID = 'FF11' // 控制 + 数据同一特征
+const OTA_CHAR_CONTROL_UUID = 'FF11'
+const OTA_CHAR_DATA_UUID = 'FF12'
+const OTA_CHAR_ALT_CONTROL_UUID = 'FF13'
+const OTA_CHAR_UUID = OTA_CHAR_CONTROL_UUID // 兼容旧导出名
 
 const OP = {
   START: 0xf1, // APP→设备：开始
@@ -145,6 +148,28 @@ function pickWriteType(char) {
   return props.write ? 'write' : ''
 }
 
+function writeTypeVariants(char) {
+  const props = (char && char.properties) || {}
+  const list = []
+  if (props.writeNoResponse) {
+    list.push('writeNoResponse')
+  }
+  if (props.write) {
+    list.push('write')
+  }
+  return list
+}
+
+function isUnsupportedWriteError(error) {
+  const message = ((error && error.message) || '').toLowerCase()
+  return (
+    message.indexOf('10007') > -1 ||
+    message.indexOf('not support') > -1 ||
+    message.indexOf('property') > -1 ||
+    message.indexOf('characteristics error') > -1
+  )
+}
+
 // 由 MTU 推算每个 DATA 包能装的固件字节数：
 //   单次可写 = MTU - 3(ATT 头)；DATA 帧固定开销 = 4（操作码1 + 包序号2 + 校验1）。
 // 上限 244（MTU=251 时 248-4=244，见文档）。OTA_TODO(c)：若固件要求 OTA 固定包长，把这里改成定值。
@@ -176,16 +201,51 @@ function buildDataFrame(seq, chunk) {
 // ── 解帧（设备 → APP，OTA_TODO(c) 真机抓包后对齐字段布局）─────
 // START ACK：按 [0xF1, RESULT, MTU(2,小端), PRN(1), checksum] 解析，对取值做合法性校验，越界回落默认。
 function parseStartAck(bytes) {
-  const result = bytes.length > 1 ? bytes[1] : 0x00
-  let mtu = bytes.length >= 4 ? readUint16LE(bytes, 2) : 0
-  let prn = bytes.length >= 5 ? bytes[4] : 0
+  const offset = bytes[0] === OP.START ? 1 : 0
+  const candidates = []
+
+  if (bytes.length >= offset + 4) {
+    candidates.push({
+      result: bytes[offset],
+      mtu: readUint16LE(bytes, offset + 1),
+      prn: bytes[offset + 3]
+    })
+  }
+  if (bytes.length >= offset + 3) {
+    candidates.push({
+      result: 0x00,
+      mtu: readUint16LE(bytes, offset),
+      prn: bytes[offset + 2]
+    })
+  }
+
+  const matched = candidates.find(
+    item =>
+      item.result >= 0x00 &&
+      item.result <= 0x0b &&
+      item.mtu >= 23 &&
+      item.mtu <= 517 &&
+      item.prn >= 1 &&
+      item.prn <= 64
+  )
+
+  const valid = !!matched || bytes[0] === OP.START
+  let result = matched ? matched.result : bytes.length > offset ? bytes[offset] : 0x00
+  let mtu = matched ? matched.mtu : 0
+  let prn = matched ? matched.prn : 0
   if (!(mtu >= 23 && mtu <= 517)) {
     mtu = 0
   }
   if (!(prn >= 1 && prn <= 64)) {
     prn = 0
   }
-  return { result, mtu, prn }
+  return {
+    result,
+    mtu,
+    prn,
+    valid,
+    rawHex: bytesToHex(bytes)
+  }
 }
 
 // DATA ACK：按 [0xF2, SEQ(2,小端), checksum] 取「已连续接收的最后包号」。
@@ -209,11 +269,11 @@ function ensureGlobalListener() {
   if (wx.onBLECharacteristicValueChange) {
     wx.onBLECharacteristicValueChange(res => {
       const session = sessions[res.deviceId]
-      if (!session || res.characteristicId !== session.charId) {
+      if (!session || !isSessionCharacteristic(session, res.characteristicId)) {
         return // 非本模块管理的设备/特征（如 FF00 图传通知）一律忽略
       }
       const bytes = Array.from(new Uint8Array(res.value || new ArrayBuffer(0)))
-      reportFrame('RX', res.deviceId, bytes)
+      reportFrame('RX', res.deviceId, bytes, res.characteristicId)
       dispatchNotification(session, bytes)
     })
   }
@@ -227,6 +287,16 @@ function ensureGlobalListener() {
   }
 }
 
+function isSessionCharacteristic(session, characteristicId) {
+  return (
+    characteristicId === session.controlCharId ||
+    characteristicId === session.dataCharId ||
+    characteristicId === session.altControlCharId ||
+    characteristicId === session.charId ||
+    (session.notifyCharIds || []).indexOf(characteristicId) > -1
+  )
+}
+
 // 把一条通知派发到等待者：START ACK / DATA ACK / 最终结果。
 function dispatchNotification(session, bytes) {
   if (!bytes.length) {
@@ -234,8 +304,12 @@ function dispatchNotification(session, bytes) {
   }
   const op = bytes[0]
 
-  if (op === OP.START) {
+  if (op === OP.START || (session.startWaiter && op !== OP.DATA && op !== OP.RESULT)) {
     const ack = parseStartAck(bytes)
+    if (!ack.valid) {
+      console.warn('[OTA] 忽略非 START 应答通知：', ack.rawHex)
+      return
+    }
     if (session.startWaiter) {
       const waiter = session.startWaiter
       session.startWaiter = null
@@ -347,19 +421,40 @@ async function discoverOtaService(deviceId, attempts = 6, interval = 250) {
   return { service: null, uuids: lastUuids }
 }
 
-async function discoverOtaChar(deviceId, serviceId, attempts = 4, interval = 200) {
+async function discoverOtaChars(deviceId, serviceId, attempts = 4, interval = 200) {
   for (let i = 0; i < attempts; i++) {
     const res = await wxp(wx.getBLEDeviceCharacteristics, { deviceId, serviceId })
     const chars = res.characteristics || []
-    const char = chars.find(c => matchUuid(c.uuid, OTA_CHAR_UUID))
-    if (char) {
-      return char
+    const controlChar = chars.find(c => matchUuid(c.uuid, OTA_CHAR_CONTROL_UUID))
+    const dataChar = chars.find(c => matchUuid(c.uuid, OTA_CHAR_DATA_UUID))
+    const altControlChar = chars.find(c => matchUuid(c.uuid, OTA_CHAR_ALT_CONTROL_UUID))
+    if (controlChar) {
+      return {
+        controlChar,
+        dataChar: dataChar || controlChar,
+        altControlChar,
+        chars
+      }
     }
     if (i < attempts - 1) {
       await sleep(interval)
     }
   }
-  return null
+  return { controlChar: null, dataChar: null, altControlChar: null, chars: [] }
+}
+
+async function enableNotifyIfSupported(deviceId, serviceId, char) {
+  const props = (char && char.properties) || {}
+  if (!(props.notify || props.indicate)) {
+    return false
+  }
+  await wxp(wx.notifyBLECharacteristicValueChange, {
+    deviceId,
+    serviceId,
+    characteristicId: char.uuid,
+    state: true
+  })
+  return true
 }
 
 // 建立 OTA 连接并发现 FF10/FF11、打开通知、协商 MTU，缓存会话。已就绪直接复用。
@@ -379,29 +474,53 @@ async function ensureOtaConnection(deviceId) {
     throw new Error('未发现设备 OTA 服务(FF10)')
   }
 
-  const char = await discoverOtaChar(deviceId, service.uuid)
-  if (!char) {
-    throw new Error('未找到 OTA 特征(FF11)')
+  const found = await discoverOtaChars(deviceId, service.uuid)
+  const controlChar = found.controlChar
+  const dataChar = found.dataChar
+  const altControlChar = found.altControlChar
+  if (!controlChar) {
+    throw new Error('未找到 OTA 控制特征(FF11)')
   }
-  // OTA_TODO(a)：打印实际特征 UUID/属性，便于与文档常量核对（write/writeNoResponse/notify）。
-  console.log('[OTA] FF11 特征：', char.uuid, char.properties)
+  console.log('[OTA] 特征列表：', (found.chars || []).map(char => ({
+    uuid: char.uuid,
+    properties: char.properties
+  })))
 
-  const props = char.properties || {}
-  if (props.notify || props.indicate) {
-    await wxp(wx.notifyBLECharacteristicValueChange, {
-      deviceId,
-      serviceId: service.uuid,
-      characteristicId: char.uuid,
-      state: true
-    })
+  const notifyCharIds = []
+  if (await enableNotifyIfSupported(deviceId, service.uuid, controlChar)) {
+    notifyCharIds.push(controlChar.uuid)
+  }
+  if (dataChar.uuid !== controlChar.uuid) {
+    if (await enableNotifyIfSupported(deviceId, service.uuid, dataChar)) {
+      notifyCharIds.push(dataChar.uuid)
+    }
+  }
+  if (
+    altControlChar &&
+    altControlChar.uuid !== controlChar.uuid &&
+    altControlChar.uuid !== dataChar.uuid
+  ) {
+    if (await enableNotifyIfSupported(deviceId, service.uuid, altControlChar)) {
+      notifyCharIds.push(altControlChar.uuid)
+    }
   }
 
   const mtu = await negotiateMtu(deviceId)
   const session = {
     deviceId,
     serviceId: service.uuid,
-    charId: char.uuid,
-    writeType: pickWriteType(char),
+    charId: controlChar.uuid,
+    controlCharId: controlChar.uuid,
+    dataCharId: dataChar.uuid,
+    altControlCharId: altControlChar ? altControlChar.uuid : '',
+    notifyCharIds,
+    writeType: pickWriteType(controlChar),
+    controlWriteType: pickWriteType(controlChar),
+    dataWriteType: pickWriteType(dataChar),
+    altControlWriteType: pickWriteType(altControlChar),
+    controlWriteTypes: writeTypeVariants(controlChar),
+    dataWriteTypes: writeTypeVariants(dataChar),
+    altControlWriteTypes: writeTypeVariants(altControlChar),
     mtu,
     deviceMtu: DEFAULT_DEVICE_MTU,
     prn: DEFAULT_PRN,
@@ -418,23 +537,42 @@ async function ensureOtaConnection(deviceId) {
 }
 
 // 裸写一帧到 FF11（带「发送缓冲忙就退避重试」：无应答写在缓冲暂满时会失败，稍等再试）。
-async function writeFrame(session, bytes) {
+async function writeFrame(session, bytes, target, writeTypeOverride) {
+  const useDataChar = target === 'data'
+  const useAltControlChar = target === 'altControl'
+  const characteristicId = useDataChar
+    ? session.dataCharId
+    : useAltControlChar
+      ? session.altControlCharId
+      : session.controlCharId
+  const writeType =
+    writeTypeOverride !== undefined
+      ? writeTypeOverride
+      : useDataChar
+        ? session.dataWriteType
+        : useAltControlChar
+          ? session.altControlWriteType
+          : session.controlWriteType
+
   let attempt = 0
   for (;;) {
     try {
-      reportFrame('TX', session.deviceId, bytes)
+      reportFrame('TX', session.deviceId, bytes, characteristicId)
       const params = {
         deviceId: session.deviceId,
         serviceId: session.serviceId,
-        characteristicId: session.charId,
+        characteristicId,
         value: toArrayBuffer(bytes)
       }
-      if (session.writeType) {
-        params.writeType = session.writeType
+      if (writeType) {
+        params.writeType = writeType
       }
       await wxp(wx.writeBLECharacteristicValue, params)
       return
     } catch (error) {
+      if (isUnsupportedWriteError(error)) {
+        throw error
+      }
       if (++attempt > 4) {
         throw error
       }
@@ -514,35 +652,172 @@ function waitFinalResult(session, timeout) {
 }
 
 // ── START 握手 ────────────────────────────────────────────
-async function doStart(session, size, options) {
-  const ackPromise = new Promise((resolve, reject) => {
-    session.startWaiter = resolve
-    setTimeout(() => {
-      if (session.startWaiter === resolve) {
+function startTimeoutError(session, attempt) {
+  const writeType =
+    attempt && attempt.writeType ? attempt.writeType : 'default'
+  const objType =
+    attempt && Number.isInteger(attempt.objType)
+      ? '0x' + attempt.objType.toString(16).padStart(2, '0')
+      : '--'
+
+  return new Error(
+    'OTA START 应答超时' +
+      `（target=${(attempt && attempt.target) || '--'}, writeType=${writeType}, objType=${objType}, service=${session.serviceId}, control=${session.controlCharId}, data=${session.dataCharId}, altControl=${session.altControlCharId || 'none'}, notify=${(session.notifyCharIds || []).join('|') || 'none'}）`
+  )
+}
+
+function createStartAckWaiter(session, timeout, attempt) {
+  let timer = null
+  let waiter = null
+  const promise = new Promise((resolve, reject) => {
+    waiter = ack => {
+      clearTimeout(timer)
+      if (session.startWaiter === waiter) {
         session.startWaiter = null
-        reject(new Error('OTA START 应答超时'))
       }
-    }, options.startTimeout || 5000)
+      resolve(ack)
+    }
+    session.startWaiter = waiter
+    timer = setTimeout(() => {
+      if (session.startWaiter === waiter) {
+        session.startWaiter = null
+        reject(startTimeoutError(session, attempt))
+      }
+    }, timeout)
   })
 
-  const objType = Number.isInteger(options.objType) ? options.objType : OBJ_TYPE_FIRMWARE
-  await writeFrame(session, buildStartFrame(size, objType))
-  const ack = await ackPromise
+  return {
+    promise,
+    cancel() {
+      clearTimeout(timer)
+      if (session.startWaiter === waiter) {
+        session.startWaiter = null
+      }
+    }
+  }
+}
 
+function uniqueNumbers(list) {
+  const out = []
+  ;(list || []).forEach(value => {
+    if (Number.isInteger(value) && out.indexOf(value) === -1) {
+      out.push(value)
+    }
+  })
+  return out
+}
+
+function buildStartAttempts(session, options) {
+  const objTypes = Number.isInteger(options.objType)
+    ? [options.objType]
+    : uniqueNumbers([OBJ_TYPE_FIRMWARE, 0x01])
+  const targets = ['control']
+
+  if (session.dataCharId && session.dataCharId !== session.controlCharId) {
+    targets.push('data')
+  }
+  if (
+    session.altControlCharId &&
+    session.altControlCharId !== session.controlCharId &&
+    session.altControlCharId !== session.dataCharId
+  ) {
+    targets.push('altControl')
+  }
+
+  const attempts = []
+  targets.forEach(target => {
+    const writeTypes =
+      target === 'data'
+        ? session.dataWriteTypes
+        : target === 'altControl'
+          ? session.altControlWriteTypes
+          : session.controlWriteTypes
+    if (!writeTypes || !writeTypes.length) {
+      return
+    }
+    objTypes.forEach(objType => {
+      writeTypes.forEach(writeType => {
+        attempts.push({ target, writeType, objType })
+      })
+    })
+  })
+  return attempts
+}
+
+function applyStartAck(session, ack) {
   if (!ack) {
     throw new Error(session.aborted || 'OTA 连接已断开')
   }
   if (ack.result !== 0x00) {
-    throw new Error('OTA 启动被拒绝：' + otaResultText(ack.result))
+    throw new Error(
+      'OTA 启动被拒绝：' +
+        otaResultText(ack.result) +
+        (ack.rawHex ? `（ACK=${ack.rawHex}）` : '')
+    )
   }
 
-  // 设备回报的 PRN/MTU 若合法则采用；每包大小以「协商 MTU 与设备 MTU 取小」重算。
   if (ack.prn) {
     session.prn = ack.prn
   }
   const effectiveMtu = Math.min(session.mtu, ack.mtu || session.deviceMtu)
   session.chunkSize = chunkFromMtu(effectiveMtu)
-  return ack
+}
+
+async function doStart(session, size, options) {
+  const attempts = buildStartAttempts(session, options)
+  const timeout = Number.isFinite(options.startTimeout)
+    ? options.startTimeout
+    : attempts.length > 1
+      ? 2500
+      : 5000
+  let lastError = null
+  let timeoutError = null
+
+  if (!attempts.length) {
+    throw new Error(
+      'OTA 特征不支持写入：FF11/FF12/FF13 均未声明 write 或 writeNoResponse，请检查固件 GATT 属性。'
+    )
+  }
+
+  for (let i = 0; i < attempts.length; i++) {
+    const attempt = attempts[i]
+    const frame = buildStartFrame(size, attempt.objType)
+    const waiter = createStartAckWaiter(session, timeout, attempt)
+
+    console.log('[OTA] START 尝试：', {
+      target: attempt.target,
+      writeType: attempt.writeType,
+      objType: attempt.objType,
+      frame: bytesToHex(frame)
+    })
+
+    try {
+      await writeFrame(session, frame, attempt.target, attempt.writeType)
+      const ack = await waiter.promise
+      applyStartAck(session, ack)
+      console.log('[OTA] START 应答：', ack)
+      return ack
+    } catch (error) {
+      waiter.cancel()
+      if (!isUnsupportedWriteError(error)) {
+        lastError = error
+        if (error && error.message && error.message.indexOf('OTA START 应答超时') > -1) {
+          timeoutError = error
+        }
+      }
+      console.warn('[OTA] START 尝试失败：', error && error.message)
+    }
+  }
+
+  if (timeoutError) {
+    throw timeoutError
+  }
+  if (lastError) {
+    throw lastError
+  }
+  throw new Error(
+    'OTA START 写入失败：所有可写特征/写入类型均失败，请查看 [OTA] 特征列表与 START 尝试日志。'
+  )
 }
 
 // ── 窗口化数据传输 ─────────────────────────────────────────
@@ -587,7 +862,7 @@ async function transferData(session, bytes, options) {
 
     for (let seq = nextSeq; seq < windowEnd && !session.finalResult; seq++) {
       const chunk = bytes.subarray(seq * chunkSize, Math.min((seq + 1) * chunkSize, total))
-      await writeFrame(session, buildDataFrame(seq, chunk))
+      await writeFrame(session, buildDataFrame(seq, chunk), 'data')
       if (sendPace > 0) {
         await sleep(sendPace)
       }
@@ -866,6 +1141,9 @@ module.exports = {
   OP,
   OTA_SERVICE_UUID,
   OTA_CHAR_UUID,
+  OTA_CHAR_CONTROL_UUID,
+  OTA_CHAR_DATA_UUID,
+  OTA_CHAR_ALT_CONTROL_UUID,
   OBJ_TYPE_FIRMWARE,
   DEFAULT_PRN,
   MIN_FW_SIZE,

@@ -89,6 +89,41 @@ function logClearDeviceData(traceId, label, data) {
   console.log('[一键清空][' + traceId + '] ' + label + ':', data)
 }
 
+function textValue(value) {
+  return String(value || '').trim()
+}
+
+function isUpdateFlag(device) {
+  return Number(device && device.isUpdate) === 1
+}
+
+function isBinFirmwareUrl(url) {
+  return /\.bin(?:[?#]|$)/i.test(textValue(url))
+}
+
+function getBleDeviceId(device) {
+  return textValue(device && (device.deviceId || device.bleDeviceId))
+}
+
+function getOtaValidationError(device) {
+  if (!isUpdateFlag(device)) {
+    return '当前已是最新版本'
+  }
+
+  const version = textValue(device && device.newVersionNo)
+  const url = textValue(device && device.downloadPath)
+
+  if (!version || !url) {
+    return '检测到设备可更新，但缺少新版本号或固件下载地址，请稍后重试。'
+  }
+
+  if (!isBinFirmwareUrl(url)) {
+    return '固件下载地址不是有效的 .bin 文件，请稍后重试。'
+  }
+
+  return ''
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -188,7 +223,7 @@ Page({
           intervalHours: info.intervalSeconds
             ? Math.max(1, Math.round(info.intervalSeconds / 3600))
             : device.intervalHours,
-          newVersionNo: info.newVersionNo || device.newVersionNo
+          firmwareVersion: info.firmwareVersion || device.firmwareVersion
         })
       } catch (error) {
         // 详情展示不因刷新蓝牙状态失败而中断。
@@ -218,7 +253,12 @@ Page({
           ? `${device.usedMemory}/${device.totalMemory}`
           : '--',
       macAddress: device && device.macAddress ? device.macAddress : '--',
-      newVersionNo: device && device.newVersionNo ? device.newVersionNo : '--',
+      newVersionNo:
+        device && device.newVersionNo
+          ? device.newVersionNo
+          : device && device.firmwareVersion
+            ? device.firmwareVersion
+            : '--',
       playbackLabel: getPlaybackLabel(device),
       intervalIndex: intervalIndex > -1 ? intervalIndex : 1,
       loading: false,
@@ -464,7 +504,7 @@ Page({
         intervalHours: info.intervalSeconds
           ? Math.max(1, Math.round(info.intervalSeconds / 3600))
           : device.intervalHours,
-        newVersionNo: info.newVersionNo || device.newVersionNo
+        firmwareVersion: info.firmwareVersion || device.firmwareVersion
       })
       app.setSelectedDevice(updated)
 
@@ -480,7 +520,7 @@ Page({
           ? `${updated.usedMemory}/${updated.totalMemory}`
           : '--',
         playbackLabel: getPlaybackLabel(updated),
-        newVersionNo: updated.newVersionNo || '--'
+        newVersionNo: updated.newVersionNo || updated.firmwareVersion || '--'
       })
       toast.show({ title: '已连接', icon: 'none' })
     } catch (error) {
@@ -528,8 +568,38 @@ Page({
   },
 
   goOtaUpgrade() {
+    const device = this.data.device
+    if (!device) {
+      return
+    }
+
+    const validationError = getOtaValidationError(device)
+    if (validationError) {
+      wx.showModal({
+        title: 'OTA升级',
+        content: validationError,
+        showCancel: false,
+        confirmText: '知道了'
+      })
+      return
+    }
+
+    const bleDeviceId = getBleDeviceId(device)
+    if (!(bleDeviceId && deviceBle.isConnected(bleDeviceId))) {
+      toast.show({ title: '请先连接设备', icon: 'none' })
+      return
+    }
+
+    app.setSelectedDevice(
+      Object.assign({}, device, {
+        deviceId: bleDeviceId,
+        bleDeviceId,
+        connected: true
+      })
+    )
+
     wx.navigateTo({
-      url: `/subpackages/device/ota/ota?id=${this.data.id}`
+      url: `/subpackages/device/ota/ota?id=${this.data.id}&auto=1`
     })
   },
 

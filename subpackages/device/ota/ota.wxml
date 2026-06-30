@@ -25,9 +25,8 @@
         <view class="upgrade-head">
           <view>
             <view class="upgrade-title">固件版本 {{latestVersion}}</view>
-            <view class="upgrade-subtitle">升级包 {{packageSizeText}} · 最低电量 {{minBatteryText}}</view>
+            <view class="upgrade-subtitle">升级包 {{packageSizeText}}</view>
           </view>
-          <view class="battery-text">电量 {{batteryText}}</view>
         </view>
 
         <view class="progress-track">

@@ -101,10 +101,11 @@ Page({
     }
 
     this.setData({
-      guides: this.data.guides.map(item => ({
-        ...item,
-        open: item.id === id ? !item.open : item.open
-      }))
+      guides: this.data.guides.map(item =>
+        Object.assign({}, item, {
+          open: item.id === id ? !item.open : item.open
+        })
+      )
     })
   },
 

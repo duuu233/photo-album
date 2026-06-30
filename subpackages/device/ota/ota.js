@@ -25,12 +25,91 @@ function formatSize(bytes) {
   return `${value}B`
 }
 
-function hasEnoughBattery(device, firmware) {
-  if (!device || typeof device.battery !== 'number') {
-    return true
+function textValue(value) {
+  return String(value || '').trim()
+}
+
+function isUpdateFlag(device) {
+  return Number(device && device.isUpdate) === 1
+}
+
+function isBinFirmwareUrl(url) {
+  return /\.bin(?:[?#]|$)/i.test(textValue(url))
+}
+
+function firmwareFileName(url, version) {
+  const cleanUrl = textValue(url).split('?')[0].split('#')[0]
+  const parts = cleanUrl.split('/')
+  return parts[parts.length - 1] || `${version || 'firmware'}.bin`
+}
+
+function sameDevice(a, b) {
+  if (!a || !b) {
+    return false
+  }
+  const aId = textValue(a.id || a.userProductId)
+  const bId = textValue(b.id || b.userProductId)
+  return !!(aId && bId && aId === bId)
+}
+
+function mergeSelectedDevice(device) {
+  const selected = (app.globalData && app.globalData.selectedDevice) || null
+  let merged = device
+
+  if (sameDevice(device, selected)) {
+    merged = Object.assign({}, device, {
+      deviceId: device.deviceId || selected.deviceId || selected.bleDeviceId,
+      bleDeviceId:
+        device.bleDeviceId || selected.bleDeviceId || selected.deviceId,
+      battery:
+        typeof device.battery === 'number' ? device.battery : selected.battery,
+      firmwareVersion: device.firmwareVersion || selected.firmwareVersion
+    })
   }
 
-  return device.battery >= (firmware.minBattery || 20)
+  const bleDeviceId = textValue(
+    merged && (merged.deviceId || merged.bleDeviceId)
+  )
+  return Object.assign({}, merged, {
+    connected: !!(bleDeviceId && deviceBle.isConnected(bleDeviceId))
+  })
+}
+
+function buildFirmwareFromDevice(device) {
+  const version = textValue(device && device.newVersionNo)
+  const url = textValue(device && device.downloadPath)
+  const hasUpdate = isUpdateFlag(device)
+  const hasValidPackage = hasUpdate && !!version && !!url && isBinFirmwareUrl(url)
+  let invalidReason = ''
+
+  if (hasUpdate && (!version || !url)) {
+    invalidReason = '检测到可更新状态，但缺少新版本号或固件下载地址，请稍后重试。'
+  } else if (hasUpdate && !isBinFirmwareUrl(url)) {
+    invalidReason = '固件下载地址不是有效的 .bin 文件，请稍后重试。'
+  }
+
+  const firmware = {
+    hasUpdate: hasValidPackage,
+    invalidUpdate: hasUpdate && !hasValidPackage,
+    invalidReason,
+    currentVersion:
+      textValue(device && (device.firmwareVersion || device.currentVersion)) ||
+      '--',
+    latestVersion: version || '--',
+    bleDeviceId: textValue(device && (device.deviceId || device.bleDeviceId)),
+    releaseNotes: hasValidPackage ? [`发现新版本：${version}`] : []
+  }
+
+  if (hasValidPackage) {
+    firmware.package = {
+      version,
+      fileName: firmwareFileName(url, version),
+      packageUrl: url,
+      sizeBytes: Number(device.firmwareSize || device.sizeBytes) || 0
+    }
+  }
+
+  return firmware
 }
 
 Page({
@@ -63,6 +142,8 @@ Page({
     // test=1：本地固件测试流程；dry=1：强制干跑（不连蓝牙，仅校验编码）。
     this._testMode = options.test === '1' || options.test === 'true'
     this._forceDryRun = options.dry === '1' || options.dry === 'true'
+    this._autoStart = options.auto === '1' || options.auto === 'true'
+    this._autoStartConsumed = false
     this.setData(Object.assign(system.getLayoutMetrics(), {
       id: options.id || '',
       testMode: this._testMode
@@ -170,16 +251,23 @@ Page({
   deriveViewData(device, firmware) {
     const pkg = firmware && firmware.package ? firmware.package : null
     const batteryText = device && typeof device.battery === 'number' ? `${device.battery}%` : '--'
-    const minBattery = firmware ? firmware.minBattery || 20 : 20
     const hasPackage = !!(firmware && firmware.hasUpdate && pkg)
     const bleDeviceId = (firmware && firmware.bleDeviceId) || (device && device.deviceId) || ''
-    let canUpgrade = hasPackage && !!bleDeviceId && hasEnoughBattery(device, firmware) && device && device.connected !== false
+    let canUpgrade = hasPackage && !!bleDeviceId && device && device.connected !== false
     let statusText = '已是最新'
     let statusClass = 'is-latest'
     let actionText = '已是最新'
     let errorMessage = ''
 
-    if (hasPackage) {
+    if (firmware && firmware.invalidUpdate) {
+      canUpgrade = false
+      statusText = '无法升级'
+      statusClass = 'is-error'
+      actionText = '无法升级'
+      errorMessage =
+        firmware.invalidReason ||
+        '检测到设备可更新，但固件版本号或下载地址无效，请稍后重试。'
+    } else if (hasPackage) {
       statusText = '发现新版本'
       statusClass = 'is-available'
       actionText = '立即升级'
@@ -197,12 +285,6 @@ Page({
       statusClass = 'is-error'
       actionText = '设备未连接'
       errorMessage = '请先连接设备，并在升级过程中保持设备在线。'
-    } else if (hasPackage && !hasEnoughBattery(device, firmware)) {
-      canUpgrade = false
-      statusText = '电量不足'
-      statusClass = 'is-error'
-      actionText = '电量不足'
-      errorMessage = `设备电量需不低于 ${minBattery}%。`
     }
 
     return {
@@ -213,9 +295,9 @@ Page({
       errorMessage,
       currentVersion: firmware && firmware.currentVersion ? firmware.currentVersion : (device && device.firmwareVersion) || '--',
       latestVersion: firmware && firmware.latestVersion ? firmware.latestVersion : '--',
-      packageSizeText: pkg ? formatSize(pkg.sizeBytes) : '--',
+      packageSizeText: pkg && pkg.sizeBytes ? formatSize(pkg.sizeBytes) : (pkg ? '下载后确认' : '--'),
       batteryText,
-      minBatteryText: `${minBattery}%`,
+      minBatteryText: '--',
       releaseNotes: firmware && Array.isArray(firmware.releaseNotes) ? firmware.releaseNotes : []
     }
   },
@@ -242,21 +324,35 @@ Page({
 
     try {
       await app.ensureLogin()
-      const [device, firmware] = await Promise.all([
-        api.getDeviceDetail(this.data.id),
-        api.getDeviceFirmware(this.data.id)
-      ])
+      let device = await api.getDeviceDetail(this.data.id)
 
       if (!device) {
         throw new Error('设备不存在')
       }
 
+      device = mergeSelectedDevice(device)
+      const firmware = buildFirmwareFromDevice(device)
+      const viewData = this.deriveViewData(device, firmware)
+
       this.setData(Object.assign({
         loading: false,
         device,
         firmware,
-        state: firmware.hasUpdate ? 'available' : 'latest'
-      }, this.deriveViewData(device, firmware)))
+        state: firmware.invalidUpdate
+          ? 'invalid'
+          : firmware.hasUpdate
+            ? 'available'
+            : 'latest'
+      }, viewData))
+
+      if (
+        this._autoStart &&
+        !this._autoStartConsumed &&
+        viewData.canUpgrade
+      ) {
+        this._autoStartConsumed = true
+        setTimeout(() => this.runUpgrade(), 80)
+      }
     } catch (error) {
       this.setData({
         loading: false,
@@ -292,17 +388,7 @@ Page({
       return
     }
 
-    wx.showModal({
-      title: this._testMode ? '本地固件升级测试' : 'OTA升级',
-      content: '升级时请保持设备供电、手机屏幕常亮，不要切换到后台。确认开始升级？',
-      confirmText: '开始升级',
-      confirmColor: '#ff6a20',
-      success: res => {
-        if (res.confirm) {
-          this.runUpgrade()
-        }
-      }
-    })
+    this.runUpgrade()
   },
 
   // 是否走干跑：强制干跑，或（本地测试包且设备未连接）。
@@ -380,7 +466,7 @@ Page({
           version: firmware.latestVersion,
           size: result.size,
           crc32: result.crc32
-        })
+        }).catch(() => {})
 
         const updatedDevice = Object.assign({}, this.data.device, {
           firmwareVersion: firmware.latestVersion,
@@ -389,6 +475,8 @@ Page({
         const updatedFirmware = Object.assign({}, firmware, {
           currentVersion: firmware.latestVersion,
           hasUpdate: false,
+          invalidUpdate: false,
+          invalidReason: '',
           package: null
         })
 

@@ -907,7 +907,8 @@ function prefixDeviceError(error) {
 
 // 包裹设备方法：同步抛出或 Promise 拒绝的错误都补上「设备-」前缀
 function wrapDevice(fn) {
-  return function (...args) {
+  return function () {
+    const args = Array.prototype.slice.call(arguments)
     let ret
     try {
       ret = fn.apply(this, args)

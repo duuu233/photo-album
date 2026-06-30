@@ -88,6 +88,18 @@ function normalizeDevice(device = {}) {
     0
   )
   const intervalSeconds = normalizeNumber(device.intervalSeconds, 0)
+  const isUpdate = normalizeNumber(device.isUpdate, 0)
+  const newVersionNo = firstValue(
+    device.newVersionNo,
+    device.latestVersion,
+    device.versionNo
+  )
+  const downloadPath = firstValue(
+    device.downloadPath,
+    device.packageUrl,
+    device.firmwareUrl,
+    device.url
+  )
 
   return Object.assign({}, device, {
     id: String(firstValue(userProductId, productDeviceId, bleDeviceId)),
@@ -123,6 +135,10 @@ function normalizeDevice(device = {}) {
       device.intervalHours,
       intervalSeconds ? Math.max(1, Math.round(intervalSeconds / 3600)) : 2
     ),
+    isUpdate,
+    hasUpdate: isUpdate === 1,
+    newVersionNo,
+    downloadPath,
     carouselEnabled: device.carouselEnabled !== false
   })
 }
