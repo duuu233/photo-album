@@ -874,6 +874,14 @@ async function transferData(session, bytes, options) {
       break // 设备已收齐并给出最终结果（末尾不足 PRN 的尾包会直接走 0xF3，而非 DATA ACK）
     }
 
+    // 尾窗特判：最后一包（不足 PRN 的残包）设备不会回 DATA ACK——它要收满固件大小后才直接回 0xF3。
+    // 若把"没等到 ACK"当停滞去重发，会把已收满的设备再喂一遍尾包 → 累计字节数超过固件大小 → 设备判错并断开
+    // （表现为卡在 97% 反复"补发第 N 包"后"设备连接已断开"）。故最后一包一旦发出，就跳出发送循环，
+    // 交给下方 waitFinalResult 去等 0xF3 / 设备重启，绝不重发尾包。
+    if (windowEnd >= totalPackets) {
+      break
+    }
+
     try {
       await waitAckAdvanceOrFinal(session, nextSeq - 1, 600)
     } catch (error) {
@@ -914,13 +922,32 @@ async function transferData(session, bytes, options) {
 
   // 数据已全部送达：APP 不发 END，等设备自行算 CRC32 + 写 BootSetting 后回 0xF3。
   emit(onProgress, { phase: 'verifying', percent: 99, sent: total, total, message: '写入完成，等待设备校验' })
-  const final = await waitFinalResult(session, options.finalTimeout || 10000)
+
+  let final = null
+  try {
+    final = await waitFinalResult(session, options.finalTimeout || 10000)
+  } catch (error) {
+    // 数据 100% 发完后设备断开：DFU 固件收满、写好 BootSetting 后通常立即重启，表现为断连，
+    // 可能来不及/丢失 0xF3。视为「已发送完毕、设备重启中」，但不谎报"确认成功"——请到设备端核对版本。
+    if (/断开/.test((error && error.message) || '')) {
+      emit(onProgress, {
+        phase: 'done',
+        percent: 100,
+        sent: total,
+        total,
+        message: '数据已全部发送，设备已断开——通常表示已写入并重启进入新固件。请在设备端确认固件版本是否已更新。'
+      })
+      return { totalPackets, mtu: session.mtu, chunkSize, rebooted: true, confirmed: false }
+    }
+    throw error // 校验超时(收到不完整/设备静默)等非断连错误照常上抛
+  }
+
   if (final.result !== 0x00) {
     throw new Error('设备校验失败：' + otaResultText(final.result))
   }
 
   emit(onProgress, { phase: 'done', percent: 100, sent: total, total, message: '升级完成，设备即将重启' })
-  return { totalPackets, mtu: session.mtu, chunkSize }
+  return { totalPackets, mtu: session.mtu, chunkSize, confirmed: true }
 }
 
 // 进度百分比：传输阶段占 15%~98%。

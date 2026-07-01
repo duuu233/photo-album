@@ -459,6 +459,11 @@ Page({
         return
       }
 
+      // 设备收满固件后会立即重启、可能来不及回 0xF3：此时 ota-ble 返回 confirmed:false，
+      // 表示"数据已全部发送但未拿到设备的显式成功应答"。UI 如实提示核对版本，不谎报"确认完成"。
+      const unconfirmed = result && result.confirmed === false
+      const doneText = unconfirmed ? '数据已发送，设备重启中，请确认固件版本' : '升级完成'
+
       // 真实升级：测试流程不回报后台（无对应设备记录）；正常流程才上报结果。
       if (!this._testMode) {
         await api.reportDeviceFirmwareUpgrade(this.data.id, {
@@ -489,16 +494,16 @@ Page({
           firmware: updatedFirmware,
           state: 'success',
           progressPercent: 100,
-          progressText: '升级完成',
-          statusText: '升级完成',
+          progressText: doneText,
+          statusText: doneText,
           statusClass: 'is-latest'
         }, this.deriveViewData(updatedDevice, updatedFirmware)))
       } else {
         this.setData({
           state: 'success',
           progressPercent: 100,
-          progressText: `升级完成（${result.size} 字节 / ${result.totalPackets} 包）`,
-          statusText: '测试完成',
+          progressText: `${doneText}（${result.size} 字节 / ${result.totalPackets} 包）`,
+          statusText: unconfirmed ? '请确认版本' : '测试完成',
           statusClass: 'is-latest',
           canUpgrade: false,
           actionText: '已完成'
@@ -506,7 +511,7 @@ Page({
       }
 
       toast.show({
-        title: dryRun ? '干跑完成' : '升级完成',
+        title: dryRun ? '干跑完成' : doneText,
         icon: 'none'
       })
     } catch (error) {
