@@ -159,6 +159,24 @@ function describeOtaFrame(record) {
   return '未识别应答'
 }
 
+// 0xF3 最终结果帧的 RESULT 偏移在规格书里未最终敲定（时序图疑似 F3 后还夹了 1 字节子操作码再到 RESULT，
+// 见 docs/OTA-DFU-问题排查与修复进度.md §5.2）。联调阶段把两种解读都算出来一起打印：
+// 解读A=紧跟 0xF3 的字节(ota-ble 现用)；解读B=再往后 1 字节。哪个是 0x00 成功，真实语义就是哪个。
+function decodeFinalResultFrame(hex) {
+  const bytes = hexStringToBytes(hex)
+  const hasHeader = bytes[0] === OTA_OP.ACK
+  const base = hasHeader ? 2 : 1 // 跳过可选的 0xFC 帧头 + 回显的 0xF3
+  const fmt = value =>
+    value === undefined
+      ? '(无此字节)'
+      : '0x' + formatHexByte(value) + '(' + otaBle.otaResultText(value) + ')'
+  return (
+    '0xF3 原始帧=' + hex +
+    ' ｜ 解读A(F3+RESULT,现用)=' + fmt(bytes[base]) +
+    ' ｜ 解读B(F3+子码+RESULT)=' + fmt(bytes[base + 1])
+  )
+}
+
 function getOtaValidationError(device) {
   if (!isUpdateFlag(device)) {
     return '当前已是最新版本'
@@ -747,7 +765,10 @@ Page({
     // 逐帧监听：设备→APP 的应答全部打印（这正是「和设备交互」「设备返回的信息」的重点）；
     // APP→设备海量 DATA 包只打印首包 + 计数，避免刷屏。
     let txDataCount = 0
+    let finalRxHex = '' // 捕获设备最终结果帧(0xF3)，收尾时按两种偏移解读，判定到底成没成
     const DATA_HEX_PREFIX = formatHexByte(OTA_OP.DATA) // 'F2'：不整包解析，靠前缀识别海量数据包
+    const RESULT_HEX_PREFIX = formatHexByte(OTA_OP.RESULT) // 'F3'
+    const ACK_HEX_PREFIX = formatHexByte(OTA_OP.ACK) // 'FC'
     otaBle.setMonitor(record => {
       if (record.dir === 'TX') {
         if (record.hex.slice(0, 2) === DATA_HEX_PREFIX) {
@@ -758,6 +779,10 @@ Page({
         }
         console.log('[OTA测试][' + traceId + '] APP→设备 ' + describeOtaFrame(record) + ' | ' + record.hex)
         return
+      }
+      const head = record.hex.slice(0, 2)
+      if (head === RESULT_HEX_PREFIX || (head === ACK_HEX_PREFIX && record.hex.slice(3, 5) === RESULT_HEX_PREFIX)) {
+        finalRxHex = record.hex // 0xF3（可能带 0xFC 帧头）
       }
       console.log('[OTA测试][' + traceId + '] 设备→APP ' + describeOtaFrame(record) + ' | ' + record.hex)
     })
@@ -802,6 +827,9 @@ Page({
           '[OTA测试][' + traceId + '] 设备已回最终结果 0xF3=成功：升级完成，共 ' + result.size +
             ' 字节 / ' + result.totalPackets + ' 包。'
         )
+        if (finalRxHex) {
+          console.log('[OTA测试][' + traceId + '] ' + decodeFinalResultFrame(finalRxHex))
+        }
         okText = '测试完成'
       }
 
@@ -812,6 +840,11 @@ Page({
       console.error('[OTA测试][' + traceId + '] ========== 升级失败 ==========')
       console.error('[OTA测试][' + traceId + '] 已发送数据包 ' + txDataCount + ' 个')
       console.error('[OTA测试][' + traceId + '] 失败原因：' + ((error && error.message) || error))
+      if (finalRxHex) {
+        // 设备回了 0xF3 才判失败（如「校验/芯片信息错误」）：把最终帧按两种偏移都解读一遍，
+        // 若「解读B=0x00 成功」，说明其实升级成功、只是 ota-ble 的 RESULT 偏移读错了（见 §5.2）。
+        console.error('[OTA测试][' + traceId + '] 设备最终结果帧：' + decodeFinalResultFrame(finalRxHex))
+      }
       console.error('[OTA测试][' + traceId + '] 错误对象：', error)
       this.setData({ otaTestStatus: aborted ? '已中断' : '测试失败' })
       toast.show({
