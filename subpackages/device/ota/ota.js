@@ -468,10 +468,11 @@ Page({
         return
       }
 
-      // 设备收满固件后会立即重启、可能来不及回 0xF3：此时 ota-ble 返回 confirmed:false，
-      // 表示"数据已全部发送但未拿到设备的显式成功应答"。UI 如实提示核对版本，不谎报"确认完成"。
+      // 固件已确认(2026-07-01)：收满且 CRC32 无误必回 0xF3、回完 0xF3 后约 2s 才复位重启。故 confirmed:false
+      // 已成兜底死路——真拿不到 0xF3(尾包没送达/设备没收满)时 ota-ble 会抛错走下方 catch，不再返回"软成功"。
+      // 万一仍走到这里，说明确实没收到 0xF3 → 升级未确认，如实提示重试，绝不谎报"升级完成"。
       const unconfirmed = result && result.confirmed === false
-      const doneText = unconfirmed ? '数据已发送，设备重启中，请确认固件版本' : '升级完成'
+      const doneText = unconfirmed ? '未确认(请重试)' : '升级完成'
 
       // 真实升级：测试流程不回报后台（无对应设备记录）；正常流程才上报结果。
       if (!this._testMode) {
@@ -512,7 +513,7 @@ Page({
           state: 'success',
           progressPercent: 100,
           progressText: `${doneText}（${result.size} 字节 / ${result.totalPackets} 包）`,
-          statusText: unconfirmed ? '请确认版本' : '测试完成',
+          statusText: unconfirmed ? '未确认(请重试)' : '测试完成',
           statusClass: 'is-latest',
           canUpgrade: false,
           actionText: '已完成'

@@ -817,11 +817,12 @@ Page({
         console.log('[OTA测试][' + traceId + '] 首个 DATA 帧：' + result.firstDataFrameHex)
         okText = '干跑完成'
       } else if (result.confirmed === false) {
+        // 固件已确认：收满且 CRC 无误必回 0xF3。正常不会再走到这里（收不到 0xF3 会在 ota-ble 抛错走 catch）；
+        // 一旦出现，说明确实没拿到 0xF3 → 升级未确认成功，如实提示、不再谎报"已写入"。
         console.warn(
-          '[OTA测试][' + traceId +
-            '] 数据已全部发送，但设备重启未回显式成功应答(0xF3)——通常是已写入并重启进入新固件，请到设备端核对固件版本。'
+          '[OTA测试][' + traceId + '] 数据已全部发送，但未收到设备 0xF3 确认——升级未确认成功，请重试或抓帧核对。'
         )
-        okText = '已发送(待核对版本)'
+        okText = '未确认(请重试)'
       } else {
         console.log(
           '[OTA测试][' + traceId + '] 设备已回最终结果 0xF3=成功：升级完成，共 ' + result.size +

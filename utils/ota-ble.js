@@ -7,8 +7,9 @@
 //   2) START(0xF1)：OBJ_TYPE(1) + FW_SIZE(4,小端) + checksum → 设备回 ACK，带 MTU(251) 与 PRN(3)。
 //   3) DATA (0xF2)：PKT_SEQ(2,小端) + DATA + checksum。每发 PRN 个包等一次设备 DATA ACK，
 //      ACK 带「已连续收到的最后包号」。包号没往前走 = 那一包丢了，从 ACK 包号 + 1 重发。
-//   4) APP 不发 END：设备自行累计到固件大小后，自动算 CRC32、校验、写 BootSetting，回 0xF3 最终结果，
-//      约 100ms 后重启跑新固件。
+//   4) APP 不发 END：设备自行累计到固件大小后，自动算 CRC32、校验、写 BootSetting，回 0xF3 最终结果。
+//      固件已确认(2026-07-01)：只要收满且 CRC32 无误必回 0xF3，回完 0xF3 后约 2s 才自动复位重启——
+//      故 0xF3 是判成功的「权威且必达」信号：拿不到 0xF3 == 尾包没送达/未收满，是真失败，绝非"已成功只是没回"。
 //
 // 真机注意（开发者工具蓝牙模拟不可靠，务必真机联调，工具内可用 dryRun 校验编码）：
 //   - 安卓默认 ATT MTU 仅 23（单次可写 20 字节），必须 wx.setBLEMTU 拉高，否则 244 字节 DATA 包写不进；
@@ -874,10 +875,10 @@ async function transferData(session, bytes, options) {
       break // 设备已收齐并给出最终结果（末尾不足 PRN 的尾包会直接走 0xF3，而非 DATA ACK）
     }
 
-    // 尾窗特判：最后一包（不足 PRN 的残包）设备不会回 DATA ACK——它要收满固件大小后才直接回 0xF3。
-    // 若把"没等到 ACK"当停滞去重发，会把已收满的设备再喂一遍尾包 → 累计字节数超过固件大小 → 设备判错并断开
-    // （表现为卡在 97% 反复"补发第 N 包"后"设备连接已断开"）。故最后一包一旦发出，就跳出发送循环，
-    // 交给下方 waitFinalResult 去等 0xF3 / 设备重启，绝不重发尾包。
+    // 尾窗特判：末尾不足 PRN 的残包设备不回 DATA ACK——它要收满固件大小后才直接回 0xF3（0xF3 即尾包的确认）。
+    // 这里发完尾包就跳出发送循环，绝不在"没等到 DATA ACK"时就盲目重发（那样会把已收满的设备再喂一遍尾包
+    // → 累计字节数超过固件大小 → 设备判错断开，即卡 97% 反复补发后断连）。尾包的送达确认改由下方「等 0xF3」
+    // 负责：等到 0xF3 = 收齐成功；等不到才说明尾包真丢了，届时再受控重发（见下方 waitFinalResult 循环）。
     if (windowEnd >= totalPackets) {
       break
     }
@@ -920,34 +921,63 @@ async function transferData(session, bytes, options) {
     })
   }
 
-  // 数据已全部送达：APP 不发 END，等设备自行算 CRC32 + 写 BootSetting 后回 0xF3。
-  emit(onProgress, { phase: 'verifying', percent: 99, sent: total, total, message: '写入完成，等待设备校验' })
+  // 数据已全部送达（含尾包）：APP 不发 END，设备收满固件大小后自算 CRC32 + 写 BootSetting，回 0xF3。
+  // 固件已确认：收满且 CRC 无误必回 0xF3、且回完 0xF3 后约 2s 才重启——所以：
+  //   · 等到 0xF3 → 收齐（再看 final.result 区分成功 / 校验失败）；
+  //   · 等不到 0xF3（超时）→ 按固件语义就是「尾包没送达、设备没收满」→ 从设备最后确认包重发尾包再等。
+  // 只在「等够 0xF3 该到的时间(tailWait，默认 3s，远大于 CRC 耗时)仍没到」时才重发：设备若已收满必已回
+  // 0xF3、我们就不会重发 → 不会把已收满的设备喂过量导致判错断开（旧版正是盲目重发尾包才卡 97% 断连）。
+  emit(onProgress, { phase: 'verifying', percent: 99, sent: total, total, message: '写入完成，等待设备校验(0xF3)' })
 
+  const tailWait = Number.isFinite(options.tailWait) ? options.tailWait : 3000
+  const maxTailResends = Number.isFinite(options.maxTailResends) ? options.maxTailResends : 4
+  const finalDeadline = Number.isFinite(options.finalTimeout) ? options.finalTimeout : 15000
+  const tailStart = Date.now()
   let final = null
-  try {
-    final = await waitFinalResult(session, options.finalTimeout || 10000)
-  } catch (error) {
-    // 走到这里，固件数据已 100% 发完且每包都被设备累计确认。此后拿不到显式的 0xF3，无论是
-    // 「等待时设备断开」还是「等 0xF3 超时」，绝大多数是同一回事：设备收满→写好 BootSetting→立即
-    // 重启进入新固件，来不及/根本不回 0xF3（部分固件只重启、从不发 0xF3）。两种都按「已发送完毕、
-    // 设备重启中、请核对版本」返回 confirmed:false——不谎报"确认成功"，也不把成功升级误判成失败。
-    const disconnected = /断开/.test((error && error.message) || '')
-    emit(onProgress, {
-      phase: 'done',
-      percent: 100,
-      sent: total,
-      total,
-      message: disconnected
-        ? '数据已全部发送，设备已断开——通常表示已写入并重启进入新固件。请在设备端确认固件版本是否已更新。'
-        : '数据已全部发送，但未在超时内收到设备校验结果(0xF3)——通常表示设备已写入并直接重启进入新固件。请在设备端确认固件版本是否已更新。'
-    })
-    return {
-      totalPackets,
-      mtu: session.mtu,
-      chunkSize,
-      rebooted: disconnected,
-      confirmed: false,
-      finalTimedOut: !disconnected
+  let tailResends = 0
+
+  for (;;) {
+    try {
+      final = await waitFinalResult(session, tailWait)
+      break // 收到 0xF3
+    } catch (error) {
+      if (session.finalResult) {
+        final = session.finalResult // 与超时竞态：0xF3 刚到
+        break
+      }
+      // 设备在回 0xF3 前就断开：固件承诺回完 0xF3 后 2s 才重启，故此处断开 = 尾包未送达/未收满，判失败。
+      if (!session.ready || /断开/.test((error && error.message) || '')) {
+        throw new Error('OTA 传输中断：数据已发完但设备在回校验结果(0xF3)前断开，固件未确认收齐，升级未完成。')
+      }
+      // 等 0xF3 超时。按固件语义 = 尾包没送达。超出总期限或重发上限则判失败，绝不谎报成功。
+      if (tailResends >= maxTailResends || Date.now() - tailStart > finalDeadline) {
+        throw new Error(
+          'OTA 校验超时：数据已发完但多次重发尾包仍未收到设备 0xF3 确认。' +
+            `设备最后确认第 ${session.lastAckSeq} 包（共 ${totalPackets} 包），疑似尾包持续丢失或设备未收满。`
+        )
+      }
+      tailResends += 1
+      // 从设备「已连续确认的下一包」起重发到最后一包：设备没回 0xF3 说明还没收满，这些包才是真缺的。
+      const resendFrom = Math.max(session.lastAckSeq + 1, 0)
+      emit(onProgress, {
+        phase: 'retry',
+        percent: 99,
+        sent: total,
+        total,
+        message: `未收到设备校验结果(0xF3)，重发尾包（第 ${resendFrom}~${totalPackets - 1} 包，第 ${tailResends}/${maxTailResends} 次）`
+      })
+      for (let seq = resendFrom; seq < totalPackets && !session.finalResult && session.ready; seq++) {
+        const chunk = bytes.subarray(seq * chunkSize, Math.min((seq + 1) * chunkSize, total))
+        await writeFrame(
+          session,
+          buildDataFrame(seq, chunk),
+          session.transferTarget || 'control',
+          session.transferWriteType
+        )
+        if (pace > 0) {
+          await sleep(pace)
+        }
+      }
     }
   }
 
@@ -955,7 +985,7 @@ async function transferData(session, bytes, options) {
     throw new Error('设备校验失败：' + otaResultText(final.result))
   }
 
-  emit(onProgress, { phase: 'done', percent: 100, sent: total, total, message: '升级完成，设备即将重启' })
+  emit(onProgress, { phase: 'done', percent: 100, sent: total, total, message: '升级完成，设备回 0xF3 确认成功，约 2s 后重启' })
   return { totalPackets, mtu: session.mtu, chunkSize, confirmed: true }
 }
 
