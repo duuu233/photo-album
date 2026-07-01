@@ -1,7 +1,7 @@
 # OTA / DFU 升级问题排查与修复进度
 
-> 记录日期：2026-06-30
-> 状态：**根因已定位，待实施修复**
+> 记录日期：2026-06-30（2026-07-01 更新）
+> 状态：**修复已实施（`utils/ota-ble.js`），待真机联调验证**
 > 入口页面：`subpackages/device/detail/detail` →（长按 OTA 升级 / 跳转）→ `subpackages/device/ota/ota`
 > 核心协议实现：`utils/ota-ble.js`
 > 规格书来源：`/home/pg/dh/电子相框产品需求规格书1.4.pdf` 第 6.3.2 / 6.3.3 节
@@ -169,8 +169,30 @@ F3  ...  RESULT  CHECKSUM
 
 ---
 
-## 7. 明天的下一步（TL;DR）
+## 7. 下一步（TL;DR）
 
-1. 确认改哪份 ota 代码（第 5.1 条）。
-2. 按第 4 节改 4 处：加 `0xFC` 帧头识别、修 `parseStartAck`、修 `parseDataAckSeq`、换 OTA 结果码表。
-3. 真机联调：抓 START 应答（应为 `FC F1 00 FB 03 ..`）、DATA 应答、END 帧，顺手确认第 5.2 条 END 偏移。
+1. ✅ 已确认改哪份代码：**仓库里的 `utils/ota-ble.js` 现在就是线上"多次尝试版"**（含 `buildStartAttempts`/`altControl`、以及日志里那条 `target=..., service=..., control=..., data=..., altControl=..., notify=...` 的超时报错串，逐字对得上）。§5.1 决策点关闭。
+2. ✅ 已按第 4 节改完 4 处（见第 8 节）。`node --check` 通过；离线用真实应答帧 `FC F1 00 FB 03` 跑通解析单测。
+3. ⏳ **真机联调**：抓 START 应答（应为 `FC F1 00 FB 03 EB`）、DATA 应答（`FC F2 00 <seq2>`）、END 帧，确认 §5.2 的 `0xF3` RESULT 偏移。
+
+---
+
+## 8. 本次修复记录（2026-07-01）
+
+### 现象为何从"错误码 0xfc"变成了"应答超时"
+上次记录后，代码被打了半个补丁：`dispatchNotification` 已经会在等 START 应答时把帧交给 `parseStartAck`，
+但 `parseStartAck` 仍旧不认识 `FC F1 00 FB 03` 这套布局（把 `0xFC` 当结果码、把 MTU 当 2 字节小端读），
+于是判定 `valid=false` → 整帧被 `console.warn('忽略…')` 丢掉 → `startWaiter` 永不 resolve → **START 应答超时**。
+设备一直在正常应答，问题 100% 仍在 App 端解析。根因与第 2 节完全一致。
+
+### `utils/ota-ble.js` 实际改动（4 处 + 2 处配套）
+1. **加 `OP.ACK = 0xFC`** 常量（应答帧头/RSP_OPCODE）。
+2. **`dispatchNotification` 改用回显操作码路由**：`echo = bytes[0]===0xFC ? bytes[1] : bytes[0]`，
+   再按 `echo` 分派 START(`0xF1`)/DATA(`0xF2`)/RESULT(`0xF3`)。兼容旧固件"不带 0xFC 帧头"。
+3. **`parseStartAck` 重写为固定偏移**：跳过 `0xFC`、跳过回显的 `0xF1`，取 `RESULT / MTU(单字节) / PRN`；
+   MTU/PRN 越界回落 0（由 `applyStartAck` 用默认值兜底）。删除原先猜偏移的 candidates 逻辑。
+4. **`parseDataAckSeq` 偏移** `1 → 3`（`FC F2 RESULT SEQ`，兼容旧固件偏移 1）。
+5. **`parseResult`** 兼容 `0xFC` 包裹（`F3` 前若有帧头则偏移 +1）；`0xF3` 后 RESULT 精确偏移仍待真机确认。
+6. **`OTA_RESULT_TEXT` 换成规格书 §6.3.2 的 OTA 专用码表**（原先误用图传 `0x7F` 通用码表）。
+
+> START 请求组帧 / DATA 请求组帧 / 固件大小范围 / PRN 窗口 / FF10-FF11 服务发现与开 Notify —— 均未改动（本就无误）。

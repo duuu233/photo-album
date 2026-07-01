@@ -15,10 +15,10 @@
 //     iOS 由系统自动协商。每包数据大小按真实协商到的 MTU 动态算（MTU - 3 ATT头 - 4 帧开销）。
 //   - FF11 用 writeType:'writeNoResponse'，且需先 notifyBLECharacteristicValueChange 打开通知。
 //
-// 三个待与固件最终对齐的点（已就近标注 OTA_TODO，真机抓包后核对）：
+// 待与固件最终对齐的点（已就近标注 OTA_TODO，真机抓包后核对）：
 //   a) FF11 特征的真实 128 位 UUID（连接时会打印实际值）；
 //   b) START 帧 OBJ_TYPE 的确切取值（此处默认 0x00）；
-//   c) 设备应答(START ACK / DATA ACK / 0xF3)的字段布局。
+//   c) START/DATA ACK 已按 §6.3.3 对齐（帧头 0xFC + 回显操作码）；唯 0xF3 最终结果的 RESULT 偏移待真机确认。
 
 const imageCodec = require('./image-codec')
 
@@ -32,7 +32,8 @@ const OTA_CHAR_UUID = OTA_CHAR_CONTROL_UUID // 兼容旧导出名
 const OP = {
   START: 0xf1, // APP→设备：开始
   DATA: 0xf2, // APP→设备：固件数据 / 设备→APP：DATA ACK（回已连续接收包号）
-  RESULT: 0xf3 // 设备→APP：最终结果（CRC32 校验 + 写 BootSetting 之后）
+  RESULT: 0xf3, // 设备→APP：最终结果（CRC32 校验 + 写 BootSetting 之后）
+  ACK: 0xfc // 设备→APP：START / DATA 应答的帧头(RSP_OPCODE)，后跟被应答的操作码(0xF1/0xF2)
 }
 
 // OTA_TODO(b)：START 帧的对象类型。文档只写「当前作为固件对象使用」，未给确切数值，默认 0x00。
@@ -43,17 +44,19 @@ const DEFAULT_DEVICE_MTU = 251 // 设备声明支持的 MTU；真实可写量仍
 const MIN_FW_SIZE = 0x3000
 const MAX_FW_SIZE = 0x3c000
 
-// OTA 结果码 → 中文（与图传 RESULT 同源，未知码回落十六进制原文，遵循「设备返回什么提示什么」）。
+// OTA 结果码 → 中文（规格书 §6.3.2 OTA 专用码表，与图传 0x7F 通用应答码表不同！）。
+// 未知码回落十六进制原文，遵循「设备返回什么提示什么」。
 const OTA_RESULT_TEXT = {
   0x00: '成功',
-  0x01: '参数错误',
-  0x02: '长度错误',
-  0x03: 'CRC 错误',
-  0x04: 'Flash 写入失败',
-  0x05: '版本不兼容',
-  0x09: '传输中断',
-  0x0a: '校验失败(整包CRC32不符)',
-  0x0b: '设备忙(Busy)'
+  0x01: '校验/芯片信息错误',
+  0x02: 'ACK 超时',
+  0x03: '主机主动终止',
+  0x04: '设备主动终止',
+  0x05: '设备状态错误',
+  0x06: '不支持的 opcode',
+  0x07: '资源不足',
+  0x08: '固件大小超限',
+  0x09: '参数错误'
 }
 
 function otaResultText(code) {
@@ -198,47 +201,28 @@ function buildDataFrame(seq, chunk) {
   return withChecksum(head)
 }
 
-// ── 解帧（设备 → APP，OTA_TODO(c) 真机抓包后对齐字段布局）─────
-// START ACK：按 [0xF1, RESULT, MTU(2,小端), PRN(1), checksum] 解析，对取值做合法性校验，越界回落默认。
+// ── 解帧（设备 → APP，字段布局依规格书 §6.3.3）───────────────
+// START ACK 权威布局：[0xFC(帧头), 0xF1(回显START), RESULT, MTU(1,=251), PRN(1), checksum]。
+//   —— 早期版本把帧头 0xFC 误当错误码、又把 MTU 当 2 字节小端读，导致合法应答被判为无效而丢弃、START 超时。
+// 兼容「不带 0xFC 帧头、直接回显 0xF1」的旧固件。MTU/PRN 越界则回落 0，由 applyStartAck 用默认值兜底。
 function parseStartAck(bytes) {
-  const offset = bytes[0] === OP.START ? 1 : 0
-  const candidates = []
-
-  if (bytes.length >= offset + 4) {
-    candidates.push({
-      result: bytes[offset],
-      mtu: readUint16LE(bytes, offset + 1),
-      prn: bytes[offset + 3]
-    })
+  let i = 0
+  if (bytes[i] === OP.ACK) {
+    i += 1 // 跳过应答帧头 0xFC
   }
-  if (bytes.length >= offset + 3) {
-    candidates.push({
-      result: 0x00,
-      mtu: readUint16LE(bytes, offset),
-      prn: bytes[offset + 2]
-    })
+  if (bytes[i] === OP.START) {
+    i += 1 // 跳过回显的 START 操作码 0xF1
   }
-
-  const matched = candidates.find(
-    item =>
-      item.result >= 0x00 &&
-      item.result <= 0x0b &&
-      item.mtu >= 23 &&
-      item.mtu <= 517 &&
-      item.prn >= 1 &&
-      item.prn <= 64
-  )
-
-  const valid = !!matched || bytes[0] === OP.START
-  let result = matched ? matched.result : bytes.length > offset ? bytes[offset] : 0x00
-  let mtu = matched ? matched.mtu : 0
-  let prn = matched ? matched.prn : 0
+  const result = bytes.length > i ? bytes[i] & 0xff : 0xff
+  let mtu = bytes.length > i + 1 ? bytes[i + 1] & 0xff : 0
+  let prn = bytes.length > i + 2 ? bytes[i + 2] & 0xff : 0
   if (!(mtu >= 23 && mtu <= 517)) {
     mtu = 0
   }
   if (!(prn >= 1 && prn <= 64)) {
     prn = 0
   }
+  const valid = bytes[0] === OP.ACK || bytes[0] === OP.START
   return {
     result,
     mtu,
@@ -248,15 +232,18 @@ function parseStartAck(bytes) {
   }
 }
 
-// DATA ACK：按 [0xF2, SEQ(2,小端), checksum] 取「已连续接收的最后包号」。
-// 若固件在 SEQ 前还有 1 字节 RESULT，把偏移从 1 改成 2 即可。
+// DATA ACK 权威布局(§6.3.3)：[0xFC(帧头), 0xF2(回显DATA), RESULT, SEQ(2,小端), checksum]，
+// SEQ 在偏移 3；兼容旧固件 [0xF2, SEQ(2,小端), checksum]（偏移 1）。取「已连续接收的最后包号」。
 function parseDataAckSeq(bytes) {
-  return readUint16LE(bytes, 1)
+  const offset = bytes[0] === OP.ACK ? 3 : 1
+  return readUint16LE(bytes, offset)
 }
 
-// 0xF3 最终结果：[0xF3, RESULT(1), ...]。
+// 0xF3 最终结果：[0xF3, RESULT, checksum]，或带 0xFC 帧头 [0xFC, 0xF3, RESULT, checksum]。
+// ⚠️ 规格书时序图疑似在 0xF3 后另有 1 字节子操作码再到 RESULT——真机抓一帧确认后再调整偏移。
 function parseResult(bytes) {
-  return { result: bytes.length > 1 ? bytes[1] : 0xff }
+  const offset = bytes[0] === OP.ACK ? 2 : 1
+  return { result: bytes.length > offset ? bytes[offset] & 0xff : 0xff }
 }
 
 // ── 连接 / 会话 ────────────────────────────────────────────
@@ -298,16 +285,19 @@ function isSessionCharacteristic(session, characteristicId) {
 }
 
 // 把一条通知派发到等待者：START ACK / DATA ACK / 最终结果。
+// 设备应答帧头是 0xFC(RSP_OPCODE)，被应答的操作码回显在第 2 字节；据此区分 START/DATA ACK。
+// 兼容「不带 0xFC 帧头、直接以操作码打头」的旧固件（echo 退回 bytes[0]）。
 function dispatchNotification(session, bytes) {
   if (!bytes.length) {
     return
   }
-  const op = bytes[0]
+  const echo = bytes[0] === OP.ACK ? bytes[1] : bytes[0]
 
-  if (op === OP.START || (session.startWaiter && op !== OP.DATA && op !== OP.RESULT)) {
+  // START ACK：回显 0xF1；或正等 START 应答且不是 DATA/最终结果，也按 START ACK 解析。
+  if (echo === OP.START || (session.startWaiter && echo !== OP.DATA && echo !== OP.RESULT)) {
     const ack = parseStartAck(bytes)
     if (!ack.valid) {
-      console.warn('[OTA] 忽略非 START 应答通知：', ack.rawHex)
+      console.warn('[OTA] 忽略无法识别的应答帧：', ack.rawHex)
       return
     }
     if (session.startWaiter) {
@@ -318,13 +308,15 @@ function dispatchNotification(session, bytes) {
     return
   }
 
-  if (op === OP.RESULT) {
+  // 最终结果 0xF3（设备收齐后自算 CRC32 主动上报）
+  if (echo === OP.RESULT) {
     session.finalResult = parseResult(bytes)
     wakeWaiters(session)
     return
   }
 
-  if (op === OP.DATA) {
+  // DATA ACK：回显 0xF2
+  if (echo === OP.DATA) {
     const seq = parseDataAckSeq(bytes)
     if (seq > session.lastAckSeq) {
       session.lastAckSeq = seq
