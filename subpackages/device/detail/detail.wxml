@@ -88,6 +88,19 @@
             <view class="ui-chevron"></view>
           </view>
         </view>
+        <view class="thin-divider"></view>
+
+        <!-- OTA 测试按钮：一点即用代码包内本地固件走真实 DFU（未连接则干跑），交互与设备应答全程打印到 console -->
+        <view class="detail-row ota-test-row {{otaTesting ? 'is-testing' : ''}}" hover-class="none" bindtap="startOtaTest">
+          <view class="row-left">
+            <image class="row-icon" src="/assets/images/device-detail-icon04.png" mode="aspectFit"></image>
+            <text>OTA测试升级</text>
+          </view>
+          <view class="row-right">
+            <text class="ota-test-status">{{otaTestStatus}}</text>
+            <view class="ui-chevron"></view>
+          </view>
+        </view>
       </view>
 
       <view class="detail-list action-list glass-panel">

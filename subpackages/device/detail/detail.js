@@ -3,6 +3,7 @@ const toast = require('../../../utils/toast')
 const system = require('../../../utils/system')
 const batteryUtil = require('../../../utils/battery')
 const deviceBle = require('../../../utils/device-ble')
+const otaBle = require('../../../utils/ota-ble')
 const protocol = require('../../../utils/frame-protocol')
 const media = require('../../../utils/media')
 const bluetooth = require('../../../utils/bluetooth')
@@ -105,6 +106,59 @@ function getBleDeviceId(device) {
   return textValue(device && (device.deviceId || device.bleDeviceId))
 }
 
+const OTA_OP = otaBle.OP // { START:0xF1, DATA:0xF2, RESULT:0xF3, ACK:0xFC }
+
+// 把一帧 OTA 收发记录解析成可读中文，配合原始 16 进制一起打印，方便与硬件日志逐帧比对。
+// 设备应答帧头为 0xFC(RSP_OPCODE)，第 2 字节回显被应答的操作码；兼容旧固件「不带 0xFC、直接以操作码打头」。
+function describeOtaFrame(record) {
+  const bytes = hexStringToBytes(record.hex)
+  if (!bytes.length) {
+    return '空帧'
+  }
+
+  if (record.dir === 'TX') {
+    if (bytes[0] === OTA_OP.START) {
+      return 'START(0xF1) 开始帧'
+    }
+    if (bytes[0] === OTA_OP.DATA) {
+      return 'DATA(0xF2) 数据包 seq=' + (bytes[1] | (bytes[2] << 8))
+    }
+    return '发送 opcode=0x' + formatHexByte(bytes[0])
+  }
+
+  const hasHeader = bytes[0] === OTA_OP.ACK
+  const echo = hasHeader ? bytes[1] : bytes[0]
+
+  if (echo === OTA_OP.START) {
+    const i = hasHeader ? 2 : 1
+    return (
+      'START 应答 回显0xF1 RESULT=0x' +
+      formatHexByte(bytes[i]) +
+      '(' +
+      otaBle.otaResultText(bytes[i]) +
+      ') MTU=' +
+      (bytes[i + 1] || 0) +
+      ' PRN=' +
+      (bytes[i + 2] || 0)
+    )
+  }
+  if (echo === OTA_OP.DATA) {
+    const i = hasHeader ? 3 : 1
+    return 'DATA 应答 回显0xF2 已连续接收到第 ' + (bytes[i] | (bytes[i + 1] << 8)) + ' 包'
+  }
+  if (echo === OTA_OP.RESULT) {
+    const i = hasHeader ? 2 : 1
+    return (
+      '最终结果(0xF3) RESULT=0x' +
+      formatHexByte(bytes[i]) +
+      '(' +
+      otaBle.otaResultText(bytes[i]) +
+      ')'
+    )
+  }
+  return '未识别应答'
+}
+
 function getOtaValidationError(device) {
   if (!isUpdateFlag(device)) {
     return '当前已是最新版本'
@@ -146,6 +200,8 @@ Page({
     deleteClosing: false, // 删除确认弹窗是否正在播放退场动画
     showMediaSheet: false, // 「拍照/相册」选择弹层是否展示
     mediaSheetClosing: false, // 选择弹层是否正在播放退场动画
+    otaTesting: false, // OTA 测试按钮是否正在跑（跑时禁止重复点击）
+    otaTestStatus: '点击用本地固件测试', // OTA 测试按钮右侧状态文案
     loading: true,
     loadError: false
   },
@@ -159,6 +215,17 @@ Page({
 
   onShow() {
     this.loadDetail()
+  },
+
+  // OTA 测试进行中切到后台：与 ota 页一致，标记中断——DFU 期间手机切后台会导致传输中断。
+  onHide() {
+    if (this.data.otaTesting) {
+      this._otaTestAbort = true
+    }
+  },
+
+  onUnload() {
+    this._otaTestAbort = true
   },
 
   noop() {},
@@ -623,6 +690,140 @@ Page({
         }
       }
     })
+  },
+
+  // 「OTA测试升级」按钮：一点即用详情接口下发的 downloadPath(当前给的文件)边下边走 DFU 测试。
+  // 设备已连接 → 真实蓝牙 DFU；未连接 → 干跑(仅下载校验读包/组帧/分包，无设备应答)。
+  // 全程把和设备的交互逐帧打印：设备返回的应答(START ACK / DATA ACK / 0xF3 最终结果)全打印，
+  // 尤其是传输完毕设备返回的最终结果；失败也打印完整错误。
+  async startOtaTest() {
+    if (this.data.otaTesting) {
+      return // 跑的过程中禁止重复点击
+    }
+
+    const device = this.data.device
+    if (!device) {
+      return
+    }
+
+    const bleDeviceId = getBleDeviceId(device)
+    const connected = !!(bleDeviceId && deviceBle.isConnected(bleDeviceId))
+    const dryRun = !connected
+    const traceId = Date.now().toString(36)
+
+    // 直接用详情接口下发的 downloadPath 作为「当前给的文件」，边下边测（未连接则先下载再干跑校验）。
+    const url = textValue(device.downloadPath)
+    if (!url) {
+      console.warn('[OTA测试][' + traceId + '] 设备详情缺少固件下载地址 downloadPath，无法测试。')
+      toast.show({ title: '缺少固件下载地址(downloadPath)', icon: 'none' })
+      return
+    }
+    const fileName = url.split('?')[0].split('#')[0].split('/').pop() || 'firmware.bin'
+    const pkg = {
+      version: textValue(device.newVersionNo) || 'TEST',
+      fileName,
+      packageUrl: url,
+      sizeBytes: Number(device.firmwareSize || device.sizeBytes) || 0
+    }
+
+    console.log('[OTA测试][' + traceId + '] ========== 开始 OTA 测试 ==========')
+    console.log('[OTA测试][' + traceId + '] 固件下载地址：' + url)
+    console.log(
+      '[OTA测试][' + traceId + '] 目标设备 bleDeviceId=' + (bleDeviceId || '(无)') +
+        '，蓝牙连接=' + (connected ? '已连接 → 真实 DFU' : '未连接 → 干跑(无设备应答)')
+    )
+    if (dryRun) {
+      console.warn(
+        '[OTA测试][' + traceId +
+          '] 设备未连接：本次为干跑，仅校验读包/组帧/分包，不会有设备返回信息。' +
+          '如需看设备应答，请先在详情页点「连接」后再测试。'
+      )
+    }
+
+    this._otaTestAbort = false
+    wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: true })
+    this.setData({ otaTesting: true, otaTestStatus: dryRun ? '干跑测试中…' : '测试升级中…' })
+
+    // 逐帧监听：设备→APP 的应答全部打印（这正是「和设备交互」「设备返回的信息」的重点）；
+    // APP→设备海量 DATA 包只打印首包 + 计数，避免刷屏。
+    let txDataCount = 0
+    const DATA_HEX_PREFIX = formatHexByte(OTA_OP.DATA) // 'F2'：不整包解析，靠前缀识别海量数据包
+    otaBle.setMonitor(record => {
+      if (record.dir === 'TX') {
+        if (record.hex.slice(0, 2) === DATA_HEX_PREFIX) {
+          txDataCount += 1
+          if (txDataCount > 1) {
+            return // 数据包只打印第 1 包，其余仅计数，避免刷屏
+          }
+        }
+        console.log('[OTA测试][' + traceId + '] APP→设备 ' + describeOtaFrame(record) + ' | ' + record.hex)
+        return
+      }
+      console.log('[OTA测试][' + traceId + '] 设备→APP ' + describeOtaFrame(record) + ' | ' + record.hex)
+    })
+
+    try {
+      const result = await otaBle.upgradeFirmware(bleDeviceId, pkg, {
+        pace: 20,
+        dryRun,
+        onProgress: progress => {
+          const percent = Math.max(0, Math.min(100, progress.percent || 0))
+          console.log(
+            '[OTA测试][' + traceId + '] 进度 ' + percent + '% [' + (progress.phase || '') + '] ' +
+              (progress.message || '')
+          )
+          this.setData({ otaTestStatus: (dryRun ? '干跑' : '测试') + ' ' + percent + '%' })
+        },
+        shouldAbort: () => this._otaTestAbort
+      })
+
+      console.log('[OTA测试][' + traceId + '] ========== 传输完毕，设备返回结果 ==========')
+      console.log('[OTA测试][' + traceId + '] 已发送数据包 ' + txDataCount + ' 个')
+      console.log('[OTA测试][' + traceId + '] 结果对象：', result)
+
+      let okText
+      if (result.dryRun) {
+        const crcHex = '0x' + (result.crc32 >>> 0).toString(16).toUpperCase().padStart(8, '0')
+        console.log(
+          '[OTA测试][' + traceId + '] 干跑通过：' + result.size + ' 字节 / ' + result.totalPackets +
+            ' 包 / 每包 ' + result.chunkSize + ' 字节，PRN=' + result.prn + '，本地 CRC32=' + crcHex
+        )
+        console.log('[OTA测试][' + traceId + '] START 帧：' + result.startFrameHex)
+        console.log('[OTA测试][' + traceId + '] 首个 DATA 帧：' + result.firstDataFrameHex)
+        okText = '干跑完成'
+      } else if (result.confirmed === false) {
+        console.warn(
+          '[OTA测试][' + traceId +
+            '] 数据已全部发送，但设备重启未回显式成功应答(0xF3)——通常是已写入并重启进入新固件，请到设备端核对固件版本。'
+        )
+        okText = '已发送(待核对版本)'
+      } else {
+        console.log(
+          '[OTA测试][' + traceId + '] 设备已回最终结果 0xF3=成功：升级完成，共 ' + result.size +
+            ' 字节 / ' + result.totalPackets + ' 包。'
+        )
+        okText = '测试完成'
+      }
+
+      this.setData({ otaTestStatus: okText })
+      toast.show({ title: okText, icon: 'none' })
+    } catch (error) {
+      const aborted = this._otaTestAbort || (error && error.message === 'OTA_ABORTED')
+      console.error('[OTA测试][' + traceId + '] ========== 升级失败 ==========')
+      console.error('[OTA测试][' + traceId + '] 已发送数据包 ' + txDataCount + ' 个')
+      console.error('[OTA测试][' + traceId + '] 失败原因：' + ((error && error.message) || error))
+      console.error('[OTA测试][' + traceId + '] 错误对象：', error)
+      this.setData({ otaTestStatus: aborted ? '已中断' : '测试失败' })
+      toast.show({
+        title: aborted ? '测试已中断' : (error && error.message) || 'OTA测试失败',
+        icon: 'none'
+      })
+    } finally {
+      otaBle.setMonitor(null)
+      wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false })
+      this.setData({ otaTesting: false })
+      console.log('[OTA测试][' + traceId + '] ========== 测试结束 ==========')
+    }
   },
 
   showClearConfirm() {
