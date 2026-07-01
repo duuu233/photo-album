@@ -75,10 +75,21 @@ function mergeSelectedDevice(device) {
   })
 }
 
+// 版本号一致性判断：去空格后不区分大小写比较；任一为空则不视为一致（避免「未知版本」被误判为已最新）。
+function sameVersion(a, b) {
+  const na = textValue(a).toUpperCase()
+  const nb = textValue(b).toUpperCase()
+  return !!na && !!nb && na === nb
+}
+
 function buildFirmwareFromDevice(device) {
   const version = textValue(device && device.newVersionNo)
   const url = textValue(device && device.downloadPath)
-  const hasUpdate = isUpdateFlag(device)
+  const currentVersion =
+    textValue(device && (device.firmwareVersion || device.currentVersion)) || '--'
+  // 当前固件版本已与详情接口下发的 newVersionNo 一致时，视为已是最新，不再触发更新（即便后台 isUpdate=1）。
+  const alreadyLatest = sameVersion(currentVersion, version)
+  const hasUpdate = isUpdateFlag(device) && !alreadyLatest
   const hasValidPackage = hasUpdate && !!version && !!url && isBinFirmwareUrl(url)
   let invalidReason = ''
 
@@ -92,9 +103,7 @@ function buildFirmwareFromDevice(device) {
     hasUpdate: hasValidPackage,
     invalidUpdate: hasUpdate && !hasValidPackage,
     invalidReason,
-    currentVersion:
-      textValue(device && (device.firmwareVersion || device.currentVersion)) ||
-      '--',
+    currentVersion,
     latestVersion: version || '--',
     bleDeviceId: textValue(device && (device.deviceId || device.bleDeviceId)),
     releaseNotes: hasValidPackage ? [`发现新版本：${version}`] : []
