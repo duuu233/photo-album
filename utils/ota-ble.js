@@ -927,19 +927,28 @@ async function transferData(session, bytes, options) {
   try {
     final = await waitFinalResult(session, options.finalTimeout || 10000)
   } catch (error) {
-    // 数据 100% 发完后设备断开：DFU 固件收满、写好 BootSetting 后通常立即重启，表现为断连，
-    // 可能来不及/丢失 0xF3。视为「已发送完毕、设备重启中」，但不谎报"确认成功"——请到设备端核对版本。
-    if (/断开/.test((error && error.message) || '')) {
-      emit(onProgress, {
-        phase: 'done',
-        percent: 100,
-        sent: total,
-        total,
-        message: '数据已全部发送，设备已断开——通常表示已写入并重启进入新固件。请在设备端确认固件版本是否已更新。'
-      })
-      return { totalPackets, mtu: session.mtu, chunkSize, rebooted: true, confirmed: false }
+    // 走到这里，固件数据已 100% 发完且每包都被设备累计确认。此后拿不到显式的 0xF3，无论是
+    // 「等待时设备断开」还是「等 0xF3 超时」，绝大多数是同一回事：设备收满→写好 BootSetting→立即
+    // 重启进入新固件，来不及/根本不回 0xF3（部分固件只重启、从不发 0xF3）。两种都按「已发送完毕、
+    // 设备重启中、请核对版本」返回 confirmed:false——不谎报"确认成功"，也不把成功升级误判成失败。
+    const disconnected = /断开/.test((error && error.message) || '')
+    emit(onProgress, {
+      phase: 'done',
+      percent: 100,
+      sent: total,
+      total,
+      message: disconnected
+        ? '数据已全部发送，设备已断开——通常表示已写入并重启进入新固件。请在设备端确认固件版本是否已更新。'
+        : '数据已全部发送，但未在超时内收到设备校验结果(0xF3)——通常表示设备已写入并直接重启进入新固件。请在设备端确认固件版本是否已更新。'
+    })
+    return {
+      totalPackets,
+      mtu: session.mtu,
+      chunkSize,
+      rebooted: disconnected,
+      confirmed: false,
+      finalTimedOut: !disconnected
     }
-    throw error // 校验超时(收到不完整/设备静默)等非断连错误照常上抛
   }
 
   if (final.result !== 0x00) {
