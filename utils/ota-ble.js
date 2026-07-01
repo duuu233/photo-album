@@ -787,6 +787,10 @@ async function doStart(session, size, options) {
       await writeFrame(session, frame, attempt.target, attempt.writeType)
       const ack = await waiter.promise
       applyStartAck(session, ack)
+      // 关键：设备在哪条特征上应答了 START，后续 DATA 就走同一条（本机 OTA 全程在 FF11 上收发，
+      // 规格书 §6.3.3）。此前 DATA 硬编码写到 FF12(dataChar)，设备收不到 → 永远不回 DATA ACK → 卡在 -1。
+      session.transferTarget = attempt.target
+      session.transferWriteType = attempt.writeType
       console.log('[OTA] START 应答：', ack)
       return ack
     } catch (error) {
@@ -854,7 +858,13 @@ async function transferData(session, bytes, options) {
 
     for (let seq = nextSeq; seq < windowEnd && !session.finalResult; seq++) {
       const chunk = bytes.subarray(seq * chunkSize, Math.min((seq + 1) * chunkSize, total))
-      await writeFrame(session, buildDataFrame(seq, chunk), 'data')
+      // DATA 沿用 START 成功的那条特征/写类型（见 doStart）；缺省回落到控制特征 FF11。
+      await writeFrame(
+        session,
+        buildDataFrame(seq, chunk),
+        session.transferTarget || 'control',
+        session.transferWriteType
+      )
       if (sendPace > 0) {
         await sleep(sendPace)
       }

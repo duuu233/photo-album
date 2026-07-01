@@ -196,3 +196,29 @@ F3  ...  RESULT  CHECKSUM
 6. **`OTA_RESULT_TEXT` 换成规格书 §6.3.2 的 OTA 专用码表**（原先误用图传 `0x7F` 通用码表）。
 
 > START 请求组帧 / DATA 请求组帧 / 固件大小范围 / PRN 窗口 / FF10-FF11 服务发现与开 Notify —— 均未改动（本就无误）。
+
+---
+
+## 9. 第二处修复：DATA 写错特征（2026-07-01，真机验证 START 后发现）
+
+### 现象
+第 8 节修好后真机复测：**START 成功了**（应答 `FC F1 00 FB 03 EB` → `{result:0, mtu:251, prn:3, valid:true}`），
+但数据传输阶段报：`OTA 中断：设备停在已接收第 -1 包不再前进（共 631 包）。当前 MTU=500、每包 244 字节`。
+`lastAckSeq` 始终是初始值 `-1` = 15 次重试里设备**一个 DATA ACK 都没回**。
+
+### 根因
+`transferData` 把 DATA 帧**硬编码写到 `target='data'`**（`session.dataCharId`）。本机同时暴露了 FF11/FF12/FF13，
+于是 `dataChar` = **FF12**，631 个数据包全写到了 FF12。但本机 OTA 只在 **FF11** 上收发
+（START 就是写 FF11、并在 FF11 的 Notify 上拿到应答的；规格书 §6.3.3 / 记忆均确认 FF11 单特征收发）。
+数据进了 FF12，设备的 OTA 处理器根本没收到 → 永不回 DATA ACK → 卡在 -1。
+（MTU=500 是协商到的 ATT MTU；每包 244 由设备声明的 251 正确算得，均无问题。）
+
+### 改动（`utils/ota-ble.js`）
+- `doStart` 握手成功时记录 `session.transferTarget` / `session.transferWriteType` = **START 成功的那条特征/写类型**。
+- `transferData` 的 DATA 写入从 `'data'` 改为 `session.transferTarget || 'control'`，写类型沿用 START 的。
+- 结果：DATA 与 START 走同一条 FF11。对「真·双特征(FF12=data)」设备也成立——它 START 会在哪应答、DATA 就跟到哪。
+
+### 仍待真机确认
+1. 换 FF11 后设备是否按 PRN=3 正常回 DATA ACK（`FC F2 00 <seq2>`）、`lastAckSeq` 正常前进。
+2. 收齐后的 `0xF3` 最终结果帧，顺带定 §5.2 的 RESULT 偏移。
+3. 若仍卡住，再查：发包节奏 `pace`(默认20ms)/PRN 窗口是否过快、每包 244 是否需按固件要求改定长。
