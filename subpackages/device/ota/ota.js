@@ -421,6 +421,12 @@ Page({
   },
 
   async runUpgrade() {
+    // 防重入：auto=1 的 setTimeout 自动触发（loadFirmware 里）不经过 startUpgrade 的闸门，
+    // 与用户点击可能并发出两条 DFU 流——同一 session 上交叉写 DATA seq，设备收到乱序流必败。
+    if (this.data.state === 'upgrading') {
+      return
+    }
+
     const firmware = this.data.firmware
     const pkg = firmware && firmware.package
     const bleDeviceId = this.getBleDeviceId()
@@ -474,6 +480,30 @@ Page({
       const unconfirmed = result && result.confirmed === false
       const doneText = unconfirmed ? '未确认(请重试)' : '升级完成'
 
+      // 未确认 = 没拿到设备 0xF3：不能假报成功——不上报 success、不把本地版本改成新版、
+      // 保留升级包并开放「重新升级」，否则用户既被误导"已升级"又没有任何重试入口，后端记录也是假的。
+      if (unconfirmed) {
+        if (!this._testMode) {
+          await api.reportDeviceFirmwareUpgrade(this.data.id, {
+            status: 'fail',
+            version: firmware.latestVersion,
+            message: '数据已全部发送，但未收到设备 0xF3 确认，升级未确认成功'
+          }).catch(() => {})
+        }
+        this.setData({
+          state: 'failed',
+          statusText: '未确认(请重试)',
+          statusClass: 'is-error',
+          canUpgrade: true,
+          actionText: '重新升级',
+          progressPercent: 100,
+          progressText: doneText,
+          errorMessage: '数据已全部发送，但未收到设备 0xF3 确认——升级未确认成功，请重试。'
+        })
+        toast.show({ title: doneText, icon: 'none' })
+        return
+      }
+
       // 真实升级：测试流程不回报后台（无对应设备记录）；正常流程才上报结果。
       if (!this._testMode) {
         await api.reportDeviceFirmwareUpgrade(this.data.id, {
@@ -513,7 +543,7 @@ Page({
           state: 'success',
           progressPercent: 100,
           progressText: `${doneText}（${result.size} 字节 / ${result.totalPackets} 包）`,
-          statusText: unconfirmed ? '未确认(请重试)' : '测试完成',
+          statusText: '测试完成',
           statusClass: 'is-latest',
           canUpgrade: false,
           actionText: '已完成'

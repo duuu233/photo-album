@@ -773,6 +773,11 @@ async function doStart(session, size, options) {
   }
 
   for (let i = 0; i < attempts.length; i++) {
+    // 用户中断（切后台/离开页面）：握手最多「特征×写类型×objType」十余次尝试 × 2.5s 超时，
+    // 不检查中断标记会让已离开的页面空转半分钟。
+    if (options.shouldAbort && options.shouldAbort()) {
+      throw new Error('OTA_ABORTED')
+    }
     const attempt = attempts[i]
     const frame = buildStartFrame(size, attempt.objType)
     const waiter = createStartAckWaiter(session, timeout, attempt)
@@ -949,6 +954,11 @@ async function transferData(session, bytes, options) {
       if (!session.ready || /断开/.test((error && error.message) || '')) {
         throw new Error('OTA 传输中断：数据已发完但设备在回校验结果(0xF3)前断开，固件未确认收齐，升级未完成。')
       }
+      // 用户中断（切后台/离开页面）：尾包等待/重发阶段同样要响应，否则页面已卸载仍空转 15s
+      // 并持续对已销毁页面回调 onProgress。
+      if (shouldAbort()) {
+        throw new Error('OTA_ABORTED')
+      }
       // 等 0xF3 超时。按固件语义 = 尾包没送达。超出总期限或重发上限则判失败，绝不谎报成功。
       if (tailResends >= maxTailResends || Date.now() - tailStart > finalDeadline) {
         throw new Error(
@@ -966,7 +976,7 @@ async function transferData(session, bytes, options) {
         total,
         message: `未收到设备校验结果(0xF3)，重发尾包（第 ${resendFrom}~${totalPackets - 1} 包，第 ${tailResends}/${maxTailResends} 次）`
       })
-      for (let seq = resendFrom; seq < totalPackets && !session.finalResult && session.ready; seq++) {
+      for (let seq = resendFrom; seq < totalPackets && !session.finalResult && session.ready && !shouldAbort(); seq++) {
         const chunk = bytes.subarray(seq * chunkSize, Math.min((seq + 1) * chunkSize, total))
         await writeFrame(
           session,

@@ -72,6 +72,7 @@ Page({
 
   onUnload() {
     this._aborted = true
+    this._unloaded = true // 卸载后 success/failResult 只落存储，不再 setData/弹 toast
     wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false })
     // 离开投屏结果页不再主动断开：按用户要求保持连接（非手动/物理断开就一直连着）。
     this._activeDeviceId = ''
@@ -425,6 +426,9 @@ Page({
       imageCount: count
     }
     wx.setStorageSync('lastProjectionResult', result)
+    if (this._unloaded) {
+      return // 用户已退出本页：结果已落存储，别再对已销毁实例 setData
+    }
     this.applyStatus('success', result)
   },
 
@@ -437,6 +441,11 @@ Page({
       message
     }
     wx.setStorageSync('lastProjectionResult', result)
+    if (this._unloaded) {
+      // 用户主动退出触发的中断：结果已落存储（保留 pendingProjection 可重投），
+      // 不再对已销毁实例 setData，也不在用户已返回的页面上弹「投屏已中断」误导性 toast。
+      return
+    }
     this.applyStatus('fail', result)
     if (message) {
       toast.show({ title: message, icon: 'none' })

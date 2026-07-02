@@ -87,6 +87,15 @@ function ensureGlobalListener() {
       if (!session) {
         return
       }
+      // 只收本会话通知特征(FF02)的数据：同一连接上 OTA 特征(FF11)的通知（0xFC/0xF1/0xF3 应答）
+      // 若灌进来，首字节不是 0xAA 会堵住解帧缓冲头部，此后 FF00 全部指令一律「应答超时」，
+      // 直到断开重连（OTA 测试跑完后详情页/投屏全挂的根因之一）。
+      if (
+        res.characteristicId &&
+        !matchUuid(res.characteristicId, short16(session.notifyCharId))
+      ) {
+        return
+      }
       handleNotify(session, res.value)
     })
   }
@@ -122,6 +131,10 @@ function cleanupSession(deviceId, reason) {
   delete sessions[deviceId]
 }
 
+// 单会话接收缓冲上限：设备侧应答帧都很小（几十字节）。超过说明头部 SOF 是错位数据里的假帧头、
+// LEN 字段被污染成超大值在傻等「收齐」——此时必须丢头重同步，否则缓冲无界增长且解帧永久停摆。
+const RX_BUFFER_MAX = 2048
+
 // 处理一次通知数据：追加到接收缓冲，循环解出完整帧并派发给等待中的请求
 function handleNotify(session, value) {
   session.rxBuffer = session.rxBuffer.concat(protocol.toBytes(value))
@@ -130,7 +143,18 @@ function handleNotify(session, value) {
   while (session.rxBuffer.length) {
     const parsed = protocol.tryParseFrame(session.rxBuffer)
     if (!parsed) {
-      break
+      // 头字节不是 SOF(0xAA)：丢包错位/串道垃圾堵在头部。丢弃到下一个 0xAA 重新同步，
+      // 否则此后所有合法帧永远解不出来（表象为该设备所有指令一律「应答超时」，只能断开重连）。
+      // 头部是 SOF 但缓冲异常膨胀：假帧头 + 被污染的 LEN 在傻等收齐，同样丢头重同步。
+      if (
+        session.rxBuffer[0] !== protocol.SOF ||
+        session.rxBuffer.length > RX_BUFFER_MAX
+      ) {
+        const next = session.rxBuffer.indexOf(protocol.SOF, 1)
+        session.rxBuffer = next === -1 ? [] : session.rxBuffer.slice(next)
+        continue
+      }
+      break // 头部是 SOF 且长度合理：整帧未收齐，等下一次通知续上
     }
     const rawBytes = session.rxBuffer.slice(0, parsed.consumed) // 整帧原始字节，给监听器打日志
     session.rxBuffer = session.rxBuffer.slice(parsed.consumed)
@@ -402,12 +426,23 @@ async function request(deviceId, cmd, payload, timeout = 6000) {
 
   const value = protocol.buildFrame(cmd, payload)
   reportFrame('TX', deviceId, cmd, value)
-  await wxp(wx.writeBLECharacteristicValue, {
-    deviceId,
-    serviceId: session.serviceId,
-    characteristicId: session.writeCharId,
-    value
-  })
+  try {
+    await wxp(wx.writeBLECharacteristicValue, {
+      deviceId,
+      serviceId: session.serviceId,
+      characteristicId: session.writeCharId,
+      value
+    })
+  } catch (error) {
+    // 写失败（发送缓冲满/瞬时断连）：立刻回收 pending。否则 6s 超时内同 cmd 的新请求会被
+    // 误拒「正在等待应答」，且孤儿 ackPromise 超时 reject 无人接 → unhandled rejection。
+    const pending = session.pending[cmd]
+    if (pending) {
+      clearTimeout(pending.timer)
+      delete session.pending[cmd]
+    }
+    throw error
+  }
 
   return ackPromise
 }
