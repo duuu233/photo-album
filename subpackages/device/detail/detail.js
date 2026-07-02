@@ -8,6 +8,7 @@ const protocol = require('../../../utils/frame-protocol')
 const media = require('../../../utils/media')
 const bluetooth = require('../../../utils/bluetooth')
 const permission = require('../../../utils/permission')
+const activeDevice = require('../../../utils/active-device')
 
 const app = getApp()
 
@@ -424,11 +425,12 @@ Page({
 
   async applyPlayback(mode, intervalHours, carouselEnabled) {
     const device = this.data.device
-    if (!device || !device.deviceId) {
-      toast.warn({
-        title: '请先连接设备',
-        icon: 'none'
-      })
+    if (!device) {
+      return
+    }
+    // 操作前先确保已连接：断联则自动重连(扫描+连接)，连不上再提示「请先连接设备」。
+    const deviceId = await activeDevice.ensureConnectedForAction(device)
+    if (!deviceId) {
       return
     }
 
@@ -437,8 +439,10 @@ Page({
 
     wx.showLoading({ title: '保存中', mask: true })
     try {
-      await deviceBle.setPlayback(device.deviceId, mode, intervalSeconds)
+      await deviceBle.setPlayback(deviceId, mode, intervalSeconds)
       const updated = Object.assign({}, device, {
+        deviceId,
+        bleDeviceId: deviceId,
         connected: true,
         playbackMode: mode,
         intervalSeconds,
@@ -652,16 +656,41 @@ Page({
     })
   },
 
-  goOtaUpgrade() {
+  // 点「固件升级」：先调接口检测最新版本 → 有新版本弹二次确认(稍后/立刻更新)，无则提示已是最新、不进升级页。
+  async goOtaUpgrade() {
     const device = this.data.device
     if (!device) {
       return
     }
 
-    const validationError = getOtaValidationError(device)
+    // 先调接口检测版本（不依赖详情页可能已过期的数据）
+    wx.showLoading({ title: '检测版本中', mask: true })
+    let latest
+    try {
+      latest = await api.getDeviceDetail(this.data.id)
+    } catch (error) {
+      wx.hideLoading()
+      toast.warn({ title: (error && error.message) || '版本检测失败', icon: 'none' })
+      return
+    }
+    wx.hideLoading()
+
+    // 无新版本：弹提示框，不进入固件升级详情页
+    if (!isUpdateFlag(latest)) {
+      wx.showModal({
+        title: '固件升级',
+        content: '当前固件已是最新版本',
+        showCancel: false,
+        confirmText: '知道了'
+      })
+      return
+    }
+
+    // 有更新但包信息无效（缺版本号/下载地址/非 .bin）：如实提示，不进入
+    const validationError = getOtaValidationError(latest)
     if (validationError) {
       wx.showModal({
-        title: 'OTA升级',
+        title: '固件升级',
         content: validationError,
         showCancel: false,
         confirmText: '知道了'
@@ -669,26 +698,39 @@ Page({
       return
     }
 
-    const bleDeviceId = getBleDeviceId(device)
-    if (!(bleDeviceId && deviceBle.isConnected(bleDeviceId))) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
+    // 有新版本：二次确认；「立刻更新」→ 确保已连接后进入升级页自动开始下载
+    wx.showModal({
+      title: '固件升级',
+      content: `检测到新版本：${textValue(latest.newVersionNo)}，是否升级`,
+      cancelText: '稍后',
+      confirmText: '立刻更新',
+      success: res => {
+        if (res.confirm) {
+          this.enterOtaUpgrade()
+        }
+      }
+    })
+  },
+
+  // 「立刻更新」：确保设备已连接(断联自动重连)，把当下有效连接写回选中设备，再进入固件升级页自动开始下载。
+  async enterOtaUpgrade() {
+    const device = this.data.device
+    if (!device) {
       return
     }
-
+    const deviceId = await activeDevice.ensureConnectedForAction(device)
+    if (!deviceId) {
+      return // 连不上，提示已弹（请先连接设备 / 权限引导）
+    }
     app.setSelectedDevice(
-      Object.assign({}, device, {
-        deviceId: bleDeviceId,
-        bleDeviceId,
-        connected: true
-      })
+      Object.assign({}, device, { deviceId, bleDeviceId: deviceId, connected: true })
     )
-
     wx.navigateTo({
       url: `/subpackages/device/ota/ota?id=${this.data.id}&auto=1`
     })
   },
 
-  // 长按「OTA升级」进入本地固件测试流程：用代码包内的测试 .bin 走真实 DFU（设备已连接）
+  // 长按「固件升级」进入本地固件测试流程：用代码包内的测试 .bin 走真实 DFU（设备已连接）
   // 或干跑校验（未连接）。先把当前设备设为全局选中，OTA 页据此拿到 bleDeviceId。
   goOtaTest() {
     if (this.data.device) {
@@ -886,16 +928,13 @@ Page({
       return
     }
 
-    if (!this.data.device.deviceId) {
-      toast.warn({
-        title: '请先连接设备',
-        icon: 'none'
-      })
+    // 操作前先确保已连接：断联则自动重连(扫描+连接)，连不上再提示「请先连接设备」。
+    const deviceId = await activeDevice.ensureConnectedForAction(this.data.device)
+    if (!deviceId) {
       return
     }
 
     const traceId = Date.now().toString(36)
-    const deviceId = this.data.device.deviceId
     logClearDeviceData(traceId, '点击确认，开始清空设备图片', {
       pageDeviceId: this.data.id,
       bleDeviceId: deviceId

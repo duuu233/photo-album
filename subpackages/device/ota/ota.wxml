@@ -3,7 +3,7 @@
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202606161438400869930.png" mode="aspectFill"></image>
   </view>
 
-  <page-nav title="OTA升级"></page-nav>
+  <page-nav title="固件升级"></page-nav>
 
   <view class="mock-content ota-content">
     <view wx:if="{{loading}}" class="ota-card glass-panel loading-card">

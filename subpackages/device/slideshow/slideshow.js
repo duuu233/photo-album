@@ -2,6 +2,7 @@ const api = require('../../../utils/api')
 const toast = require('../../../utils/toast')
 const system = require('../../../utils/system')
 const deviceBle = require('../../../utils/device-ble')
+const activeDevice = require('../../../utils/active-device')
 
 const app = getApp()
 
@@ -141,11 +142,12 @@ Page({
   // 下发播放设置到设备。成功返回 true，失败/未连接返回 false（供开关判断是否还原）。
   async applyPlayback(mode, intervalHours, carouselEnabled) {
     const device = this.data.device
-    if (!device || !device.deviceId) {
-      toast.warn({
-        title: '请先连接设备',
-        icon: 'none'
-      })
+    if (!device) {
+      return false
+    }
+    // 操作前先确保已连接：断联则自动重连(扫描+连接)，连不上再提示「请先连接设备」。
+    const deviceId = await activeDevice.ensureConnectedForAction(device)
+    if (!deviceId) {
       return false
     }
 
@@ -154,8 +156,10 @@ Page({
 
     wx.showLoading({ title: '保存中', mask: true })
     try {
-      await deviceBle.setPlayback(device.deviceId, mode, intervalSeconds)
+      await deviceBle.setPlayback(deviceId, mode, intervalSeconds)
       const updated = Object.assign({}, device, {
+        deviceId,
+        bleDeviceId: deviceId,
         connected: true,
         playbackMode: mode,
         intervalSeconds,

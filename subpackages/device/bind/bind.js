@@ -58,6 +58,7 @@ Page({
     this.setData({
       scanning: true,
       devices: [],
+      selectedId: '', // 每次重新搜索清空选中，让本次搜到的信号最强设备被默认选中
       showHelp: false
     })
 
@@ -78,20 +79,20 @@ Page({
 
       await bluetooth.openAdapter()
 
-      // 只扫真实相框（广播名以 EF6 开头或带合法厂商数据），不再用模拟设备兜底
+      // 只扫真实相框（广播名以 EF6 开头或带合法厂商数据），不再用模拟设备兜底。
+      // onUpdate：搜到一台就渲染一台（边搜边显示），不必等满超时；窗口加长到 12s，
+      // 让「同时存在 2 台及以上设备」时每台都有足够广播机会被搜到，避免只搜到一台。
       const devices = await bluetooth.discoverDevices({
-        timeout: 8000
+        timeout: 12000,
+        onUpdate: list => this.applyScanResult(seq, list)
       })
 
       if (seq !== this.scanSeq) {
         return // 本次扫描已被取消，丢弃结果
       }
 
-      // 默认选中第一台，符合设计稿「已搜索到设备」首项高亮
-      this.setData({
-        devices,
-        selectedId: devices.length ? devices[0].id || devices[0].deviceId : ''
-      })
+      // 超时到点的最终列表：增量已实时渲染过，这里兜底对齐一次并处理空态
+      this.applyScanResult(seq, devices)
 
       // 鸿蒙兼容兜底：一台没搜到时给鸿蒙用户单独排查引导(非鸿蒙保留原空态 UI)
       if (!devices.length) {
@@ -117,6 +118,20 @@ Page({
         })
       }
     }
+  },
+
+  // 把一次扫描结果（增量或最终）渲染到列表。作废的扫描直接丢弃；首次出现设备时默认选中信号最强那台，
+  // 之后保留已有/用户的选择，避免增量刷新时选中项来回跳。
+  applyScanResult(seq, list) {
+    if (seq !== this.scanSeq) {
+      return // 本次扫描已取消，丢弃增量结果
+    }
+    const devices = list || []
+    this.setData({
+      devices,
+      selectedId:
+        this.data.selectedId || (devices.length ? devices[0].id || devices[0].deviceId : '')
+    })
   },
 
   // 取消正在进行的搜索：停止蓝牙扫描并让在途的 scan 结果失效，然后退出绑定流程

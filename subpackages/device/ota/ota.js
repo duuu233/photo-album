@@ -6,7 +6,7 @@ const system = require('../../../utils/system')
 
 const app = getApp()
 
-// 本地测试固件（代码包内）：详情页「OTA升级」长按进入测试流程时使用。
+// 本地测试固件（代码包内）：详情页「固件升级」长按进入测试流程时使用。
 // 真机连上设备 → 走真实蓝牙 DFU；未连接（如开发者工具）→ 自动降级为干跑，仅校验编码/分包。
 const TEST_FW_PATH = 'docs/BR1601A02_260609_r8122_5139_5D89_V100_OTA.bin'
 const TEST_FW_NAME = 'BR1601A02_260609_r8122_5139_5D89_V100_OTA.bin'
@@ -558,7 +558,7 @@ Page({
       const aborted = this._abortUpgrade || (error && error.message === 'OTA_ABORTED')
       const message = aborted
         ? '升级已中断：升级过程中手机切到后台或页面离开。请保持屏幕常亮后重试。'
-        : (error.message || 'OTA升级失败')
+        : (error.message || '固件升级失败')
 
       if (!this._testMode) {
         await api.reportDeviceFirmwareUpgrade(this.data.id, {

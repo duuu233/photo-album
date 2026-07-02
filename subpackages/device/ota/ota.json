@@ -1,6 +1,6 @@
 {
   "navigationStyle": "custom",
-  "navigationBarTitleText": "OTA升级",
+  "navigationBarTitleText": "固件升级",
   "usingComponents": {
     "page-nav": "/components/page-nav/page-nav"
   },
