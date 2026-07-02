@@ -454,12 +454,21 @@ function sleep(ms) {
 // 图传数据包之间的发送间隔（毫秒）。FF01 用「无应答写」，写得太快有两个后果：
 //   1) 把手机蓝牙发送缓冲冲爆 → writeValueToCharacteristics error；
 //   2) 设备端（BLE 收包 + 写 Flash）跟不上 → 收一阵就不再前进（ACK_SEQ 卡住）。
-// 留足间隔让两边都喘得过气。先求稳（值偏大），联调通了再往小调提速。
-const PACKET_PACE_MS = 45
+// 默认取「极速」档(3ms)：固件已扩大 MCU 收包内存(可缓 10 包)，配合 7.5ms 连接间隔按最快速率喂数据。
+// 调试页「同步投屏」可把实测调稳的 pace 写进下面的存储键覆盖它；卡顿时窗口内部还会自动缩窗+减速兜底。
+const PACKET_PACE_MS = 3
 // 图传前尝试把 BLE 连接间隔调到此值（默认 7.5ms / CONN_INTERVAL=6，即协议最小值，最快连接节奏）。失败时不阻断旧图传链路。
 // 调试页「同步投屏」会把输入框的值写进下面这个存储键；真实投屏图传前优先读它，没同步过则回落默认 7.5ms。
 const TRANSFER_CONN_INTERVAL_MS = 7.5
 const TRANSFER_CONN_INTERVAL_STORAGE_KEY = 'transferConnIntervalMs'
+// 真实投屏图传每包发送间隔(ms)的存储键：调试页「同步投屏」把实测 pace 写进来，真实投屏优先读它，
+// 没同步过则回落默认 PACKET_PACE_MS(极速 3ms)。与连接间隔同套「调试台调好→同步到真实场景」的机制。
+const TRANSFER_PACE_STORAGE_KEY = 'transferPaceMs'
+// 图传窗口(发满多少包等一次 0x23 累计应答)。固件扩内存后一次可缓 10 包，默认 10；上限也是 10——
+// 超过固件收包缓冲会溢出丢包，故 setTransferWindow 会夹到 [1, MAX]。调试台可在此范围内调小做对照。
+const DEFAULT_TRANSFER_WINDOW = 10
+const TRANSFER_WINDOW_MAX = 10
+const TRANSFER_WINDOW_STORAGE_KEY = 'transferWindow'
 
 // 裸写一帧（默认写类型，由特征支持的属性决定——本设备 FF01 为无应答写）。
 async function writeFrame(session, cmd, payload, writeType) {
@@ -682,6 +691,60 @@ function setTransferConnIntervalMs(ms) {
   return { ms: value, units }
 }
 
+// 真实投屏图传每包发送间隔(ms)：优先用调试页「同步投屏」存下的值，否则用默认极速 3ms。
+// uploadImage 未显式收到 pace 时会调它，让真实投屏跟随调试台调稳的发送速度。
+function getTransferPaceMs() {
+  try {
+    const saved = Number(wx.getStorageSync(TRANSFER_PACE_STORAGE_KEY))
+    if (Number.isFinite(saved) && saved >= 0) {
+      return saved
+    }
+  } catch (error) {
+    // 读存储失败就用默认值
+  }
+  return PACKET_PACE_MS
+}
+
+// 把真实投屏图传每包发送间隔(ms)持久化（调试页「同步投屏」调用）。
+// 归一为非负数后落库，返回实际生效值用于回显。
+function setTransferPaceMs(ms) {
+  const value = Math.max(0, Number(ms))
+  if (!Number.isFinite(value)) {
+    throw new Error('发送间隔需为有效毫秒数')
+  }
+  wx.setStorageSync(TRANSFER_PACE_STORAGE_KEY, value)
+  return value
+}
+
+// 把窗口包数夹到 [1, TRANSFER_WINDOW_MAX] 的整数，无效值回落默认 10。
+function normalizeTransferWindow(n) {
+  const value = Math.round(Number(n))
+  if (!Number.isFinite(value) || value < 1) {
+    return DEFAULT_TRANSFER_WINDOW
+  }
+  return Math.min(TRANSFER_WINDOW_MAX, value)
+}
+
+// 真实投屏图传窗口包数：优先用调试页「同步投屏」存下的值，否则用默认 10。
+function getTransferWindow() {
+  try {
+    const saved = Number(wx.getStorageSync(TRANSFER_WINDOW_STORAGE_KEY))
+    if (Number.isFinite(saved) && saved >= 1) {
+      return normalizeTransferWindow(saved)
+    }
+  } catch (error) {
+    // 读存储失败就用默认值
+  }
+  return DEFAULT_TRANSFER_WINDOW
+}
+
+// 把真实投屏图传窗口包数持久化（调试页「同步投屏」调用）。夹到 [1, MAX] 后落库，返回实际生效值用于回显。
+function setTransferWindow(n) {
+  const value = normalizeTransferWindow(n)
+  wx.setStorageSync(TRANSFER_WINDOW_STORAGE_KEY, value)
+  return value
+}
+
 // 图传前的连接参数优化：读当前值，必要时切到更快的连接间隔。
 // 未显式传 ms 时，用「同步投屏」存下的值（没同步过则默认 7.5ms）。
 // 兼容旧固件/异常链路：调用方可捕获错误后继续走原图传逻辑。
@@ -792,13 +855,18 @@ async function uploadImage(deviceId, options) {
     throw new Error(protocol.resultText(startAck.result))
   }
 
-  // 2) 0x21 数据：每片大小按协商到的 MTU 决定（上限 236）；窗口 5 包，发满 5 包等一次 0x23(ACK_SEQ)。
+  // 2) 0x21 数据：每片大小按协商到的 MTU 决定（上限 236）；窗口 N 包，发满 N 包等一次 0x23(ACK_SEQ)。
+  // 固件已扩大 MCU 收包内存，一次可缓 10 包(此前只有 5)，故默认窗口 10。调用方可传 window 覆盖(如调试台对照)；
+  // 未显式传时用「同步投屏」存下的值(没同步过回落默认 10)，并夹到固件上限，避免超缓冲丢包。
   const CHUNK = session.dataChunk || 236
-  const WINDOW = 5
-  // 每包发送间隔(ms)：可由调用方传 pace 调速；越小越快，但太小设备会跟不上而丢包/卡住。默认走保守值。
+  const WINDOW = normalizeTransferWindow(
+    Number.isFinite(options.window) ? options.window : getTransferWindow()
+  )
+  // 每包发送间隔(ms)：调用方显式传 pace 时以它为准；否则用「同步投屏」存下的值(没同步过回落极速 3ms)。
+  // 越小越快，但太小设备会跟不上而丢包/卡住。
   const pace = Number.isFinite(options.pace)
     ? Math.max(0, options.pace)
-    : PACKET_PACE_MS
+    : getTransferPaceMs()
   const totalPackets = Math.ceil(dataSize / CHUNK)
   let nextSeq = 0 // 下一个要发送的包号（= 已确认的最后包号 + 1）
   let retries = 0 // 同一窗口的重试次数，连续失败则判定连接中断
@@ -973,6 +1041,10 @@ module.exports = {
   optimizeConnectionIntervalForTransfer,
   getTransferConnIntervalMs,
   setTransferConnIntervalMs,
+  getTransferPaceMs,
+  setTransferPaceMs,
+  getTransferWindow,
+  setTransferWindow,
   setTime,
   deleteImage,
   refreshScreen,

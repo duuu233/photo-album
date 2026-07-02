@@ -364,10 +364,13 @@ Page({
     intervalInput: '60', // 切换间隔(秒)
     connIntervalInput: '7.5', // BLE 连接间隔(ms)，协议会换算为 1.25ms 单位（7.5ms=6单位，协议最小值）
     projectionConnIntervalMs: 7.5, // 真实投屏图传前要设的连接间隔(ms)，由「同步投屏」写入，onLoad 时回显
+    projectionPaceMs: 3, // 真实投屏图传每包发送间隔(ms)，由「同步投屏」写入，onLoad 时回显
+    projectionWindow: 10, // 真实投屏图传窗口包数，由「同步投屏」写入，onLoad 时回显
     switchInput: '0', // 0x24 要显示的图片索引
     deleteInput: '', // 0x12 要删除的图片索引，逗号分隔，如 "0,2"
     uploadIndexInput: '', // 上传槽位，留空则自动选空闲位
-    pace: 45, // 图传每包发送间隔(ms)，越小越快；从慢到快试，找你这台设备不丢包的最快值
+    pace: 3, // 图传每包发送间隔(ms)，越小越快；默认极速档，与真实投屏同步；卡住就往「稳」退一档
+    windowSize: 10, // 图传窗口(发满多少包等一次累计应答)。固件扩内存后默认 10，可切 5 做对照
     cropMode: 'cover', // cover 与 APP centerCropCover 对齐；contain 用白底完整显示原图
     debugResizeMode: 'staged', // staged=当前分阶段缩放；single=APP对照用单步 drawImage 缩放
     debugSkipCompressImage: false, // 开启后跳过 wx.compressImage，直接用 chooseMedia 原图进 canvas 解码
@@ -399,11 +402,18 @@ Page({
     this.setData(system.getLayoutMetrics())
     this._logId = 0
 
-    // 回显当前真实投屏要用的连接间隔（同步过则是同步值，否则默认 7.5ms），让输入框与投屏保持一致
+    // 回显当前真实投屏要用的传输参数（同步过则是同步值，否则用默认：连接间隔 7.5ms / pace 3ms / 窗口 10 包），
+    // 让调试台的输入/档位与真实投屏保持一致——调试台看到的就是投屏会用的值。
     const projectionConnIntervalMs = deviceBle.getTransferConnIntervalMs()
+    const projectionPaceMs = deviceBle.getTransferPaceMs()
+    const projectionWindow = deviceBle.getTransferWindow()
     this.setData({
       projectionConnIntervalMs,
-      connIntervalInput: String(projectionConnIntervalMs)
+      connIntervalInput: String(projectionConnIntervalMs),
+      projectionPaceMs,
+      pace: projectionPaceMs,
+      projectionWindow,
+      windowSize: projectionWindow
     })
 
     // 注册监听器：device-ble 每发送/接收一帧都会回调这里，把 16 进制打到控制台
@@ -845,10 +855,10 @@ Page({
     }
   },
 
-  // 同步投屏：把当前「连接间隔」输入值持久化给真实投屏。
-  // 之后正式投屏(result.js → optimizeConnectionIntervalForTransfer)图传前会按这个值设链路间隔，
-  // 而不是写死的默认 7.5ms。这里只写本地存储、不依赖蓝牙连接，所以未连接设备也能同步。
-  cmdSyncConnIntervalToProjection() {
+  // 同步投屏：把调试台当前调好的三项传输参数——连接间隔 / 发送速度(pace) / 发包窗口——一并持久化给真实投屏。
+  // 之后正式投屏(result.js → optimizeConnectionIntervalForTransfer + uploadImage)图传前会按这些值来传，
+  // 而不是写死默认(7.5ms / 极速 3ms / 10 包)。只写本地存储、不依赖蓝牙连接，所以未连接设备也能同步。
+  cmdSyncTransferToProjection() {
     const ms = Number(this.data.connIntervalInput)
     if (!Number.isFinite(ms) || ms <= 0) {
       toast.show({ title: '请输入有效的连接间隔毫秒数', icon: 'none' })
@@ -863,15 +873,21 @@ Page({
       return
     }
     try {
-      // 按 1.25ms 单位归一后落库，返回实际生效值用于回显
-      const applied = deviceBle.setTransferConnIntervalMs(ms)
+      // 连接间隔按 1.25ms 单位归一；pace/窗口各自归一后落库，返回实际生效值用于回显
+      const appliedConn = deviceBle.setTransferConnIntervalMs(ms)
+      const appliedPace = deviceBle.setTransferPaceMs(this.data.pace)
+      const appliedWindow = deviceBle.setTransferWindow(this.data.windowSize)
       this.setData({
-        projectionConnIntervalMs: applied.ms,
-        connIntervalInput: String(applied.ms)
+        projectionConnIntervalMs: appliedConn.ms,
+        connIntervalInput: String(appliedConn.ms),
+        projectionPaceMs: appliedPace,
+        pace: appliedPace,
+        projectionWindow: appliedWindow,
+        windowSize: appliedWindow
       })
       this.appendLog({
         type: 'ok',
-        text: `已同步到真实投屏：图传前连接间隔将设为 ${applied.ms}ms（CONN_INTERVAL=${applied.units}）`
+        text: `已同步到真实投屏：连接间隔 ${appliedConn.ms}ms（CONN_INTERVAL=${appliedConn.units}）· 每包间隔 ${appliedPace}ms · 窗口 ${appliedWindow} 包`
       })
       toast.show({ title: '已同步到投屏', icon: 'success' })
     } catch (error) {
@@ -946,6 +962,11 @@ Page({
   // 切换图传发送速度（每包间隔 ms）。建议从「稳」往「快」试：哪一档开始丢包/卡住，就退回上一档。
   onPaceChange(e) {
     this.setData({ pace: Number(e.detail.value) })
+  },
+
+  // 切换图传窗口(发满多少包等一次累计应答)。固件收包内存上限 10 包，默认 10；调小(如 5)可做丢包对照。
+  onWindowChange(e) {
+    this.setData({ windowSize: Number(e.detail.value) })
   },
 
   formatTuningValue(percent) {
@@ -1766,6 +1787,7 @@ Page({
         height: info.height,
         data: frame.data,
         pace: this.data.pace, // 发送速度（每包间隔 ms），由页面"发送速度"档位决定
+        window: this.data.windowSize, // 图传窗口(发满多少包等一次累计应答)，由页面"发包窗口"档位决定
         shouldAbort: () => this._uploadAborted, // 息屏/切后台时由 onHide 置为 true
         onProgress: (done, total, phase, detail) => {
           const patch = { uploadPercent: Math.floor((done / total) * 100) }

@@ -112,9 +112,9 @@
         <text class="row-label">连接间隔</text>
         <input class="input" type="digit" value="{{connIntervalInput}}" bindinput="onConnIntervalInput" placeholder="ms,如 7.5" />
         <button class="btn btn-mini btn-compact" disabled="{{busy}}" bindtap="cmdSetConnInterval">应用 0x13</button>
-        <button class="btn btn-mini btn-compact btn-sync" bindtap="cmdSyncConnIntervalToProjection">同步投屏</button>
+        <button class="btn btn-mini btn-compact btn-sync" bindtap="cmdSyncTransferToProjection">同步投屏</button>
       </view>
-      <view class="row-tip">BLE 连接间隔单位为 1.25ms，允许 7.5~4000ms；图传默认用 7.5ms(最小值/最快)。每次图传前会自动按此值设置并复读确认（0x05→0x13→0x05），卡住时据此区分「间隔没生效」还是「设备吃不下速率」。<text class="row-tip-strong">「同步投屏」</text>把当前输入值写给真实投屏：之后正式投屏图传前会按这个值设连接间隔（当前投屏用 {{projectionConnIntervalMs}}ms），不点则维持默认 7.5ms。</view>
+      <view class="row-tip">BLE 连接间隔单位为 1.25ms，允许 7.5~4000ms；图传默认用 7.5ms(最小值/最快)。每次图传前会自动按此值设置并复读确认（0x05→0x13→0x05），卡住时据此区分「间隔没生效」还是「设备吃不下速率」。<text class="row-tip-strong">「同步投屏」</text>把当前调好的三项——连接间隔 / 发送速度 / 发包窗口——一并写给真实投屏：之后正式投屏就按这些值传，不点则维持默认(7.5ms / 极速3ms / 10包)。当前投屏：连接间隔 {{projectionConnIntervalMs}}ms · 每包间隔 {{projectionPaceMs}}ms · 窗口 {{projectionWindow}} 包。</view>
       <view class="row">
         <text class="row-label">系统校时</text>
         <text class="row-hint">把手机当前时间同步给设备 RTC</text>
@@ -140,6 +140,14 @@
         </radio-group>
       </view>
       <view class="row-tip">从「稳」往右试：哪档开始失败/卡住，就退回上一档。当前每包间隔 {{pace}}ms</view>
+      <view class="row">
+        <text class="row-label">发包窗口</text>
+        <radio-group class="radio-row" bindchange="onWindowChange">
+          <label class="radio"><radio value="5" checked="{{windowSize === 5}}" color="#ff621f" />5 包</label>
+          <label class="radio"><radio value="10" checked="{{windowSize === 10}}" color="#ff621f" />10 包</label>
+        </radio-group>
+      </view>
+      <view class="row-tip">发满多少包等一次累计应答(0x23)。固件已扩内存、上限 10 包，默认 10；怀疑设备收不过来丢包时可退到 5 包对照。当前窗口 {{windowSize}} 包。</view>
       <view class="convert-panel">
         <view class="convert-head">
           <text class="convert-title">上传转换参数</text>
