@@ -54,7 +54,7 @@ Page({
     }
 
     if (!isEmail(this.data.email)) {
-      toast.show({
+      toast.warn({
         title: '请输入正确邮箱',
         icon: 'none'
       })

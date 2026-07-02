@@ -224,7 +224,7 @@ Page({
   ensureConnectedDevice() {
     const device = activeDevice.getActiveDevice()
     if (!device || !device.deviceId || !deviceBle.isConnected(device.deviceId)) {
-      toast.show({
+      toast.warn({
         title: '设备未连接，无法删除',
         icon: 'none'
       })
@@ -235,7 +235,7 @@ Page({
 
   showDeleteDialog() {
     if (!this.data.selectedCount) {
-      toast.show({
+      toast.warn({
         title: '请选择照片',
         icon: 'none'
       })
@@ -296,7 +296,7 @@ Page({
       }
     } catch (error) {
       wx.hideLoading()
-      toast.show({
+      toast.warn({
         title: (error && error.message) || '设备删除失败',
         icon: 'none'
       })
@@ -308,7 +308,7 @@ Page({
     try {
       await api.deleteAlbumPhotos(ids)
     } catch (error) {
-      toast.show({
+      toast.warn({
         title: (error && error.message) || '删除照片记录失败',
         icon: 'none'
       })
@@ -328,7 +328,7 @@ Page({
     const ids = Object.keys(this.data.selectedMap)
 
     if (!ids.length) {
-      toast.show({
+      toast.warn({
         title: '请选择图片',
         icon: 'none'
       })
@@ -336,7 +336,7 @@ Page({
     }
 
     if (ids.length > 1) {
-      toast.show({
+      toast.warn({
         title: '刷新屏幕只能选中一张图片',
         icon: 'none'
       })
@@ -362,7 +362,7 @@ Page({
 
       if (index < 0) {
         wx.hideLoading()
-        toast.show({
+        toast.warn({
           title: '未找到该图片在设备上的位置',
           icon: 'none'
         })
@@ -378,7 +378,7 @@ Page({
       })
     } catch (error) {
       wx.hideLoading()
-      toast.show({
+      toast.warn({
         title: (error && error.message) || '刷新失败',
         icon: 'none'
       })
@@ -424,7 +424,7 @@ Page({
       if (error.errMsg && error.errMsg.indexOf('cancel') > -1) {
         return
       }
-      toast.show({
+      toast.warn({
         title: '选择照片失败',
         icon: 'none'
       })
@@ -438,7 +438,7 @@ Page({
     const device = app.globalData.selectedDevice
 
     if (!device) {
-      toast.show({
+      toast.warn({
         title: '请先选择设备',
         icon: 'none'
       })

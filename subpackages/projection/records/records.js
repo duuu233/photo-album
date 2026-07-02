@@ -73,7 +73,7 @@ Page({
   },
 
   retryProjection() {
-    toast.show({
+    toast.warn({
       title: '请重新选择照片投屏',
       icon: 'none'
     })

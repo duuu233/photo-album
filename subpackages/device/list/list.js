@@ -253,7 +253,7 @@ Page({
       if (error.code === 'PERMISSION_DENIED') {
         bluetooth.showPermissionGuide()
       } else {
-        toast.show({
+        toast.warn({
           title: error.message || '连接失败',
           icon: 'none'
         })

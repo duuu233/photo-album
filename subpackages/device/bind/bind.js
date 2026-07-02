@@ -65,7 +65,7 @@ Page({
       // 微信要求搜索蓝牙前需有定位权限
       const location = await permission.getCurrentLocation()
       if (!location) {
-        toast.show({
+        toast.warn({
           title: '请先授权定位',
           icon: 'none'
         })
@@ -105,7 +105,7 @@ Page({
       if (error.code === 'PERMISSION_DENIED') {
         bluetooth.showPermissionGuide()
       } else {
-        toast.show({
+        toast.warn({
           title: error.message || '设备搜索失败',
           icon: 'none'
         })
@@ -202,7 +202,7 @@ Page({
       return // 绑定进行中，忽略重复点击，避免重复绑定
     }
     if (!this.data.selectedId) {
-      toast.show({
+      toast.warn({
         title: '请选择要绑定的设备',
         icon: 'none'
       })
@@ -247,7 +247,7 @@ Page({
         // 连接/读取失败：断开以释放被占用的单连接、让设备能重新广播，再提示并中止绑定
         deviceBle.disconnect(scanDevice.deviceId)
         wx.hideLoading()
-        toast.show({
+        toast.warn({
           title: error.message || '设备连接失败',
           icon: 'none'
         })
@@ -293,7 +293,7 @@ Page({
         deviceBle.disconnect(scanDevice.deviceId)
       }
       // bindDevice 在 productId 解析不到时会抛错（后端必传），这里把原因提示给用户
-      toast.show({
+      toast.warn({
         title: error.message || '绑定失败',
         icon: 'none'
       })

@@ -88,7 +88,7 @@ module.exports = {
     try {
       return await getLocation()
     } catch (error) {
-      toast.show({
+      toast.warn({
         title: '定位获取失败',
         icon: 'none'
       })

@@ -7,9 +7,10 @@
 //   2) START(0xF1)：OBJ_TYPE(1) + FW_SIZE(4,小端) + checksum → 设备回 ACK，带 MTU(251) 与 PRN(3)。
 //   3) DATA (0xF2)：PKT_SEQ(2,小端) + DATA + checksum。每发 PRN 个包等一次设备 DATA ACK，
 //      ACK 带「已连续收到的最后包号」。包号没往前走 = 那一包丢了，从 ACK 包号 + 1 重发。
-//   4) APP 不发 END：设备自行累计到固件大小后，自动算 CRC32、校验、写 BootSetting，回 0xF3 最终结果。
-//      固件已确认(2026-07-01)：只要收满且 CRC32 无误必回 0xF3，回完 0xF3 后约 2s 才自动复位重启——
-//      故 0xF3 是判成功的「权威且必达」信号：拿不到 0xF3 == 尾包没送达/未收满，是真失败，绝非"已成功只是没回"。
+//   4) APP 不发 END：设备自行累计固件数据后，自动算 CRC32、校验、写 BootSetting，回 0xF3 最终结果。
+//      新固件已确认(2026-07-02)：数据收完后只要「一段时间收不到下一包(设备侧收包超时)」就必回 0xF3
+//      （result 区分 CRC 成功/失败），回完 0xF3 后约 2s 才自动复位重启。故 APP 发完最后一包只需静候 0xF3，
+//      绝不重发尾包——重发会给已收满的设备喂重复包、破坏其镜像拼装/字节计数，并不断刷新设备的收包超时反而拖延 0xF3。
 //
 // 真机注意（开发者工具蓝牙模拟不可靠，务必真机联调，工具内可用 dryRun 校验编码）：
 //   - 安卓默认 ATT MTU 仅 23（单次可写 20 字节），必须 wx.setBLEMTU 拉高，否则 244 字节 DATA 包写不进；
@@ -926,68 +927,35 @@ async function transferData(session, bytes, options) {
     })
   }
 
-  // 数据已全部送达（含尾包）：APP 不发 END，设备收满固件大小后自算 CRC32 + 写 BootSetting，回 0xF3。
-  // 固件已确认：收满且 CRC 无误必回 0xF3、且回完 0xF3 后约 2s 才重启——所以：
-  //   · 等到 0xF3 → 收齐（再看 final.result 区分成功 / 校验失败）；
-  //   · 等不到 0xF3（超时）→ 按固件语义就是「尾包没送达、设备没收满」→ 从设备最后确认包重发尾包再等。
-  // 只在「等够 0xF3 该到的时间(tailWait，默认 3s，远大于 CRC 耗时)仍没到」时才重发：设备若已收满必已回
-  // 0xF3、我们就不会重发 → 不会把已收满的设备喂过量导致判错断开（旧版正是盲目重发尾包才卡 97% 断连）。
-  emit(onProgress, { phase: 'verifying', percent: 99, sent: total, total, message: '写入完成，等待设备校验(0xF3)' })
+  // 数据已全部送达（含尾包）：APP 不发 END。新固件(2026-07-02)已确认：数据收完后只要「一段时间收不到
+  // 下一包(设备侧收包超时)」就必回 0xF3 最终结果（result 区分 CRC 成功/失败），回完 0xF3 后约 2s 才重启。
+  // 因此这里发完最后一包后【只静候 0xF3，绝不重发尾包】：
+  //   · 等到 0xF3 → result==0 判成功 / 非 0 判校验失败；
+  //   · 回 0xF3 前断开 → 判失败；　超时没等到 0xF3 → 判失败（不重发、不谎报成功）。
+  // 【为何不再重发尾包】旧版在此盲目重发尾包，把已收满的设备喂了重复包 → 破坏其镜像拼装/字节计数，
+  // 且不断刷新设备的收包超时反而拖延 0xF3，正是上次真机跑到 100% 后反复补发→设备判错断连的根因。
+  emit(onProgress, { phase: 'verifying', percent: 99, sent: total, total, message: '数据已发完，等待设备校验结果(0xF3)' })
 
-  const tailWait = Number.isFinite(options.tailWait) ? options.tailWait : 3000
-  const maxTailResends = Number.isFinite(options.maxTailResends) ? options.maxTailResends : 4
-  const finalDeadline = Number.isFinite(options.finalTimeout) ? options.finalTimeout : 15000
-  const tailStart = Date.now()
+  // 等待窗口需覆盖「设备收包超时 + CRC32 计算 + 写 BootSetting」，故给足时长（默认 30s，可由 finalTimeout 覆盖）。
+  const finalTimeout = Number.isFinite(options.finalTimeout) ? options.finalTimeout : 30000
   let final = null
-  let tailResends = 0
-
-  for (;;) {
-    try {
-      final = await waitFinalResult(session, tailWait)
-      break // 收到 0xF3
-    } catch (error) {
-      if (session.finalResult) {
-        final = session.finalResult // 与超时竞态：0xF3 刚到
-        break
-      }
-      // 设备在回 0xF3 前就断开：固件承诺回完 0xF3 后 2s 才重启，故此处断开 = 尾包未送达/未收满，判失败。
-      if (!session.ready || /断开/.test((error && error.message) || '')) {
-        throw new Error('OTA 传输中断：数据已发完但设备在回校验结果(0xF3)前断开，固件未确认收齐，升级未完成。')
-      }
-      // 用户中断（切后台/离开页面）：尾包等待/重发阶段同样要响应，否则页面已卸载仍空转 15s
-      // 并持续对已销毁页面回调 onProgress。
-      if (shouldAbort()) {
-        throw new Error('OTA_ABORTED')
-      }
-      // 等 0xF3 超时。按固件语义 = 尾包没送达。超出总期限或重发上限则判失败，绝不谎报成功。
-      if (tailResends >= maxTailResends || Date.now() - tailStart > finalDeadline) {
-        throw new Error(
-          'OTA 校验超时：数据已发完但多次重发尾包仍未收到设备 0xF3 确认。' +
-            `设备最后确认第 ${session.lastAckSeq} 包（共 ${totalPackets} 包），疑似尾包持续丢失或设备未收满。`
-        )
-      }
-      tailResends += 1
-      // 从设备「已连续确认的下一包」起重发到最后一包：设备没回 0xF3 说明还没收满，这些包才是真缺的。
-      const resendFrom = Math.max(session.lastAckSeq + 1, 0)
-      emit(onProgress, {
-        phase: 'retry',
-        percent: 99,
-        sent: total,
-        total,
-        message: `未收到设备校验结果(0xF3)，重发尾包（第 ${resendFrom}~${totalPackets - 1} 包，第 ${tailResends}/${maxTailResends} 次）`
-      })
-      for (let seq = resendFrom; seq < totalPackets && !session.finalResult && session.ready && !shouldAbort(); seq++) {
-        const chunk = bytes.subarray(seq * chunkSize, Math.min((seq + 1) * chunkSize, total))
-        await writeFrame(
-          session,
-          buildDataFrame(seq, chunk),
-          session.transferTarget || 'control',
-          session.transferWriteType
-        )
-        if (pace > 0) {
-          await sleep(pace)
-        }
-      }
+  try {
+    final = await waitFinalResult(session, finalTimeout)
+  } catch (error) {
+    if (session.finalResult) {
+      final = session.finalResult // 与超时竞态：0xF3 恰好到达
+    } else if (shouldAbort()) {
+      // 用户中断（切后台/离开页面）：立即响应，不再对已卸载页面空转/回调。
+      throw new Error('OTA_ABORTED')
+    } else if (!session.ready || /断开/.test((error && error.message) || '')) {
+      // 设备在回 0xF3 前断开：固件承诺回完 0xF3 后 2s 才重启，故此处断开 = 数据未被确认收齐，判失败。
+      throw new Error('OTA 传输中断：数据已发完但设备在回校验结果(0xF3)前断开，固件未确认收齐，升级未完成。')
+    } else {
+      // 等 0xF3 超时：新固件正常会在收包超时后回 0xF3，超时说明尾包丢失/设备未收满，判失败（绝不谎报成功）。
+      throw new Error(
+        `OTA 校验超时：数据已发完，但 ${Math.round(finalTimeout / 1000)}s 内未收到设备 0xF3 校验结果。` +
+          `设备最后确认第 ${session.lastAckSeq} 包（共 ${totalPackets} 包），疑似尾包丢失或设备未收满。`
+      )
     }
   }
 
@@ -995,7 +963,7 @@ async function transferData(session, bytes, options) {
     throw new Error('设备校验失败：' + otaResultText(final.result))
   }
 
-  emit(onProgress, { phase: 'done', percent: 100, sent: total, total, message: '升级完成，设备回 0xF3 确认成功，约 2s 后重启' })
+  emit(onProgress, { phase: 'done', percent: 100, sent: total, total, message: '升级完成，设备回 0xF3 校验成功，约 2s 后重启' })
   return { totalPackets, mtu: session.mtu, chunkSize, confirmed: true }
 }
 
@@ -1176,31 +1144,53 @@ async function dryRunFirmware(prepared, options = {}) {
   }
 }
 
+// 给「设备返回 / 蓝牙链路 / OTA」类错误统一加「设备-」前缀（与 device-ble.js 一致），
+// 便于和接口错误(「接口-」)、小程序本地错误(「小程序-」)区分来源。
+// 幂等：已带「接口-」「设备-」前缀，或为纯大写下划线的内部控制信号(如 OTA_ABORTED) 时原样返回。
+function prefixDeviceError(error) {
+  const e =
+    error instanceof Error ? error : new Error((error && error.message) || 'OTA 升级失败')
+  const msg = e.message || 'OTA 升级失败'
+  if (/^接口-|^设备-/.test(msg) || /^[A-Z][A-Z0-9_]*$/.test(msg)) {
+    return e
+  }
+  e.message = '设备-' + msg
+  return e
+}
+
 // ── 对外主流程 ────────────────────────────────────────────
 // upgradeFirmware(deviceId, pkg, options)
 //   pkg:     { localPath | packageUrl | inlineBase64 | mock, sizeBytes?, checksum?, version? }
 //   options: { onProgress(patch), shouldAbort(), pace?, objType?, dryRun?, startTimeout?, finalTimeout? }
 async function upgradeFirmware(deviceId, pkg, options = {}) {
   const onProgress = options.onProgress
-  const prepared = await prepareFirmware(pkg, options)
 
   // dryRun：纯本地校验编码与分包，不连蓝牙（开发者工具蓝牙模拟不可靠时用）。
+  // 干跑错误属小程序本地计算，不加「设备-」前缀，交由上层按需加「小程序-」。
   if (options.dryRun) {
+    const prepared = await prepareFirmware(pkg, options)
     return dryRunFirmware(prepared, options)
   }
 
-  emit(onProgress, { phase: 'connecting', percent: 12, message: '连接 OTA 服务(FF10)' })
-  const session = await ensureOtaConnection(deviceId)
+  // 真机 DFU：读包 + 握手 + 传输全程与设备/蓝牙交互，出错统一补「设备-」前缀（OTA_ABORTED 等内部信号除外）。
+  try {
+    const prepared = await prepareFirmware(pkg, options)
 
-  emit(onProgress, {
-    phase: 'starting',
-    percent: 14,
-    message: `握手中（MTU ${session.mtu}）`
-  })
-  await doStart(session, prepared.size, options)
+    emit(onProgress, { phase: 'connecting', percent: 12, message: '连接 OTA 服务(FF10)' })
+    const session = await ensureOtaConnection(deviceId)
 
-  const result = await transferData(session, prepared.bytes, Object.assign({}, options, { crc32: prepared.crc32 }))
-  return Object.assign({ size: prepared.size, crc32: prepared.crc32 }, result)
+    emit(onProgress, {
+      phase: 'starting',
+      percent: 14,
+      message: `握手中（MTU ${session.mtu}）`
+    })
+    await doStart(session, prepared.size, options)
+
+    const result = await transferData(session, prepared.bytes, Object.assign({}, options, { crc32: prepared.crc32 }))
+    return Object.assign({ size: prepared.size, crc32: prepared.crc32 }, result)
+  } catch (error) {
+    throw prefixDeviceError(error)
+  }
 }
 
 function disconnect(deviceId) {

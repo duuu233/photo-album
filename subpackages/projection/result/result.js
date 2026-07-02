@@ -448,7 +448,7 @@ Page({
     }
     this.applyStatus('fail', result)
     if (message) {
-      toast.show({ title: message, icon: 'none' })
+      toast.warn({ title: message, icon: 'none' })
     }
   },
 

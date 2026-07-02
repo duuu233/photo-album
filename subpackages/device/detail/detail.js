@@ -425,7 +425,7 @@ Page({
   async applyPlayback(mode, intervalHours, carouselEnabled) {
     const device = this.data.device
     if (!device || !device.deviceId) {
-      toast.show({
+      toast.warn({
         title: '请先连接设备',
         icon: 'none'
       })
@@ -462,7 +462,7 @@ Page({
       })
       toast.show({ title: '已保存', icon: 'none' })
     } catch (error) {
-      toast.show({
+      toast.warn({
         title: error.message || '保存失败',
         icon: 'none'
       })
@@ -479,7 +479,7 @@ Page({
     }
     const bleId = device.deviceId || device.bleDeviceId
     if (!(bleId && deviceBle.isConnected(bleId))) {
-      toast.show({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接设备', icon: 'none' })
       return
     }
 
@@ -524,7 +524,7 @@ Page({
       if (error && error.errMsg && error.errMsg.indexOf('cancel') > -1) {
         return // 用户取消选择不算错误，保留弹层让其重新选择
       }
-      toast.show({ title: '选择照片失败', icon: 'none' })
+      toast.warn({ title: '选择照片失败', icon: 'none' })
       return
     }
     if (!images || !images.length) {
@@ -612,7 +612,7 @@ Page({
       if (error && error.code === 'PERMISSION_DENIED') {
         bluetooth.showPermissionGuide()
       } else {
-        toast.show({
+        toast.warn({
           title: (error && error.message) || '连接失败',
           icon: 'none'
         })
@@ -671,7 +671,7 @@ Page({
 
     const bleDeviceId = getBleDeviceId(device)
     if (!(bleDeviceId && deviceBle.isConnected(bleDeviceId))) {
-      toast.show({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接设备', icon: 'none' })
       return
     }
 
@@ -733,7 +733,7 @@ Page({
     const url = textValue(device.downloadPath)
     if (!url) {
       console.warn('[OTA测试][' + traceId + '] 设备详情缺少固件下载地址 downloadPath，无法测试。')
-      toast.show({ title: '缺少固件下载地址(downloadPath)', icon: 'none' })
+      toast.warn({ title: '缺少固件下载地址(downloadPath)', icon: 'none' })
       return
     }
     const fileName = url.split('?')[0].split('#')[0].split('/').pop() || 'firmware.bin'
@@ -848,7 +848,7 @@ Page({
       }
       console.error('[OTA测试][' + traceId + '] 错误对象：', error)
       this.setData({ otaTestStatus: aborted ? '已中断' : '测试失败' })
-      toast.show({
+      toast.warn({
         title: aborted ? '测试已中断' : (error && error.message) || 'OTA测试失败',
         icon: 'none'
       })
@@ -887,7 +887,7 @@ Page({
     }
 
     if (!this.data.device.deviceId) {
-      toast.show({
+      toast.warn({
         title: '请先连接设备',
         icon: 'none'
       })
@@ -935,7 +935,7 @@ Page({
       clearSucceeded = true
     } catch (error) {
       console.error('[一键清空][' + traceId + '] 清空失败:', error)
-      toast.show({
+      toast.warn({
         title: error.message || '清空失败',
         icon: 'none'
       })

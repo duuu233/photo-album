@@ -107,7 +107,7 @@ Page({
     const device = this.data.device
 
     if (turningOn && !this.isDeviceConnected()) {
-      toast.show({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接设备', icon: 'none' })
       this.setData({ carouselOn: false }) // 还原开关：连接前不允许开启
       return
     }
@@ -142,7 +142,7 @@ Page({
   async applyPlayback(mode, intervalHours, carouselEnabled) {
     const device = this.data.device
     if (!device || !device.deviceId) {
-      toast.show({
+      toast.warn({
         title: '请先连接设备',
         icon: 'none'
       })
@@ -175,7 +175,7 @@ Page({
       toast.show({ title: '已保存', icon: 'none' })
       return true
     } catch (error) {
-      toast.show({
+      toast.warn({
         title: error.message || '保存失败',
         icon: 'none'
       })

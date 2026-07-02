@@ -522,7 +522,7 @@ Page({
   disconnectAllConnections() {
     const ids = deviceBle.disconnectAll()
     if (!ids.length) {
-      toast.show({ title: '当前没有已连接的设备', icon: 'none' })
+      toast.warn({ title: '当前没有已连接的设备', icon: 'none' })
       this.refreshMpConnections()
       return
     }
@@ -541,7 +541,7 @@ Page({
   // ── 连接 / 扫描 ─────────────────────────────────────────
   requireDevice() {
     if (!this.data.deviceId || !this.data.connected) {
-      toast.show({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接设备', icon: 'none' })
       return false
     }
     return true
@@ -556,7 +556,7 @@ Page({
     try {
       const location = await permission.getCurrentLocation()
       if (!location) {
-        toast.show({ title: '请先授权定位', icon: 'none' })
+        toast.warn({ title: '请先授权定位', icon: 'none' })
         return
       }
       await bluetooth.openAdapter()
@@ -585,7 +585,7 @@ Page({
       if (error.code === 'PERMISSION_DENIED') {
         bluetooth.showPermissionGuide()
       } else {
-        toast.show({ title: error.message || '扫描失败', icon: 'none' })
+        toast.warn({ title: error.message || '扫描失败', icon: 'none' })
       }
     } finally {
       this.setData({ scanning: false })
@@ -635,7 +635,7 @@ Page({
     } catch (error) {
       this.setData({ connected: false })
       this.appendLog({ type: 'err', text: `连接失败：${error.message}` })
-      toast.show({ title: error.message || '连接失败', icon: 'none' })
+      toast.warn({ title: error.message || '连接失败', icon: 'none' })
     } finally {
       this.setData({ connecting: false })
     }
@@ -691,7 +691,7 @@ Page({
       return
     }
     if (this.data.busy) {
-      toast.show({ title: '请等待上一条指令完成', icon: 'none' })
+      toast.warn({ title: '请等待上一条指令完成', icon: 'none' })
       return
     }
     this.setData({ busy: true })
@@ -708,7 +708,7 @@ Page({
       return result
     } catch (error) {
       this.appendLog({ type: 'err', text: `${label} 失败：${error.message}` })
-      toast.show({ title: error.message || '指令失败', icon: 'none' })
+      toast.warn({ title: error.message || '指令失败', icon: 'none' })
     } finally {
       this.setData({ busy: false })
     }
@@ -810,7 +810,7 @@ Page({
   cmdSetPlay() {
     const interval = Number(this.data.intervalInput)
     if (!Number.isFinite(interval) || interval < 1) {
-      toast.show({ title: '请输入有效的间隔秒数', icon: 'none' })
+      toast.warn({ title: '请输入有效的间隔秒数', icon: 'none' })
       return
     }
     this.runCommand(
@@ -828,7 +828,7 @@ Page({
   async cmdSetConnInterval() {
     const ms = Number(this.data.connIntervalInput)
     if (!Number.isFinite(ms) || ms <= 0) {
-      toast.show({ title: '请输入有效的连接间隔毫秒数', icon: 'none' })
+      toast.warn({ title: '请输入有效的连接间隔毫秒数', icon: 'none' })
       return
     }
     const units = protocol.connectionIntervalMsToUnits(ms)
@@ -836,7 +836,7 @@ Page({
       units < protocol.CONN_INTERVAL_MIN_UNITS ||
       units > protocol.CONN_INTERVAL_MAX_UNITS
     ) {
-      toast.show({ title: '范围需在 7.5~4000ms', icon: 'none' })
+      toast.warn({ title: '范围需在 7.5~4000ms', icon: 'none' })
       return
     }
     const connInterval = await this.runCommand(
@@ -861,7 +861,7 @@ Page({
   cmdSyncTransferToProjection() {
     const ms = Number(this.data.connIntervalInput)
     if (!Number.isFinite(ms) || ms <= 0) {
-      toast.show({ title: '请输入有效的连接间隔毫秒数', icon: 'none' })
+      toast.warn({ title: '请输入有效的连接间隔毫秒数', icon: 'none' })
       return
     }
     const units = protocol.connectionIntervalMsToUnits(ms)
@@ -869,7 +869,7 @@ Page({
       units < protocol.CONN_INTERVAL_MIN_UNITS ||
       units > protocol.CONN_INTERVAL_MAX_UNITS
     ) {
-      toast.show({ title: '范围需在 7.5~4000ms', icon: 'none' })
+      toast.warn({ title: '范围需在 7.5~4000ms', icon: 'none' })
       return
     }
     try {
@@ -891,7 +891,7 @@ Page({
       })
       toast.show({ title: '已同步到投屏', icon: 'success' })
     } catch (error) {
-      toast.show({ title: error.message || '同步失败', icon: 'none' })
+      toast.warn({ title: error.message || '同步失败', icon: 'none' })
     }
   },
 
@@ -914,7 +914,7 @@ Page({
   cmdSwitch() {
     const index = Number(this.data.switchInput)
     if (!Number.isInteger(index) || index < 0) {
-      toast.show({ title: '请输入要显示的图片索引', icon: 'none' })
+      toast.warn({ title: '请输入要显示的图片索引', icon: 'none' })
       return
     }
     this.runCommand(
@@ -941,7 +941,7 @@ Page({
       !indexes.length ||
       indexes.some(n => !Number.isInteger(n) || n < 0 || n > 95)
     ) {
-      toast.show({ title: '请输入要删除的索引(0~95，逗号分隔)', icon: 'none' })
+      toast.warn({ title: '请输入要删除的索引(0~95，逗号分隔)', icon: 'none' })
       return
     }
     this.runCommand(
@@ -1147,11 +1147,11 @@ Page({
 
   saveDeviceCalibrationProfile() {
     if (!this.data.deviceId) {
-      toast.show({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接设备', icon: 'none' })
       return
     }
     if (!wx.setStorageSync) {
-      toast.show({ title: '当前环境不支持本地保存', icon: 'none' })
+      toast.warn({ title: '当前环境不支持本地保存', icon: 'none' })
       return
     }
     try {
@@ -1175,7 +1175,7 @@ Page({
       })
       toast.show({ title: '已保存本设备配置', icon: 'none' })
     } catch (error) {
-      toast.show({ title: '保存失败：' + error.message, icon: 'none' })
+      toast.warn({ title: '保存失败：' + error.message, icon: 'none' })
     }
   },
 
@@ -1235,7 +1235,7 @@ Page({
       this.appendLog({ type: 'act', text: `六色：${summary}` })
       toast.show({ title: '已同步到真实投屏', icon: 'success' })
     } catch (error) {
-      toast.show({ title: error.message || '同步失败', icon: 'none' })
+      toast.warn({ title: error.message || '同步失败', icon: 'none' })
     }
   },
 
@@ -1249,7 +1249,7 @@ Page({
       })
       toast.show({ title: '已恢复默认', icon: 'none' })
     } catch (error) {
-      toast.show({ title: error.message || '操作失败', icon: 'none' })
+      toast.warn({ title: error.message || '操作失败', icon: 'none' })
     }
   },
 
@@ -1336,7 +1336,7 @@ Page({
       )
     } catch (error) {
       wx.hideLoading()
-      toast.show({ title: '图片转换失败：' + error.message, icon: 'none' })
+      toast.warn({ title: '图片转换失败：' + error.message, icon: 'none' })
       return
     }
     wx.hideLoading()
@@ -1355,7 +1355,7 @@ Page({
       return
     }
     if (!wx.chooseMessageFile || !wx.getFileSystemManager) {
-      toast.show({ title: '当前微信版本不支持选择文件', icon: 'none' })
+      toast.warn({ title: '当前微信版本不支持选择文件', icon: 'none' })
       return
     }
     const info = this.data.info
@@ -1378,7 +1378,7 @@ Page({
               const msg = `.raw 字节数不符：选中「${name}」${data.length} 字节，本设备 ${info.width}×${info.height} 需 ${expectBytes} 字节。请确认是该尺寸的六色 4bpp 帧（宽×高÷2）。`
               this.appendLog({ type: 'err', text: msg })
               this.setData({ uploadStatus: msg, uploadStatusType: 'err' })
-              toast.show({ title: '文件尺寸不符，已拦下', icon: 'none' })
+              toast.warn({ title: '文件尺寸不符，已拦下', icon: 'none' })
               return
             }
             this.appendLog({
@@ -1398,7 +1398,7 @@ Page({
               type: 'err',
               text: `读取 .raw 失败：${err.errMsg || '未知错误'}`
             })
-            toast.show({ title: '读取文件失败', icon: 'none' })
+            toast.warn({ title: '读取文件失败', icon: 'none' })
           }
         })
       },
@@ -1414,15 +1414,15 @@ Page({
       return false
     }
     if (this.data.busy || this.data.uploading) {
-      toast.show({ title: '请等待当前操作完成', icon: 'none' })
+      toast.warn({ title: '请等待当前操作完成', icon: 'none' })
       return false
     }
     if (!this.data.info || !this.data.info.width) {
-      toast.show({ title: '请先点「获取设备信息」', icon: 'none' })
+      toast.warn({ title: '请先点「获取设备信息」', icon: 'none' })
       return false
     }
     if (this.data.info.screenType === 0x03) {
-      toast.show({ title: '7.3寸为占位型号，固件未实现图传', icon: 'none' })
+      toast.warn({ title: '7.3寸为占位型号，固件未实现图传', icon: 'none' })
       return false
     }
     return true
@@ -1739,13 +1739,13 @@ Page({
     if (this.data.uploadIndexInput !== '') {
       index = Number(this.data.uploadIndexInput)
       if (!Number.isInteger(index) || index < 0 || index >= info.capacity) {
-        toast.show({ title: `槽位需在 0~${info.capacity - 1}`, icon: 'none' })
+        toast.warn({ title: `槽位需在 0~${info.capacity - 1}`, icon: 'none' })
         return
       }
     } else {
       index = protocol.firstFreeIndex(info.imgMask, info.capacity)
       if (index < 0) {
-        toast.show({ title: '设备已存满，请先删除图片', icon: 'none' })
+        toast.warn({ title: '设备已存满，请先删除图片', icon: 'none' })
         return
       }
     }
