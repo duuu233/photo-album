@@ -95,6 +95,18 @@ function textValue(value) {
   return String(value || '').trim()
 }
 
+// 给「设备返回 / 蓝牙链路」类错误统一加「设备-」前缀（与 toast 来源前缀约定一致：
+// 设备-/小程序-/接口-）。幂等：已带任一来源前缀时原样返回，避免重复叠加。
+function prefixDeviceError(error) {
+  const e =
+    error instanceof Error ? error : new Error((error && error.message) || '设备操作失败')
+  const msg = e.message || '设备操作失败'
+  if (!/^接口-|^设备-|^小程序-/.test(msg)) {
+    e.message = '设备-' + msg
+  }
+  return e
+}
+
 function isUpdateFlag(device) {
   return Number(device && device.isUpdate) === 1
 }
@@ -961,10 +973,48 @@ Page({
           imgIndexMask: deleteMask,
           imgIndexMaskHex: protocol.bytesToHex(deleteMask)
         })
-        const deleteResult = await deviceBle.deleteImage(deviceId, indexes)
-        logClearDeviceData(traceId, '删除图片应答(0x12解析结果)', Object.assign({}, deleteResult, {
-          imgMaskHex: protocol.bytesToHex(deleteResult.imgMask)
-        }))
+        try {
+          const deleteResult = await deviceBle.deleteImage(deviceId, indexes)
+          logClearDeviceData(traceId, '删除图片应答(0x12解析结果)', Object.assign({}, deleteResult, {
+            imgMaskHex: protocol.bytesToHex(deleteResult.imgMask)
+          }))
+        } catch (deleteError) {
+          // 设备对 0x12 回了非 0 结果码或应答超时——但不少固件其实已经把图删干净了，
+          // 只是应答异常/迟到。这里回读一次设备状态核对：真清空了就按成功继续（记一条日志说明），
+          // 只有确实还留着图才把这个「设备-」错误抛给用户，避免「已清空却报错误码」误导。
+          logClearDeviceData(traceId, '删除指令(0x12)报错，回读设备状态核对是否已实际清空', {
+            deviceError: (deleteError && deleteError.message) || String(deleteError)
+          })
+          let after
+          try {
+            after = await deviceBle.readDeviceInfo(deviceId)
+          } catch (reReadError) {
+            // 回读也失败：无法确认设备是否已清空，沿用原始设备错误如实抛出（带来源前缀）
+            logClearDeviceData(traceId, '回读设备状态失败，无法确认清空结果，沿用原始设备错误', {
+              reReadError: (reReadError && reReadError.message) || String(reReadError)
+            })
+            throw prefixDeviceError(deleteError)
+          }
+          const remaining = protocol.maskToIndexes(after.imgMask)
+          logClearDeviceData(traceId, '回读设备状态结果', {
+            imgMaskHex: protocol.bytesToHex(after.imgMask),
+            remainingIndexes: remaining,
+            imgCount: after.imgCount
+          })
+          if (remaining.length) {
+            // 确实没删干净：把设备结果码如实抛出，让用户看到真实失败原因（带「设备-」前缀）
+            throw prefixDeviceError(
+              new Error(
+                ((deleteError && deleteError.message) || '清空失败') +
+                  `（设备仍剩 ${remaining.length} 张未删除）`
+              )
+            )
+          }
+          // 设备已实际清空，只是 0x12 应答异常：记录后按成功继续，不打断清空流程
+          logClearDeviceData(traceId, '设备已实际清空（0x12 应答曾报错，回读确认无残留，按成功处理）', {
+            deviceReportedError: (deleteError && deleteError.message) || String(deleteError)
+          })
+        }
       } else {
         logClearDeviceData(traceId, '设备本地没有图片，不发送删除指令(0x12)', { indexes })
       }

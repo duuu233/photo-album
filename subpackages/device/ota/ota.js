@@ -11,6 +11,26 @@ const app = getApp()
 const TEST_FW_PATH = 'docs/BR1601A02_260609_r8122_5139_5D89_V100_OTA.bin'
 const TEST_FW_NAME = 'BR1601A02_260609_r8122_5139_5D89_V100_OTA.bin'
 
+// 简化版固件升级界面（参照投屏结果页）用的占位插画：进行中 / 失败 / 成功。
+// 暂借用投屏结果页的三张图占位，后续换成 OTA 专用图时只改这里即可。
+const OTA_ART = {
+  progress: '/assets/images/upload-icon01.png',
+  fail: '/assets/images/upload-icon02.png',
+  success: '/assets/images/upload-icon03.png'
+}
+
+// 把内部 state/phase 归一成 5 种画面：checking(检测中) / ready(可升级待开始) / progress(进行中) /
+// success(成功/已是最新) / fail(失败/无法升级)。这里按画面挑对应占位图。
+function artFor(screenStatus) {
+  if (screenStatus === 'success') {
+    return OTA_ART.success
+  }
+  if (screenStatus === 'fail') {
+    return OTA_ART.fail
+  }
+  return OTA_ART.progress // checking / ready / progress
+}
+
 function formatSize(bytes) {
   const value = Number(bytes) || 0
 
@@ -143,7 +163,13 @@ Page({
     batteryText: '--',
     minBatteryText: '--',
     releaseNotes: [],
-    testMode: false
+    testMode: false,
+    // ── 简化版界面字段（参照投屏结果页）：图标 + 进度条 + 文案 ──
+    screenStatus: 'checking', // checking | ready | progress | success | fail
+    statusTitle: '检测版本中',
+    statusDesc: '正在检查固件版本，请稍候…',
+    artImage: OTA_ART.progress,
+    showPrimary: false // 是否显示底部主按钮（开始升级 / 重新升级 / 重新检查）
   },
 
   onLoad(options = {}) {
@@ -185,6 +211,39 @@ Page({
 
   setSystemMetrics() {
     this.setData(system.getLayoutMetrics())
+  },
+
+  // 简化界面：按「加载固件信息完成」后的内部 state 生成画面字段（图标 + 标题 + 说明 + 是否显示主按钮）。
+  screenForLoaded(state, firmware, viewData) {
+    if (state === 'available') {
+      return {
+        screenStatus: 'ready',
+        statusTitle: '发现新版本',
+        statusDesc:
+          firmware && firmware.latestVersion
+            ? `最新版本 ${firmware.latestVersion}`
+            : '检测到可升级的新固件',
+        artImage: artFor('ready'),
+        showPrimary: true
+      }
+    }
+    if (state === 'latest') {
+      return {
+        screenStatus: 'success',
+        statusTitle: '已是最新版本',
+        statusDesc: '当前固件已是最新，无需升级',
+        artImage: artFor('success'),
+        showPrimary: false
+      }
+    }
+    // invalid：检测到可更新但包信息无效（缺版本号/下载地址/非 .bin）
+    return {
+      screenStatus: 'fail',
+      statusTitle: '无法升级',
+      statusDesc: (viewData && viewData.errorMessage) || '固件包无效，请稍后重试',
+      artImage: artFor('fail'),
+      showPrimary: false
+    }
   },
 
   getBleDeviceId() {
@@ -253,7 +312,13 @@ Page({
       packageSizeText: '本地包',
       batteryText,
       minBatteryText: '--',
-      releaseNotes: firmware.releaseNotes
+      releaseNotes: firmware.releaseNotes,
+      // 简化界面：本地测试固件属「可开始」态
+      screenStatus: 'ready',
+      statusTitle: willDryRun ? '本地固件测试(干跑)' : '本地固件升级',
+      statusDesc: `本地包：${TEST_FW_NAME}`,
+      artImage: artFor('ready'),
+      showPrimary: true
     })
   },
 
@@ -328,7 +393,12 @@ Page({
       state: 'checking',
       progressPercent: 0,
       progressText: '',
-      errorMessage: ''
+      errorMessage: '',
+      screenStatus: 'checking',
+      statusTitle: '检测版本中',
+      statusDesc: '正在检查固件版本，请稍候…',
+      artImage: artFor('checking'),
+      showPrimary: false
     })
 
     try {
@@ -342,17 +412,18 @@ Page({
       device = mergeSelectedDevice(device)
       const firmware = buildFirmwareFromDevice(device)
       const viewData = this.deriveViewData(device, firmware)
+      const nextState = firmware.invalidUpdate
+        ? 'invalid'
+        : firmware.hasUpdate
+          ? 'available'
+          : 'latest'
 
       this.setData(Object.assign({
         loading: false,
         device,
         firmware,
-        state: firmware.invalidUpdate
-          ? 'invalid'
-          : firmware.hasUpdate
-            ? 'available'
-            : 'latest'
-      }, viewData))
+        state: nextState
+      }, viewData, this.screenForLoaded(nextState, firmware, viewData)))
 
       if (
         this._autoStart &&
@@ -363,14 +434,21 @@ Page({
         setTimeout(() => this.runUpgrade(), 80)
       }
     } catch (error) {
+      const message = error.message || '固件版本检查失败'
       this.setData({
         loading: false,
         state: 'failed',
         statusText: '检查失败',
         statusClass: 'is-error',
-        errorMessage: error.message || '固件版本检查失败',
+        errorMessage: message,
         canUpgrade: false,
-        actionText: '重新检查'
+        actionText: '重新检查',
+        // 检查失败：firmware 为空，点主按钮会重新检查（见 startUpgrade）
+        screenStatus: 'fail',
+        statusTitle: '检查失败',
+        statusDesc: message,
+        artImage: artFor('fail'),
+        showPrimary: true
       })
     }
   },
@@ -412,9 +490,30 @@ Page({
     return !(bleDeviceId && deviceBle.isConnected(bleDeviceId))
   },
 
+  // 升级中进度回调：按底层阶段(phase)把标题在「固件下载中 / 固件传输中 / 固件升级中」之间切换，
+  // 并记住最后阶段(_lastPhase)，供失败时区分「固件下载失败」还是「升级失败」。
   onUpgradeProgress(progress) {
     const percent = Math.max(0, Math.min(100, progress.percent || 0))
+    const phase = progress.phase || ''
+    if (phase) {
+      this._lastPhase = phase
+    }
+    // 读包/下载 + 连接握手 → 下载中；窗口化传数据 → 传输中；设备校验/收尾 → 升级中
+    const STAGE_TITLE = {
+      preparing: '固件下载中',
+      prepared: '固件下载中',
+      connecting: '固件下载中',
+      starting: '固件下载中',
+      transferring: '固件传输中',
+      retry: '固件传输中',
+      verifying: '固件升级中',
+      done: '固件升级中'
+    }
+    const statusTitle = STAGE_TITLE[phase] || this.data.statusTitle
     this.setData({
+      screenStatus: 'progress',
+      statusTitle,
+      artImage: artFor('progress'),
       progressPercent: percent,
       progressText: progress.message || ''
     })
@@ -449,6 +548,7 @@ Page({
     }
 
     this._abortUpgrade = false
+    this._lastPhase = '' // 重置阶段，供失败时区分下载/升级
     wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: true })
     this.setData({
       state: 'upgrading',
@@ -458,7 +558,15 @@ Page({
       actionText: dryRun ? '干跑中' : '升级中',
       progressPercent: 0,
       progressText: dryRun ? '准备干跑' : '准备升级',
-      errorMessage: ''
+      errorMessage: '',
+      // 简化界面：进入进行中画面
+      screenStatus: 'progress',
+      statusTitle: dryRun ? '固件校验中' : '固件下载中',
+      statusDesc: dryRun
+        ? '正在本地校验固件包…'
+        : '升级中请保持设备供电、手机屏幕常亮，勿切后台',
+      artImage: artFor('progress'),
+      showPrimary: false
     })
 
     try {
@@ -498,7 +606,12 @@ Page({
           actionText: '重新升级',
           progressPercent: 100,
           progressText: doneText,
-          errorMessage: '数据已全部发送，但未收到设备 0xF3 确认——升级未确认成功，请重试。'
+          errorMessage: '数据已全部发送，但未收到设备 0xF3 确认——升级未确认成功，请重试。',
+          screenStatus: 'fail',
+          statusTitle: '升级失败',
+          statusDesc: '数据已全部发送，但未收到设备确认，升级未确认成功，请重试。',
+          artImage: artFor('fail'),
+          showPrimary: true
         })
         toast.show({ title: doneText, icon: 'none' })
         return
@@ -537,7 +650,13 @@ Page({
           progressText: doneText,
           statusText: doneText,
           statusClass: 'is-latest'
-        }, this.deriveViewData(updatedDevice, updatedFirmware)))
+        }, this.deriveViewData(updatedDevice, updatedFirmware), {
+          screenStatus: 'success',
+          statusTitle: '升级成功',
+          statusDesc: '固件已升级到最新版本',
+          artImage: artFor('success'),
+          showPrimary: false
+        }))
       } else {
         this.setData({
           state: 'success',
@@ -546,7 +665,12 @@ Page({
           statusText: '测试完成',
           statusClass: 'is-latest',
           canUpgrade: false,
-          actionText: '已完成'
+          actionText: '已完成',
+          screenStatus: 'success',
+          statusTitle: '测试完成',
+          statusDesc: `${doneText}（${result.size} 字节 / ${result.totalPackets} 包）`,
+          artImage: artFor('success'),
+          showPrimary: false
         })
       }
 
@@ -568,13 +692,22 @@ Page({
         }).catch(() => {})
       }
 
+      // 区分「固件下载失败」与「升级失败」：读包/下载阶段(preparing/prepared)出错即下载失败
+      const inDownload =
+        this._lastPhase === 'preparing' || this._lastPhase === 'prepared' || !this._lastPhase
+      const failTitle = dryRun ? '干跑失败' : inDownload ? '固件下载失败' : '升级失败'
       this.setData({
         state: 'failed',
         statusText: dryRun ? '干跑失败' : '升级失败',
         statusClass: 'is-error',
         canUpgrade: true,
         actionText: dryRun ? '重新干跑' : '重新升级',
-        errorMessage: message
+        errorMessage: message,
+        screenStatus: 'fail',
+        statusTitle: failTitle,
+        statusDesc: message,
+        artImage: artFor('fail'),
+        showPrimary: true
       })
     } finally {
       wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false })
@@ -596,6 +729,11 @@ Page({
       statusClass: 'is-latest',
       canUpgrade: true,
       actionText: '再次干跑',
+      screenStatus: 'success',
+      statusTitle: '干跑通过',
+      statusDesc: `${result.size} 字节 / ${result.totalPackets} 包 / 每包 ${result.chunkSize} 字节`,
+      artImage: artFor('success'),
+      showPrimary: true,
       releaseNotes: [
         `固件大小：${result.size} 字节`,
         `本地 CRC32：${crcHex}`,

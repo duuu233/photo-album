@@ -291,15 +291,19 @@ Page({
 
   // 取本张要发给设备的六色 4bpp 帧 + 后端记录 id（原图传后端转换 → 下载 .bin）。
   async acquireFrame(image, device, info, i, total) {
-    // 先「转换照片」(传后端按设备尺寸转换 + 下载 .bin)，再「投屏」(BLE 图传)，文案区分两个阶段，
-    // 让用户知道开头这段不是卡死，而是在处理第一张图。
-    this.setData({ desc: `正在转换第 ${i + 1}/${total} 张照片…` })
+    // 先「转换照片」(传后端按设备尺寸转换 + 下载 .bin)，再「投屏」(BLE 图传)，标题区分两个阶段：
+    //   · 调后端上传/转码接口(setUserProductUpload) 期间 → 标题「图片转码中」；
+    //   · 后端转码完成、开始下载 .bin 并 BLE 图传 → 标题切「图片传输中」。
+    // 让用户看到的标题与实际正在做的事一致，而不是全程停在「图片转码中」。
+    this.setData({ title: '图片转码中', desc: `正在转换第 ${i + 1}/${total} 张照片…` })
     // 后端转换：返回可下载的 .bin 地址 + taskId(更新设备上传状态用) + upirId(投屏记录id)
     const { url, taskId, upirId } = await this.convertOnServer(
       image,
       device,
       info
     )
+    // 后端转码完成，进入「下载 + 传输」阶段：标题切「图片传输中」
+    this.setData({ title: '图片传输中', desc: `正在传输第 ${i + 1}/${total} 张…` })
     // 后端按设备分辨率直接返回六色 4bpp 帧；下载后原样走 BLE 图传（客户端不做任何图像转换）
     const frameData = await this.downloadFrameBin(url)
     return { frameData, taskId, upirId }

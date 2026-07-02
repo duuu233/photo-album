@@ -190,25 +190,69 @@ Page({
   },
 
   // 查当前用户是否已绑定这台设备（按硬件 Device_ID 匹配），命中则返回那条已绑定记录。
-  // 取不到列表 / 匹配不到都返回 null —— 一律按新设备正常绑定，绝不因为这步出错而挡住绑定。
+  // 匹配不到 / 两次拉列表都失败才返回 null —— 一律按新设备正常绑定，绝不因这步出错而挡住绑定。
+  //
+  // 「已绑定设备再搜索后有概率变成新设备」的两个元凶都在这里治理：
+  //   ① 拉已绑定列表偶发网络失败时旧代码直接 return null → 判成新设备 → 重复绑定。改为重试一次。
+  //   ② 序列号有两种表示：连上读 0x01 得到的是 6 字节 Device_ID，扫描广播里的只有 4 字节，
+  //      归一化后长度不同、精确相等匹配不上 → 判成新设备。改为「精确相等 或 互为子串(≥4字节)」匹配。
   async findBoundDevice(scanDevice, info) {
-    // 候选序列号：优先用连上读到的 Device_ID，其次扫描广播里的 deviceNo（当初绑定存的就是它）
+    // 候选序列号：优先用连上读到的 Device_ID(6字节)，再并入扫描广播里的 deviceNo/productDeviceId(4字节)
     const candidates = [info && info.deviceId, scanDevice.deviceNo, scanDevice.productDeviceId]
       .map(value => this.deviceSerial(value))
       .filter(Boolean)
     if (!candidates.length) {
       return null
     }
-    let devices = []
-    try {
-      devices = await api.getDevices()
-    } catch (error) {
-      return null // 拉列表失败：按新设备正常绑定，不阻断
+
+    // 拉已绑定列表判重：网络抖动会让这步偶发失败，一旦失败旧代码就按「新设备」绑定 → 重复绑定。
+    // 这里重试一次，尽量拿到真实列表再判重；两次都失败才不阻断绑定。
+    let devices = null
+    for (let attempt = 0; attempt < 2 && devices === null; attempt++) {
+      try {
+        devices = await api.getDevices()
+      } catch (error) {
+        console.warn(
+          '[绑定判重] 拉设备列表失败' + (attempt < 1 ? '，0.5s 后重试一次' : '（放弃，按新设备处理）'),
+          (error && error.message) || error
+        )
+        if (attempt < 1) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+      }
     }
-    return devices.find(item => {
-      const serial = this.deviceSerial(item.deviceNo || item.productDeviceId)
-      return serial && candidates.indexOf(serial) > -1
-    }) || null
+    if (!devices) {
+      return null // 两次都失败：不阻断绑定，按新设备处理
+    }
+
+    const matched =
+      devices.find(item => {
+        const serial = this.deviceSerial(
+          item.deviceNo || item.productDeviceId || item.deviceId
+        )
+        if (!serial) {
+          return false
+        }
+        return candidates.some(
+          candidate =>
+            candidate === serial ||
+            // 广播 4 字节 vs 连接 6 字节：一个是另一个的子串即视为同一台(要求 ≥8 hex/4 字节，避免误并)
+            (serial.length >= 8 &&
+              candidate.length >= 8 &&
+              (serial.indexOf(candidate) > -1 || candidate.indexOf(serial) > -1))
+        )
+      }) || null
+
+    console.log('[绑定判重]', {
+      candidates,
+      matchedId: matched && matched.id,
+      matchedSerial:
+        matched &&
+        this.deviceSerial(
+          matched.deviceNo || matched.productDeviceId || matched.deviceId
+        )
+    })
+    return matched
   },
 
   // 底部「立即绑定」：绑定当前选中的设备
