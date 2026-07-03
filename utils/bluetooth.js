@@ -159,6 +159,29 @@ function isDiscovering() {
   return !!foundHandler
 }
 
+// 把蓝牙信号强度(RSSI，单位 dBm，越接近 0 越强)翻译成用户能看懂的文字档位。
+// 裸数字对用户没有意义，绑定列表里只展示「极强 / 强 / 正常 / 偏弱 / 弱」。
+// RSSI 缺省(0)或非法(>=0)时返回空串，由页面兜底成「--」。
+function rssiToSignalText(rssi) {
+  const value = Number(rssi)
+  if (!value || value >= 0) {
+    return '' // 未知信号
+  }
+  if (value >= -55) {
+    return '极强'
+  }
+  if (value >= -67) {
+    return '强'
+  }
+  if (value >= -78) {
+    return '正常'
+  }
+  if (value >= -88) {
+    return '偏弱'
+  }
+  return '弱'
+}
+
 // 将系统返回的原始蓝牙设备结构裁剪为业务统一字段（取广播服务 UUID 作为设备编号兜底）
 function normalizeDevice(device) {
   // 无名设备用 deviceId 末段兜底展示，方便靠信号强度认出自己的设备
@@ -178,6 +201,8 @@ function normalizeDevice(device) {
     screenType: ad.screenType || 0,
     battery: ad.battery,
     RSSI: device.RSSI || 0,
+    // 信号强度文字档位（极强/强/正常/偏弱/弱），供列表展示，避免给用户看裸 RSSI 数字
+    signalText: rssiToSignalText(device.RSSI),
     localName: device.localName || '',
     advertisServiceUUIDs: device.advertisServiceUUIDs || [],
     realBluetooth: true

@@ -1,6 +1,7 @@
 const api = require('../../../utils/api')
 const system = require('../../../utils/system')
 const toast = require('../../../utils/toast')
+const activeDevice = require('../../../utils/active-device')
 
 Page({
   data: {
@@ -72,10 +73,41 @@ Page({
     this.loadRecords(filter)
   },
 
-  retryProjection() {
-    toast.warn({
-      title: '请重新选择照片投屏',
-      icon: 'none'
+  // 再次/重新投屏：用记录里的服务器图片地址重新走一遍正常投屏链路。
+  // 就算当前没连接设备，也先扫描+连接设备，连上后再跳投屏预览页，由结果页从服务器拉取文件并 BLE 图传。
+  async retryProjection(e) {
+    const id = e.currentTarget.dataset.id
+    const record =
+      this.data.filteredRecords.find(item => item.id === id) ||
+      this.data.records.find(item => item.id === id)
+    if (!record) {
+      return
+    }
+
+    // 记录归一化时 thumbUrl 已按 img → thumbUrl → url 兜底取到服务器图片地址
+    const imageUrl = record.thumbUrl || record.img || record.url
+    if (!imageUrl) {
+      toast.warn({ title: '该记录没有可投屏的图片', icon: 'none' })
+      return
+    }
+
+    // 先确保与当前设备建立蓝牙连接（未连接会自动扫描+连接；无设备/连不上会弹窗引导去首页）。
+    // 满足「就算没连接设备，点投屏也要先连设备再投屏」。
+    let device
+    try {
+      device = await activeDevice.ensureActiveDeviceConnection()
+    } catch (error) {
+      return // 提示已由 ensureActiveDeviceConnection 弹出
+    }
+
+    // 复用正常投屏链路：把该图片(服务器地址)与设备写入 Storage，跳投屏预览页；
+    // 用户确认后由结果页从服务器下载转换后的帧数据并 BLE 图传到设备。
+    wx.setStorageSync('pendingProjection', {
+      device,
+      images: [{ url: imageUrl }]
+    })
+    wx.navigateTo({
+      url: '/subpackages/projection/preview/preview'
     })
   },
 

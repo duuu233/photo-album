@@ -32,7 +32,7 @@
           <view class="nearby-icon"><image class="nearby-icon__img" src="/assets/images/mine-icon03.png" mode="aspectFit"></image></view>
           <view class="nearby-copy">
             <text class="nearby-name">{{item.name}}</text>
-            <text class="nearby-sub">{{item.screen ? item.screen + ' · ' : ''}}{{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.RSSI || '--'}}</text>
+            <text class="nearby-sub">{{item.screen ? item.screen + ' · ' : ''}}{{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.signalText || '--'}}</text>
           </view>
           <image wx:if="{{selectedId === (item.id || item.deviceId)}}" class="select-circle" src="/assets/images/selected-icon.png" mode="aspectFit"></image>
           <view wx:else class="select-circle select-circle--empty"></view>

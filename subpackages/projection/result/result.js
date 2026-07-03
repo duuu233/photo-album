@@ -169,6 +169,8 @@ Page({
         if (this._aborted) {
           throw new Error('UPLOAD_ABORTED')
         }
+        // 每张传输前把进度条清零：本张从 0% 独立开始（批量传输时每张 0→100）
+        this.setData({ progressCurrent: i + 1, progressPercent: 0 })
         const image = images[i]
         // 取本张要发给设备的六色 4bpp 帧 + 后端记录 id（见 acquireFrame）：
         //   原图传后端转换 → 下载 .bin（含 taskId/upirId）
@@ -214,14 +216,13 @@ Page({
             height: info.height,
             data: frameData,
             shouldAbort: () => this._aborted,
-            // 单张内的分包进度叠加已完成张数 → 整体百分比，进度条平滑推进
+            // 进度条按「每一张」独立计算(0→100%)，不再叠加整体：
+            // 批量传输时第一张走 0-100、第二张再 0-100，以此类推，用户能看清当前这张的进度
             onProgress: (done, totalPackets) => {
               const frac = totalPackets ? done / totalPackets : 0
-              const percent = Math.min(
-                100,
-                Math.floor(((i + frac) / total) * 100)
-              )
-              this.setData({ progressPercent: percent })
+              this.setData({
+                progressPercent: Math.min(100, Math.floor(frac * 100))
+              })
             }
           })
           console.log(`[投屏] 第 ${i + 1}/${total} 张 设备图传成功`, summary)
@@ -254,18 +255,22 @@ Page({
           )
         }
 
-        // 传完顺手刷新到这张（失败不影响整体）；并把该槽位记为已用，供下一张选槽位
-        try {
-          await deviceBle.refreshScreen(deviceId, index)
-        } catch (error) {
-          // 刷新失败不阻断
-        }
+        // 该槽位记为已用，供下一张选空闲槽位
         usedIndexes = usedIndexes.concat(index)
         uploaded++
-        this.setData({
-          progressCurrent: uploaded,
-          progressPercent: Math.floor((uploaded / total) * 100)
-        })
+        // 本张传输完成：进度条置 100%，张数 +1（下一张会重新从 0 开始）
+        this.setData({ progressCurrent: uploaded, progressPercent: 100 })
+
+        // 只有最后一张传完后才刷新屏幕(0x24)：部分固件收到 0x24 会断开蓝牙，
+        // 批量传输时中途刷屏会导致后续图片传输失败。故中间张一律不刷屏，
+        // 等全部传完后只对最后一张执行一次 0x24，切到最后这张显示。
+        if (i === total - 1) {
+          try {
+            await deviceBle.refreshScreen(deviceId, index)
+          } catch (error) {
+            // 刷新失败不阻断整体成功
+          }
+        }
       }
 
       console.log(`[投屏] 全部完成：成功 ${uploaded}/${total} 张`)

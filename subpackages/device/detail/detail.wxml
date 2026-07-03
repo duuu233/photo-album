@@ -147,7 +147,8 @@
       </view>
     </view>
 
-    <!-- 一键清空确认弹窗：交互同上（点遮罩关闭，点弹窗内部不关闭） -->
+    <!-- 一键清空 · 一级确认弹窗：交互同上（点遮罩关闭，点弹窗内部不关闭）。
+         点「继续」进入二级确认，避免一次点击就清空设备+图库 -->
     <view class="confirm-mask" wx:if="{{showClearConfirm}}" catchtouchmove="noop" bindtap="hideClearConfirm">
       <view class="confirm-dialog {{clearClosing ? 'pop-closing-dialog' : ''}}" catchtap="noop">
         <view class="confirm-icon clear-icon">
@@ -155,11 +156,28 @@
         </view>
         <view class="confirm-copy">
           <view class="confirm-title">一键清空</view>
-          <view class="confirm-desc">将清空设备内所有照片，请谨慎选择是否继续？</view>
+          <view class="confirm-desc">将清空设备内所有照片，同时清空图库，请谨慎选择是否继续。</view>
         </view>
         <view class="confirm-actions">
-          <view class="confirm-cancel" hover-class="none" bindtap="hideClearConfirm">取消</view>
-          <view class="confirm-primary" hover-class="none" bindtap="confirmClearCopies">确认</view>
+          <view class="confirm-cancel" hover-class="none" bindtap="hideClearConfirm">再想想</view>
+          <view class="confirm-primary" hover-class="none" bindtap="openClearStep2">继续</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 一键清空 · 二级确认弹窗：确认「已阅读并了解结果」后才真正执行清空 -->
+    <view class="confirm-mask" wx:if="{{showClearConfirm2}}" catchtouchmove="noop" bindtap="hideClearConfirm2">
+      <view class="confirm-dialog {{clearClosing2 ? 'pop-closing-dialog' : ''}}" catchtap="noop">
+        <view class="confirm-icon clear-icon">
+          <image class="broom-icon" src="/assets/images/device-detail-icon05.png" mode="aspectFit"></image>
+        </view>
+        <view class="confirm-copy">
+          <view class="confirm-title">一键清空</view>
+          <view class="confirm-desc">我已阅读并了解此操作的结果，确认继续。</view>
+        </view>
+        <view class="confirm-actions">
+          <view class="confirm-cancel" hover-class="none" bindtap="hideClearConfirm2">取消</view>
+          <view class="confirm-primary" hover-class="none" bindtap="confirmClearCopies">继续</view>
         </view>
       </view>
     </view>

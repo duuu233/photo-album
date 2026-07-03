@@ -387,8 +387,10 @@ Page({
   },
 
   // 选中照片 → 固件图片槽位索引：
-  // 取该设备「在设备上」的照片按当前顺序排列，选中照片排第 N 个，
-  // 就对应固件已占用槽位（升序）里的第 N 个；读不到掩码时回退到位置本身。
+  // 固件已占用槽位(occupied)是「按索引升序」的，且上传时用 firstFreeIndex 从最小空闲槽位起填，
+  // 即最早上传的图落在最小槽位。所以要把本设备照片按「上传先后」排好，第 N 张才对应升序槽位里的第 N 个。
+  // 直接用后端列表顺序(常见最新在前)去对 occupied[pos] 会刷错图 —— 这正是「指定刷新图片不对」的根因。
+  // 读不到掩码时回退到位置本身。
   resolveDeviceImageIndex(photoId, device, occupied) {
     const onDevicePhotos = this.data.photos.filter(item => item.onDevice !== false)
     const deviceKey = String((device && (device.userProductId || device.id)) || '')
@@ -405,7 +407,18 @@ Page({
       devicePhotos = onDevicePhotos
     }
 
-    const pos = devicePhotos.findIndex(item => item.id === photoId)
+    // 按上传先后升序排列，使「第 N 张」与升序槽位 occupied[N] 对齐：
+    // 主键 uProductImgId 自增，越小越早上传；取不到时退回按上传时间(createdAt)升序。
+    const orderedPhotos = devicePhotos.slice().sort((a, b) => {
+      const ai = Number(a.uProductImgId)
+      const bi = Number(b.uProductImgId)
+      if (Number.isFinite(ai) && Number.isFinite(bi) && ai !== bi) {
+        return ai - bi
+      }
+      return String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
+    })
+
+    const pos = orderedPhotos.findIndex(item => item.id === photoId)
     if (pos < 0) {
       return -1
     }

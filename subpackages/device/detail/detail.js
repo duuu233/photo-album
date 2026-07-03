@@ -226,8 +226,10 @@ Page({
     intervalOptions: [1, 2, 4, 8, 24],
     intervalIndex: 1,
     showClearConfirm: false,
+    showClearConfirm2: false, // 一键清空二级确认弹窗
     showDeleteConfirm: false,
     clearClosing: false, // 清空确认弹窗是否正在播放退场动画
+    clearClosing2: false, // 二级清空确认弹窗是否正在播放退场动画
     deleteClosing: false, // 删除确认弹窗是否正在播放退场动画
     showMediaSheet: false, // 「拍照/相册」选择弹层是否展示
     mediaSheetClosing: false, // 选择弹层是否正在播放退场动画
@@ -931,6 +933,27 @@ Page({
     }, 220)
   },
 
+  // 一级确认点「继续」：关一级、开二级，进入二次确认（我已阅读并了解结果）
+  openClearStep2() {
+    this.setData({
+      showClearConfirm: false,
+      clearClosing: false,
+      showClearConfirm2: true,
+      clearClosing2: false
+    })
+  },
+
+  // 二级确认弹窗关闭（带退场动画）
+  hideClearConfirm2() {
+    if (this.data.clearClosing2) {
+      return
+    }
+    this.setData({ clearClosing2: true })
+    setTimeout(() => {
+      this.setData({ showClearConfirm2: false, clearClosing2: false })
+    }, 220)
+  },
+
   clearCopies() {
     this.showClearConfirm()
   },
@@ -1036,7 +1059,7 @@ Page({
       }
     }
 
-    this.hideClearConfirm() // 带退场动画关闭确认弹窗
+    this.hideClearConfirm2() // 带退场动画关闭二级确认弹窗
     toast.show({
       title: '已清空',
       icon: 'none'
