@@ -26,7 +26,8 @@
               <image class="meta-bt-icon" src="{{device.connected ? '/assets/images/bluetooth-icon.png' : '/assets/images/bluetooth-icon-not.png'}}" mode="aspectFit"></image>
               <text>{{device.connected ? '已连接' : '未连接'}}</text>
             </view>
-            <view class="battery-meta">
+            <!-- 仅在已连接设备后才展示电量图标与数值 -->
+            <view wx:if="{{device.connected}}" class="battery-meta">
               <image class="battery-level-icon" src="{{batteryIcon}}" mode="aspectFit"></image>
               <text>{{batteryText}}</text>
             </view>
