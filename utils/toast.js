@@ -37,6 +37,24 @@ function show(options) {
   })
 }
 
+// 报错/警告类提示：给「非接口、非设备」的本地错误统一加「小程序-」前缀，便于用户/客服一眼区分故障来源
+// （设备/蓝牙错误已在 device-ble/ota-ble 加「设备-」，后端接口错误已在 request.js 加「接口-」）。
+// 幂等：标题已带「接口-」「设备-」「小程序-」前缀时原样保留，避免二次拼接。
+// ⚠️ 仅用于报错和警告；成功/中性提示（已保存、已连接等）请继续用 show()，不要加来源前缀。
+function warn(options) {
+  const opts = typeof options === 'string' ? { title: options } : Object.assign({}, options || {})
+  const title = opts.title == null ? '' : String(opts.title)
+  opts.title = title && !/^(接口-|设备-|小程序-)/.test(title) ? `小程序-${title}` : title
+  if (!opts.icon) {
+    opts.icon = 'none'
+  }
+  // 报错/警告类停留更久（默认 5s），给用户足够时间看清故障来源与原因；调用方显式传 duration 时以其为准。
+  if (opts.duration === undefined) {
+    opts.duration = 5000
+  }
+  show(opts)
+}
+
 function hide() {
   const toast = getToastComponent()
   if (toast && typeof toast.hide === 'function') {
@@ -48,5 +66,6 @@ function hide() {
 
 module.exports = {
   show,
+  warn,
   hide
 }

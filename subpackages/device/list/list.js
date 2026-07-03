@@ -5,6 +5,7 @@ const batteryUtil = require('../../../utils/battery')
 const deviceBle = require('../../../utils/device-ble')
 const bluetooth = require('../../../utils/bluetooth')
 const permission = require('../../../utils/permission')
+const media = require('../../../utils/media')
 
 const app = getApp()
 
@@ -23,8 +24,12 @@ Page({
     devices: [],
     selectedId: '',
     selectMode: false,
-    loading: true
+    loading: true,
+    showMediaSheet: false, // 「拍照/相册」选择弹层是否展示（点某台设备的「投屏」后弹出）
+    mediaSheetClosing: false // 选择弹层是否正在播放退场动画
   },
+
+  noop() {},
 
   onLoad(options) {
     this.setSystemMetrics()
@@ -174,10 +179,72 @@ Page({
     })
   },
 
-  goSlideshow(e) {
+  // 某台设备的「投屏」：交互与设备详情页的「投屏」完全一致——要求设备已连接，
+  // 弹出「拍照/相册」二选一，由用户选择投屏方式后进入投屏预览页。
+  startProjection(e) {
     const id = e.currentTarget.dataset.id
+    const device = this.data.devices.find(item => item.id === id)
+    if (!device) {
+      return
+    }
+    const bleId = device.deviceId || device.bleDeviceId
+    if (!(bleId && deviceBle.isConnected(bleId))) {
+      toast.warn({ title: '请先连接设备', icon: 'none' })
+      return
+    }
+
+    // 设为当前选中设备，预览/结果页据此连接并图传；记住本次投屏的设备供选图后使用
+    app.setSelectedDevice(device)
+    this._projectionDevice = device
+    this.setData({ showMediaSheet: true, mediaSheetClosing: false })
+  },
+
+  // 关闭「拍照/相册」选择弹层（带退场动画，与详情页一致）
+  hideMediaSheet() {
+    if (this.data.mediaSheetClosing) {
+      return
+    }
+    this.setData({ mediaSheetClosing: true })
+    setTimeout(() => {
+      this.setData({ showMediaSheet: false, mediaSheetClosing: false })
+    }, 220)
+  },
+
+  // 选「拍照」：调起相机拍一张后进入投屏
+  chooseCamera() {
+    this.pickAndProject(() => media.chooseFromCamera())
+  },
+
+  // 选「相册」：从相册选图后进入投屏
+  chooseAlbum() {
+    this.pickAndProject(() => media.chooseFromAlbum())
+  },
+
+  // 选图（拍照/相册）后跳投屏预览：用户取消选择不报错；选到图先关弹层再带数据跳转。
+  async pickAndProject(pickImages) {
+    const device = this._projectionDevice
+    if (!device) {
+      return
+    }
+
+    let images
+    try {
+      images = await pickImages()
+    } catch (error) {
+      if (error && error.errMsg && error.errMsg.indexOf('cancel') > -1) {
+        return // 用户取消选择不算错误，保留弹层让其重新选择
+      }
+      toast.warn({ title: '选择照片失败', icon: 'none' })
+      return
+    }
+    if (!images || !images.length) {
+      return
+    }
+
+    this.setData({ showMediaSheet: false, mediaSheetClosing: false })
+    wx.setStorageSync('pendingProjection', { device, images })
     wx.navigateTo({
-      url: `/subpackages/device/slideshow/slideshow?id=${id}`
+      url: '/subpackages/projection/preview/preview'
     })
   },
 
@@ -253,7 +320,7 @@ Page({
       if (error.code === 'PERMISSION_DENIED') {
         bluetooth.showPermissionGuide()
       } else {
-        toast.show({
+        toast.warn({
           title: error.message || '连接失败',
           icon: 'none'
         })

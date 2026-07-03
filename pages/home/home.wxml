@@ -50,7 +50,8 @@
                         <image class="mini-bluetooth" src="/assets/images/bluetooth-icon.png" mode="aspectFill"></image>
                     <text>{{item.connected ? '已连接' : '未连接'}}</text>
                   </view>
-                  <view class="battery-row">
+                  <!-- 仅在已连接设备后才展示电量图标与数值 -->
+                  <view wx:if="{{item.connected}}" class="battery-row">
                     <image class="battery-level-icon" src="{{item.batteryIcon}}" mode="aspectFit"></image>
                     <text>{{item.battery}}%</text>
                   </view>

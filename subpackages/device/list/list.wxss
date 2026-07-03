@@ -66,18 +66,18 @@
   align-items: center;
   justify-content: center;
   /* width: 92rpx;
-  height: 92rpx; */
+  height: 92rpx;
   padding: 20rpx;
   border-radius: 16px;
   border-radius: 16px;
-  background: rgba(42, 43, 43, 0.04);
+  background: rgba(42, 43, 43, 0.04); */
 }
 .device-logo-is-connected {
   background: rgba(255, 175, 139, 0.1);
 }
 .device-logo__icon {
-  width: 92rpx;
-  height: 92rpx;
+  width: 120rpx;
+  height: 120rpx;
 }
 
 .device-copy {
@@ -276,4 +276,105 @@
   border-radius: 999rpx;
   font-size: 28rpx;
   font-weight: 700;
+}
+
+/* ── 「拍照 / 相册」选择弹层（与设备详情页 media-sheet 同款，点某台设备的「投屏」后弹出）────── */
+.media-mask {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  background: rgba(42, 43, 43, 0.5);
+}
+
+.bottom-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #ffffff;
+  border-radius: 32rpx 32rpx 0 0;
+  animation: popSheetSlideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.media-sheet {
+  height: 706rpx;
+  padding: 42rpx 48rpx 0;
+}
+
+.media-sheet-title {
+  margin-bottom: 46rpx;
+  color: #2a2b2b;
+  font-size: 40rpx;
+  font-weight: 500;
+}
+
+.media-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 128rpx;
+  margin-bottom: 20rpx;
+  padding: 0 24rpx;
+  background: #f8f9fb;
+  border-radius: 28rpx;
+}
+
+.media-option-left {
+  display: flex;
+  align-items: center;
+}
+
+.media-art.mini {
+  position: relative;
+  width: 98rpx;
+  height: 96rpx;
+}
+
+.media-option-copy {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  flex-direction: column;
+  padding-left: 28rpx;
+}
+
+.media-option-copy view {
+  color: #2a2d32;
+  font-size: 32rpx;
+  font-weight: 500;
+}
+
+.media-option-copy text {
+  display: block;
+  margin-top: 12rpx;
+  color: #858b96;
+  font-size: 22rpx;
+  line-height: 1;
+}
+
+.round-arrow {
+  width: 118rpx;
+  height: 118rpx;
+}
+
+.cancel-action {
+  position: absolute;
+  right: 48rpx;
+  bottom: 108rpx;
+  left: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: 112rpx;
+  color: #2a2d32;
+  background: #ededed;
+  border-radius: 999rpx;
+  font-size: 36rpx;
+  font-weight: 500;
 }

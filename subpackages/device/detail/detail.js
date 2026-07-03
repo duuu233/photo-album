@@ -8,6 +8,7 @@ const protocol = require('../../../utils/frame-protocol')
 const media = require('../../../utils/media')
 const bluetooth = require('../../../utils/bluetooth')
 const permission = require('../../../utils/permission')
+const activeDevice = require('../../../utils/active-device')
 
 const app = getApp()
 
@@ -92,6 +93,18 @@ function logClearDeviceData(traceId, label, data) {
 
 function textValue(value) {
   return String(value || '').trim()
+}
+
+// 给「设备返回 / 蓝牙链路」类错误统一加「设备-」前缀（与 toast 来源前缀约定一致：
+// 设备-/小程序-/接口-）。幂等：已带任一来源前缀时原样返回，避免重复叠加。
+function prefixDeviceError(error) {
+  const e =
+    error instanceof Error ? error : new Error((error && error.message) || '设备操作失败')
+  const msg = e.message || '设备操作失败'
+  if (!/^接口-|^设备-|^小程序-/.test(msg)) {
+    e.message = '设备-' + msg
+  }
+  return e
 }
 
 function isUpdateFlag(device) {
@@ -424,11 +437,12 @@ Page({
 
   async applyPlayback(mode, intervalHours, carouselEnabled) {
     const device = this.data.device
-    if (!device || !device.deviceId) {
-      toast.show({
-        title: '请先连接设备',
-        icon: 'none'
-      })
+    if (!device) {
+      return
+    }
+    // 操作前先确保已连接：断联则自动重连(扫描+连接)，连不上再提示「请先连接设备」。
+    const deviceId = await activeDevice.ensureConnectedForAction(device)
+    if (!deviceId) {
       return
     }
 
@@ -437,8 +451,10 @@ Page({
 
     wx.showLoading({ title: '保存中', mask: true })
     try {
-      await deviceBle.setPlayback(device.deviceId, mode, intervalSeconds)
+      await deviceBle.setPlayback(deviceId, mode, intervalSeconds)
       const updated = Object.assign({}, device, {
+        deviceId,
+        bleDeviceId: deviceId,
         connected: true,
         playbackMode: mode,
         intervalSeconds,
@@ -462,7 +478,7 @@ Page({
       })
       toast.show({ title: '已保存', icon: 'none' })
     } catch (error) {
-      toast.show({
+      toast.warn({
         title: error.message || '保存失败',
         icon: 'none'
       })
@@ -479,7 +495,7 @@ Page({
     }
     const bleId = device.deviceId || device.bleDeviceId
     if (!(bleId && deviceBle.isConnected(bleId))) {
-      toast.show({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接设备', icon: 'none' })
       return
     }
 
@@ -524,7 +540,7 @@ Page({
       if (error && error.errMsg && error.errMsg.indexOf('cancel') > -1) {
         return // 用户取消选择不算错误，保留弹层让其重新选择
       }
-      toast.show({ title: '选择照片失败', icon: 'none' })
+      toast.warn({ title: '选择照片失败', icon: 'none' })
       return
     }
     if (!images || !images.length) {
@@ -612,7 +628,7 @@ Page({
       if (error && error.code === 'PERMISSION_DENIED') {
         bluetooth.showPermissionGuide()
       } else {
-        toast.show({
+        toast.warn({
           title: (error && error.message) || '连接失败',
           icon: 'none'
         })
@@ -652,16 +668,41 @@ Page({
     })
   },
 
-  goOtaUpgrade() {
+  // 点「固件升级」：先调接口检测最新版本 → 有新版本弹二次确认(稍后/立刻更新)，无则提示已是最新、不进升级页。
+  async goOtaUpgrade() {
     const device = this.data.device
     if (!device) {
       return
     }
 
-    const validationError = getOtaValidationError(device)
+    // 先调接口检测版本（不依赖详情页可能已过期的数据）
+    wx.showLoading({ title: '检测版本中', mask: true })
+    let latest
+    try {
+      latest = await api.getDeviceDetail(this.data.id)
+    } catch (error) {
+      wx.hideLoading()
+      toast.warn({ title: (error && error.message) || '版本检测失败', icon: 'none' })
+      return
+    }
+    wx.hideLoading()
+
+    // 无新版本：弹提示框，不进入固件升级详情页
+    if (!isUpdateFlag(latest)) {
+      wx.showModal({
+        title: '固件升级',
+        content: '当前固件已是最新版本',
+        showCancel: false,
+        confirmText: '知道了'
+      })
+      return
+    }
+
+    // 有更新但包信息无效（缺版本号/下载地址/非 .bin）：如实提示，不进入
+    const validationError = getOtaValidationError(latest)
     if (validationError) {
       wx.showModal({
-        title: 'OTA升级',
+        title: '固件升级',
         content: validationError,
         showCancel: false,
         confirmText: '知道了'
@@ -669,26 +710,39 @@ Page({
       return
     }
 
-    const bleDeviceId = getBleDeviceId(device)
-    if (!(bleDeviceId && deviceBle.isConnected(bleDeviceId))) {
-      toast.show({ title: '请先连接设备', icon: 'none' })
+    // 有新版本：二次确认；「立刻更新」→ 确保已连接后进入升级页自动开始下载
+    wx.showModal({
+      title: '固件升级',
+      content: `检测到新版本：${textValue(latest.newVersionNo)}，是否升级`,
+      cancelText: '稍后',
+      confirmText: '立刻更新',
+      success: res => {
+        if (res.confirm) {
+          this.enterOtaUpgrade()
+        }
+      }
+    })
+  },
+
+  // 「立刻更新」：确保设备已连接(断联自动重连)，把当下有效连接写回选中设备，再进入固件升级页自动开始下载。
+  async enterOtaUpgrade() {
+    const device = this.data.device
+    if (!device) {
       return
     }
-
+    const deviceId = await activeDevice.ensureConnectedForAction(device)
+    if (!deviceId) {
+      return // 连不上，提示已弹（请先连接设备 / 权限引导）
+    }
     app.setSelectedDevice(
-      Object.assign({}, device, {
-        deviceId: bleDeviceId,
-        bleDeviceId,
-        connected: true
-      })
+      Object.assign({}, device, { deviceId, bleDeviceId: deviceId, connected: true })
     )
-
     wx.navigateTo({
       url: `/subpackages/device/ota/ota?id=${this.data.id}&auto=1`
     })
   },
 
-  // 长按「OTA升级」进入本地固件测试流程：用代码包内的测试 .bin 走真实 DFU（设备已连接）
+  // 长按「固件升级」进入本地固件测试流程：用代码包内的测试 .bin 走真实 DFU（设备已连接）
   // 或干跑校验（未连接）。先把当前设备设为全局选中，OTA 页据此拿到 bleDeviceId。
   goOtaTest() {
     if (this.data.device) {
@@ -733,7 +787,7 @@ Page({
     const url = textValue(device.downloadPath)
     if (!url) {
       console.warn('[OTA测试][' + traceId + '] 设备详情缺少固件下载地址 downloadPath，无法测试。')
-      toast.show({ title: '缺少固件下载地址(downloadPath)', icon: 'none' })
+      toast.warn({ title: '缺少固件下载地址(downloadPath)', icon: 'none' })
       return
     }
     const fileName = url.split('?')[0].split('#')[0].split('/').pop() || 'firmware.bin'
@@ -848,7 +902,7 @@ Page({
       }
       console.error('[OTA测试][' + traceId + '] 错误对象：', error)
       this.setData({ otaTestStatus: aborted ? '已中断' : '测试失败' })
-      toast.show({
+      toast.warn({
         title: aborted ? '测试已中断' : (error && error.message) || 'OTA测试失败',
         icon: 'none'
       })
@@ -886,16 +940,13 @@ Page({
       return
     }
 
-    if (!this.data.device.deviceId) {
-      toast.show({
-        title: '请先连接设备',
-        icon: 'none'
-      })
+    // 操作前先确保已连接：断联则自动重连(扫描+连接)，连不上再提示「请先连接设备」。
+    const deviceId = await activeDevice.ensureConnectedForAction(this.data.device)
+    if (!deviceId) {
       return
     }
 
     const traceId = Date.now().toString(36)
-    const deviceId = this.data.device.deviceId
     logClearDeviceData(traceId, '点击确认，开始清空设备图片', {
       pageDeviceId: this.data.id,
       bleDeviceId: deviceId
@@ -922,10 +973,48 @@ Page({
           imgIndexMask: deleteMask,
           imgIndexMaskHex: protocol.bytesToHex(deleteMask)
         })
-        const deleteResult = await deviceBle.deleteImage(deviceId, indexes)
-        logClearDeviceData(traceId, '删除图片应答(0x12解析结果)', Object.assign({}, deleteResult, {
-          imgMaskHex: protocol.bytesToHex(deleteResult.imgMask)
-        }))
+        try {
+          const deleteResult = await deviceBle.deleteImage(deviceId, indexes)
+          logClearDeviceData(traceId, '删除图片应答(0x12解析结果)', Object.assign({}, deleteResult, {
+            imgMaskHex: protocol.bytesToHex(deleteResult.imgMask)
+          }))
+        } catch (deleteError) {
+          // 设备对 0x12 回了非 0 结果码或应答超时——但不少固件其实已经把图删干净了，
+          // 只是应答异常/迟到。这里回读一次设备状态核对：真清空了就按成功继续（记一条日志说明），
+          // 只有确实还留着图才把这个「设备-」错误抛给用户，避免「已清空却报错误码」误导。
+          logClearDeviceData(traceId, '删除指令(0x12)报错，回读设备状态核对是否已实际清空', {
+            deviceError: (deleteError && deleteError.message) || String(deleteError)
+          })
+          let after
+          try {
+            after = await deviceBle.readDeviceInfo(deviceId)
+          } catch (reReadError) {
+            // 回读也失败：无法确认设备是否已清空，沿用原始设备错误如实抛出（带来源前缀）
+            logClearDeviceData(traceId, '回读设备状态失败，无法确认清空结果，沿用原始设备错误', {
+              reReadError: (reReadError && reReadError.message) || String(reReadError)
+            })
+            throw prefixDeviceError(deleteError)
+          }
+          const remaining = protocol.maskToIndexes(after.imgMask)
+          logClearDeviceData(traceId, '回读设备状态结果', {
+            imgMaskHex: protocol.bytesToHex(after.imgMask),
+            remainingIndexes: remaining,
+            imgCount: after.imgCount
+          })
+          if (remaining.length) {
+            // 确实没删干净：把设备结果码如实抛出，让用户看到真实失败原因（带「设备-」前缀）
+            throw prefixDeviceError(
+              new Error(
+                ((deleteError && deleteError.message) || '清空失败') +
+                  `（设备仍剩 ${remaining.length} 张未删除）`
+              )
+            )
+          }
+          // 设备已实际清空，只是 0x12 应答异常：记录后按成功继续，不打断清空流程
+          logClearDeviceData(traceId, '设备已实际清空（0x12 应答曾报错，回读确认无残留，按成功处理）', {
+            deviceReportedError: (deleteError && deleteError.message) || String(deleteError)
+          })
+        }
       } else {
         logClearDeviceData(traceId, '设备本地没有图片，不发送删除指令(0x12)', { indexes })
       }
@@ -935,7 +1024,7 @@ Page({
       clearSucceeded = true
     } catch (error) {
       console.error('[一键清空][' + traceId + '] 清空失败:', error)
-      toast.show({
+      toast.warn({
         title: error.message || '清空失败',
         icon: 'none'
       })

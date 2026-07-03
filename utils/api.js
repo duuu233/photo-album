@@ -89,6 +89,13 @@ function normalizeDevice(device = {}) {
   )
   const intervalSeconds = normalizeNumber(device.intervalSeconds, 0)
   const isUpdate = normalizeNumber(device.isUpdate, 0)
+  // 升级方式：后端 updateType 约定 1=强制升级 / 其它(含 2=提醒)=提醒升级（字段名/取值待后端最终确认，仅改此一处即可）。
+  // 归一为 upgradeMode: 'force'(强制) | 'remind'(提醒) | ''(无更新)，供启动全局检测与升级入口判断。
+  const updateType = normalizeNumber(
+    firstValue(device.updateType, device.upgradeType, device.forceType),
+    0
+  )
+  const upgradeMode = isUpdate === 1 ? (updateType === 1 ? 'force' : 'remind') : ''
   const newVersionNo = firstValue(
     device.newVersionNo,
     device.latestVersion,
@@ -137,6 +144,8 @@ function normalizeDevice(device = {}) {
     ),
     isUpdate,
     hasUpdate: isUpdate === 1,
+    updateType,
+    upgradeMode,
     newVersionNo,
     downloadPath,
     carouselEnabled: device.carouselEnabled !== false

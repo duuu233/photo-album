@@ -103,7 +103,8 @@ Page({
   },
 
   showToast(title) {
-    toast.show({
+    // 本页 showToast 仅用于本地校验/错误提示（协议未勾选、获取手机号失败等），统一走 warn 加「小程序-」前缀。
+    toast.warn({
       title,
       icon: 'none'
     })

@@ -221,32 +221,33 @@ Page({
 
   // 删除前的连接校验：删除要同时删设备(0x12)与后端，二者必须一致，所以必须先连上设备。
   // 已连接返回 device；未连接则提示「无法删除」并返回 null。
-  ensureConnectedDevice() {
+  async ensureConnectedDevice() {
     const device = activeDevice.getActiveDevice()
-    if (!device || !device.deviceId || !deviceBle.isConnected(device.deviceId)) {
-      toast.show({
+    if (!device || !(device.deviceId || device.bleDeviceId || device.deviceNo || device.name)) {
+      toast.warn({
         title: '设备未连接，无法删除',
         icon: 'none'
       })
       return null
     }
-    return device
+    // 断联则自动重连(扫描+连接)，连不上再提示；连上返回带当下有效 deviceId 的设备。
+    const deviceId = await activeDevice.ensureConnectedForAction(device)
+    if (!deviceId) {
+      return null // 提示已由 ensureConnectedForAction 弹出（请先连接设备 / 权限引导）
+    }
+    return Object.assign({}, device, { deviceId, bleDeviceId: deviceId, connected: true })
   },
 
   showDeleteDialog() {
     if (!this.data.selectedCount) {
-      toast.show({
+      toast.warn({
         title: '请选择照片',
         icon: 'none'
       })
       return
     }
 
-    // 未连接设备直接提示无法删除，连确认框都不弹
-    if (!this.ensureConnectedDevice()) {
-      return
-    }
-
+    // 连接判断/自动重连移到「确认删除」时(confirmDeleteSelected)，避免弹确认框前先干等数秒扫描重连。
     this.setData({
       showDeleteConfirm: true
     })
@@ -273,8 +274,8 @@ Page({
       return
     }
 
-    // 1) 删除前再判一次连接：未连接无法删除（防止弹确认框期间设备断开导致设备/后端不一致）
-    const device = this.ensureConnectedDevice()
+    // 1) 删除前确保已连接：断联则自动重连，连不上才提示（防止弹确认框期间设备断开导致设备/后端不一致）
+    const device = await this.ensureConnectedDevice()
     if (!device) {
       this.hideDeleteDialog()
       return
@@ -296,7 +297,7 @@ Page({
       }
     } catch (error) {
       wx.hideLoading()
-      toast.show({
+      toast.warn({
         title: (error && error.message) || '设备删除失败',
         icon: 'none'
       })
@@ -308,7 +309,7 @@ Page({
     try {
       await api.deleteAlbumPhotos(ids)
     } catch (error) {
-      toast.show({
+      toast.warn({
         title: (error && error.message) || '删除照片记录失败',
         icon: 'none'
       })
@@ -328,7 +329,7 @@ Page({
     const ids = Object.keys(this.data.selectedMap)
 
     if (!ids.length) {
-      toast.show({
+      toast.warn({
         title: '请选择图片',
         icon: 'none'
       })
@@ -336,7 +337,7 @@ Page({
     }
 
     if (ids.length > 1) {
-      toast.show({
+      toast.warn({
         title: '刷新屏幕只能选中一张图片',
         icon: 'none'
       })
@@ -362,7 +363,7 @@ Page({
 
       if (index < 0) {
         wx.hideLoading()
-        toast.show({
+        toast.warn({
           title: '未找到该图片在设备上的位置',
           icon: 'none'
         })
@@ -378,7 +379,7 @@ Page({
       })
     } catch (error) {
       wx.hideLoading()
-      toast.show({
+      toast.warn({
         title: (error && error.message) || '刷新失败',
         icon: 'none'
       })
@@ -424,7 +425,7 @@ Page({
       if (error.errMsg && error.errMsg.indexOf('cancel') > -1) {
         return
       }
-      toast.show({
+      toast.warn({
         title: '选择照片失败',
         icon: 'none'
       })
@@ -438,7 +439,7 @@ Page({
     const device = app.globalData.selectedDevice
 
     if (!device) {
-      toast.show({
+      toast.warn({
         title: '请先选择设备',
         icon: 'none'
       })

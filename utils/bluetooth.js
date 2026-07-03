@@ -184,13 +184,17 @@ function normalizeDevice(device) {
   }
 }
 
-// 在 timeout 时间内持续收集附近的蓝牙相框，到点后返回去重后的设备列表
+// 在 timeout 时间内持续收集附近的蓝牙相框，到点后返回去重 + 按 RSSI 降序的设备列表。
+// options.onUpdate(devices)：可选。每发现一台新设备、或已收录设备的展示信息(名称/电量/屏型)有变化时，
+//   立即回调一份「当前已搜到的列表」，供页面「搜出一个显示一个」增量渲染，不必等满 timeout。
+//   最终仍会在 timeout 到点后 resolve 完整列表（与不传 onUpdate 时行为一致，故对现有调用方零影响）。
 async function discoverDevices(options) {
   const timeout = options && options.timeout ? options.timeout : 8000
   // allowAll：放开广播名白名单，收录附近所有蓝牙设备。仅供硬件调试页排查用
   //（比如设备搜不到时，先看它真实广播名到底命中了产品列表里的哪个 broadcastId）。
   // 绑定/列表等正式入口不传此项，保持只显示目标相框。
   const allowAll = !!(options && options.allowAll)
+  const onUpdate = options && typeof options.onUpdate === 'function' ? options.onUpdate : null
   // 正式入口：先取产品列表的 broadcastId 白名单（带缓存，多为命中缓存无网络开销）；allowAll 不过滤。
   const allowedIds = allowAll ? [] : await loadAllowedBroadcastIds()
 
@@ -201,25 +205,30 @@ async function discoverDevices(options) {
     }
 
     const foundMap = {} // 以 deviceId 为键去重，同一设备多次广播只保留最新一条
+    const signatures = {} // 各设备上次回调用的展示签名(名称|电量|屏型)：只在展示信息变化时才增量回调，避免 RSSI 抖动刷屏
     let settled = false // 保证只 resolve/reject 一次
     let timer = null
 
-    const finish = devices => {
+    // 当前已搜到的设备，按信号强度降序（离得近的排前面）
+    const sortedList = () =>
+      Object.keys(foundMap).map(id => foundMap[id]).sort((a, b) => b.RSSI - a.RSSI)
+
+    const finish = () => {
       if (settled) {
         return
       }
-
       settled = true
       clearTimeout(timer)
       stopDiscovery()
-      resolve(devices)
+      resolve(sortedList())
     }
 
-    // 每次发现设备的回调：累积到 foundMap，搜索期间不立即返回。
+    // 每次发现设备的回调：累积到 foundMap，搜索期间不整体等待——有新设备/展示信息变化就 onUpdate 增量回吐。
     // 新设备必须广播名命中白名单（产品列表的 broadcastId）才收录；已收录的目标设备后续广播包继续刷新
     // （电量/名称/信号常在后续包才带全），避免因某个包暂时缺 localName 而漏更新。
     foundHandler = res => {
       const devices = res.devices || []
+      let changed = false
       devices.forEach(device => {
         if (!device.deviceId) {
           return
@@ -228,8 +237,22 @@ async function discoverDevices(options) {
         if (!allowAll && !foundMap[device.deviceId] && !isAllowedFrame(device, allowedIds)) {
           return
         }
-        foundMap[device.deviceId] = normalizeDevice(device)
+        const normalized = normalizeDevice(device)
+        const sig = `${normalized.name}|${normalized.battery}|${normalized.screenType}`
+        // 新设备，或名称/电量/屏型变化才算「有变化」；纯 RSSI 波动不触发回调（否则会高频刷屏）
+        if (!foundMap[device.deviceId] || signatures[device.deviceId] !== sig) {
+          changed = true
+        }
+        foundMap[device.deviceId] = normalized // RSSI 始终更新，保证最终列表排序准确
+        signatures[device.deviceId] = sig
       })
+      if (changed && onUpdate && !settled) {
+        try {
+          onUpdate(sortedList()) // 搜到一个显示一个：立即把当前列表回吐给页面增量渲染
+        } catch (error) {
+          // 页面回调自身异常不能中断扫描
+        }
+      }
     }
 
     // 注意：必须先注册监听再开始搜索，否则可能漏掉最早广播的设备
@@ -239,11 +262,8 @@ async function discoverDevices(options) {
       allowDuplicatesKey: true,
       interval: 0,
       success() {
-        // 搜索成功开启后，等待 timeout 再统一汇总结果；按信号强度排序，离得近的设备排在前面
-        timer = setTimeout(() => {
-          const list = Object.keys(foundMap).map(id => foundMap[id]).sort((a, b) => b.RSSI - a.RSSI)
-          finish(list)
-        }, timeout)
+        // 搜索成功开启后，等待 timeout 到点再汇总 resolve（增量结果已在 onUpdate 里实时给过页面）
+        timer = setTimeout(finish, timeout)
       },
       fail(error) {
         clearTimeout(timer)

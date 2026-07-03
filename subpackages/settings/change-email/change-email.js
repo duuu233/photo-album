@@ -62,7 +62,7 @@ Page({
     }
 
     if (!isEmail(this.data.email)) {
-      toast.show({
+      toast.warn({
         title: '请输入正确邮箱',
         icon: 'none'
       })
@@ -119,7 +119,7 @@ Page({
 
   async submit() {
     if (!this.data.canSubmit) {
-      toast.show({
+      toast.warn({
         title: '请补全信息并确认密码',
         icon: 'none'
       })
@@ -127,7 +127,7 @@ Page({
     }
 
     if (!isEmail(this.data.email)) {
-      toast.show({
+      toast.warn({
         title: '请输入正确邮箱',
         icon: 'none'
       })

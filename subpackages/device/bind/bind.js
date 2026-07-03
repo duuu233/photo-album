@@ -58,6 +58,7 @@ Page({
     this.setData({
       scanning: true,
       devices: [],
+      selectedId: '', // 每次重新搜索清空选中，让本次搜到的信号最强设备被默认选中
       showHelp: false
     })
 
@@ -65,7 +66,7 @@ Page({
       // 微信要求搜索蓝牙前需有定位权限
       const location = await permission.getCurrentLocation()
       if (!location) {
-        toast.show({
+        toast.warn({
           title: '请先授权定位',
           icon: 'none'
         })
@@ -78,20 +79,20 @@ Page({
 
       await bluetooth.openAdapter()
 
-      // 只扫真实相框（广播名以 EF6 开头或带合法厂商数据），不再用模拟设备兜底
+      // 只扫真实相框（广播名以 EF6 开头或带合法厂商数据），不再用模拟设备兜底。
+      // onUpdate：搜到一台就渲染一台（边搜边显示），不必等满超时；窗口加长到 12s，
+      // 让「同时存在 2 台及以上设备」时每台都有足够广播机会被搜到，避免只搜到一台。
       const devices = await bluetooth.discoverDevices({
-        timeout: 8000
+        timeout: 12000,
+        onUpdate: list => this.applyScanResult(seq, list)
       })
 
       if (seq !== this.scanSeq) {
         return // 本次扫描已被取消，丢弃结果
       }
 
-      // 默认选中第一台，符合设计稿「已搜索到设备」首项高亮
-      this.setData({
-        devices,
-        selectedId: devices.length ? devices[0].id || devices[0].deviceId : ''
-      })
+      // 超时到点的最终列表：增量已实时渲染过，这里兜底对齐一次并处理空态
+      this.applyScanResult(seq, devices)
 
       // 鸿蒙兼容兜底：一台没搜到时给鸿蒙用户单独排查引导(非鸿蒙保留原空态 UI)
       if (!devices.length) {
@@ -105,7 +106,7 @@ Page({
       if (error.code === 'PERMISSION_DENIED') {
         bluetooth.showPermissionGuide()
       } else {
-        toast.show({
+        toast.warn({
           title: error.message || '设备搜索失败',
           icon: 'none'
         })
@@ -117,6 +118,20 @@ Page({
         })
       }
     }
+  },
+
+  // 把一次扫描结果（增量或最终）渲染到列表。作废的扫描直接丢弃；首次出现设备时默认选中信号最强那台，
+  // 之后保留已有/用户的选择，避免增量刷新时选中项来回跳。
+  applyScanResult(seq, list) {
+    if (seq !== this.scanSeq) {
+      return // 本次扫描已取消，丢弃增量结果
+    }
+    const devices = list || []
+    this.setData({
+      devices,
+      selectedId:
+        this.data.selectedId || (devices.length ? devices[0].id || devices[0].deviceId : '')
+    })
   },
 
   // 取消正在进行的搜索：停止蓝牙扫描并让在途的 scan 结果失效，然后退出绑定流程
@@ -175,25 +190,69 @@ Page({
   },
 
   // 查当前用户是否已绑定这台设备（按硬件 Device_ID 匹配），命中则返回那条已绑定记录。
-  // 取不到列表 / 匹配不到都返回 null —— 一律按新设备正常绑定，绝不因为这步出错而挡住绑定。
+  // 匹配不到 / 两次拉列表都失败才返回 null —— 一律按新设备正常绑定，绝不因这步出错而挡住绑定。
+  //
+  // 「已绑定设备再搜索后有概率变成新设备」的两个元凶都在这里治理：
+  //   ① 拉已绑定列表偶发网络失败时旧代码直接 return null → 判成新设备 → 重复绑定。改为重试一次。
+  //   ② 序列号有两种表示：连上读 0x01 得到的是 6 字节 Device_ID，扫描广播里的只有 4 字节，
+  //      归一化后长度不同、精确相等匹配不上 → 判成新设备。改为「精确相等 或 互为子串(≥4字节)」匹配。
   async findBoundDevice(scanDevice, info) {
-    // 候选序列号：优先用连上读到的 Device_ID，其次扫描广播里的 deviceNo（当初绑定存的就是它）
+    // 候选序列号：优先用连上读到的 Device_ID(6字节)，再并入扫描广播里的 deviceNo/productDeviceId(4字节)
     const candidates = [info && info.deviceId, scanDevice.deviceNo, scanDevice.productDeviceId]
       .map(value => this.deviceSerial(value))
       .filter(Boolean)
     if (!candidates.length) {
       return null
     }
-    let devices = []
-    try {
-      devices = await api.getDevices()
-    } catch (error) {
-      return null // 拉列表失败：按新设备正常绑定，不阻断
+
+    // 拉已绑定列表判重：网络抖动会让这步偶发失败，一旦失败旧代码就按「新设备」绑定 → 重复绑定。
+    // 这里重试一次，尽量拿到真实列表再判重；两次都失败才不阻断绑定。
+    let devices = null
+    for (let attempt = 0; attempt < 2 && devices === null; attempt++) {
+      try {
+        devices = await api.getDevices()
+      } catch (error) {
+        console.warn(
+          '[绑定判重] 拉设备列表失败' + (attempt < 1 ? '，0.5s 后重试一次' : '（放弃，按新设备处理）'),
+          (error && error.message) || error
+        )
+        if (attempt < 1) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+      }
     }
-    return devices.find(item => {
-      const serial = this.deviceSerial(item.deviceNo || item.productDeviceId)
-      return serial && candidates.indexOf(serial) > -1
-    }) || null
+    if (!devices) {
+      return null // 两次都失败：不阻断绑定，按新设备处理
+    }
+
+    const matched =
+      devices.find(item => {
+        const serial = this.deviceSerial(
+          item.deviceNo || item.productDeviceId || item.deviceId
+        )
+        if (!serial) {
+          return false
+        }
+        return candidates.some(
+          candidate =>
+            candidate === serial ||
+            // 广播 4 字节 vs 连接 6 字节：一个是另一个的子串即视为同一台(要求 ≥8 hex/4 字节，避免误并)
+            (serial.length >= 8 &&
+              candidate.length >= 8 &&
+              (serial.indexOf(candidate) > -1 || candidate.indexOf(serial) > -1))
+        )
+      }) || null
+
+    console.log('[绑定判重]', {
+      candidates,
+      matchedId: matched && matched.id,
+      matchedSerial:
+        matched &&
+        this.deviceSerial(
+          matched.deviceNo || matched.productDeviceId || matched.deviceId
+        )
+    })
+    return matched
   },
 
   // 底部「立即绑定」：绑定当前选中的设备
@@ -202,7 +261,7 @@ Page({
       return // 绑定进行中，忽略重复点击，避免重复绑定
     }
     if (!this.data.selectedId) {
-      toast.show({
+      toast.warn({
         title: '请选择要绑定的设备',
         icon: 'none'
       })
@@ -247,7 +306,7 @@ Page({
         // 连接/读取失败：断开以释放被占用的单连接、让设备能重新广播，再提示并中止绑定
         deviceBle.disconnect(scanDevice.deviceId)
         wx.hideLoading()
-        toast.show({
+        toast.warn({
           title: error.message || '设备连接失败',
           icon: 'none'
         })
@@ -293,7 +352,7 @@ Page({
         deviceBle.disconnect(scanDevice.deviceId)
       }
       // bindDevice 在 productId 解析不到时会抛错（后端必传），这里把原因提示给用户
-      toast.show({
+      toast.warn({
         title: error.message || '绑定失败',
         icon: 'none'
       })

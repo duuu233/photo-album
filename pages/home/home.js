@@ -660,7 +660,7 @@ Page({
       return false
     }
     if (!this.isCurrentDeviceConnected()) {
-      toast.show({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接设备', icon: 'none' })
       return false
     }
     return true
@@ -709,7 +709,7 @@ Page({
       if (error && error.code === 'PERMISSION_DENIED') {
         bluetooth.showPermissionGuide()
       } else {
-        toast.show({ title: (error && error.message) || '连接失败', icon: 'none' })
+        toast.warn({ title: (error && error.message) || '连接失败', icon: 'none' })
       }
     } finally {
       wx.hideLoading()
@@ -778,7 +778,7 @@ Page({
       if (error && error.errMsg && error.errMsg.indexOf('cancel') > -1) {
         return
       }
-      toast.show({
+      toast.warn({
         title: '拍照失败',
         icon: 'none'
       })
@@ -794,7 +794,7 @@ Page({
       if (error && error.errMsg && error.errMsg.indexOf('cancel') > -1) {
         return
       }
-      toast.show({
+      toast.warn({
         title: '选择照片失败',
         icon: 'none'
       })
@@ -860,7 +860,7 @@ Page({
       this.setData({
         avatarUrl: fallback
       })
-      toast.show({
+      toast.warn({
         title: '头像更新失败',
         icon: 'none'
       })
