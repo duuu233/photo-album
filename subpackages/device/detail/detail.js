@@ -119,7 +119,7 @@ function getBleDeviceId(device) {
   return textValue(device && (device.deviceId || device.bleDeviceId))
 }
 
-const OTA_OP = otaBle.OP // { START:0xF1, DATA:0xF2, RESULT:0xF3, ACK:0xFC }
+const OTA_OP = otaBle.OP // v1.5: { START:0xF1, DATA:0xF2, END:0xF3, ACK:0xFC }（OP.RESULT 为 END 别名）
 
 // 把一帧 OTA 收发记录解析成可读中文，配合原始 16 进制一起打印，方便与硬件日志逐帧比对。
 // 设备应答帧头为 0xFC(RSP_OPCODE)，第 2 字节回显被应答的操作码；兼容旧固件「不带 0xFC、直接以操作码打头」。
@@ -134,7 +134,12 @@ function describeOtaFrame(record) {
       return 'START(0xF1) 开始帧'
     }
     if (bytes[0] === OTA_OP.DATA) {
-      return 'DATA(0xF2) 数据包 seq=' + (bytes[1] | (bytes[2] << 8))
+      // v1.5：首个 DATA=128字节头信息（含操作码+校验共 130 字节），其余为 payload 分片。
+      const dataLen = Math.max(0, bytes.length - 2) // 去掉操作码 + 末尾校验
+      return dataLen === 128 ? 'DATA(0xF2) 128字节头信息握手包' : 'DATA(0xF2) payload 分片(' + dataLen + '字节)'
+    }
+    if (bytes[0] === OTA_OP.END) {
+      return 'END(0xF3) 结束帧'
     }
     return '发送 opcode=0x' + formatHexByte(bytes[0])
   }
@@ -156,13 +161,14 @@ function describeOtaFrame(record) {
     )
   }
   if (echo === OTA_OP.DATA) {
-    const i = hasHeader ? 3 : 1
-    return 'DATA 应答 回显0xF2 已连续接收到第 ' + (bytes[i] | (bytes[i + 1] << 8)) + ' 包'
+    // v1.5 DATA 应答只带结果码，不再回「已连续接收包号」。
+    const i = hasHeader ? 2 : 1
+    return 'DATA 应答 回显0xF2 RESULT=0x' + formatHexByte(bytes[i]) + '(' + otaBle.otaResultText(bytes[i]) + ')'
   }
-  if (echo === OTA_OP.RESULT) {
+  if (echo === OTA_OP.END) {
     const i = hasHeader ? 2 : 1
     return (
-      '最终结果(0xF3) RESULT=0x' +
+      'END/整包校验结果(0xF3) RESULT=0x' +
       formatHexByte(bytes[i]) +
       '(' +
       otaBle.otaResultText(bytes[i]) +
@@ -172,22 +178,18 @@ function describeOtaFrame(record) {
   return '未识别应答'
 }
 
-// 0xF3 最终结果帧的 RESULT 偏移在规格书里未最终敲定（时序图疑似 F3 后还夹了 1 字节子操作码再到 RESULT，
-// 见 docs/OTA-DFU-问题排查与修复进度.md §5.2）。联调阶段把两种解读都算出来一起打印：
-// 解读A=紧跟 0xF3 的字节(ota-ble 现用)；解读B=再往后 1 字节。哪个是 0x00 成功，真实语义就是哪个。
+// v1.5：升级最终结果即 END(0xF3) 的应答帧 [0xFC, 0xF3, RESULT, checksum]（或旧固件不带 0xFC 帧头）。
+// RESULT 紧跟回显的 0xF3，偏移已确定；这里把该字节解出来打印，便于与硬件日志逐帧比对。
 function decodeFinalResultFrame(hex) {
   const bytes = hexStringToBytes(hex)
   const hasHeader = bytes[0] === OTA_OP.ACK
   const base = hasHeader ? 2 : 1 // 跳过可选的 0xFC 帧头 + 回显的 0xF3
-  const fmt = value =>
+  const value = bytes[base]
+  const fmt =
     value === undefined
       ? '(无此字节)'
       : '0x' + formatHexByte(value) + '(' + otaBle.otaResultText(value) + ')'
-  return (
-    '0xF3 原始帧=' + hex +
-    ' ｜ 解读A(F3+RESULT,现用)=' + fmt(bytes[base]) +
-    ' ｜ 解读B(F3+子码+RESULT)=' + fmt(bytes[base + 1])
-  )
+  return 'END 应答原始帧=' + hex + ' ｜ RESULT=' + fmt
 }
 
 function getOtaValidationError(device) {
@@ -821,9 +823,9 @@ Page({
     // 逐帧监听：设备→APP 的应答全部打印（这正是「和设备交互」「设备返回的信息」的重点）；
     // APP→设备海量 DATA 包只打印首包 + 计数，避免刷屏。
     let txDataCount = 0
-    let finalRxHex = '' // 捕获设备最终结果帧(0xF3)，收尾时按两种偏移解读，判定到底成没成
+    let finalRxHex = '' // 捕获设备对 END(0xF3) 的整包校验应答帧，收尾时解出 RESULT 判定成没成
     const DATA_HEX_PREFIX = formatHexByte(OTA_OP.DATA) // 'F2'：不整包解析，靠前缀识别海量数据包
-    const RESULT_HEX_PREFIX = formatHexByte(OTA_OP.RESULT) // 'F3'
+    const RESULT_HEX_PREFIX = formatHexByte(OTA_OP.END) // 'F3'：END 的应答即最终结果
     const ACK_HEX_PREFIX = formatHexByte(OTA_OP.ACK) // 'FC'
     otaBle.setMonitor(record => {
       if (record.dir === 'TX') {
@@ -866,23 +868,25 @@ Page({
       if (result.dryRun) {
         const crcHex = '0x' + (result.crc32 >>> 0).toString(16).toUpperCase().padStart(8, '0')
         console.log(
-          '[OTA测试][' + traceId + '] 干跑通过：' + result.size + ' 字节 / ' + result.totalPackets +
-            ' 包 / 每包 ' + result.chunkSize + ' 字节，PRN=' + result.prn + '，本地 CRC32=' + crcHex
+          '[OTA测试][' + traceId + '] 干跑通过：文件 ' + result.size + ' 字节（128头+payload ' + result.payloadSize +
+            '）/ ' + result.totalPackets + ' 包 / 每包 ' + result.chunkSize + ' 字节，PRN=' + result.prn + '，本地 CRC32=' + crcHex
         )
         console.log('[OTA测试][' + traceId + '] START 帧：' + result.startFrameHex)
-        console.log('[OTA测试][' + traceId + '] 首个 DATA 帧：' + result.firstDataFrameHex)
+        console.log('[OTA测试][' + traceId + '] 128字节头信息帧：' + result.headerFrameHex)
+        console.log('[OTA测试][' + traceId + '] 首个 payload DATA 帧：' + result.firstDataFrameHex)
+        console.log('[OTA测试][' + traceId + '] END 帧：' + result.endFrameHex)
         okText = '干跑完成'
       } else if (result.confirmed === false) {
-        // 固件已确认：收满且 CRC 无误必回 0xF3。正常不会再走到这里（收不到 0xF3 会在 ota-ble 抛错走 catch）；
-        // 一旦出现，说明确实没拿到 0xF3 → 升级未确认成功，如实提示、不再谎报"已写入"。
+        // v1.5：升级成败以「APP 发 END(0xF3) 后设备回的整包校验 ACK」为准，任何失败都会在 ota-ble 抛错走 catch。
+        // 正常不会走到这里；一旦出现说明未拿到设备最终确认 → 升级未确认成功，如实提示、不再谎报"已写入"。
         console.warn(
-          '[OTA测试][' + traceId + '] 数据已全部发送，但未收到设备 0xF3 确认——升级未确认成功，请重试或抓帧核对。'
+          '[OTA测试][' + traceId + '] 数据已全部发送，但未收到设备 END(0xF3) 整包校验确认——升级未确认成功，请重试或抓帧核对。'
         )
         okText = '未确认(请重试)'
       } else {
         console.log(
-          '[OTA测试][' + traceId + '] 设备已回最终结果 0xF3=成功：升级完成，共 ' + result.size +
-            ' 字节 / ' + result.totalPackets + ' 包。'
+          '[OTA测试][' + traceId + '] 设备已回 END(0xF3) 整包校验=成功：升级完成，文件 ' + result.size +
+            ' 字节 / payload ' + result.totalPackets + ' 包。'
         )
         if (finalRxHex) {
           console.log('[OTA测试][' + traceId + '] ' + decodeFinalResultFrame(finalRxHex))
@@ -898,9 +902,8 @@ Page({
       console.error('[OTA测试][' + traceId + '] 已发送数据包 ' + txDataCount + ' 个')
       console.error('[OTA测试][' + traceId + '] 失败原因：' + ((error && error.message) || error))
       if (finalRxHex) {
-        // 设备回了 0xF3 才判失败（如「校验/芯片信息错误」）：把最终帧按两种偏移都解读一遍，
-        // 若「解读B=0x00 成功」，说明其实升级成功、只是 ota-ble 的 RESULT 偏移读错了（见 §5.2）。
-        console.error('[OTA测试][' + traceId + '] 设备最终结果帧：' + decodeFinalResultFrame(finalRxHex))
+        // 设备回了 END(0xF3) 应答但 RESULT!=0（如「头信息校验失败/整包 CRC32 失败」）：解出结果码便于定位。
+        console.error('[OTA测试][' + traceId + '] 设备 END 整包校验应答帧：' + decodeFinalResultFrame(finalRxHex))
       }
       console.error('[OTA测试][' + traceId + '] 错误对象：', error)
       this.setData({ otaTestStatus: aborted ? '已中断' : '测试失败' })

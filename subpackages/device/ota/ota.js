@@ -283,9 +283,9 @@ Page({
       releaseNotes: [
         `本地固件：${TEST_FW_NAME}`,
         willDryRun
-          ? '当前未连接设备：点击将进行「干跑」，仅校验读包/组帧/分包（不经过真实蓝牙）'
+          ? '当前未连接设备：点击将进行「干跑」，仅校验读包/拆头/组帧/分包（不经过真实蓝牙）'
           : '设备已连接：点击将通过蓝牙执行真实 DFU 升级',
-        'DFU 协议：FF10/FF11 · 1 字节累加校验 · 信用窗口 PRN'
+        'DFU v1.5：FF10/FF11 · 128字节头握手 + PRN窗口 + END(0xF3)整包校验'
       ],
       package: {
         version: 'TEST-LOCAL',
@@ -498,12 +498,13 @@ Page({
     if (phase) {
       this._lastPhase = phase
     }
-    // 读包/下载 + 连接握手 → 下载中；窗口化传数据 → 传输中；设备校验/收尾 → 升级中
+    // 读包/下载 + 连接握手 → 下载中；128字节头握手 + 窗口化传数据 → 传输中；发结束包/设备整包校验 → 升级中
     const STAGE_TITLE = {
       preparing: '固件下载中',
       prepared: '固件下载中',
       connecting: '固件下载中',
       starting: '固件下载中',
+      header: '固件传输中',
       transferring: '固件传输中',
       retry: '固件传输中',
       verifying: '固件升级中',
@@ -521,7 +522,7 @@ Page({
 
   async runUpgrade() {
     // 防重入：auto=1 的 setTimeout 自动触发（loadFirmware 里）不经过 startUpgrade 的闸门，
-    // 与用户点击可能并发出两条 DFU 流——同一 session 上交叉写 DATA seq，设备收到乱序流必败。
+    // 与用户点击可能并发出两条 DFU 流——同一 session 上交叉写 DATA 数据流，设备收到乱序字节必败。
     if (this.data.state === 'upgrading') {
       return
     }
@@ -582,9 +583,9 @@ Page({
         return
       }
 
-      // 固件已确认(2026-07-01)：收满且 CRC32 无误必回 0xF3、回完 0xF3 后约 2s 才复位重启。故 confirmed:false
-      // 已成兜底死路——真拿不到 0xF3(尾包没送达/设备没收满)时 ota-ble 会抛错走下方 catch，不再返回"软成功"。
-      // 万一仍走到这里，说明确实没收到 0xF3 → 升级未确认，如实提示重试，绝不谎报"升级完成"。
+      // v1.5：升级成败以「APP 发 END(0xF3) 后设备回的整包校验 ACK」为准——成功则 ota-ble 返回 confirmed:true，
+      // 任何一步(头信息/数据/END)超时或校验失败都会抛错走下方 catch，不再返回"软成功"。故 confirmed:false 仅作
+      // 兜底：万一走到这里说明未拿到设备最终确认 → 升级未确认，如实提示重试，绝不谎报"升级完成"。
       const unconfirmed = result && result.confirmed === false
       const doneText = unconfirmed ? '未确认(请重试)' : '升级完成'
 
@@ -718,28 +719,32 @@ Page({
   onDryRunDone(result) {
     console.log('[OTA] 干跑结果：', result)
     console.log('[OTA] START 帧：', result.startFrameHex)
-    console.log('[OTA] 首个 DATA 帧：', result.firstDataFrameHex)
+    console.log('[OTA] 128字节头信息帧：', result.headerFrameHex)
+    console.log('[OTA] 首个 payload DATA 帧：', result.firstDataFrameHex)
+    console.log('[OTA] END 帧：', result.endFrameHex)
 
     const crcHex = `0x${(result.crc32 >>> 0).toString(16).toUpperCase().padStart(8, '0')}`
+    const payloadSize = result.payloadSize != null ? result.payloadSize : result.size
     this.setData({
       state: 'success',
       progressPercent: 100,
-      progressText: `干跑通过：${result.size} 字节 / ${result.totalPackets} 包 / 每包 ${result.chunkSize} 字节`,
+      progressText: `干跑通过：payload ${payloadSize} 字节 / ${result.totalPackets} 包 / 每包 ${result.chunkSize} 字节`,
       statusText: '干跑通过',
       statusClass: 'is-latest',
       canUpgrade: true,
       actionText: '再次干跑',
       screenStatus: 'success',
       statusTitle: '干跑通过',
-      statusDesc: `${result.size} 字节 / ${result.totalPackets} 包 / 每包 ${result.chunkSize} 字节`,
+      statusDesc: `文件 ${result.size} 字节（含128头）/ payload ${payloadSize} 字节 / ${result.totalPackets} 包`,
       artImage: artFor('success'),
       showPrimary: true,
       releaseNotes: [
-        `固件大小：${result.size} 字节`,
-        `本地 CRC32：${crcHex}`,
+        `文件大小：${result.size} 字节（128 头 + payload ${payloadSize}）`,
+        `本地 CRC32（仅展示）：${crcHex}`,
         `分包：${result.totalPackets} 包 × ${result.chunkSize} 字节，PRN=${result.prn}`,
         `START 帧：${result.startFrameHex}`,
-        `首个 DATA 帧：${result.firstDataFrameHex.slice(0, 47)} …`
+        `128字节头信息帧：${result.headerFrameHex.slice(0, 32)} …`,
+        `END 帧：${result.endFrameHex}`
       ]
     })
     toast.show({ title: '干跑完成', icon: 'none' })
