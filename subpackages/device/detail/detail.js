@@ -238,9 +238,11 @@ Page({
     showClearConfirm: false,
     showClearConfirm2: false, // 一键清空二级确认弹窗
     showDeleteConfirm: false,
+    showDisconnectConfirm: false, // 删除前置确认弹窗（设备连接中需先断开）
     clearClosing: false, // 清空确认弹窗是否正在播放退场动画
     clearClosing2: false, // 二级清空确认弹窗是否正在播放退场动画
     deleteClosing: false, // 删除确认弹窗是否正在播放退场动画
+    disconnectClosing: false, // 删除前置确认弹窗是否正在播放退场动画
     showMediaSheet: false, // 「拍照/相册」选择弹层是否展示
     mediaSheetClosing: false, // 选择弹层是否正在播放退场动画
     otaTesting: false, // OTA 测试按钮是否正在跑（跑时禁止重复点击）
@@ -511,16 +513,19 @@ Page({
     }
   },
 
-  // 顶部「投屏」：要求设备已连接，弹出「拍照/相册」二选一，由用户选择投屏方式（与首页一致）。
-  startProjection() {
-    const device = this.data.device
+  // 顶部「投屏」：先确保设备已连接（未连接则自动扫描匹配并连接，连不上按标准规则提示），
+  // 再弹出「拍照/相册」二选一，由用户选择投屏方式（与首页一致）。
+  async startProjection() {
+    let device = this.data.device
     if (!device) {
       return
     }
     const bleId = device.deviceId || device.bleDeviceId
     if (!(bleId && deviceBle.isConnected(bleId))) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
-      return
+      device = await this.connectDevice()
+      if (!device) {
+        return // 连接失败，提示已由 connectDevice 弹出
+      }
     }
 
     // 设为当前选中设备，预览/结果页据此连接并图传
@@ -578,6 +583,27 @@ Page({
     })
   },
 
+  // 断开当前设备：断 BLE + 连接态回落（顶部「断开」与删除前置弹窗的「断开」共用）
+  performDisconnect() {
+    const device = this.data.device
+    if (!device || !device.connected) {
+      return
+    }
+    if (device.deviceId) {
+      deviceBle.disconnect(device.deviceId)
+    }
+    const updated = Object.assign({}, device, { connected: false })
+    if (
+      app.globalData.selectedDevice &&
+      app.globalData.selectedDevice.id === updated.id
+    ) {
+      app.setSelectedDevice(updated)
+    }
+    // 断开后轮播设置/固件版本不再可信，与未连接态保持一致回落到 --
+    this.setData({ device: updated, playbackLabel: '--', newVersionNo: '--' })
+    toast.show({ title: '已断开', icon: 'none' })
+  },
+
   // 顶部「连接 / 断开」：已连接则断开；未连接则重扫匹配本设备并连接（BLE deviceId 每次扫描会话才有效）。
   async toggleConnection() {
     const device = this.data.device
@@ -586,20 +612,19 @@ Page({
     }
 
     if (device.connected) {
-      if (device.deviceId) {
-        deviceBle.disconnect(device.deviceId)
-      }
-      const updated = Object.assign({}, device, { connected: false })
-      if (
-        app.globalData.selectedDevice &&
-        app.globalData.selectedDevice.id === updated.id
-      ) {
-        app.setSelectedDevice(updated)
-      }
-      // 断开后轮播设置/固件版本不再可信，与未连接态保持一致回落到 --
-      this.setData({ device: updated, playbackLabel: '--', newVersionNo: '--' })
-      toast.show({ title: '已断开', icon: 'none' })
+      this.performDisconnect()
       return
+    }
+
+    await this.connectDevice()
+  },
+
+  // 扫描匹配并连接当前设备（「连接」按钮与「投屏」按钮共用）：
+  // 成功返回带有效 deviceId/实时信息的设备对象并刷新页面 UI；失败按标准规则提示后返回 null。
+  async connectDevice() {
+    const device = this.data.device
+    if (!device) {
+      return null
     }
 
     wx.showLoading({ title: '搜索设备中', mask: true })
@@ -649,6 +674,7 @@ Page({
         newVersionNo: updated.newVersionNo || updated.firmwareVersion || '--'
       })
       toast.show({ title: '已连接', icon: 'none' })
+      return updated
     } catch (error) {
       if (error && error.code === 'PERMISSION_DENIED') {
         bluetooth.showPermissionGuide()
@@ -658,6 +684,7 @@ Page({
           icon: 'none'
         })
       }
+      return null
     } finally {
       wx.hideLoading()
     }
@@ -1112,9 +1139,41 @@ Page({
   },
 
   showDeleteConfirm() {
+    // 设备连接中：先弹「需先断开」前置确认，断开后再进入删除确认
+    const device = this.data.device
+    if (device && device.connected) {
+      this.setData({ showDisconnectConfirm: true })
+      return
+    }
     this.setData({
       showDeleteConfirm: true
     })
+  },
+
+  hideDisconnectConfirm() {
+    if (this.data.disconnectClosing) {
+      return
+    }
+    this.setData({ disconnectClosing: true })
+    setTimeout(() => {
+      this.setData({ showDisconnectConfirm: false, disconnectClosing: false })
+    }, 220)
+  },
+
+  // 删除前置弹窗点「断开」：执行与顶部一致的断开交互，退场后接着弹删除确认框
+  confirmDisconnectForDelete() {
+    if (this.data.disconnectClosing) {
+      return
+    }
+    this.performDisconnect()
+    this.setData({ disconnectClosing: true })
+    setTimeout(() => {
+      this.setData({
+        showDisconnectConfirm: false,
+        disconnectClosing: false,
+        showDeleteConfirm: true
+      })
+    }, 220)
   },
 
   hideDeleteConfirm() {

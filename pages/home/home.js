@@ -634,24 +634,25 @@ Page({
   },
 
   // 点击「拍照」入口：登录/绑定/连接校验通过后，直接调起相机（不再弹「拍照/相册」二选一层）。
-  tapCameraEntry() {
-    if (!this.ensureCanProject()) {
+  async tapCameraEntry() {
+    if (!(await this.ensureCanProject())) {
       return
     }
     this.chooseCamera()
   },
 
   // 点击「相册」入口：校验通过后直接调起相册选择（不再弹「拍照/相册」二选一层）。
-  tapAlbumEntry() {
-    if (!this.ensureCanProject()) {
+  async tapAlbumEntry() {
+    if (!(await this.ensureCanProject())) {
       return
     }
     this.chooseAlbum()
   },
 
-  // 拍照/相册前的统一校验：未登录先跳登录；未绑定先引导绑定；当前选中设备未连接则提示先连接。
-  // 任一不满足返回 false，调用方不再继续（连接走设备卡片「连接蓝牙」按钮，不在此自动扫描连接）。
-  ensureCanProject() {
+  // 拍照/相册前的统一校验：未登录先跳登录；未绑定先引导绑定；当前选中设备未连接则先自动扫描连接
+  // （与设备卡片「连接蓝牙」按钮同一套流程，连不上由 connectCurrentDevice 按标准规则提示）。
+  // 任一不满足返回 false，调用方不再继续。
+  async ensureCanProject() {
     if (!app.requireLogin()) {
       return false
     }
@@ -660,8 +661,7 @@ Page({
       return false
     }
     if (!this.isCurrentDeviceConnected()) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
-      return false
+      return this.connectCurrentDevice()
     }
     return true
   },
@@ -673,19 +673,19 @@ Page({
     return !!(id && deviceBle.isConnected(id))
   },
 
-  // 设备卡片「连接蓝牙」按钮：扫描匹配当前展示选中的设备并连接，连上后把卡片标记「已连接」。
-  // 已有活动会话直接复用；连不上(权限/蓝牙/扫描不到/连接失败)只 toast 提示，不切场景，留在已绑定首页。
+  // 设备卡片「连接蓝牙」按钮（投屏入口未连接时也走这里）：扫描匹配当前展示选中的设备并连接，
+  // 连上后把卡片标记「已连接」，返回 true；连不上(权限/蓝牙/扫描不到/连接失败)只提示不切场景，返回 false。
   // 与列表页一致——BLE deviceId 是本次扫描会话临时分配的，后端只存序列号，必须先重扫拿到有效 deviceId 再连。
   async connectCurrentDevice() {
     if (!app.requireLogin()) {
-      return
+      return false
     }
     const selected = app.globalData.selectedDevice || this.data.currentDevice
     const existingId = selected && (selected.deviceId || selected.bleDeviceId)
     if (existingId && deviceBle.isConnected(existingId)) {
       this.markCurrentDeviceConnected(existingId, null)
       toast.show({ title: '设备已连接', icon: 'none' })
-      return
+      return true
     }
 
     wx.showLoading({ title: '连接设备中', mask: true })
@@ -704,6 +704,7 @@ Page({
       const info = await deviceBle.readDeviceInfo(target.deviceId)
       this.markCurrentDeviceConnected(target.deviceId, info)
       toast.show({ title: '已连接设备', icon: 'none' })
+      return true
     } catch (error) {
       // 系统级「附近设备」权限被拒：引导去系统设置；其余原因 toast 提示，停留在已绑定首页
       if (error && error.code === 'PERMISSION_DENIED') {
@@ -711,6 +712,7 @@ Page({
       } else {
         toast.warn({ title: (error && error.message) || '连接失败', icon: 'none' })
       }
+      return false
     } finally {
       wx.hideLoading()
     }

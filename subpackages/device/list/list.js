@@ -179,18 +179,21 @@ Page({
     })
   },
 
-  // 某台设备的「投屏」：交互与设备详情页的「投屏」完全一致——要求设备已连接，
-  // 弹出「拍照/相册」二选一，由用户选择投屏方式后进入投屏预览页。
-  startProjection(e) {
+  // 某台设备的「投屏」：交互与设备详情页的「投屏」完全一致——先确保这台设备已连接
+  // （未连接则自动扫描匹配并连接，连不上按标准规则提示），
+  // 再弹出「拍照/相册」二选一，由用户选择投屏方式后进入投屏预览页。
+  async startProjection(e) {
     const id = e.currentTarget.dataset.id
-    const device = this.data.devices.find(item => item.id === id)
+    let device = this.data.devices.find(item => item.id === id)
     if (!device) {
       return
     }
     const bleId = device.deviceId || device.bleDeviceId
     if (!(bleId && deviceBle.isConnected(bleId))) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
-      return
+      device = await this.connectDevice(device)
+      if (!device) {
+        return // 连接失败，提示已由 connectDevice 弹出
+      }
     }
 
     // 设为当前选中设备，预览/结果页据此连接并图传；记住本次投屏的设备供选图后使用
@@ -269,8 +272,14 @@ Page({
       return
     }
 
-    // 微信 BLE deviceId 是「本次扫描会话」临时分配的，后端只存了序列号，没存它。
-    // 所以列表页连接必须先重扫拿到当下有效的 deviceId，再连——直连存下来的 deviceId 必失败。
+    await this.connectDevice(device)
+  },
+
+  // 扫描匹配并连接这台设备（「连接」按钮与「投屏」按钮共用）：
+  // 微信 BLE deviceId 是「本次扫描会话」临时分配的，后端只存了序列号，没存它。
+  // 所以列表页连接必须先重扫拿到当下有效的 deviceId，再连——直连存下来的 deviceId 必失败。
+  // 成功返回带有效 deviceId/实时信息的设备对象并刷新列表 UI；失败提示后返回 null。
+  async connectDevice(device) {
     wx.showLoading({ title: '搜索设备中', mask: true })
     try {
       const location = await permission.getCurrentLocation()
@@ -308,13 +317,14 @@ Page({
       app.setSelectedDevice(updated)
 
       this.setData({
-        devices: this.data.devices.map(item => item.id === id ? Object.assign({}, updated, {
+        devices: this.data.devices.map(item => item.id === device.id ? Object.assign({}, updated, {
           memoryPercent: memoryPercent(updated),
           batteryIcon: batteryUtil.getBatteryIcon(updated.battery),
           batteryText: typeof updated.battery === 'number' ? `${updated.battery}%` : ''
         }) : item)
       })
       toast.show({ title: '已连接', icon: 'none' })
+      return updated
     } catch (error) {
       // 系统级「附近设备」权限被拒：弹引导去系统设置，而非笼统的「连接失败」
       if (error.code === 'PERMISSION_DENIED') {
@@ -325,6 +335,7 @@ Page({
           icon: 'none'
         })
       }
+      return null
     } finally {
       wx.hideLoading()
     }

@@ -207,6 +207,10 @@
   font-weight: 500;
 }
 
+.projection-action {
+  color: #eb5f1b;
+}
+
 .device-action-divider {
   height: 38rpx;
   background: #dadddf;
