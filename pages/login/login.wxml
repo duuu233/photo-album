@@ -12,7 +12,9 @@
     <button class="login-submit {{submitting ? 'login-submit--loading' : ''}}" loading="{{submitting}}"
       hover-class="login-submit--hover" open-type="{{agreed ? 'getPhoneNumber' : ''}}"
       bindtap="onLoginTap" bindgetphonenumber="onWechatLogin">
-      <image class="login-submit__icon" mode="aspectFit" src="/assets/images/login-wx-icon.png"></image>
+   
+    
+
       <text>微信登录</text>
     </button>
   </view>
