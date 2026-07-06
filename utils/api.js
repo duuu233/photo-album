@@ -747,20 +747,15 @@ module.exports = {
     )
   },
 
+  // 重命名设备（纯后端存储：名称以用户为维度，不写设备固件、不影响蓝牙连接/广播，连不连接都可改）。
+  // 注意：editUserProduct 返回精简对象，这里不再拼装成 device 返回——之前拼出的对象缺
+  // bleDeviceId/productDeviceId，调用方拿去整体替换现有 device 会造成假断联。
+  // 调用方应自行把新名字合并进已有 device 对象。
   renameDevice(deviceId, name) {
-    return module.exports
-      .editUserProduct({
-        userProductId: deviceId,
-        productName: name
-      })
-      .then(device =>
-        normalizeDevice(
-          Object.assign({}, device, {
-            userProductId: deviceId,
-            productName: name
-          })
-        )
-      )
+    return module.exports.editUserProduct({
+      userProductId: deviceId,
+      productName: name
+    })
   },
 
   updateDevicePlayback(deviceId, data) {
