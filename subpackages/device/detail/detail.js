@@ -29,7 +29,7 @@ function getPlaybackLabel(device) {
     device.playbackMode === 'manual' ||
     device.carouselEnabled === false
   ) {
-    return '已关闭'
+    return '未启用'
   }
   return device.playbackMode === 'random' ? '随机轮播' : '顺序轮播'
 }

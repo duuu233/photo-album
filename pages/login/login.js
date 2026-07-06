@@ -4,7 +4,8 @@ const app = getApp()
 Page({
   data: {
     agreed: false,
-    submitting: false
+    submitting: false,
+    leaving: false
   },
 
   onShow() {
@@ -63,18 +64,14 @@ Page({
 
     try {
       await app.loginWithWechatPhone(detail)
-      // 先提示登录成功，短暂停留后再进入首页，避免生硬的瞬间跳转。
-      // 首页是 tabBar 页，只能用 switchTab（无滑动过渡），用 toast + 延时让切换更自然。
-      toast.show({
+      // 成功提示用原生 wx.showToast：它挂在原生层，switchTab 后仍会继续显示，
+      // 所以无需在本页停留等提示看完，可以立即开始切页。
+      wx.showToast({
         title: '登录成功',
-        icon: 'none',
+        icon: 'success',
         duration: 1500
       })
-      setTimeout(() => {
-        wx.switchTab({
-          url: '/pages/home/home'
-        })
-      }, 800)
+      this.leaveTo('/pages/home/home')
     } finally {
       // 无论成功失败都恢复按钮可点击状态
       this.setData({
@@ -83,11 +80,26 @@ Page({
     }
   },
 
+  // 首页是 tabBar 页只能 switchTab，而 switchTab 没有过渡动画（硬切）。
+  // 先让整页淡出（css transition 0.24s，露出与首页同色的窗口底色 #f2f5fc），
+  // 淡出完成后再 switchTab，视觉上近似「交叉渐隐」，掩盖硬切。
+  leaveTo(url) {
+    if (this.data.leaving) {
+      return // 防止淡出期间重复触发
+    }
+    this.setData({
+      leaving: true
+    })
+    setTimeout(() => {
+      wx.switchTab({
+        url
+      })
+    }, 240)
+  },
+
   // 登录页返回固定回首页：无论从哪个页面进入登录页，点返回都直达首页
   goBack() {
-    wx.switchTab({
-      url: '/pages/home/home'
-    })
+    this.leaveTo('/pages/home/home')
   },
 
   openUserAgreement() {

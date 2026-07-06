@@ -1,4 +1,4 @@
-<view class="login-page safe-bottom">
+<view class="login-page safe-bottom {{leaving ? 'login-page--leaving' : ''}}">
   <view class="login-bg-stack" aria-hidden="true">
     <image class="login-bg login-bg--halo" src="https://oss.boltfox.cn/prodFile/202606161459019677928.png" mode="aspectFill"></image>
     <view class="login-bg__bottom"></view>

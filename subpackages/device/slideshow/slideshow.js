@@ -88,9 +88,13 @@ Page({
   },
 
   // 是否已开启轮播：默认未开启。仅当设备已连接(真实蓝牙会话)且当前模式为顺序/随机时才视为已开启；
-  // 未连接 / 手动模式都算未开启，保证页面默认是「未开启」状态。
+  // 未连接 / 手动模式 / 用户明确关过轮播(carouselEnabled=false) 都算未开启，
+  // 与详情页 getPlaybackLabel 的「未启用」判定保持一致，避免详情页显示未启用、进来开关却是橙色。
   computeCarouselOn(device) {
     if (!device || !device.deviceId || !deviceBle.isConnected(device.deviceId)) {
+      return false
+    }
+    if (device.carouselEnabled === false) {
       return false
     }
     return device.playbackMode === 'order' || device.playbackMode === 'random'

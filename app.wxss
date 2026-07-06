@@ -546,10 +546,12 @@ input {
   border-radius: 2rpx;
 }
 
-/* 电量等级图标（BatteryLevel/battery-{n}.png，原图 51x20，按比例展示） */
+/* 电量等级图标（BatteryLevel/battery-{n}.png，原图 60x60 方形）：
+   盒子必须同为方形——过宽盒子会让 aspectFit 把图标水平居中，左侧留出空白，
+   与上一行的蓝牙图标左边缘对不齐（首页/设备列表/设备详情三处共用） */
 .battery-level-icon {
   flex: 0 0 auto;
-  width: 92rpx;
+  width: 36rpx;
   height: 36rpx;
 }
 

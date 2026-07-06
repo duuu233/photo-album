@@ -74,6 +74,14 @@
   font-size: 26rpx;
 }
 
+/* 进度条下方的投屏注意事项提示 */
+.progress-tip {
+  margin-top: 24rpx;
+  color: #828a95;
+  font-size: 24rpx;
+  text-align: center;
+}
+
 .info-card {
   margin-top: 60rpx;
   overflow: hidden;

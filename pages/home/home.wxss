@@ -272,6 +272,11 @@ button {
   margin-bottom: 22rpx;
 }
 
+/* 已连接：蓝色图标（wxml 里换图）+ 蓝色文字，取色与设备列表/详情页 .connection.is-connected 一致 */
+.device-status.is-connected {
+  color: #287dff;
+}
+
 /* 设备卡片「连接蓝牙」按钮：未连接时展示，引导用户先连接再投屏 */
 .device-connect-btn {
   display: inline-flex;
