@@ -91,6 +91,13 @@ Page({
       return
     }
 
+    // 产品要求：再次/重新投屏一律直接用记录里的设备帧 .bin(imgBle) 图传，
+    // 不再走后端上传/转码接口；没有 imgBle 的记录无法直接投屏，明确提示
+    if (!record.imgBle) {
+      toast.warn({ title: '该记录缺少设备帧文件，无法再次投屏', icon: 'none' })
+      return
+    }
+
     // 先确保与当前设备建立蓝牙连接（未连接会自动扫描+连接；无设备/连不上会弹窗引导去首页）。
     // 满足「就算没连接设备，点投屏也要先连设备再投屏」。
     let device
@@ -111,16 +118,19 @@ Page({
 
     // 复用正常投屏链路：把该图片(服务器地址)与设备写入 Storage，跳投屏预览页。
     // 记录里已有后端转换好的设备帧地址 imgBle：带上它与 upirId/userProductId，
-    // 结果页直接下载 imgBle 帧数据 BLE 图传（跳过后端上传/转码接口），
-    // 设备图传成功后调 addUserProductImgRecord 新增一条投屏记录。
+    // 结果页直接下载 imgBle 帧数据 BLE 图传（不调后端上传/转码、不调 editUserProductImgRecord），
+    // 设备图传成功/失败后都调 addUserProductImgRecord 新增一条投屏记录。
     wx.setStorageSync('pendingProjection', {
       device,
       images: [
         {
           url: originalUrl || imageUrl,
-          imgBle: record.imgBle || '',
+          imgBle: record.imgBle,
           upirId: record.upirId,
-          userProductId: record.userProductId
+          // 记账必填字段：记录缺 userProductId 时兜底用当前设备的用户产品ID
+          userProductId:
+            record.userProductId ||
+            (device && (device.userProductId || device.id))
         }
       ]
     })

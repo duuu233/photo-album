@@ -4,9 +4,9 @@
 //     原图传后端转换(setUserProductUpload，得 .bin 下载地址 + taskId + upirId)
 //     → 下载 .bin 帧数据 → 图传到设备(0x20/0x21/0x22)
 //     → 设备成功才编辑投屏记录(editUserProductImgRecord 置 deviceUploadState=1) → 刷新显示(0x24)。
-// 再次投屏（投屏记录页进入，images 带 imgBle）：跳过后端转换，直接下载 imgBle 帧数据图传，
-//     设备成功后调 addUserProductImgRecord 新增一条成功记录（见 acquireFrame / 记账分支）；
-//     imgBle 下载失败（旧帧被服务端清理/过期，404 等）自动回退「原图重新转码」的正常链路。
+// 再次/重新投屏（投屏记录页进入，images 带 imgBle）：一律直接下载记录里的 imgBle 帧数据图传，
+//     不调后端上传/转码接口(setUserProductUpload)、也不调 editUserProductImgRecord；
+//     设备图传成功(1)/失败(0)都调 addUserProductImgRecord 新增一条投屏记录（见 addRetryRecord）。
 const system = require('../../../utils/system')
 const api = require('../../../utils/api')
 const deviceBle = require('../../../utils/device-ble')
@@ -54,6 +54,7 @@ Page({
     this.setData(system.getLayoutMetrics())
     this._aborted = false
     this._activeDeviceId = ''
+    this._retryImageInFlight = null // 正在图传的再次投屏图：失败时外层 catch 据此补记失败记录
 
     const status = options.status || 'progress'
     if (status === 'progress') {
@@ -177,9 +178,13 @@ Page({
         // 每张传输前把进度条清零：本张从 0% 独立开始（批量传输时每张 0→100）
         this.setData({ progressCurrent: i + 1, progressPercent: 0 })
         const image = images[i]
+        // 再次/重新投屏的图（记录页带入 imgBle 且未在预览页重新编辑过）：
+        // 本张不论最终成功失败都要 addUserProductImgRecord 记账，失败记账由外层 catch 统一补
+        const isRetry = !!(image.imgBle && !image.tempFilePath)
+        this._retryImageInFlight = isRetry ? image : null
         // 取本张要发给设备的六色 4bpp 帧 + 后端记录 id（见 acquireFrame）：
-        //   原图传后端转换 → 下载 .bin（含 taskId/upirId）
-        const { frameData, taskId, upirId, retryRecord } = await this.acquireFrame(
+        //   正常投屏走后端转换 → 下载 .bin（含 taskId/upirId）；再次/重新投屏直接下载 imgBle
+        const { frameData, taskId, upirId } = await this.acquireFrame(
           image,
           device,
           info,
@@ -240,25 +245,15 @@ Page({
           throw error
         }
 
-        // 设备图传成功 → 才写后端投屏记录。尽力而为：记账失败只记日志，不回滚设备、
+        // 设备图传成功 → 写后端投屏记录。尽力而为：记账失败只记日志，不回滚设备、
         // 不把整单判失败，避免设备已传成功却被误删/误判失败。两条链路：
-        //   · 再次投屏(imgBle 直传，本次没走后端转码、没有新记录)：调 addUserProductImgRecord
-        //     新增一条成功记录，把当前有的值(upirId/userProductId/img/imgBle)赋上；
-        //   · 正常投屏(后端转码时已按失败态建记录)：调 editUserProductImgRecord 按 taskId 置成功。
-        try {
-          if (retryRecord) {
-            await api.addUserProductImgRecord({
-              upirId,
-              userProductId: retryRecord.userProductId,
-              img: retryRecord.url,
-              imgBle: retryRecord.imgBle,
-              deviceUploadState: 1,
-              showError: false
-            })
-            console.log(
-              `[投屏] 第 ${i + 1}/${total} 张 已新增投屏记录：upirId=${upirId}`
-            )
-          } else {
+        //   · 再次/重新投屏(imgBle 直传)：addUserProductImgRecord 新增一条成功记录；
+        //   · 正常投屏(后端转码时已按失败态建记录)：editUserProductImgRecord 按 taskId 置成功。
+        if (isRetry) {
+          await this.addRetryRecord(image, 1)
+          this._retryImageInFlight = null // 本张已记账，外层 catch 不再补记
+        } else {
+          try {
             await api.editUserProductImgRecord({
               upirId,
               taskId,
@@ -268,12 +263,12 @@ Page({
             console.log(
               `[投屏] 第 ${i + 1}/${total} 张 投屏记录已置成功：taskId=${taskId}`
             )
+          } catch (error) {
+            console.error(
+              `[投屏] 第 ${i + 1}/${total} 张 投屏记录写入失败（设备已传成功，不影响本张）：`,
+              error
+            )
           }
-        } catch (error) {
-          console.error(
-            `[投屏] 第 ${i + 1}/${total} 张 投屏记录写入失败（设备已传成功，不影响本张）：`,
-            error
-          )
         }
 
         // 该槽位记为已用，供下一张选空闲槽位
@@ -297,6 +292,11 @@ Page({
       console.log(`[投屏] 全部完成：成功 ${uploaded}/${total} 张`)
       this.successResult(device, uploaded)
     } catch (error) {
+      // 再次/重新投屏：传固件失败也要新增一条失败记录(deviceUploadState=0)；成功记账已在循环内完成
+      if (this._retryImageInFlight) {
+        await this.addRetryRecord(this._retryImageInFlight, 0)
+        this._retryImageInFlight = null
+      }
       const aborted =
         this._aborted || (error && error.message === 'UPLOAD_ABORTED')
       const message = aborted
@@ -323,16 +323,10 @@ Page({
     if (image.imgBle && !image.tempFilePath) {
       this.setData({ title: '图片传输中', desc: `正在传输第 ${i + 1}/${total} 张…` })
       console.log(`[投屏] 第 ${i + 1}/${total} 张 再次投屏：直接下载 imgBle=${image.imgBle}`)
-      try {
-        const frameData = await this.downloadFrameBin(image.imgBle)
-        return { frameData, upirId: image.upirId, retryRecord: image }
-      } catch (error) {
-        // 旧帧文件可能已被服务端清理/过期（表现为 404 等确定性失败）：不判整单失败，
-        // 落到下方正常链路，用记录里的原图(url)重新走后端转码生成新帧再图传
-        console.warn(
-          `[投屏] 第 ${i + 1}/${total} 张 imgBle 下载失败(${error.message})，回退后端重新转码`
-        )
-      }
+      // 产品要求：再次/重新投屏一律直接用记录里的设备帧 .bin(imgBle)，
+      // 不回退后端上传/转码；下载失败即本张失败（runRealProjection 外层 catch 会补记失败记录）
+      const frameData = await this.downloadFrameBin(image.imgBle)
+      return { frameData, upirId: image.upirId }
     }
 
     // 先「转换照片」(传后端按设备尺寸转换 + 下载 .bin)，再「投屏」(BLE 图传)，标题区分两个阶段：
@@ -390,6 +384,25 @@ Page({
       url,
       taskId: item.taskId,
       upirId: item.upirId
+    }
+  },
+
+  // 再次/重新投屏的记账：设备图传成功(1)/失败(0)后都调 addUserProductImgRecord 新增一条投屏记录。
+  // 必填字段按后端约定：userProductId / img / imgBle / deviceUploadState；upirId 等其他字段有就带上。
+  // 尽力而为：记账失败只记日志，不影响投屏结果展示（设备侧状态已成事实）。
+  async addRetryRecord(image, deviceUploadState) {
+    try {
+      await api.addUserProductImgRecord({
+        upirId: image.upirId,
+        userProductId: image.userProductId,
+        img: image.url,
+        imgBle: image.imgBle,
+        deviceUploadState,
+        showError: false
+      })
+      console.log(`[投屏] 再次投屏已记账：deviceUploadState=${deviceUploadState}`)
+    } catch (error) {
+      console.error('[投屏] 再次投屏记账失败（不影响流程）：', error)
     }
   },
 
