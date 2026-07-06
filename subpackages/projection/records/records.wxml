@@ -37,10 +37,7 @@
             <image class="record-icon date-icon" src="/assets/images/date-icon01.png" mode="aspectFit"></image>
             <text>{{item.createdAt}}</text>
           </view>
-          <view wx:if="{{item.status === 'fail'}}" class="record-reason">
-            <image class="record-icon warning-icon" src="/assets/images/warning-icon01.png" mode="aspectFit"></image>
-            <text>{{item.message}}</text>
-          </view>
+        
           <view class="thin-divider"></view>
           <view class="record-actions">
             <view class="record-action retry-action" hover-class="none" data-id="{{item.id}}" bindtap="retryProjection">{{item.status === 'success' ? '再次投屏' : '重新投屏'}}</view>
