@@ -19,6 +19,7 @@
         </view>
         <text class="progress-count">{{progressCurrent}}/{{progressTotal}}</text>
       </view>
+      <view class="progress-tip">投屏过程请保持手机畅通，不要远离设备。</view>
     </block>
 
     <view wx:else class="info-card glass-panel">

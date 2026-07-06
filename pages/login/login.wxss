@@ -27,6 +27,13 @@
     BlinkMacSystemFont,
     'Helvetica Neue',
     sans-serif;
+  transition: opacity 0.24s ease-out;
+}
+
+/* 离场态：整页淡出，露出窗口底色，掩盖 switchTab 的无动画硬切；时长与 login.js leaveTo 的 240ms 对齐 */
+.login-page--leaving {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .login-bg-stack,

@@ -46,8 +46,8 @@
                 <image class="device-orbit" src="/assets/images/home-icon02.png" mode="aspectFill"></image>
                 <view class="device-info">
                   <view class="device-title">{{item.name}}</view>
-                  <view class="device-status">
-                        <image class="mini-bluetooth" src="/assets/images/bluetooth-icon.png" mode="aspectFill"></image>
+                  <view class="device-status {{item.connected ? 'is-connected' : ''}}">
+                        <image class="mini-bluetooth" src="{{item.connected ? '/assets/images/bluetooth-icon.png' : '/assets/images/bluetooth-icon-not.png'}}" mode="aspectFill"></image>
                     <text>{{item.connected ? '已连接' : '未连接'}}</text>
                   </view>
                   <!-- 仅在已连接设备后才展示电量图标与数值 -->
