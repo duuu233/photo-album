@@ -24,6 +24,8 @@ Page({
     editing: false,
     rotation: 0,
     projecting: false,
+    // 是否压缩图片后再传后端转码（后端压到约300-400KB）：默认开启，用户选择持久化到 Storage
+    compressImage: true,
 
     // 裁剪交互状态
     cropping: false, // 是否处于裁剪交互（显示裁剪层/手柄）
@@ -44,6 +46,11 @@ Page({
     const images = pending.images || []
     const device = pending.device || null
     this.updateImageState(images, device, 0)
+
+    // 压缩开关：默认开启；用户改过则沿用上次选择（Storage 未设置时为 ''，不等于 false）
+    this.setData({
+      compressImage: wx.getStorageSync('projectionCompressImage') !== false
+    })
 
     // 预热连接：用户在预览页裁剪/确认的这几秒里，后台先把设备连上。
     // 这样点「确认投屏」后，结果页的 ensureConnection 能直接复用已就绪的会话，
@@ -568,11 +575,19 @@ Page({
     })
   },
 
+  // 压缩开关：更新页面状态并持久化，结果页经 pendingProjection 拿到最终值
+  onCompressChange(e) {
+    const compressImage = !!(e.detail && e.detail.value)
+    this.setData({ compressImage })
+    wx.setStorageSync('projectionCompressImage', compressImage)
+  },
+
   // 把当前 images 写回 Storage(pendingProjection)，保证结果页拿到的是裁剪后的图
   persistPending(images) {
     const pending = wx.getStorageSync('pendingProjection') || {}
     pending.images = images
     pending.device = this.data.device || pending.device
+    pending.compressImage = this.data.compressImage
     wx.setStorageSync('pendingProjection', pending)
   },
 

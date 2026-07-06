@@ -310,7 +310,10 @@ module.exports = {
         userProductId: options.userProductId,
         deviceUploadState: options.deviceUploadState,
         targetWidth: options.targetWidth,
-        targetHeight: options.targetHeight
+        targetHeight: options.targetHeight,
+        // 是否压缩图片：1=压缩(后端压到约300-400KB) / 0=不压缩传原图，不传默认压缩。
+        // ⚠️ 字段名 isCompress 为约定假设，待后端确认（确认后只需改这一处）。
+        isCompress: options.isCompress === 0 ? 0 : 1
       },
       formData: options.formData,
       mock: false,

@@ -101,6 +101,8 @@ Page({
     const images = (pending.images || []).filter(
       item => item && (item.tempFilePath || item.url)
     )
+    // 是否压缩图片（预览页开关写入）：仅明确关闭才传原图，缺省（老数据/记录页再次投屏）默认压缩
+    this._compressImage = pending.compressImage !== false
     const deviceId = device.deviceId
 
     if (!deviceId) {
@@ -352,14 +354,17 @@ Page({
       throw new Error('图片文件不可用，无法转换')
     }
 
+    // 压缩开关：开(默认)=1 后端压到约300-400KB；关=0 传原图
+    const isCompress = this._compressImage === false ? 0 : 1
     console.log(
-      `[投屏] 上传原图转换：userProductId=${userProductId} target=${info.width}x${info.height} file=${filePath}`
+      `[投屏] 上传原图转换：userProductId=${userProductId} target=${info.width}x${info.height} isCompress=${isCompress} file=${filePath}`
     )
     const res = await api.setUserProductUpload({
       filePath,
       userProductId,
       targetWidth: info.width,
       targetHeight: info.height,
+      isCompress,
       deviceUploadState: 0,
       loading: false, // 结果页用 setData desc 自管进度，关掉全局 loading 遮罩
       showError: false // 失败统一走本页失败场景，不额外弹 toast

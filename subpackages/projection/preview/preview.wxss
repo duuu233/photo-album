@@ -227,6 +227,45 @@
   display: inline-block;
   padding: 4rpx 30rpx;
 }
+/* 压缩图片开关行：与工具栏同样式的玻璃卡片，放在投屏按钮上方 */
+.compress-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 24rpx 46rpx 0;
+  padding: 22rpx 30rpx;
+
+  background: rgba(255, 255, 255, 0.4);
+  border: 2rpx solid rgba(255, 255, 255, 0.86);
+  border-radius: 40rpx;
+  box-shadow: 0 24rpx 54rpx rgba(121, 145, 178, 0.13);
+}
+
+.compress-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  margin-right: 20rpx;
+}
+
+.compress-label {
+  color: #2a2b2b;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.compress-tip {
+  color: #777e88;
+  font-size: 22rpx;
+}
+
+.compress-switch {
+  transform: scale(0.8);
+  transform-origin: right center;
+}
+
 .preview-submit {
   position: relative;
   z-index: 9;
