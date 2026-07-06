@@ -5,6 +5,7 @@ const batteryUtil = require('../../utils/battery')
 const deviceBle = require('../../utils/device-ble')
 const bluetooth = require('../../utils/bluetooth')
 const permission = require('../../utils/permission')
+const activeDevice = require('../../utils/active-device')
 
 const app = getApp()
 
@@ -350,7 +351,9 @@ Page({
       const mergedDevices = uniqueDevices.map(item => {
         const sameAsCached = !!cached && (
           String(cached.id) === String(item.id) ||
-          (!!cachedSerial && this.deviceSerial(item) === cachedSerial)
+          // 序列号容错比对（广播4字节 vs 后端6字节互为子串也算同一台）：
+          // 精确相等在两侧格式不一致时对不上，正连着的设备会被误判「未连接」（改名刷新列表时尤其明显）
+          activeDevice.serialsMatch(this.deviceSerial(item), cachedSerial)
         )
         return sameAsCached
           ? Object.assign({}, item, {
@@ -371,7 +374,7 @@ Page({
       const connectedIndex = list.findIndex(item => item.connected)
       const cachedIndex = list.findIndex(item =>
         (cachedId && String(item.id) === cachedId) ||
-        (!!cachedSerial && this.deviceSerial(item) === cachedSerial)
+        activeDevice.serialsMatch(this.deviceSerial(item), cachedSerial)
       )
       const currentDeviceIndex = connectedIndex >= 0 ? connectedIndex : Math.max(0, cachedIndex)
       const currentDevice = list[currentDeviceIndex] || DEFAULT_DEVICE
@@ -700,7 +703,9 @@ Page({
       }
       await bluetooth.openAdapter()
       const found = await bluetooth.discoverDevices({ timeout: 6000 })
-      const target = this.matchScannedDevice(found, selected)
+      // 连接已绑定设备：只按硬件序列号（设备列表的 deviceId）容错匹配，不按名称——
+      // 名称匹配只属于绑定新设备流程（广播名是产品型号 EF6-370/EF6-589，改名后与设备名对不上）
+      const target = activeDevice.matchScannedDevice(found, selected)
       if (!target) {
         throw new Error('未搜索到该设备，请确认设备已开机并在附近')
       }
@@ -720,27 +725,6 @@ Page({
     } finally {
       wx.hideLoading()
     }
-  },
-
-  // 把后端设备(序列号/名称)与扫描结果匹配，返回带「本次会话有效 deviceId」的那条。
-  // 序列号(deviceNo，对应广播 Device_ID)优先精确匹配；取不到再按名称兜底(扫描已按信号降序)。
-  matchScannedDevice(found, device) {
-    const list = found || []
-    const serial = String((device && (device.deviceNo || device.productDeviceId)) || '').trim()
-    if (serial) {
-      const bySerial = list.find(item => String(item.deviceNo || '').trim() === serial)
-      if (bySerial) {
-        return bySerial
-      }
-    }
-    const name = String((device && device.name) || '').trim()
-    if (name) {
-      const byName = list.find(item => String(item.name || '').trim() === name)
-      if (byName) {
-        return byName
-      }
-    }
-    return null
   },
 
   // 把首页当前展示的设备标记为「已连接」，回填本次会话有效的 deviceId（及可选的实时信息），

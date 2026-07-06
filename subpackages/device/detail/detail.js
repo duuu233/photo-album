@@ -321,7 +321,9 @@ Page({
       !!selected &&
       !!device &&
       (String(selected.id) === String(device.id) ||
-        (!!selectedSerial && deviceSerial(device) === selectedSerial))
+        // 序列号容错比对（归一化+互为子串也算同一台）：绑定侧广播 4 字节 vs 后端 6 字节
+        // 精确相等必对不上，正连着的设备会被误判「未连接」（与首页/列表页同一套规则）
+        activeDevice.serialsMatch(deviceSerial(device), selectedSerial))
 
     if (isSelected) {
       device = Object.assign({}, device, {
@@ -708,28 +710,25 @@ Page({
     }
   },
 
-  // 把后端设备(序列号/名称)与扫描结果匹配，返回带「本次会话有效 deviceId」的那条（序列号优先，名称兜底）。
+  // 把后端设备(序列号/名称)与扫描结果匹配，返回带「本次会话有效 deviceId」的那条。
+  // 序列号用 active-device.serialsMatch 容错比对（归一化+互为子串）：广播 Device_ID 只有 4 字节、
+  // 后端存 6 字节，之前的精确相等必然对不上，实际一直靠名称兜底碰巧连上（默认设备名=产品广播名）；
+  // 用户一改名两条路全断，表现为「改名后点连接提示未搜索到该设备」。
+  // 名称兜底只留给没有序列号的老记录：有序列号却没匹配上即视为设备不在附近，不再按名连接——
+  // 同型号广播名相同，按名兜底可能连到别人的相框。
   matchScannedDevice(found, device) {
-    const list = found || []
-    const serial = String(
-      (device && (device.deviceNo || device.productDeviceId)) || ''
-    ).trim()
-    if (serial) {
-      const bySerial = list.find(
-        item => String(item.deviceNo || '').trim() === serial
-      )
-      if (bySerial) {
-        return bySerial
-      }
+    const bySerial = activeDevice.matchScannedDevice(found, device)
+    if (bySerial) {
+      return bySerial
+    }
+    if (deviceSerial(device)) {
+      return null
     }
     const name = String((device && device.name) || '').trim()
-    if (name) {
-      const byName = list.find(item => String(item.name || '').trim() === name)
-      if (byName) {
-        return byName
-      }
+    if (!name) {
+      return null
     }
-    return null
+    return (found || []).find(item => String(item.name || '').trim() === name) || null
   },
 
   // 点「轮播设置」：未连接设备时不进入，提示先连接（与 startProjection 同一实时判连方式）

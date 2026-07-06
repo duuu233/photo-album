@@ -36,24 +36,48 @@ function isDeviceConnected(device) {
   return !!(id && deviceBle.isConnected(id))
 }
 
-// 序列号(deviceNo/productDeviceId)优先、名称兜底，从扫描结果里匹配出这台设备当下有效的 deviceId。
+// 硬件序列号归一化：去分隔符 + 大写，兼容后端与蓝牙广播两侧可能的格式差异
+function normalizeSerial(value) {
+  return String(value == null ? '' : value).replace(/[:\-\s]/g, '').toUpperCase()
+}
+
+// 两个序列号是否指同一台物理设备：归一化后精确相等，或互为子串（要求 ≥8 hex/4 字节，避免误并）。
+// 广播里的 Device_ID 只有 4 字节、连上读 0x01 得到的是 6 字节，后端存的可能是其中任意一种，
+// 精确相等在「广播 4 字节 vs 后端 6 字节」时必然对不上（bind.js 绑定判重已用同规则治理过同类问题）。
+function serialsMatch(a, b) {
+  const left = normalizeSerial(a)
+  const right = normalizeSerial(b)
+  if (!left || !right) {
+    return false
+  }
+  return (
+    left === right ||
+    (left.length >= 8 &&
+      right.length >= 8 &&
+      (left.indexOf(right) > -1 || right.indexOf(left) > -1))
+  )
+}
+
+// 从扫描结果里匹配出这台已绑定设备当下有效的 deviceId：只认稳定的硬件序列号
+//（设备列表接口返回的 deviceId，归一化后是 deviceNo/productDeviceId），用 serialsMatch 容错比对。
+// 连接已绑定设备不按名称匹配——设备名以用户为维度、可随意改，广播名却始终是产品名，
+// 按名匹配在改名后必然「搜不到设备/连接不上」；名称匹配只属于「绑定新设备」流程（bind.js，尚无序列号可比）。
 function matchScannedDevice(found, device) {
   const list = found || []
-  const serial = String((device && (device.deviceNo || device.productDeviceId)) || '').trim()
-  if (serial) {
-    const bySerial = list.find(item => String(item.deviceNo || '').trim() === serial)
-    if (bySerial) {
-      return bySerial
-    }
+  const serials = [
+    device && device.deviceNo,
+    device && device.productDeviceId
+  ]
+    .map(normalizeSerial)
+    .filter(Boolean)
+  if (!serials.length) {
+    return null
   }
-  const name = String((device && device.name) || '').trim()
-  if (name) {
-    const byName = list.find(item => String(item.name || '').trim() === name)
-    if (byName) {
-      return byName
-    }
-  }
-  return null
+  return (
+    list.find(item =>
+      serials.some(serial => serialsMatch(item && item.deviceNo, serial))
+    ) || null
+  )
 }
 
 // 重连成功后，若这台正是全局选中设备，用当下有效 deviceId 刷新它（deviceId 每次扫描会变）。
@@ -65,8 +89,13 @@ function syncActiveDeviceId(device, deviceId) {
       return
     }
     const sameById = device && device.id && selected.id && String(device.id) === String(selected.id)
+    // 序列号用容错比对（广播 4 字节 vs 后端 6 字节互为子串也算同一台），与 matchScannedDevice 同规则
     const sameBySerial =
-      device && device.deviceNo && selected.deviceNo && String(device.deviceNo) === String(selected.deviceNo)
+      !!device &&
+      serialsMatch(
+        device.deviceNo || device.productDeviceId,
+        selected.deviceNo || selected.productDeviceId
+      )
     if (sameById || sameBySerial) {
       app.setSelectedDevice(Object.assign({}, selected, { deviceId, bleDeviceId: deviceId, connected: true }))
     }
@@ -154,6 +183,7 @@ async function ensureActiveDeviceConnection() {
 module.exports = {
   getActiveDevice,
   isDeviceConnected,
+  serialsMatch,
   matchScannedDevice,
   ensureDeviceConnected,
   ensureConnectedForAction,

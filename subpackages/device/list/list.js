@@ -6,6 +6,7 @@ const deviceBle = require('../../../utils/device-ble')
 const bluetooth = require('../../../utils/bluetooth')
 const permission = require('../../../utils/permission')
 const media = require('../../../utils/media')
+const activeDevice = require('../../../utils/active-device')
 
 const app = getApp()
 
@@ -71,7 +72,9 @@ Page({
       // 用 id 或序列号匹配：绑定/重连后选中设备与列表项可能不同源，只靠 id 会漏配、错显示成「未连接」。
       const isSelected = !!selected && (
         String(selected.id) === String(item.id) ||
-        (!!selectedSerial && this.deviceSerial(item) === selectedSerial)
+        // 序列号容错比对（归一化+互为子串也算同一台）：绑定侧广播 4 字节 vs 后端 6 字节
+        // 精确相等必对不上，正连着的设备会被误判「未连接」（与首页 loadHomeState 同一套规则）
+        activeDevice.serialsMatch(this.deviceSerial(item), selectedSerial)
       )
       const merged = !isSelected
         ? item
@@ -342,25 +345,24 @@ Page({
   },
 
   // 把后端来的设备(只有序列号/名称)和扫描结果匹配，返回带「本次会话有效 deviceId」的那条。
-  // 序列号(deviceNo，对应扫描侧广播里的 Device_ID)优先精确匹配；取不到再按设备名兜底
-  // (discoverDevices 已按 RSSI 降序，同名时拿到的是信号最强的一台)。
+  // 序列号用 active-device.serialsMatch 容错比对（归一化+互为子串）：广播 Device_ID 只有 4 字节、
+  // 后端存 6 字节，之前的精确相等必然对不上，实际一直靠名称兜底碰巧连上（默认设备名=产品广播名）；
+  // 用户一改名两条路全断，表现为「改名后点连接提示未搜索到该设备」。
+  // 名称兜底只留给没有序列号的老记录：有序列号却没匹配上即视为设备不在附近，不再按名连接——
+  // 同型号广播名相同，按名兜底可能连到别人的相框。
   matchScannedDevice(found, device) {
-    const list = found || []
-    const serial = String(device.deviceNo || device.productDeviceId || '').trim()
-    if (serial) {
-      const bySerial = list.find(item => String(item.deviceNo || '').trim() === serial)
-      if (bySerial) {
-        return bySerial
-      }
+    const bySerial = activeDevice.matchScannedDevice(found, device)
+    if (bySerial) {
+      return bySerial
     }
-    const name = String(device.name || '').trim()
-    if (name) {
-      const byName = list.find(item => String(item.name || '').trim() === name)
-      if (byName) {
-        return byName
-      }
+    if (this.deviceSerial(device)) {
+      return null
     }
-    return null
+    const name = String((device && device.name) || '').trim()
+    if (!name) {
+      return null
+    }
+    return (found || []).find(item => String(item.name || '').trim() === name) || null
   },
 
   renameDevice(e) {
