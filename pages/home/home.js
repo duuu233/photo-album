@@ -333,7 +333,11 @@ Page({
     }
 
     try {
-      const devices = await api.getDevices()
+      // 登录页过渡 loading 期间预取的设备列表（一次性消费）：登录成功进首页即整页渲染，
+      // 不再重复等一次接口；无预取（正常进入/下拉刷新等）照旧实时拉取
+      const prefetched = app.globalData.prefetchedDevices
+      app.globalData.prefetchedDevices = null
+      const devices = prefetched || await api.getDevices()
       const cached = app.globalData.selectedDevice
 
       // 同一台相框可能被重复绑定出多条记录：按硬件序列号去重，避免轮播重复出现同一台

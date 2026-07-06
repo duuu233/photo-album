@@ -142,13 +142,26 @@
   margin-right: 23rpx;
 }
 
+/* 按下反馈只做透明度变化：translateY 位移会让按钮按下/松开时上下跳一下 */
 .login-submit--hover {
-  transform: translateY(2rpx);
   opacity: 0.92;
 }
 
-.login-submit--loading {
-  opacity: 0.82;
+/* 登录成功过渡层：全屏盖住整页，背景与全局窗口底色一致(#f2f5fc)，
+   switchTab 落到同底色的首页时视觉上近似无缝；spinner/文字复用 app.wxss 的 page-loading__* */
+.login-transition {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  /* 需盖住自定义导航(page-nav z-index:10)避免登录中还能点返回；层级与其他页面遮罩(20)一致，低于全局 toast */
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #f2f5fc;
 }
 
 .login-text-hover {

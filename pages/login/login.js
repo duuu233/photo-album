@@ -1,11 +1,14 @@
 const toast = require('../../utils/toast')
+const api = require('../../utils/api')
 const app = getApp()
 
 Page({
   data: {
     agreed: false,
     submitting: false,
-    leaving: false
+    leaving: false,
+    loggingIn: false, // 登录成功过渡层：授权回调开始到 switchTab 落地期间全屏 loading
+    loginTip: '正在登录…'
   },
 
   onShow() {
@@ -58,27 +61,46 @@ Page({
       return
     }
 
+    // 全屏过渡层立即出现：既是登录中的 loading 反馈，也盖住按钮防止重复点击
     this.setData({
-      submitting: true
+      submitting: true,
+      loggingIn: true,
+      loginTip: '正在登录…'
     })
 
     try {
       await app.loginWithWechatPhone(detail)
-      // 成功提示用原生 wx.showToast：它挂在原生层，switchTab 后仍会继续显示，
-      // 所以无需在本页停留等提示看完，可以立即开始切页。
+      // 成功提示用原生 wx.showToast：它挂在原生层，switchTab 后仍会继续显示
       wx.showToast({
         title: '登录成功',
         icon: 'success',
         duration: 1500
       })
-      this.leaveTo('/pages/home/home')
-    } finally {
-      // 无论成功失败都恢复按钮可点击状态
+      // 过渡层背后预取首页设备列表（存 globalData，首页 loadHomeState 一次性消费）：
+      // switchTab 落地时首页数据已就绪、整页直接渲染，不再出现首页自己的「加载中」
+      this.setData({ loginTip: '正在进入首页…' })
+      try {
+        app.globalData.prefetchedDevices = await api.getDevices()
+      } catch (error) {
+        // 预取失败不阻塞进入首页：首页会自行重新拉取
+      }
+      wx.switchTab({
+        url: '/pages/home/home',
+        // switchTab 基本不会失败；兜底收起过渡层，避免卡死在 loading
+        fail: () => this.setData({ submitting: false, loggingIn: false })
+      })
+      // 成功路径不收起过渡层：本页随 switchTab 销毁，提前收起会闪现登录按钮
+    } catch (error) {
+      // 登录失败（具体错误由请求层统一 toast）：收起过渡层，恢复可重试
       this.setData({
-        submitting: false
+        submitting: false,
+        loggingIn: false
       })
     }
   },
+
+  // 过渡层 catchtouchmove 占位：阻止滚动穿透
+  noop() {},
 
   // 首页是 tabBar 页只能 switchTab，而 switchTab 没有过渡动画（硬切）。
   // 先让整页淡出（css transition 0.24s，露出与首页同色的窗口底色 #f2f5fc），

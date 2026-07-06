@@ -9,7 +9,9 @@
   <view class="login-main">
     <image class="login-logo" src="/assets/images/logo.png" mode="aspectFit"></image>
 
-    <button class="login-submit {{submitting ? 'login-submit--loading' : ''}}" loading="{{submitting}}"
+    <!-- 不用 button 的 loading 属性：原生 spinner 会插进按钮内容挤动图标文字（视觉上抖动）；
+         提交期间的反馈由全屏过渡层承担 -->
+    <button class="login-submit"
       hover-class="login-submit--hover" open-type="{{agreed ? 'getPhoneNumber' : ''}}"
       bindtap="onLoginTap" bindgetphonenumber="onWechatLogin">
    
@@ -31,6 +33,13 @@
       <text>和</text>
       <text class="login-agreement__link" bindtap="openPrivacyPolicy">《隐私政策》</text>
     </view>
+  </view>
+
+  <!-- 登录成功过渡层：登录接口 + 首页数据预取期间全屏覆盖（含按钮，防重复点击），
+       期间预取的设备列表由首页 loadHomeState 一次性消费，落地即是加载完毕的首页 -->
+  <view wx:if="{{loggingIn}}" class="login-transition" catchtouchmove="noop">
+    <view class="page-loading__spinner"></view>
+    <view class="page-loading__text">{{loginTip}}</view>
   </view>
 
   <global-toast id="globalToast"></global-toast>
