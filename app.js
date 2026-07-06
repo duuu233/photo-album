@@ -1,5 +1,6 @@
 const api = require('./utils/api')
 const system = require('./utils/system')
+const deviceBle = require('./utils/device-ble')
 
 // 将回调式的 wx.login 封装为 Promise，便于在 async 流程中 await
 function wxLogin() {
@@ -23,6 +24,14 @@ App({
 
     // 启动全局固件检测：当前选中设备若为「强制升级」则弹窗阻断使用（提醒升级不处理）。静默失败，不打扰。
     this.checkForcedFirmwareUpgrade()
+  },
+
+  // 回前台做一次「连接体检」：微信在后台（尤其鸿蒙 HarmonyOS）会挂起蓝牙，可能已断开却没补发断开回调，
+  // 内存会话会假报「已连接」，让下次操作复用死会话导致写失败/超时。这里对账真实连接、清掉已断会话，
+  // 使各页「已连接」显示如实、下次操作会重新走一次真正的连接。不主动重连——连接保持「按需手动」
+  //（用户点设备卡片的「连接蓝牙」按钮时才连，见 home.connectCurrentDevice）。冷启动/无连接时零开销。
+  onShow() {
+    deviceBle.reconcileConnections().catch(() => {})
   },
 
   // 启动时检测「当前选中设备」的固件升级方式：

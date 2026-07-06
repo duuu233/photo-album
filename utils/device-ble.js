@@ -993,6 +993,55 @@ function disconnect(deviceId) {
   }
 }
 
+// 回前台/唤醒时的「连接体检」：微信在后台（尤其鸿蒙 HarmonyOS）会挂起蓝牙，断开时 onBLEConnectionStateChange
+// 未必补发断开事件——内存会话可能仍 ready=true 而底层其实已断。此时 isConnected() 会谎报「已连接」，导致：
+//   ① 首页/详情页显示「已连接」实为假象；
+//   ② 下次操作走 ensureConnection 见 ready=true 直接复用这条死会话、不再重连，指令全部写失败/超时。
+// 这里对账真实连接、把已断的会话清掉，使 isConnected() 恢复如实：页面据此显示「未连接」，用户下次点操作时
+// 才会重新走一次真正的连接。不主动重连——连接保持「按需手动」（用户点「连接蓝牙」按钮时才连）。
+// 判定：① 适配器打不开（后台被关了蓝牙 / 蓝牙异常）→ 所持会话必然全断，全部清理；
+//      ② 适配器可用 → 用系统「已连接设备」列表比对，不在列表里的会话判为已断并清理。
+// 全程静默、不抛错；查询失败时保守「不动会话」（避免误清一条其实还活着的连接），留待下次操作时真实校验。
+async function reconcileConnections() {
+  const ids = Object.keys(sessions).filter(id => sessions[id] && sessions[id].ready)
+  if (!ids.length) {
+    return [] // 没有任何会话，无需体检（零开销，冷启动/无连接时直接返回）
+  }
+
+  // ① 适配器不可用 = 用户在后台关了蓝牙 / 蓝牙异常：所持会话必然已断，全部清掉
+  if (wx.openBluetoothAdapter) {
+    try {
+      await wxp(wx.openBluetoothAdapter, {})
+    } catch (error) {
+      ids.forEach(id => cleanupSession(id, '蓝牙不可用，连接已断开'))
+      return ids.slice()
+    }
+  }
+
+  // ② 适配器可用：用系统「已连接设备」列表对账
+  const services = Array.from(
+    new Set(ids.map(id => sessions[id].serviceId).filter(Boolean))
+  )
+  if (!wx.getConnectedBluetoothDevices || !services.length) {
+    return [] // 老基础库不支持查询 / 无可用服务过滤：保守不动，留待下次操作时真实校验
+  }
+  let alive
+  try {
+    const res = await wxp(wx.getConnectedBluetoothDevices, { services })
+    alive = new Set((res.devices || []).map(d => d.deviceId))
+  } catch (error) {
+    return [] // 查询失败保守不动，避免误清活着的连接
+  }
+  const dropped = []
+  ids.forEach(id => {
+    if (!alive.has(id)) {
+      cleanupSession(id, '回前台检测到连接已断开')
+      dropped.push(id)
+    }
+  })
+  return dropped
+}
+
 // 给「设备返回 / 蓝牙链路」类错误统一加「设备-」前缀，便于和接口错误(「接口-」)区分。
 // 幂等：已带「接口-」「设备-」前缀，或为纯大写下划线的内部控制信号(如 UPLOAD_ABORTED/IMG_ACK_TIMEOUT) 时原样返回。
 function prefixDeviceError(error) {
@@ -1054,7 +1103,8 @@ module.exports = {
   hasAnyActiveConnection,
   getActiveConnections,
   disconnectAll,
-  disconnect
+  disconnect,
+  reconcileConnections
 }
 
 // 统一给会真正和设备/蓝牙交互的异步方法加「设备-」错误前缀（同步只读方法 isConnected 等不需要）
