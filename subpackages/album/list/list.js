@@ -282,9 +282,10 @@ Page({
     }
 
     wx.showLoading({ title: '删除中', mask: true })
+    let refreshWarn = '' // 「设备已删成功但刷屏失败」的提示文案，成功删除后带给用户
     try {
       // 读固件已占用槽位（升序），用同一份快照把每张选中照片解析成对应槽位；
-      // 不在本设备上的（解析为 -1）跳过，只删能对上的。
+      // 不在本设备上的（解析为 -1）跳过，只删能对上的。curImgIndex 用于判断是否删到屏显图。
       const info = await deviceBle.readDeviceInfo(device.deviceId)
       const occupied = protocol.maskToIndexes(info.imgMask)
       const slotIndexes = ids
@@ -293,7 +294,15 @@ Page({
 
       // 2) 一条 0x12 批量删这些槽位（deleteImage 内部把索引数组转成掩码）
       if (slotIndexes.length) {
-        await deviceBle.deleteImage(device.deviceId, slotIndexes)
+        const deleted = await deviceBle.deleteImage(device.deviceId, slotIndexes)
+        // 2.1) 被删槽位若包含「屏幕当前正显示的图片」，需要接着刷屏，
+        //      否则相框会一直挂着已删除的图（见 refreshAfterDeleteIfNeeded）
+        refreshWarn = await this.refreshAfterDeleteIfNeeded(
+          device.deviceId,
+          info,
+          deleted,
+          slotIndexes
+        )
       }
     } catch (error) {
       wx.hideLoading()
@@ -316,11 +325,38 @@ Page({
       return
     }
 
-    toast.show({
-      title: '已删除',
-      icon: 'none'
-    })
+    if (refreshWarn) {
+      toast.warn({ title: refreshWarn, icon: 'none' })
+    } else {
+      toast.show({ title: '已删除', icon: 'none' })
+    }
     this.loadPhotos()
+  },
+
+  // 删除后的屏幕处理（只在删到「屏幕当前显示的图片」时才动屏幕）：
+  //   · 被删槽位不含当前屏显图（0x01 读到的 curImgIndex）→ 按索引删完即可，不刷屏；
+  //   · 含当前屏显图 → 用 0x12 应答里删除后的最新掩码，从索引 0 开始找最近的有图槽位，0x24 刷过去；
+  //   · 删完设备上已无图片 → 不主动刷屏：固件在图片全部清空后会自动（约 5 秒）刷成空屏
+  //     （以固件群结论为准），且当前协议没有单独的「清屏」指令；若后续固件提供清屏指令，在此补调用。
+  // 返回 ''=无需额外提示；非空=「已删除但刷屏失败」的提示文案。刷屏失败不抛出——设备侧已删成功，
+  // 抛出会中止后端记录删除，造成设备与图库两边不一致。
+  async refreshAfterDeleteIfNeeded(deviceId, info, deleted, slotIndexes) {
+    if (slotIndexes.indexOf(info.curImgIndex) === -1) {
+      return ''
+    }
+
+    const remaining = protocol.maskToIndexes((deleted && deleted.imgMask) || [])
+    if (!remaining.length) {
+      return '' // 设备已无图片：交给固件自动刷空屏
+    }
+
+    try {
+      // maskToIndexes 返回升序槽位，第 0 个即「从 0 开始检索」到的最近有图位置
+      await deviceBle.refreshScreen(deviceId, remaining[0])
+      return ''
+    } catch (error) {
+      return '已删除，但屏幕刷新失败，请稍后手动刷新屏幕'
+    }
   },
 
   // 刷新屏幕：图库照片大多已存在于固件，只需找到其在设备上的槽位索引，让相框切到这张图。

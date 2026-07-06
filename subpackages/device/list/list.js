@@ -381,9 +381,15 @@ Page({
           return
         }
 
-        const updated = await api.renameDevice(id, res.content.trim())
-        if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === updated.id) {
-          app.setSelectedDevice(updated)
+        const newName = res.content.trim()
+        await api.renameDevice(id, newName)
+        // 改名只做后端存储：全局选中设备只合并新名字，保留 deviceId 等连接字段。
+        // 不能用接口精简返回整体替换——会丢 deviceId 造成假断联且重扫搜不到（设备被会话占线不广播）。
+        const selected = app.globalData.selectedDevice
+        if (selected && String(selected.id) === String(id)) {
+          app.setSelectedDevice(
+            Object.assign({}, selected, { name: newName, productName: newName })
+          )
         }
         this.loadDevices()
       }

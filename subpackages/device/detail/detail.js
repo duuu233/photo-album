@@ -410,16 +410,26 @@ Page({
           return // 取消或输入为空则不处理
         }
 
-        const device = await api.renameDevice(this.data.id, res.content.trim())
-        if (
-          app.globalData.selectedDevice &&
-          app.globalData.selectedDevice.id === device.id
-        ) {
-          app.setSelectedDevice(device)
+        const newName = res.content.trim()
+        await api.renameDevice(this.data.id, newName)
+        // 改名是纯后端存储（名称以用户为维度，不写设备、不动蓝牙连接/广播）：
+        // 只把新名字合并回现有 device，绝不能用接口的精简返回整体替换——
+        // 那会丢 deviceId/deviceNo，页面误判断联；此时会话仍占着设备（单连接、不再广播），
+        // 点「连接」重扫必然搜不到，形成「改名后断联且搜不到」的假象。
+        const updated = Object.assign({}, this.data.device, {
+          name: newName,
+          productName: newName
+        })
+        const selected = app.globalData.selectedDevice
+        if (selected && selected.id === updated.id) {
+          // 全局选中设备同理：只改名字，保留它自己的 deviceId 等连接字段
+          app.setSelectedDevice(
+            Object.assign({}, selected, { name: newName, productName: newName })
+          )
         }
         this.setData({
-          device,
-          memoryPercent: memoryPercent(device)
+          device: updated,
+          memoryPercent: memoryPercent(updated)
         })
       }
     })

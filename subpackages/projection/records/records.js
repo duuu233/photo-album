@@ -100,6 +100,15 @@ Page({
       return // 提示已由 ensureActiveDeviceConnection 弹出
     }
 
+    // 预览/重转码用图优先取「图库里同一张照片的原图」（按 uProductImgId 关联）：
+    // 记录里的 img 是后端按设备尺寸转换/压缩后的图，比例可能与原图不一致（预览会显得被拉伸），
+    // 而图库 img 与首次投屏同源，能保证「投屏」与「再次投屏」进预览页显示一致；
+    // 记录缺 uProductImgId / 照片已从图库删除 / 图库拉取失败时，退回记录里的图（保持可用）。
+    const originalUrl = await this.resolveAlbumOriginalUrl(record)
+    console.log(
+      `[再次投屏] 预览图源：${originalUrl ? '图库原图' : '记录img(未匹配到图库原图)'} ${originalUrl || imageUrl}`
+    )
+
     // 复用正常投屏链路：把该图片(服务器地址)与设备写入 Storage，跳投屏预览页。
     // 记录里已有后端转换好的设备帧地址 imgBle：带上它与 upirId/userProductId，
     // 结果页直接下载 imgBle 帧数据 BLE 图传（跳过后端上传/转码接口），
@@ -108,7 +117,7 @@ Page({
       device,
       images: [
         {
-          url: imageUrl,
+          url: originalUrl || imageUrl,
           imgBle: record.imgBle || '',
           upirId: record.upirId,
           userProductId: record.userProductId
@@ -118,6 +127,24 @@ Page({
     wx.navigateTo({
       url: '/subpackages/projection/preview/preview'
     })
+  },
+
+  // 按记录的 uProductImgId 到图库找同一张照片的原图地址；找不到/失败返回 ''，调用方回退记录图。
+  // 不抛错：这只是「显示一致性」的增强，不能因图库接口失败挡住再次投屏。
+  async resolveAlbumOriginalUrl(record) {
+    const imgId = record && (record.uProductImgId || record.uproductImgId)
+    if (!imgId) {
+      return ''
+    }
+    try {
+      const photos = await api.getAlbumPhotos()
+      const matched = photos.find(
+        item => String(item.uProductImgId) === String(imgId)
+      )
+      return (matched && matched.url) || ''
+    } catch (error) {
+      return ''
+    }
   },
 
   deleteRecord(e) {
