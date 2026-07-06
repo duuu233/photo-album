@@ -348,7 +348,9 @@ Page({
           intervalHours: info.intervalSeconds
             ? Math.max(1, Math.round(info.intervalSeconds / 3600))
             : device.intervalHours,
-          firmwareVersion: info.firmwareVersion || device.firmwareVersion
+          firmwareVersion: info.firmwareVersion || device.firmwareVersion,
+          // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
+          firmwareDeviceId: info.deviceId || device.firmwareDeviceId
         })
       } catch (error) {
         // 详情展示不因读取设备信息失败而中断，电量/内存等沿用接口/选中设备的数据。
@@ -358,11 +360,13 @@ Page({
     const intervalIndex = this.data.intervalOptions.indexOf(
       device ? device.intervalHours : 2
     )
-    // 设备编号取末 6 位数字作为展示码；真实数据缺失时用 -- 占位（不再用假的 123456）
+    // 设备ID优先展示固件读到的真实 Device_ID（0x01，与调试台一致）；
+    // 未连接/读取失败时回退后端序列号末 6 位数字，再缺失用 -- 占位（不再用假的 123456）
     const digitId =
       device && device.deviceNo
         ? String(device.deviceNo).replace(/\D/g, '').slice(-6)
         : ''
+    const deviceCode = (device && device.firmwareDeviceId) || digitId || '--'
     const hasBattery = device && typeof device.battery === 'number'
     // 轮播设置/固件升级的右侧值只在已连接时展示，未连接一律 -- 占位（点击时提示先连接设备）
     const connected = !!(device && device.connected)
@@ -374,7 +378,7 @@ Page({
         hasBattery ? device.battery : batteryUtil.DEFAULT_BATTERY
       ),
       batteryText: hasBattery ? `${device.battery}%` : '--',
-      deviceCode: digitId || '--',
+      deviceCode,
       memoryText:
         device && device.totalMemory
           ? `${device.usedMemory}/${device.totalMemory}`
@@ -655,7 +659,9 @@ Page({
         intervalHours: info.intervalSeconds
           ? Math.max(1, Math.round(info.intervalSeconds / 3600))
           : device.intervalHours,
-        firmwareVersion: info.firmwareVersion || device.firmwareVersion
+        firmwareVersion: info.firmwareVersion || device.firmwareVersion,
+        // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
+        firmwareDeviceId: info.deviceId || device.firmwareDeviceId
       })
       app.setSelectedDevice(updated)
 
@@ -671,7 +677,9 @@ Page({
           ? `${updated.usedMemory}/${updated.totalMemory}`
           : '--',
         playbackLabel: getPlaybackLabel(updated),
-        newVersionNo: updated.newVersionNo || updated.firmwareVersion || '--'
+        newVersionNo: updated.newVersionNo || updated.firmwareVersion || '--',
+        // 在详情页内点「连接」成功后，设备ID行立即切换为固件真实 Device_ID
+        deviceCode: updated.firmwareDeviceId || this.data.deviceCode
       })
       toast.show({ title: '已连接', icon: 'none' })
       return updated

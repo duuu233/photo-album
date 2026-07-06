@@ -217,6 +217,8 @@ App({
   globalData: {
     token: '',
     userInfo: null,
-    selectedDevice: null
+    selectedDevice: null,
+    // 登录页在过渡 loading 期间预取的设备列表，首页 loadHomeState 一次性消费后置回 null
+    prefetchedDevices: null
   }
 })
