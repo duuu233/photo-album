@@ -230,13 +230,19 @@
     </view>
   </block>
 
-  <!-- 设备不存在 / 加载中 / 加载失败：统一的居中空态，导航与背景仍在，不会错乱 -->
+  <!-- 加载中：全局统一 loading（同我的图库等页面），样式在 app.wxss 的 page-loading -->
+  <view wx:elif="{{loading}}" class="page-loading">
+    <view class="page-loading__spinner"></view>
+    <view class="page-loading__text">加载中…</view>
+  </view>
+
+  <!-- 设备不存在 / 加载失败：居中空态卡片，导航与背景仍在，不会错乱 -->
   <view wx:else class="detail-status">
     <view class="status-card glass-panel">
-      <image wx:if="{{!loading}}" class="status-art" src="/assets/images/empty_device_art.png" mode="aspectFit"></image>
-      <view class="status-title">{{loading ? '加载中…' : (loadError ? '加载失败' : '设备不存在')}}</view>
-      <view wx:if="{{!loading}}" class="status-desc">{{loadError ? '网络异常或服务出错，请稍后重试' : '该设备可能已被删除或解绑'}}</view>
-      <view wx:if="{{loadError && !loading}}" class="status-retry" hover-class="none" bindtap="loadDetail">重新加载</view>
+      <image class="status-art" src="/assets/images/empty_device_art.png" mode="aspectFit"></image>
+      <view class="status-title">{{loadError ? '加载失败' : '设备不存在'}}</view>
+      <view class="status-desc">{{loadError ? '网络异常或服务出错，请稍后重试' : '该设备可能已被删除或解绑'}}</view>
+      <view wx:if="{{loadError}}" class="status-retry" hover-class="none" bindtap="loadDetail">重新加载</view>
     </view>
   </view>
 
