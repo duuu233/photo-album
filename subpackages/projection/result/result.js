@@ -4,6 +4,8 @@
 //     原图传后端转换(setUserProductUpload，得 .bin 下载地址 + taskId + upirId)
 //     → 下载 .bin 帧数据 → 图传到设备(0x20/0x21/0x22)
 //     → 设备成功才编辑投屏记录(editUserProductImgRecord 置 deviceUploadState=1) → 刷新显示(0x24)。
+// 再次投屏（投屏记录页进入，images 带 imgBle）：跳过后端转换，直接下载 imgBle 帧数据图传，
+//     设备成功后调 addUserProductImgRecord 新增一条成功记录（见 acquireFrame / 记账分支）。
 const system = require('../../../utils/system')
 const api = require('../../../utils/api')
 const deviceBle = require('../../../utils/device-ble')
@@ -174,7 +176,7 @@ Page({
         const image = images[i]
         // 取本张要发给设备的六色 4bpp 帧 + 后端记录 id（见 acquireFrame）：
         //   原图传后端转换 → 下载 .bin（含 taskId/upirId）
-        const { frameData, taskId, upirId } = await this.acquireFrame(
+        const { frameData, taskId, upirId, retryRecord } = await this.acquireFrame(
           image,
           device,
           info,
@@ -235,22 +237,38 @@ Page({
           throw error
         }
 
-        // 设备图传成功 → 才调 editUserProductImgRecord 编辑投屏记录置成功(deviceUploadState=1)，
-        // 后端按 taskId 定位记录。尽力而为：记账失败只记日志，不回滚设备、不把整单判失败，
-        // 避免设备已传成功却被误删/误判失败。
+        // 设备图传成功 → 才写后端投屏记录。尽力而为：记账失败只记日志，不回滚设备、
+        // 不把整单判失败，避免设备已传成功却被误删/误判失败。两条链路：
+        //   · 再次投屏(imgBle 直传，本次没走后端转码、没有新记录)：调 addUserProductImgRecord
+        //     新增一条成功记录，把当前有的值(upirId/userProductId/img/imgBle)赋上；
+        //   · 正常投屏(后端转码时已按失败态建记录)：调 editUserProductImgRecord 按 taskId 置成功。
         try {
-          await api.editUserProductImgRecord({
-            upirId,
-            taskId,
-            deviceUploadState: 1,
-            showError: false
-          })
-          console.log(
-            `[投屏] 第 ${i + 1}/${total} 张 投屏记录已置成功：taskId=${taskId}`
-          )
+          if (retryRecord) {
+            await api.addUserProductImgRecord({
+              upirId,
+              userProductId: retryRecord.userProductId,
+              img: retryRecord.url,
+              imgBle: retryRecord.imgBle,
+              deviceUploadState: 1,
+              showError: false
+            })
+            console.log(
+              `[投屏] 第 ${i + 1}/${total} 张 已新增投屏记录：upirId=${upirId}`
+            )
+          } else {
+            await api.editUserProductImgRecord({
+              upirId,
+              taskId,
+              deviceUploadState: 1,
+              showError: false
+            })
+            console.log(
+              `[投屏] 第 ${i + 1}/${total} 张 投屏记录已置成功：taskId=${taskId}`
+            )
+          }
         } catch (error) {
           console.error(
-            `[投屏] 第 ${i + 1}/${total} 张 投屏记录置成功失败（设备已传成功，不影响本张）：`,
+            `[投屏] 第 ${i + 1}/${total} 张 投屏记录写入失败（设备已传成功，不影响本张）：`,
             error
           )
         }
@@ -296,6 +314,16 @@ Page({
 
   // 取本张要发给设备的六色 4bpp 帧 + 后端记录 id（原图传后端转换 → 下载 .bin）。
   async acquireFrame(image, device, info, i, total) {
+    // 再次投屏（投屏记录页带入 imgBle）：记录里已有后端转换好的设备帧文件，直接下载 imgBle
+    // 走 BLE 图传，不再调后端上传/转码接口(setUserProductUpload)。
+    // 若用户在预览页重新裁剪/旋转过（产生 tempFilePath），旧帧已对不上编辑结果，仍走后端转换链路。
+    if (image.imgBle && !image.tempFilePath) {
+      this.setData({ title: '图片传输中', desc: `正在传输第 ${i + 1}/${total} 张…` })
+      console.log(`[投屏] 第 ${i + 1}/${total} 张 再次投屏：直接下载 imgBle=${image.imgBle}`)
+      const frameData = await this.downloadFrameBin(image.imgBle)
+      return { frameData, upirId: image.upirId, retryRecord: image }
+    }
+
     // 先「转换照片」(传后端按设备尺寸转换 + 下载 .bin)，再「投屏」(BLE 图传)，标题区分两个阶段：
     //   · 调后端上传/转码接口(setUserProductUpload) 期间 → 标题「图片转码中」；
     //   · 后端转码完成、开始下载 .bin 并 BLE 图传 → 标题切「图片传输中」。

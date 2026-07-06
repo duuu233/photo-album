@@ -532,6 +532,27 @@ module.exports = {
     )
   },
 
+  // 添加投屏记录：再次投屏（记录页用 imgBle 直传设备，不再走后端转码上传）设备图传成功后调用，
+  // 新增一条投屏记录。body 只传业务字段，按当前有的值赋值（taskId 再次投屏链路没有，传 undefined 会被序列化丢弃）；
+  // device/language/terminal/userToken 由 request.js 经 header/query 注入。
+  addUserProductImgRecord(data = {}) {
+    return http.post(
+      '/Client/UserProduct/addUserProductImgRecord',
+      {
+        upirId: data.upirId,
+        userProductId: data.userProductId,
+        img: data.img,
+        imgBle: data.imgBle,
+        taskId: data.taskId,
+        deviceUploadState: data.deviceUploadState
+      },
+      {
+        mock: false,
+        showError: data.showError
+      }
+    )
+  },
+
   // 删除产品投屏记录，id=upirId。可传 id 或 { id }
   delUserProductImgRecord(upirId) {
     const payload = typeof upirId === 'object' ? upirId : { id: upirId }

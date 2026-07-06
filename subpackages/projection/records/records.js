@@ -100,11 +100,20 @@ Page({
       return // 提示已由 ensureActiveDeviceConnection 弹出
     }
 
-    // 复用正常投屏链路：把该图片(服务器地址)与设备写入 Storage，跳投屏预览页；
-    // 用户确认后由结果页从服务器下载转换后的帧数据并 BLE 图传到设备。
+    // 复用正常投屏链路：把该图片(服务器地址)与设备写入 Storage，跳投屏预览页。
+    // 记录里已有后端转换好的设备帧地址 imgBle：带上它与 upirId/userProductId，
+    // 结果页直接下载 imgBle 帧数据 BLE 图传（跳过后端上传/转码接口），
+    // 设备图传成功后调 addUserProductImgRecord 新增一条投屏记录。
     wx.setStorageSync('pendingProjection', {
       device,
-      images: [{ url: imageUrl }]
+      images: [
+        {
+          url: imageUrl,
+          imgBle: record.imgBle || '',
+          upirId: record.upirId,
+          userProductId: record.userProductId
+        }
+      ]
     })
     wx.navigateTo({
       url: '/subpackages/projection/preview/preview'
