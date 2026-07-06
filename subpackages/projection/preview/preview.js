@@ -353,9 +353,14 @@ Page({
         const { images, activeIndex } = this.data
         const next = images.slice()
         const updated = Object.assign({}, next[activeIndex])
-        // 之前裁剪过：把图片源还原回最初的原图
+        // 之前裁剪过：把图片源还原回最初的原图。
+        // 原图本是远程地址（再次投屏/云端图，编辑前没有本地文件）时要清空 tempFilePath 回落到 url：
+        // 若把 https 地址塞进 tempFilePath，结果页会把它当本地文件上传（必失败），
+        // 且再次投屏「imgBle 且无 tempFilePath 则直传设备帧」的判定也会失效。
         if (updated._origSrc) {
-          updated.tempFilePath = updated._origSrc
+          updated.tempFilePath = /^https?:\/\//i.test(updated._origSrc)
+            ? ''
+            : updated._origSrc
         }
         // 还原即非裁剪态：清掉裁剪宽高与展示尺寸，photo-wrap 回到默认满铺
         updated.cropW = 0
