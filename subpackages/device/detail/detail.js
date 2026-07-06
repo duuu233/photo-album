@@ -95,6 +95,14 @@ function textValue(value) {
   return String(value || '').trim()
 }
 
+// 设备硬件序列号(Device_ID)：跨扫描会话稳定，用于匹配同一台物理设备。
+// 归一化（去分隔符 + 大写）以兼容后端与蓝牙广播两侧可能的格式差异（与 list.js 的 deviceSerial 一致）。
+function deviceSerial(device) {
+  return String((device && (device.deviceNo || device.productDeviceId)) || '')
+    .replace(/[:\-\s]/g, '')
+    .toUpperCase()
+}
+
 // 给「设备返回 / 蓝牙链路」类错误统一加「设备-」前缀（与 toast 来源前缀约定一致：
 // 设备-/小程序-/接口-）。幂等：已带任一来源前缀时原样返回，避免重复叠加。
 function prefixDeviceError(error) {
@@ -302,7 +310,18 @@ Page({
 
     const selected = app.globalData.selectedDevice
 
-    if (selected && String(selected.id) === String(device && device.id)) {
+    // 选中设备的 BLE deviceId（连接用、后端不存）要回填到详情记录，连接状态才显示得对。
+    // 选中设备与详情记录可能「不同源」（绑定返回的 id 可能落到序列号，详情记录是 userProductId，
+    // 或同一台设备的重复绑定记录），只按 id 匹配会漏配、错显示成「未连接」——
+    // 与 list.js 一致：id 匹配不上时按硬件序列号兜底。
+    const selectedSerial = deviceSerial(selected)
+    const isSelected =
+      !!selected &&
+      !!device &&
+      (String(selected.id) === String(device.id) ||
+        (!!selectedSerial && deviceSerial(device) === selectedSerial))
+
+    if (isSelected) {
       device = Object.assign({}, device, {
         deviceId: device.deviceId || selected.deviceId,
         bleDeviceId:
@@ -313,10 +332,12 @@ Page({
     }
 
     if (device && device.deviceId && deviceBle.isConnected(device.deviceId)) {
+      // 连接态以 BLE 会话为准，先行置位；readDeviceInfo 只用于补充电量/内存/播放模式，
+      // 读失败不影响「已连接」显示（此前读失败会被静默吞掉，明明连着却显示成未连接）。
+      device = Object.assign({}, device, { connected: true })
       try {
         const info = await deviceBle.readDeviceInfo(device.deviceId)
         device = Object.assign({}, device, {
-          connected: true,
           battery: info.battery,
           usedMemory: info.imgCount,
           totalMemory: info.capacity,
@@ -328,7 +349,7 @@ Page({
           firmwareVersion: info.firmwareVersion || device.firmwareVersion
         })
       } catch (error) {
-        // 详情展示不因刷新蓝牙状态失败而中断。
+        // 详情展示不因读取设备信息失败而中断，电量/内存等沿用接口/选中设备的数据。
       }
     }
     // 把当前间隔小时数映射到选择器下标，缺省落到第 1 项（2 小时）
@@ -341,6 +362,8 @@ Page({
         ? String(device.deviceNo).replace(/\D/g, '').slice(-6)
         : ''
     const hasBattery = device && typeof device.battery === 'number'
+    // 轮播设置/固件升级的右侧值只在已连接时展示，未连接一律 -- 占位（点击时提示先连接设备）
+    const connected = !!(device && device.connected)
 
     this.setData({
       device,
@@ -355,13 +378,10 @@ Page({
           ? `${device.usedMemory}/${device.totalMemory}`
           : '--',
       macAddress: device && device.macAddress ? device.macAddress : '--',
-      newVersionNo:
-        device && device.newVersionNo
-          ? device.newVersionNo
-          : device && device.firmwareVersion
-            ? device.firmwareVersion
-            : '--',
-      playbackLabel: getPlaybackLabel(device),
+      newVersionNo: connected
+        ? device.newVersionNo || device.firmwareVersion || '--'
+        : '--',
+      playbackLabel: connected ? getPlaybackLabel(device) : '--',
       intervalIndex: intervalIndex > -1 ? intervalIndex : 1,
       loading: false,
       loadError: false
@@ -576,7 +596,8 @@ Page({
       ) {
         app.setSelectedDevice(updated)
       }
-      this.setData({ device: updated })
+      // 断开后轮播设置/固件版本不再可信，与未连接态保持一致回落到 --
+      this.setData({ device: updated, playbackLabel: '--', newVersionNo: '--' })
       toast.show({ title: '已断开', icon: 'none' })
       return
     }
@@ -666,16 +687,31 @@ Page({
     return null
   },
 
+  // 点「轮播设置」：未连接设备时不进入，提示先连接（与 startProjection 同一实时判连方式）
   goSlideshow() {
+    const device = this.data.device
+    if (!device) {
+      return
+    }
+    const bleId = device.deviceId || device.bleDeviceId
+    if (!(bleId && deviceBle.isConnected(bleId))) {
+      toast.warn({ title: '请先连接设备', icon: 'none' })
+      return
+    }
     wx.navigateTo({
       url: `/subpackages/device/slideshow/slideshow?id=${this.data.id}`
     })
   },
 
-  // 点「固件升级」：先调接口检测最新版本 → 有新版本弹二次确认(稍后/立刻更新)，无则提示已是最新、不进升级页。
+  // 点「固件升级」：未连接先提示连接；已连接再调接口检测最新版本 → 有新版本弹二次确认(稍后/立刻更新)，无则提示已是最新、不进升级页。
   async goOtaUpgrade() {
     const device = this.data.device
     if (!device) {
+      return
+    }
+    const bleId = device.deviceId || device.bleDeviceId
+    if (!(bleId && deviceBle.isConnected(bleId))) {
+      toast.warn({ title: '请先连接设备', icon: 'none' })
       return
     }
 

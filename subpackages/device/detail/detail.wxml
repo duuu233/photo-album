@@ -85,7 +85,8 @@
             <text>固件升级</text>
           </view>
           <view class="row-right">
-            <text>版本{{newVersionNo}}</text>
+            <!-- 未连接/无版本号时 newVersionNo 为 -- 占位，此时不带「版本」前缀 -->
+            <text>{{newVersionNo === '--' ? '--' : '版本' + newVersionNo}}</text>
             <view class="ui-chevron"></view>
           </view>
         </view>
