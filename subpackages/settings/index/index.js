@@ -11,6 +11,7 @@ Page({
     dialogType: '',
     dialogTitle: '',
     dialogDesc: '',
+    dialogConfirmText: '确定',
     dialogClosing: false // 确认弹窗是否正在播放退场动画
   },
 
@@ -74,20 +75,23 @@ Page({
     })
   },
 
-  // 退出登录与注销共用一个确认弹窗，靠 dialogType 区分（'logout' / 'delete'）
+  // 退出登录与注销共用一个确认弹窗，靠 dialogType 区分（'logout' / 'delete-warn' / 'delete'）
   showLogout() {
     this.setData({
       dialogType: 'logout',
       dialogTitle: '退出登录',
-      dialogDesc: '退出后将返回登录页，是否继续?'
+      dialogDesc: '退出后将返回登录页，是否继续?',
+      dialogConfirmText: '确定'
     })
   },
 
+  // 注销需两步确认：第一步提示设备照片需自行清空，第二步让用户确认已了解
   showDelete() {
     this.setData({
-      dialogType: 'delete',
+      dialogType: 'delete-warn',
       dialogTitle: '用户注销',
-      dialogDesc: '注销后您的所有数据将会彻底删除且无法恢复，确定要注销账号?'
+      dialogDesc: '注销将永久删除您的所有账号数据，请确认设备照片已自行清空，否则注销后将无法删除设备照片',
+      dialogConfirmText: '继续'
     })
   },
 
@@ -102,6 +106,7 @@ Page({
         dialogType: '',
         dialogTitle: '',
         dialogDesc: '',
+        dialogConfirmText: '确定',
         dialogClosing: false
       })
     }, 220)
@@ -110,6 +115,18 @@ Page({
   // 弹窗确认：按 dialogType 执行退出或注销，两者都清本地会话并重启到登录页
   async confirmDialog() {
     const dialogType = this.data.dialogType
+
+    // 注销第一步点「继续」：原弹窗内切换到第二步确认文案，不关闭遮罩
+    if (dialogType === 'delete-warn') {
+      this.setData({
+        dialogType: 'delete',
+        dialogTitle: '用户注销',
+        dialogDesc: '我已了解设备照片需自行处理的说明，并确认继续注销。',
+        dialogConfirmText: '确认'
+      })
+      return
+    }
+
     this.closeDialog()
 
     if (dialogType === 'logout') {

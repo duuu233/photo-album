@@ -47,7 +47,7 @@
       <view class="dialog-desc">{{dialogDesc}}</view>
       <view class="dialog-actions">
         <view class="dialog-btn cancel-btn" hover-class="none" bindtap="closeDialog">取消</view>
-        <view class="dialog-btn confirm-btn" hover-class="none" bindtap="confirmDialog">确定</view>
+        <view class="dialog-btn confirm-btn" hover-class="none" bindtap="confirmDialog">{{dialogConfirmText || '确定'}}</view>
       </view>
     </view>
   </view>

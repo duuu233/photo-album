@@ -138,10 +138,10 @@
         </view>
         <view class="confirm-copy">
           <view class="confirm-title">删除设备</view>
-          <view class="confirm-desc">删除后将解除与该相框设备的绑定，后续使用需重新添加设备。</view>
+          <view class="confirm-desc">删除设备后，设备上的照片将保留，如不再使用此设备，建议先清空所有照片</view>
         </view>
         <view class="confirm-actions">
-          <view class="confirm-cancel" hover-class="none" bindtap="hideDeleteConfirm">取消</view>
+          <view class="confirm-cancel" hover-class="none" bindtap="hideDeleteConfirm">再想想</view>
           <view class="confirm-primary" hover-class="none" bindtap="confirmDeleteDevice">确认</view>
         </view>
       </view>

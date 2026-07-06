@@ -385,8 +385,9 @@ Page({
 
     wx.showModal({
       title: '删除设备',
-      content: '删除后将解除与该相框设备的绑定。',
-      confirmText: '删除',
+      content: '删除设备后，设备上的照片将保留，如不再使用此设备，建议先清空所有照片',
+      cancelText: '再想想',
+      confirmText: '确认',
       confirmColor: '#ff4d4f',
       success: async res => {
         if (!res.confirm) {
