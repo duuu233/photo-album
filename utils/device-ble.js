@@ -324,19 +324,44 @@ async function createConnectionWithRetry(deviceId, attempts = 2) {
   throw lastError || new Error('蓝牙连接失败')
 }
 
+// 会话序列号登记：把这台设备的稳定标识（扫描广播里的 Device_ID 4 字节 / 0x01 读到的固件 6 字节）
+// 归一化后记到会话上。BLE deviceId 是扫描会话临时值、后端只存序列号，页面刷新/切换后记录常丢 deviceId——
+// 有了序列号，上层(active-device.findConnectedDeviceId)才能用「设备ID×广播ID」交叉匹配认出活动会话，
+// 避免「假断联 → 重扫（设备被自己占线不广播）→ 未搜索到该设备」。
+function attachSessionSerial(deviceId, serial) {
+  const session = sessions[deviceId]
+  const value = String(serial == null ? '' : serial)
+    .replace(/[:\-\s]/g, '')
+    .toUpperCase()
+  if (!session || !value) {
+    return
+  }
+  session.serials = session.serials || []
+  if (session.serials.indexOf(value) === -1) {
+    session.serials.push(value)
+  }
+}
+
 // 建立连接并发现 FF00 主服务下的写(FF01)/通知(FF02)特征，开启通知。结果缓存到会话。
 // 已连上直接复用；正在连则复用在途 Promise（避免并发重复连接），否则发起一次新连接。
-async function ensureConnection(deviceId) {
+// meta.deviceNo（可选）：扫描广播里的 Device_ID，登记到会话供「设备ID×广播ID」交叉匹配。
+async function ensureConnection(deviceId, meta) {
+  const serial = meta && (meta.deviceNo || meta.serial)
   if (sessions[deviceId] && sessions[deviceId].ready) {
+    attachSessionSerial(deviceId, serial)
     return sessions[deviceId]
   }
   if (connecting[deviceId]) {
-    return connecting[deviceId]
+    const session = await connecting[deviceId]
+    attachSessionSerial(deviceId, serial)
+    return session
   }
   const promise = establishConnection(deviceId)
   connecting[deviceId] = promise
   try {
-    return await promise
+    const session = await promise
+    attachSessionSerial(deviceId, serial)
+    return session
   } finally {
     delete connecting[deviceId]
   }
@@ -388,6 +413,7 @@ async function establishConnection(deviceId) {
       rxBuffer: [],
       pending: {},
       frameListeners: [], // 临时帧监听者（图传等待 0x23 应答时往里塞，用完移除）
+      serials: [], // 这台设备的稳定序列号（广播 Device_ID/固件 Device_ID），供交叉匹配活动会话
       mtu, // 协商到的 MTU
       dataChunk: chunkFromMtu(mtu), // 每个图片数据包可装的字节数
       // 实测指定有应答写(write)会报 10007「特征不支持此操作」，与 PRD「FF01: Write Without Response」一致——
@@ -569,6 +595,9 @@ function createAckTracker(session) {
 async function readDeviceInfo(deviceId) {
   const infoAck = await request(deviceId, protocol.CMD.GET_INFO)
   const info = protocol.parseDeviceInfo(infoAck.data)
+  // 固件返回的真实 Device_ID(6 字节)登记到会话：即使连接时没带广播序列号（如直连旧 deviceId），
+  // 读过一次设备信息后也能被「设备ID×广播ID」交叉匹配认出来
+  attachSessionSerial(deviceId, info.deviceId)
 
   try {
     const swAck = await request(deviceId, protocol.CMD.GET_SW_VER)
@@ -969,6 +998,9 @@ function getActiveConnections() {
       return {
         deviceId: id,
         serviceId: session.serviceId,
+        // 已登记的稳定序列号（广播/固件 Device_ID）：active-device 据此把「丢了 deviceId 的设备记录」
+        // 与活动会话交叉匹配，认出「其实还连着」的设备
+        serials: (session.serials || []).slice(),
         mtu: session.mtu,
         dataChunk: session.dataChunk,
         writeType: session.writeType,

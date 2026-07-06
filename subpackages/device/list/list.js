@@ -83,12 +83,15 @@ Page({
             bleDeviceId: item.bleDeviceId || selected.bleDeviceId || selected.deviceId,
             battery: typeof item.battery === 'number' ? item.battery : selected.battery
           })
-      // 用 App 当前真实的蓝牙会话状态覆盖后端的 connected：后端并不知道本机的蓝牙连接，
-      // 若直接用它，切到别的页面再回到本页重新拉列表时，即使蓝牙仍连着也会被错显示成「未连接」。
-      // 改用 deviceBle.isConnected 实时判断（与首页一致），切回来只要会话还在就保持「已连接」。
-      const bleId = merged.deviceId || merged.bleDeviceId
+      // 用 App 当前真实的蓝牙会话状态覆盖后端的 connected：后端并不知道本机的蓝牙连接。
+      // 判连接用「deviceId 直连 + 设备ID×广播ID 序列号交叉匹配」（findConnectedDeviceId）：
+      // 接口重拉的记录常不带 BLE deviceId，只按 deviceId 判断会把还连着的设备错显示成「未连接」；
+      // 交叉匹配命中后把当下有效 deviceId 回填给列表项，断开/投屏按钮才有正确的 deviceId 可用。
+      const liveId = activeDevice.findConnectedDeviceId(merged)
       return Object.assign({}, merged, {
-        connected: !!(bleId && deviceBle.isConnected(bleId))
+        deviceId: liveId || merged.deviceId,
+        bleDeviceId: liveId || merged.bleDeviceId,
+        connected: !!liveId
       })
     })
 
@@ -283,6 +286,24 @@ Page({
   // 所以列表页连接必须先重扫拿到当下有效的 deviceId，再连——直连存下来的 deviceId 必失败。
   // 成功返回带有效 deviceId/实时信息的设备对象并刷新列表 UI；失败提示后返回 null。
   async connectDevice(device) {
+    // 会话还活着（deviceId 直连 + 设备ID×广播ID 序列号交叉匹配）：直接复用，不重扫——
+    // 设备是单连接，被自己占线时不广播，重扫必然「未搜索到该设备」还白等 6 秒。
+    // 复用前读一次设备信息作活性校验：读不动说明是死会话（后台断开未上报），清掉走完整扫描重连。
+    const liveId = activeDevice.findConnectedDeviceId(device)
+    if (liveId) {
+      wx.showLoading({ title: '连接设备中', mask: true })
+      try {
+        const info = await deviceBle.readDeviceInfo(liveId)
+        const updated = this.applyConnectedDevice(device, liveId, info)
+        toast.show({ title: '已连接', icon: 'none' })
+        return updated
+      } catch (error) {
+        deviceBle.disconnect(liveId)
+      } finally {
+        wx.hideLoading()
+      }
+    }
+
     wx.showLoading({ title: '搜索设备中', mask: true })
     try {
       const location = await permission.getCurrentLocation()
@@ -298,34 +319,12 @@ Page({
         throw new Error('未搜索到该设备，请确认设备已开机并在附近')
       }
 
-      // 用本次扫描到的有效 deviceId 连接并读真实信息
+      // 用本次扫描到的有效 deviceId 连接并读真实信息；
+      // 广播 Device_ID 登记到会话，切页面后各页据此交叉匹配认出这条连接
       wx.showLoading({ title: '连接设备中', mask: true })
-      await deviceBle.ensureConnection(target.deviceId)
+      await deviceBle.ensureConnection(target.deviceId, { deviceNo: target.deviceNo })
       const info = await deviceBle.readDeviceInfo(target.deviceId)
-      const updated = Object.assign({}, device, {
-        deviceId: target.deviceId, // 刷新成本次会话有效的 deviceId，供后续断开/图传复用
-        bleDeviceId: target.deviceId,
-        connected: true,
-        battery: info.battery,
-        usedMemory: info.imgCount,
-        totalMemory: info.capacity,
-        playbackMode: info.playMode,
-        intervalSeconds: info.intervalSeconds,
-        intervalHours: info.intervalSeconds ? Math.max(1, Math.round(info.intervalSeconds / 3600)) : device.intervalHours,
-        firmwareVersion: info.firmwareVersion || device.firmwareVersion
-      })
-
-      // 连接成功即设为当前选中设备：设备是单连接，「正连着的」就是当前在用的。
-      // 这样切到别的页面再回来、或自动重连时，都能据 selectedDevice.deviceId 认出这条活动会话。
-      app.setSelectedDevice(updated)
-
-      this.setData({
-        devices: this.data.devices.map(item => item.id === device.id ? Object.assign({}, updated, {
-          memoryPercent: memoryPercent(updated),
-          batteryIcon: batteryUtil.getBatteryIcon(updated.battery),
-          batteryText: typeof updated.battery === 'number' ? `${updated.battery}%` : ''
-        }) : item)
-      })
+      const updated = this.applyConnectedDevice(device, target.deviceId, info)
       toast.show({ title: '已连接', icon: 'none' })
       return updated
     } catch (error) {
@@ -342,6 +341,35 @@ Page({
     } finally {
       wx.hideLoading()
     }
+  },
+
+  // 连接成功后的统一收尾（新连接与复用活动会话共用）：合并设备实时信息 → 设为全局选中设备 → 刷新列表项。
+  applyConnectedDevice(device, deviceId, info) {
+    const updated = Object.assign({}, device, {
+      deviceId, // 刷新成本次会话有效的 deviceId，供后续断开/图传复用
+      bleDeviceId: deviceId,
+      connected: true,
+      battery: info.battery,
+      usedMemory: info.imgCount,
+      totalMemory: info.capacity,
+      playbackMode: info.playMode,
+      intervalSeconds: info.intervalSeconds,
+      intervalHours: info.intervalSeconds ? Math.max(1, Math.round(info.intervalSeconds / 3600)) : device.intervalHours,
+      firmwareVersion: info.firmwareVersion || device.firmwareVersion
+    })
+
+    // 连接成功即设为当前选中设备：设备是单连接，「正连着的」就是当前在用的。
+    // 这样切到别的页面再回来、或自动重连时，都能据 selectedDevice.deviceId 认出这条活动会话。
+    app.setSelectedDevice(updated)
+
+    this.setData({
+      devices: this.data.devices.map(item => item.id === device.id ? Object.assign({}, updated, {
+        memoryPercent: memoryPercent(updated),
+        batteryIcon: batteryUtil.getBatteryIcon(updated.battery),
+        batteryText: typeof updated.battery === 'number' ? `${updated.battery}%` : ''
+      }) : item)
+    })
+    return updated
   },
 
   // 把后端来的设备(只有序列号/名称)和扫描结果匹配，返回带「本次会话有效 deviceId」的那条。

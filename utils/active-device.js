@@ -30,10 +30,37 @@ function getActiveDevice() {
   return (app && app.globalData && app.globalData.selectedDevice) || null
 }
 
-// 是否已有可用连接（有有效 bleDeviceId 且底层会话就绪）
+// 找出这台设备当下的活动会话 deviceId：先按记录里的 BLE deviceId 直连命中；
+// 命中不了再用「设备ID×广播ID」交叉匹配——拿设备记录的稳定序列号(deviceNo/productDeviceId，即后端设备ID)
+// 与各活动会话登记的序列号(扫描广播 Device_ID/固件 0x01 Device_ID)容错比对(serialsMatch)。
+// 场景：切页面后从接口重拉的设备记录不带 BLE deviceId，直连判断必然「未连接」；但会话其实还活着，
+// 此时若当作断联去重扫，设备(单连接)被自己占线不广播，必然「未搜索到该设备」。交叉匹配能认出这条会话。
+// 返回活动会话的 deviceId；没有匹配返回 ''。
+function findConnectedDeviceId(device) {
+  if (!device) {
+    return ''
+  }
+  const directId = device.deviceId || device.bleDeviceId
+  if (directId && deviceBle.isConnected(directId)) {
+    return directId
+  }
+  const serials = [device.deviceNo, device.productDeviceId]
+    .map(normalizeSerial)
+    .filter(Boolean)
+  if (!serials.length) {
+    return ''
+  }
+  const hit = deviceBle.getActiveConnections().find(conn =>
+    (conn.serials || []).some(serial =>
+      serials.some(mine => serialsMatch(serial, mine))
+    )
+  )
+  return hit ? hit.deviceId : ''
+}
+
+// 是否已有可用连接：deviceId 直连命中，或序列号交叉匹配到活动会话
 function isDeviceConnected(device) {
-  const id = device && (device.deviceId || device.bleDeviceId)
-  return !!(id && deviceBle.isConnected(id))
+  return !!findConnectedDeviceId(device)
 }
 
 // 硬件序列号归一化：去分隔符 + 大写，兼容后端与蓝牙广播两侧可能的格式差异
@@ -108,8 +135,11 @@ function syncActiveDeviceId(device, deviceId) {
 // 返回连上的当下有效 deviceId；连不上抛错(error.code 保留，如 PERMISSION_DENIED)。
 // 已连接：直接返回，不弹 loading。未连接：默认弹「连接设备中」loading（options.showLoading:false 可关）。
 async function ensureDeviceConnected(device, options = {}) {
-  const existingId = device && (device.deviceId || device.bleDeviceId)
-  if (existingId && deviceBle.isConnected(existingId)) {
+  // 先认活动会话（deviceId 直连 + 序列号交叉匹配）：会话还活着就直接复用，绝不重扫——
+  // 设备是单连接，被自己占线时不广播，重扫必然「未搜索到该设备」还白等 6 秒
+  const existingId = findConnectedDeviceId(device)
+  if (existingId) {
+    syncActiveDeviceId(device, existingId) // 把当下有效 deviceId 回写选中设备，后续直连命中
     return existingId
   }
   const showLoading = options.showLoading !== false
@@ -127,7 +157,8 @@ async function ensureDeviceConnected(device, options = {}) {
     if (!target) {
       throw new Error('未搜索到该设备，请确认设备已开机并在附近')
     }
-    await deviceBle.ensureConnection(target.deviceId)
+    // 把扫描广播里的 Device_ID 登记到会话，后续页面据此交叉匹配认出这条连接
+    await deviceBle.ensureConnection(target.deviceId, { deviceNo: target.deviceNo })
     syncActiveDeviceId(device, target.deviceId)
     return target.deviceId
   } finally {
@@ -183,6 +214,7 @@ async function ensureActiveDeviceConnection() {
 module.exports = {
   getActiveDevice,
   isDeviceConnected,
+  findConnectedDeviceId,
   serialsMatch,
   matchScannedDevice,
   ensureDeviceConnected,

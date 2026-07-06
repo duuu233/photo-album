@@ -335,10 +335,18 @@ Page({
       })
     }
 
-    if (device && device.deviceId && deviceBle.isConnected(device.deviceId)) {
+    // 判连接用「deviceId 直连 + 设备ID×广播ID 序列号交叉匹配」：详情记录从接口重拉后常不带 BLE deviceId，
+    // 只按 deviceId 判断会把还连着的设备错显示成「未连接」（假断联）；命中后把当下有效 deviceId 回填给记录，
+    // 顶部「断开」、投屏、轮播设置等操作才有正确的 deviceId 可用。
+    const liveId = activeDevice.findConnectedDeviceId(device)
+    if (liveId) {
       // 连接态以 BLE 会话为准，先行置位；readDeviceInfo 只用于补充电量/内存/播放模式，
       // 读失败不影响「已连接」显示（此前读失败会被静默吞掉，明明连着却显示成未连接）。
-      device = Object.assign({}, device, { connected: true })
+      device = Object.assign({}, device, {
+        deviceId: liveId,
+        bleDeviceId: liveId,
+        connected: true
+      })
       try {
         const info = await deviceBle.readDeviceInfo(device.deviceId)
         device = Object.assign({}, device, {
@@ -536,8 +544,8 @@ Page({
     if (!device) {
       return
     }
-    const bleId = device.deviceId || device.bleDeviceId
-    if (!(bleId && deviceBle.isConnected(bleId))) {
+    // deviceId 直连 + 序列号交叉匹配：记录丢了 deviceId 但会话还活着也算已连接（connectDevice 内部会复用）
+    if (!activeDevice.isDeviceConnected(device)) {
       device = await this.connectDevice()
       if (!device) {
         return // 连接失败，提示已由 connectDevice 弹出
@@ -643,6 +651,24 @@ Page({
       return null
     }
 
+    // 会话还活着（deviceId 直连 + 设备ID×广播ID 序列号交叉匹配）：直接复用，不重扫——
+    // 设备是单连接，被自己占线时不广播，重扫必然「未搜索到该设备」还白等 6 秒。
+    // 复用前读一次设备信息作活性校验：读不动说明是死会话（后台断开未上报），清掉走完整扫描重连。
+    const liveId = activeDevice.findConnectedDeviceId(device)
+    if (liveId) {
+      wx.showLoading({ title: '连接设备中', mask: true })
+      try {
+        const info = await deviceBle.readDeviceInfo(liveId)
+        const updated = this.applyConnectedDevice(device, liveId, info)
+        toast.show({ title: '已连接', icon: 'none' })
+        return updated
+      } catch (error) {
+        deviceBle.disconnect(liveId)
+      } finally {
+        wx.hideLoading()
+      }
+    }
+
     wx.showLoading({ title: '搜索设备中', mask: true })
     try {
       const location = await permission.getCurrentLocation()
@@ -656,43 +682,11 @@ Page({
         throw new Error('未搜索到该设备，请确认设备已开机并在附近')
       }
 
+      // 广播 Device_ID 登记到会话，切页面后各页据此交叉匹配认出这条连接
       wx.showLoading({ title: '连接设备中', mask: true })
-      await deviceBle.ensureConnection(target.deviceId)
+      await deviceBle.ensureConnection(target.deviceId, { deviceNo: target.deviceNo })
       const info = await deviceBle.readDeviceInfo(target.deviceId)
-      const updated = Object.assign({}, device, {
-        deviceId: target.deviceId,
-        bleDeviceId: target.deviceId,
-        connected: true,
-        battery: info.battery,
-        usedMemory: info.imgCount,
-        totalMemory: info.capacity,
-        playbackMode: info.playMode,
-        intervalSeconds: info.intervalSeconds,
-        intervalHours: info.intervalSeconds
-          ? Math.max(1, Math.round(info.intervalSeconds / 3600))
-          : device.intervalHours,
-        firmwareVersion: info.firmwareVersion || device.firmwareVersion,
-        // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
-        firmwareDeviceId: info.deviceId || device.firmwareDeviceId
-      })
-      app.setSelectedDevice(updated)
-
-      const hasBattery = typeof updated.battery === 'number'
-      this.setData({
-        device: updated,
-        memoryPercent: memoryPercent(updated),
-        batteryIcon: batteryUtil.getBatteryIcon(
-          hasBattery ? updated.battery : batteryUtil.DEFAULT_BATTERY
-        ),
-        batteryText: hasBattery ? `${updated.battery}%` : '--',
-        memoryText: updated.totalMemory
-          ? `${updated.usedMemory}/${updated.totalMemory}`
-          : '--',
-        playbackLabel: getPlaybackLabel(updated),
-        newVersionNo: updated.newVersionNo || updated.firmwareVersion || '--',
-        // 在详情页内点「连接」成功后，设备ID行立即切换为固件真实 Device_ID
-        deviceCode: updated.firmwareDeviceId || this.data.deviceCode
-      })
+      const updated = this.applyConnectedDevice(device, target.deviceId, info)
       toast.show({ title: '已连接', icon: 'none' })
       return updated
     } catch (error) {
@@ -708,6 +702,45 @@ Page({
     } finally {
       wx.hideLoading()
     }
+  },
+
+  // 连接成功后的统一收尾（新连接与复用活动会话共用）：合并设备实时信息 → 设为全局选中设备 → 刷新页面 UI。
+  applyConnectedDevice(device, deviceId, info) {
+    const updated = Object.assign({}, device, {
+      deviceId,
+      bleDeviceId: deviceId,
+      connected: true,
+      battery: info.battery,
+      usedMemory: info.imgCount,
+      totalMemory: info.capacity,
+      playbackMode: info.playMode,
+      intervalSeconds: info.intervalSeconds,
+      intervalHours: info.intervalSeconds
+        ? Math.max(1, Math.round(info.intervalSeconds / 3600))
+        : device.intervalHours,
+      firmwareVersion: info.firmwareVersion || device.firmwareVersion,
+      // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
+      firmwareDeviceId: info.deviceId || device.firmwareDeviceId
+    })
+    app.setSelectedDevice(updated)
+
+    const hasBattery = typeof updated.battery === 'number'
+    this.setData({
+      device: updated,
+      memoryPercent: memoryPercent(updated),
+      batteryIcon: batteryUtil.getBatteryIcon(
+        hasBattery ? updated.battery : batteryUtil.DEFAULT_BATTERY
+      ),
+      batteryText: hasBattery ? `${updated.battery}%` : '--',
+      memoryText: updated.totalMemory
+        ? `${updated.usedMemory}/${updated.totalMemory}`
+        : '--',
+      playbackLabel: getPlaybackLabel(updated),
+      newVersionNo: updated.newVersionNo || updated.firmwareVersion || '--',
+      // 在详情页内点「连接」成功后，设备ID行立即切换为固件真实 Device_ID
+      deviceCode: updated.firmwareDeviceId || this.data.deviceCode
+    })
+    return updated
   },
 
   // 把后端设备(序列号/名称)与扫描结果匹配，返回带「本次会话有效 deviceId」的那条。
@@ -737,8 +770,8 @@ Page({
     if (!device) {
       return
     }
-    const bleId = device.deviceId || device.bleDeviceId
-    if (!(bleId && deviceBle.isConnected(bleId))) {
+    // deviceId 直连 + 序列号交叉匹配，避免记录丢 deviceId 时误判「未连接」拦住入口
+    if (!activeDevice.isDeviceConnected(device)) {
       toast.warn({ title: '请先连接设备', icon: 'none' })
       return
     }
@@ -753,8 +786,8 @@ Page({
     if (!device) {
       return
     }
-    const bleId = device.deviceId || device.bleDeviceId
-    if (!(bleId && deviceBle.isConnected(bleId))) {
+    // deviceId 直连 + 序列号交叉匹配，避免记录丢 deviceId 时误判「未连接」拦住入口
+    if (!activeDevice.isDeviceConnected(device)) {
       toast.warn({ title: '请先连接设备', icon: 'none' })
       return
     }

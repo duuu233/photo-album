@@ -144,14 +144,17 @@ function normalizeDevice(device) {
   const battery = clampBattery(
     typeof device.battery === 'number' ? device.battery : 30
   )
+  // 活动会话按「设备ID×广播ID」交叉匹配认领：接口重拉的记录不带 BLE deviceId，只按 deviceId 直连判断
+  // 会把还连着的设备错显示成「未连接」（假断联）；交叉匹配命中后顺带把当下有效 deviceId 回填给记录
+  const liveId = activeDevice.findConnectedDeviceId(device)
   return {
     id: device.id || DEFAULT_DEVICE.id,
-    deviceId: device.deviceId || '', // 真实蓝牙 deviceId：投屏页据此连接设备并图传
+    deviceId: liveId || device.deviceId || '', // 真实蓝牙 deviceId：投屏页据此连接设备并图传
     // 硬件序列号(Device_ID)：跨扫描会话稳定，按需连接时据此匹配扫描结果，须随设备一路带下去
     deviceNo: device.deviceNo || device.productDeviceId || '',
     name: device.name || device.displayName || '相框',
     // 「已连接」按真实蓝牙会话显示（即连即传，无活动会话即未连接），不再恒为 true
-    connected: !!(device.deviceId && deviceBle.isConnected(device.deviceId)),
+    connected: !!liveId,
     // 屏幕分辨率：投屏预览页裁剪按此 width/height 锁定比例，透传给下游（接口就绪后即生效）
     width: device.width,
     height: device.height,
@@ -673,11 +676,11 @@ Page({
     return true
   },
 
-  // 当前展示选中的设备是否已建立真实蓝牙会话（拍照/相册前据此判断是否需要先连接）
+  // 当前展示选中的设备是否已建立真实蓝牙会话（拍照/相册前据此判断是否需要先连接）。
+  // deviceId 直连 + 序列号交叉匹配：切页面后 selectedDevice 可能丢 deviceId，但会话还活着就算已连接
   isCurrentDeviceConnected() {
     const selected = app.globalData.selectedDevice || this.data.currentDevice
-    const id = selected && (selected.deviceId || selected.bleDeviceId)
-    return !!(id && deviceBle.isConnected(id))
+    return !!activeDevice.findConnectedDeviceId(selected)
   },
 
   // 设备卡片「连接蓝牙」按钮（投屏入口未连接时也走这里）：扫描匹配当前展示选中的设备并连接，
@@ -688,8 +691,10 @@ Page({
       return false
     }
     const selected = app.globalData.selectedDevice || this.data.currentDevice
-    const existingId = selected && (selected.deviceId || selected.bleDeviceId)
-    if (existingId && deviceBle.isConnected(existingId)) {
+    // 先认活动会话（deviceId 直连 + 序列号交叉匹配）：会话还活着就直接复用，不重扫——
+    // 设备是单连接，被自己占线时不广播，重扫必然「未搜索到该设备」
+    const existingId = activeDevice.findConnectedDeviceId(selected)
+    if (existingId) {
       this.markCurrentDeviceConnected(existingId, null)
       toast.show({ title: '设备已连接', icon: 'none' })
       return true
@@ -709,7 +714,8 @@ Page({
       if (!target) {
         throw new Error('未搜索到该设备，请确认设备已开机并在附近')
       }
-      await deviceBle.ensureConnection(target.deviceId)
+      // 把扫描广播里的 Device_ID 登记到会话，切页面后各页据此交叉匹配认出这条连接
+      await deviceBle.ensureConnection(target.deviceId, { deviceNo: target.deviceNo })
       const info = await deviceBle.readDeviceInfo(target.deviceId)
       this.markCurrentDeviceConnected(target.deviceId, info)
       toast.show({ title: '已连接设备', icon: 'none' })
