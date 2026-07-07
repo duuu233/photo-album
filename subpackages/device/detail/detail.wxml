@@ -164,7 +164,7 @@
             <text>删除设备</text>
           </view>
           <view class="row-right">
-            <text>删除后将无法恢复</text>
+            <text>为了隐私安全，建议清空数据</text>
             <view class="ui-chevron">
             </view>
           </view>
