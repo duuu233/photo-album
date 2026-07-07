@@ -75,7 +75,7 @@
               </view>
               <image
                 class="device-carousel-bg"
-                src="/assets/images/home-bg01.png"
+                src="https://oss.boltfox.cn/prodFile/202607072104114724571.png"
                 mode="aspectFill" />
               <image
                 class="device-orbit"
