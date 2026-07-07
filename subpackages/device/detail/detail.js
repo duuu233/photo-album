@@ -1071,6 +1071,11 @@ Page({
   },
 
   clearCopies() {
+    // 一键清空需与固件交互：未连接不自动重连，直接提示「请先连接设备」
+    if (!activeDevice.isDeviceConnected(this.data.device)) {
+      toast.warn({ title: '请先连接设备', icon: 'none' })
+      return
+    }
     this.showClearConfirm()
   },
 
@@ -1079,9 +1084,10 @@ Page({
       return
     }
 
-    // 操作前先确保已连接：断联则自动重连(扫描+连接)，连不上再提示「请先连接设备」。
-    const deviceId = await activeDevice.ensureConnectedForAction(this.data.device)
+    // 一键清空需已连接：未连接不自动重连(点击时已拦一次，这里作二次保护)，直接提示「请先连接设备」。
+    const deviceId = activeDevice.findConnectedDeviceId(this.data.device)
     if (!deviceId) {
+      toast.warn({ title: '请先连接设备', icon: 'none' })
       return
     }
 

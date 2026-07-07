@@ -101,6 +101,11 @@ function getHomeBgImage() {
   return 'https://oss.boltfox.cn/prodFile/202607071032177373571.png'
 }
 
+// 首页前景图：与大背景图一起做「加载完成再展示首页」的门控，未加载完先展示 loading
+function getHomeFgImage() {
+  return 'https://oss.boltfox.cn/prodFile/202607072104114724571.png'
+}
+
 function isBindingScene(scene) {
   return (
     scene === SCENES.BINDING_SCANNING ||
@@ -189,6 +194,7 @@ function sceneState(scene) {
     isScanHelp,
     showNavBack,
     homeBgImage: getHomeBgImage(),
+    homeFgImage: getHomeFgImage(),
     promptTitle:
       scene === SCENES.UNBOUND_RECONNECT ? '设备连接失败' : '暂未绑定设备',
     promptDesc:
@@ -217,11 +223,21 @@ Page({
     sheetClosing: false, // 底部弹层是否正在播放退场动画
     // 首屏拉设备列表（判断已绑定/未绑定）前为 true，先展示 loading，
     // 等 loadHomeState 走到 setScene 落定场景再关闭，避免「未绑定」空态先闪一下再变「已绑定」。
-    pageLoading: true
+    pageLoading: true,
+    // 大背景图 + 前景图都加载完成前为 false，先展示 loading，避免首页在图未就绪时先露白底
+    bgReady: false
   }, sceneState(SCENES.UNBOUND)),
 
   onLoad(options = {}) {
     this.scanTimer = null // 模拟扫描的定时器句柄，离开页面时需清除
+    // 背景/前景图加载门控：两张都 load(或 error) 后才放行首页；兜底 6s 防止事件不触发时一直卡 loading
+    this.homeAssetLoaded = { bg: false, fg: false }
+    this.bgReadyTimer = setTimeout(() => {
+      this.bgReadyTimer = null
+      if (!this.data.bgReady) {
+        this.setData({ bgReady: true })
+      }
+    }, 6000)
     this.networkStatusHandler = this.handleNetworkStatusChange.bind(this)
     this.setSystemMetrics()
 
@@ -285,10 +301,41 @@ Page({
 
   onUnload() {
     this.clearScanTimer()
+    if (this.bgReadyTimer) {
+      clearTimeout(this.bgReadyTimer)
+      this.bgReadyTimer = null
+    }
 
     if (wx.offNetworkStatusChange && this.networkStatusHandler) {
       wx.offNetworkStatusChange(this.networkStatusHandler)
     }
+  },
+
+  // 背景图/前景图任一 load 完成的回调：两张都就绪后放行首页（关闭 loading 门控）。
+  onHomeAssetLoaded(e) {
+    const key = (e && e.currentTarget && e.currentTarget.dataset.asset) || ''
+    if (!this.homeAssetLoaded) {
+      this.homeAssetLoaded = { bg: false, fg: false }
+    }
+    if (key) {
+      this.homeAssetLoaded[key] = true
+    }
+    if (
+      this.homeAssetLoaded.bg &&
+      this.homeAssetLoaded.fg &&
+      !this.data.bgReady
+    ) {
+      if (this.bgReadyTimer) {
+        clearTimeout(this.bgReadyTimer)
+        this.bgReadyTimer = null
+      }
+      this.setData({ bgReady: true })
+    }
+  },
+
+  // 背景图/前景图加载失败：也按「已就绪」放行，避免网络异常时首页一直卡在 loading。
+  onHomeAssetError(e) {
+    this.onHomeAssetLoaded(e)
   },
 
   setSystemMetrics() {
