@@ -22,6 +22,17 @@
   height: 100%;
 }
 
+/* 前景图预加载占位：移出视口且不占布局，只为触发加载完成事件做首页展示门控 */
+.home-asset-preload {
+  position: absolute;
+  top: -9999rpx;
+  left: -9999rpx;
+  width: 1rpx;
+  height: 1rpx;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .home-content,
 .binding-content {
   position: relative;

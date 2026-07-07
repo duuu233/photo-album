@@ -5,8 +5,18 @@
     <image
       class="home-bg-image"
       src="{{homeBgImage}}"
-      mode="aspectFill" />
+      mode="aspectFill"
+      data-asset="bg"
+      bindload="onHomeAssetLoaded"
+      binderror="onHomeAssetError" />
   </view>
+  <!-- 前景图预加载：不显示，仅用于「背景图+前景图都加载完再展示首页」的 loading 门控 -->
+  <image
+    class="home-asset-preload"
+    src="{{homeFgImage}}"
+    data-asset="fg"
+    bindload="onHomeAssetLoaded"
+    binderror="onHomeAssetError" />
   <page-nav
     title="{{navTitle}}"
     show-back="{{showNavBack}}"
@@ -14,8 +24,8 @@
     bind:backtap="backFromBinding"
   >
   </page-nav>
-  <!-- 首屏加载中：拉设备列表确定已绑定/未绑定前先展示 loading，避免「未绑定」空态先闪一下 -->
-  <view wx:if="{{pageLoading}}" class="page-loading">
+  <!-- 首屏加载中：拉设备列表确定已绑定/未绑定，或背景图/前景图尚未加载完成前先展示 loading -->
+  <view wx:if="{{pageLoading || !bgReady}}" class="page-loading">
     <view class="page-loading__spinner">
     </view>
     <view class="page-loading__text">加载中…</view>
