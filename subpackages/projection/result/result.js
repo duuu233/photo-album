@@ -12,6 +12,8 @@ const api = require('../../../utils/api')
 const deviceBle = require('../../../utils/device-ble')
 const protocol = require('../../../utils/frame-protocol')
 const toast = require('../../../utils/toast')
+const media = require('../../../utils/media')
+const activeDevice = require('../../../utils/active-device')
 
 const STATUS_TEXT = {
   progress: {
@@ -47,7 +49,10 @@ Page({
     recordCount: 0,
     progressCurrent: 0,
     progressTotal: 0,
-    progressPercent: 0
+    progressPercent: 0,
+    // 「继续投屏」在当前页弹出的「拍照/相册」选择弹层显隐 + 退场动画标记
+    showMediaSheet: false,
+    mediaSheetClosing: false
   },
 
   onLoad(options) {
@@ -99,6 +104,8 @@ Page({
   async runRealProjection() {
     const pending = wx.getStorageSync('pendingProjection') || {}
     const device = pending.device || {}
+    // 记住本次投屏的设备，供成功后「继续投屏」复用（成功会清掉 pendingProjection）
+    this._sessionDevice = device
     // 只投有真实图片文件的照片（相册占位图 url 为空，无法图传）
     const images = (pending.images || []).filter(
       item => item && (item.tempFilePath || item.url)
@@ -483,6 +490,7 @@ Page({
   },
 
   successResult(device, count) {
+    this._sessionDevice = device // 供「继续投屏」复用这台设备
     wx.removeStorageSync('pendingProjection') // 成功后清掉，避免重复投
     const result = {
       status: 'success',
@@ -547,9 +555,84 @@ Page({
     })
   },
 
+  // 「继续投屏」：不跳首页，在当前结果页弹出「拍照/相册」二选一弹层，选图后走投屏预览页。
   continueProjection() {
-    wx.switchTab({
-      url: '/pages/home/home'
+    this.setData({ showMediaSheet: true, mediaSheetClosing: false })
+  },
+
+  // 关闭「拍照/相册」弹层（带退场动画，与首页/设备详情页一致）
+  hideMediaSheet() {
+    if (this.data.mediaSheetClosing) {
+      return
+    }
+    this.setData({ mediaSheetClosing: true })
+    setTimeout(() => {
+      this.setData({ showMediaSheet: false, mediaSheetClosing: false })
+    }, 220)
+  },
+
+  // 选「拍照」：调起相机拍一张后继续投屏
+  chooseCamera() {
+    this.pickAndContinue(() => media.chooseFromCamera())
+  },
+
+  // 选「相册」：从相册选图后继续投屏
+  chooseAlbum() {
+    this.pickAndContinue(() => media.chooseFromAlbum())
+  },
+
+  // 选图(拍照/相册)后继续投屏：复用本次投屏的设备，确保已连接后写 pendingProjection 跳投屏预览页。
+  // 用户取消选择不报错；连不上设备时提示已由 ensureConnectedForAction 弹出。
+  async pickAndContinue(pickImages) {
+    let images
+    try {
+      images = await pickImages()
+    } catch (error) {
+      if (error && error.errMsg && error.errMsg.indexOf('cancel') > -1) {
+        return // 用户取消选择，保留弹层
+      }
+      toast.warn({ title: '选择照片失败', icon: 'none' })
+      return
+    }
+    if (!images || !images.length) {
+      return
+    }
+
+    // 复用本次投屏的设备；缺失时退回全局选中设备
+    const device = this._sessionDevice || activeDevice.getActiveDevice()
+    if (
+      !device ||
+      !(
+        device.deviceId ||
+        device.bleDeviceId ||
+        device.deviceNo ||
+        device.productDeviceId ||
+        device.name
+      )
+    ) {
+      toast.warn({ title: '未找到可投屏的设备', icon: 'none' })
+      return
+    }
+
+    this.hideMediaSheet()
+    // 自动寻找并连接该设备（未连接会自动扫描重连；连不上/无权限有提示）
+    const deviceId = await activeDevice.ensureConnectedForAction(device)
+    if (!deviceId) {
+      return // 提示已由 ensureConnectedForAction 弹出
+    }
+
+    wx.setStorageSync('pendingProjection', {
+      device: Object.assign({}, device, {
+        deviceId,
+        bleDeviceId: deviceId,
+        connected: true
+      }),
+      images
     })
-  }
+    wx.redirectTo({
+      url: '/subpackages/projection/preview/preview'
+    })
+  },
+
+  noop() {}
 })

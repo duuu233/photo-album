@@ -54,8 +54,8 @@ module.exports = {
     return chooseMedia(['camera'], 1)
   },
 
-  // 从相册选择：最多 9 张
+  // 从相册选择：一次最多 5 张（投屏批量上限）
   chooseFromAlbum() {
-    return chooseMedia(['album'], 9)
+    return chooseMedia(['album'], 5)
   }
 }

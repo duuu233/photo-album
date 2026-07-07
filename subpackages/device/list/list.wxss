@@ -184,14 +184,10 @@
   align-items: center;
   height: 84rpx;
   margin-top: 34rpx;
-  background: rgba(255, 255, 255, 0.54);
+  /* 背景色与设备详情页 .device-actions.glass-panel 一致（取全局 .glass-panel） */
+  background: rgba(255, 255, 255, 0.4);
   border-radius: 40rpx;
   border: 1px solid rgba(255, 255, 255, 0.31);
-  background: linear-gradient(
-    88deg,
-    rgba(255, 255, 255, 0.38) 2.41%,
-    rgba(255, 255, 255, 0.55) 96.27%
-  );
   box-shadow: 0 4px 12.1px 0 rgba(44, 63, 97, 0.03);
   backdrop-filter: blur(7.949999809265137px);
 }
