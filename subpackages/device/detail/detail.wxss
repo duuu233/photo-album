@@ -193,7 +193,7 @@
 .row-right {
   flex-shrink: 0;
   gap: 16rpx;
-  max-width: 330rpx;
+  max-width: 386rpx;
   color: #777e88;
   font-size: 28rpx;
   line-height: 1.2;
