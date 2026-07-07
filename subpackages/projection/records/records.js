@@ -98,14 +98,32 @@ Page({
       return
     }
 
-    // 先确保与当前设备建立蓝牙连接（未连接会自动扫描+连接；无设备/连不上会弹窗引导去首页）。
-    // 满足「就算没连接设备，点投屏也要先连设备再投屏」。
-    let device
-    try {
-      device = await activeDevice.ensureActiveDeviceConnection()
-    } catch (error) {
-      return // 提示已由 ensureActiveDeviceConnection 弹出
+    // 自动寻找并连接「该记录对应的设备」（而非全局选中设备）：先按记录定位到这台设备，
+    // 再自动扫描+连接它（未连接会按序列号扫描匹配再连；连不上/无权限有 toast 提示）。
+    // 满足「点再次/重新投屏就自动找到并连上该记录的设备」，无需先去首页选设备。
+    const targetDevice = await this.resolveRecordDevice(record)
+    if (
+      !targetDevice ||
+      !(
+        targetDevice.deviceId ||
+        targetDevice.bleDeviceId ||
+        targetDevice.deviceNo ||
+        targetDevice.productDeviceId ||
+        targetDevice.name
+      )
+    ) {
+      toast.warn({ title: '未找到该记录对应的设备，请前往首页确认设备', icon: 'none' })
+      return
     }
+    const connectedId = await activeDevice.ensureConnectedForAction(targetDevice)
+    if (!connectedId) {
+      return // 连不上，提示已由 ensureConnectedForAction 弹出（请先连接设备 / 权限引导）
+    }
+    const device = Object.assign({}, targetDevice, {
+      deviceId: connectedId,
+      bleDeviceId: connectedId,
+      connected: true
+    })
 
     // 预览/重转码用图优先取「图库里同一张照片的原图」（按 uProductImgId 关联）：
     // 记录里的 img 是后端按设备尺寸转换/压缩后的图，比例可能与原图不一致（预览会显得被拉伸），
@@ -137,6 +155,43 @@ Page({
     wx.navigateTo({
       url: '/subpackages/projection/preview/preview'
     })
+  },
+
+  // 定位「该条记录对应的设备」：优先按 userProductId 从用户设备列表精确匹配，其次按设备序列号
+  // (productDeviceId/deviceNo) 容错匹配；都匹配不到时退回当前全局选中设备（保证单设备场景仍可用）。
+  // 返回带序列号的设备对象(供 ensureConnectedForAction 扫描匹配连接)或 null。
+  async resolveRecordDevice(record) {
+    let devices = []
+    try {
+      devices = await api.getDevices()
+    } catch (error) {
+      devices = []
+    }
+
+    const upid = record && record.userProductId
+    if (upid) {
+      const byId = devices.find(
+        item =>
+          String(item.userProductId) === String(upid) ||
+          String(item.id) === String(upid)
+      )
+      if (byId) {
+        return byId
+      }
+    }
+
+    const serial = record && (record.productDeviceId || record.deviceNo)
+    if (serial) {
+      const bySerial = devices.find(item =>
+        activeDevice.serialsMatch(item.deviceNo || item.productDeviceId, serial)
+      )
+      if (bySerial) {
+        return bySerial
+      }
+    }
+
+    // 兜底：记录未带可匹配的设备标识时，退回全局选中设备（沿用旧行为，单设备场景不受影响）
+    return activeDevice.getActiveDevice()
   },
 
   // 按记录的 uProductImgId 到图库找同一张照片的原图地址；找不到/失败返回 ''，调用方回退记录图。
