@@ -96,16 +96,9 @@ function normalizeScene(scene) {
   return SCENE_ALIASES[scene] || SCENES.UNBOUND
 }
 
-function getHomeBgImage(scene) {
-  const useBg02 =
-    scene === SCENES.UNBOUND ||
-    scene === SCENES.UNBOUND_BIND_NOW ||
-    scene === SCENES.UNBOUND_RECONNECT ||
-    scene === SCENES.OFFLINE ||
-    scene === SCENES.BOUND ||
-    scene === SCENES.MEDIA_SHEET
-
-  return `/assets/images/${useBg02 ? 'bg02' : 'bg01'}.png`
+// 首页大背景图统一用 OSS 线上图，不再按场景区分本地 bg01/bg02
+function getHomeBgImage() {
+  return 'https://oss.boltfox.cn/prodFile/202607070935141637931.png'
 }
 
 function isBindingScene(scene) {
@@ -195,7 +188,7 @@ function sceneState(scene) {
     isBindingFound,
     isScanHelp,
     showNavBack,
-    homeBgImage: getHomeBgImage(scene),
+    homeBgImage: getHomeBgImage(),
     promptTitle:
       scene === SCENES.UNBOUND_RECONNECT ? '设备连接失败' : '暂未绑定设备',
     promptDesc:
