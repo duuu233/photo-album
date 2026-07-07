@@ -102,12 +102,13 @@
                 <view
                   wx:if="{{!item.connected}}"
                   class="device-connect-btn"
-                  hover-class="none"
+                  hover-class="device-connect-btn--hover"
+                  hover-stay-time="80"
                   catchtap="connectCurrentDevice"
                 >
                   <image
                     class="device-connect-icon"
-                    src="/assets/images/bluetooth-connection.png"
+                    src="/assets/images/bluetooth-icon-white.png"
                     mode="aspectFit" />
                   <text>连接蓝牙</text>
                 </view>
