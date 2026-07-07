@@ -359,6 +359,21 @@ Page({
       this.setData({ binding: false })
       return
     }
+
+    // 绑定接口(addUserProduct)的返回不含可靠的 userProductId（后端多半只回状态/裸 id），
+    // 于是 normalizeDevice 里选中设备的 id 落到了扫描得到的 BLE deviceId 而非后端 userProductId。
+    // 后果：详情页按 userProductId 认「这是当前选中设备」失败，且详情接口不回硬件序列号、无从交叉匹配，
+    // 明明连着却显示「未连接」（列表页因列表接口带序列号、靠交叉匹配侥幸显示正确，掩盖了这个问题）。
+    // 绑定成功后回查设备列表，用硬件序列号找到这条新记录，把它真实的 userProductId 回填给选中设备，
+    // 让各页都能按稳定的 userProductId 认出它（与 flutter 端 addUserProduct 后 refreshDevices 同理）。
+    // 回查失败(如网络抖动)不阻断绑定：退回原有行为，设备仍已连接。
+    const persisted = await this.findBoundDevice(scanDevice, info)
+    if (persisted && persisted.id) {
+      device = Object.assign({}, device, {
+        id: String(persisted.id),
+        userProductId: persisted.userProductId || persisted.id
+      })
+    }
     app.setSelectedDevice(device)
 
     toast.show({
