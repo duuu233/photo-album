@@ -98,7 +98,7 @@ function normalizeScene(scene) {
 
 // 首页大背景图统一用 OSS 线上图，不再按场景区分本地 bg01/bg02
 function getHomeBgImage() {
-  return 'https://oss.boltfox.cn/prodFile/202607070935141637931.png'
+  return 'https://oss.boltfox.cn/prodFile/202607071032177373571.png'
 }
 
 function isBindingScene(scene) {

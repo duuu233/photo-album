@@ -2,7 +2,7 @@
      避免接口报错时 device 为空导致布局错乱 -->
 <view class="mock-root slideshow-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
-    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607070935141637931.png" mode="aspectFill"></image>
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607071032177373571.png" mode="aspectFill"></image>
   </view>
 
   <page-nav title="轮播设置"></page-nav>
