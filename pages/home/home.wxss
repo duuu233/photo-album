@@ -175,14 +175,10 @@ button {
 
   justify-content: space-around;
   align-items: center;
-  /* overflow: hidden; */
-  /* border: 1rpx solid #ffffff4f;
-  border-radius: 60rpx;
-  fill: linear-gradient(326deg, rgba(255, 255, 255, 0.26) 6.29%, #fff 97.85%);
-  stroke-width: 1px;
-  stroke: rgba(255, 255, 255, 0.31);
-  filter: drop-shadow(0 4px 12px rgba(44, 63, 97, 0.03));
-  backdrop-filter: blur(10.550000190734863px); */
+  box-shadow: 0px 4px 16px rgba(60, 53, 16, 0.12);
+  border-radius: 24px;
+  backdrop-filter: blur(10.55px);
+  background: linear-gradient(318deg, rgba(255, 255, 255, 0.26) 0%, white 100%);
 }
 
 /* 卡片背景图：用 image 标签铺满，置于内容下方 */
