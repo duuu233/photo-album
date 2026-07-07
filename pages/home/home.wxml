@@ -57,12 +57,6 @@
             src="/assets/images/logo.png"
             mode="aspectFit" />
         </view>
-        <view style="width: 100px; height: 100px; position: relative">
-          <view style="width: 327px; height: 152px; left: 0px; top: 0px; position: absolute; background: linear-gradient(318deg, rgba(255, 255, 255, 0.26) 0%, white 100%); box-shadow: 0px 4px 16px rgba(60, 53, 16, 0.12); border-radius: 24px; backdrop-filter: blur(10.55px)">
-          </view>
-          <img style="width: 370px; height: 188px; left: -19px; top: -17px; position: absolute; opacity: 0.70" src="https://placehold.co/370x188" />
-          <img style="width: 189px; height: 356px; left: -24px; top: 162px; position: absolute; transform: rotate(-90deg); transform-origin: top left; opacity: 0.39" src="https://placehold.co/189x356" />
-        </view>
         <!-- 设备轮播：左右滑动切换已绑定的多台设备，change 时同步当前设备与指示点 -->
         <swiper
           class="device-swiper"
@@ -77,7 +71,8 @@
           >
             <view class="device-carousel" bindtap="goDeviceList">
               <!-- 玻璃背景层（融入自设计稿）：渐变 + 阴影 + 圆角 + 毛玻璃，作为最顶层 view 垫在整张背景图之下 -->
-              <view class="carousel-glass"></view>
+              <view class="carousel-glass">
+              </view>
               <image
                 class="device-carousel-bg"
                 src="/assets/images/home-bg01.png"
