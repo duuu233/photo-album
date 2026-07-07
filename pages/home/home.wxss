@@ -175,10 +175,23 @@ button {
 
   justify-content: space-around;
   align-items: center;
-  box-shadow: 0px 4px 16px rgba(60, 53, 16, 0.12);
   border-radius: 24px;
-  backdrop-filter: blur(10.55px);
+}
+
+/* 玻璃背景层（融入自设计稿）：渐变 + 阴影 + 圆角 + 毛玻璃。
+   与 .device-carousel-bg 同为 z-index:0，但它在 DOM 顺序更靠前，背景图会盖在其上→玻璃层垫在背景图之下；
+   阴影绘制在卡片外沿、不受背景图遮挡，正好满足「主要要它的阴影和背景色」。 */
+.carousel-glass {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 24px;
   background: linear-gradient(318deg, rgba(255, 255, 255, 0.26) 0%, white 100%);
+  box-shadow: 0px 4px 16px rgba(60, 53, 16, 0.12);
+  backdrop-filter: blur(10.55px);
 }
 
 /* 卡片背景图：用 image 标签铺满，置于内容下方 */
