@@ -1,6 +1,6 @@
 <view class="mock-root bind-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
-    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202606161459019677928.png" mode="aspectFill"></image>
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607070935141637931.png" mode="aspectFill"></image>
   </view>
 
   <page-nav title="绑定设备"></page-nav>
