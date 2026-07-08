@@ -223,7 +223,7 @@ Page({
     this.clearImgModalShowing = true
     wx.showModal({
       title: '提示',
-      content: '当前设备已被执行清空操作，请重新上传图片',
+      content: "当前设备近期执行过'一键清空'操作，请留意",
       showCancel: false,
       confirmText: '确认',
       success: res => {
