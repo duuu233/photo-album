@@ -159,6 +159,34 @@
   font-size: 28rpx;
 }
 
+/* 投屏明细计数：绿色=成功(successCount/所选)、红色=失败(failCount/所选)，部分成功两者并排 */
+.info-detail {
+  display: flex;
+  align-items: center;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.detail-count--ok {
+  color: #12b76a;
+}
+
+.detail-count--fail {
+  color: #f0483e;
+}
+
+.detail-sep {
+  margin: 0 8rpx;
+  color: #c2c8d0;
+}
+
+/* 失败页固定排查提示（复用 progress-tip 列表样式） */
+.fail-tips {
+  margin-top: 32rpx;
+  padding: 30rpx 32rpx;
+  text-align: left;
+}
+
 .result-actions {
   position: relative;
   z-index: 1;

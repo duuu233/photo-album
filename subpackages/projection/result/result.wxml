@@ -30,7 +30,11 @@
         </view>
         <view class="progress-tip-item">
           <text class="progress-tip-index">3</text>
-          <text class="progress-tip-text">投屏失败的图片可以前往投屏记录重新上传</text>
+          <text class="progress-tip-text">投屏过程意外中断在投屏记录中可继续操作</text>
+        </view>
+        <view class="progress-tip-item">
+          <text class="progress-tip-index">4</text>
+          <text class="progress-tip-text">投屏完成后，设备将自动刷新屏幕，蓝牙会暂短断开，请等待刷新后继续操作</text>
         </view>
       </view>
     </block>
@@ -44,9 +48,34 @@
       <view class="thin-divider"></view>
       <view class="info-row" hover-class="none" bindtap="goRecords">
         <view class="info-icon"><image class="info-icon__img" src="/assets/images/projection-result-icon02.png" mode="aspectFit"></image></view>
-        <text class="info-label">投屏管理</text>
-        <text class="info-value">{{recordCount}}张</text>
+        <text class="info-label">投屏明细</text>
+        <!-- n/n = 实际参与投屏/本次所选：绿色=成功(successCount/所选)，红色=失败(failCount/所选)；部分成功两者都显示 -->
+        <view class="info-detail">
+          <text wx:if="{{successCount > 0}}" class="detail-count detail-count--ok">{{successCount}}/{{selectedTotal}}</text>
+          <text wx:if="{{successCount > 0 && failCount > 0}}" class="detail-sep">,</text>
+          <text wx:if="{{failCount > 0}}" class="detail-count detail-count--fail">{{failCount}}/{{selectedTotal}}</text>
+        </view>
         <view class="ui-chevron info-arrow"></view>
+      </view>
+    </view>
+
+    <!-- 失败页固定排查提示：确认蓝牙连接 / 屏幕刷新中 / 网络故障 / 失败图可去投屏记录重传 -->
+    <view wx:if="{{status === 'fail'}}" class="fail-tips glass-panel">
+      <view class="progress-tip-item">
+        <text class="progress-tip-index">1</text>
+        <text class="progress-tip-text">请确认设备蓝牙正常连接中，手机蓝牙正常使用</text>
+      </view>
+      <view class="progress-tip-item">
+        <text class="progress-tip-index">2</text>
+        <text class="progress-tip-text">如屏幕正在刷新中，请稍后再试</text>
+      </view>
+      <view class="progress-tip-item">
+        <text class="progress-tip-index">3</text>
+        <text class="progress-tip-text">如遇系统网络故障，请稍后再试</text>
+      </view>
+      <view class="progress-tip-item">
+        <text class="progress-tip-index">4</text>
+        <text class="progress-tip-text">投屏失败的图片可以前往投屏记录重新上传</text>
       </view>
     </view>
   </view>

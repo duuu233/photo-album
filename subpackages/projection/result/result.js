@@ -21,7 +21,7 @@ const STATUS_TEXT = {
     desc: '投屏过程中请不要关闭手机'
   },
   success: {
-    title: '投屏成功',
+    title: '投屏完成',
     desc: '照片已成功投屏到设备，可前往相册查看'
   },
   fail: {
@@ -37,6 +37,27 @@ const STATUS_ART = {
   success: '/assets/images/upload-icon03.png'
 }
 
+// 把投屏过程中的底层错误归一成用户能看懂的结果页提示：
+//   · 设备内存已满 → 引导清理；
+//   · 设备连接 / 蓝牙链路问题（会话已断、或错误带「设备-」前缀、或命中断连关键词）→ 统一
+//     「设备未连接，请检查手机或设备连接后继续」，不把「应答超时 / 连接已断开」等底层码抛给用户
+//     （常见于投屏完成后设备正在刷新屏幕、蓝牙暂短断开时立刻再投）；
+//   · 其余（如后端转换 / 网络下载失败）保留原始文案，配合失败页固定提示排查。
+function classifyFailureMessage(rawMessage, deviceId) {
+  const msg = (rawMessage && String(rawMessage)) || '投屏失败'
+  if (/内存已满|已存满|空间不足/.test(msg)) {
+    return '设备内存已满，请清理后继续。'
+  }
+  const connLost =
+    (deviceId && !deviceBle.isConnected(deviceId)) ||
+    /^设备-/.test(msg) ||
+    /连接已断开|连接中断|连接失败|已断开|连接超时|链路|该型号暂不支持图传/.test(msg)
+  if (connLost) {
+    return '设备未连接，请检查手机或设备连接后继续'
+  }
+  return msg
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -47,6 +68,10 @@ Page({
     artImage: STATUS_ART.progress,
     deviceName: '相框',
     recordCount: 0,
+    // 投屏明细：n/n = 实际参与投屏/本次所选数量。successCount 绿色(成功)、failCount 红色(失败)
+    successCount: 0,
+    failCount: 0,
+    selectedTotal: 0,
     progressCurrent: 0,
     progressTotal: 0,
     progressPercent: 0,
@@ -81,7 +106,7 @@ Page({
 
   onUnload() {
     this._aborted = true
-    this._unloaded = true // 卸载后 success/failResult 只落存储，不再 setData/弹 toast
+    this._unloaded = true // 卸载后 finishProjection 只落存储，不再 setData/弹 toast
     wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false })
     // 离开投屏结果页不再主动断开：按用户要求保持连接（非手动/物理断开就一直连着）。
     this._activeDeviceId = ''
@@ -92,12 +117,52 @@ Page({
     this.setData({
       status,
       title: text.title,
-      // 失败时优先显示真实失败原因
-      desc: status === 'fail' && result.message ? result.message : text.desc,
+      // 结果页正文：有归类后的结果提示（失败原因 / 部分成功的失败说明，如「设备内存已满」「设备未连接」）就优先显示，
+      // 否则回落状态默认文案（全部成功时展示成功文案）。
+      desc: result.message || text.desc,
       artImage: STATUS_ART[status] || STATUS_ART.progress,
       deviceName: result.deviceName || '相框',
-      recordCount: result.imageCount || 0
+      recordCount: result.imageCount || 0,
+      successCount: result.successCount || 0,
+      failCount: result.failCount || 0,
+      selectedTotal: result.selectedTotal || 0
     })
+  },
+
+  // 统一收尾：按「成功张数」决定跳成功/失败页——只要有一张传成功(uploaded>=1)就算投屏完成(成功页，
+  // 可能部分成功)，一张都没成功才是失败页。成功/失败页都带上投屏明细计数与归类后的结果文案。
+  finishProjection(device, options) {
+    const opts = options || {}
+    const uploaded = opts.uploaded || 0
+    const failCount = opts.failCount || 0
+    const total = opts.total || 0
+    const message = opts.message || ''
+    const status = uploaded >= 1 ? 'success' : 'fail'
+
+    this._sessionDevice = device // 供成功页「继续投屏」复用这台设备
+    if (status === 'success') {
+      wx.removeStorageSync('pendingProjection') // 成功(含部分成功)后清掉，避免重复整单投；失败图片在投屏记录里可重传
+    }
+    // 失败图片留在投屏记录（deviceUploadState=0）可重传；失败页保留 pendingProjection 便于「重新投屏」
+
+    const result = {
+      status,
+      deviceName: (device && device.name) || '相框',
+      imageCount: uploaded,
+      successCount: uploaded,
+      failCount,
+      selectedTotal: total,
+      // 成功页仅在「部分成功」时带失败说明；失败页始终带归类后的失败原因
+      message: status === 'fail' ? message : failCount ? message : ''
+    }
+    wx.setStorageSync('lastProjectionResult', result)
+    if (this._unloaded) {
+      return // 用户已退出本页：结果已落存储，别再对已销毁实例 setData / 弹 toast
+    }
+    this.applyStatus(status, result)
+    if (status === 'fail' && message) {
+      toast.warn({ title: message, icon: 'none' })
+    }
   },
 
   // 真实投屏主流程：连接 → 读设备信息 → 逐张解码并图传 → 按真实结果置成功/失败
@@ -115,11 +180,21 @@ Page({
     const deviceId = device.deviceId
 
     if (!deviceId) {
-      this.failResult(device, 0, '设备未连接，请重新绑定后再投屏')
+      this.finishProjection(device, {
+        uploaded: 0,
+        failCount: images.length ? 1 : 0,
+        total: images.length,
+        message: '设备未连接，请重新绑定后再投屏'
+      })
       return
     }
     if (!images.length) {
-      this.failResult(device, 0, '没有可投屏的照片')
+      this.finishProjection(device, {
+        uploaded: 0,
+        failCount: 0,
+        total: 0,
+        message: '没有可投屏的照片'
+      })
       return
     }
 
@@ -161,21 +236,24 @@ Page({
         // 不阻断投屏
       }
 
-      if (info.screenType === 0x03 || !info.width || !info.height) {
+      if (info.screenType === 0x03) {
+        // 固件明确上报 screenType=0x03：该机型确实不支持图传
         throw new Error('该型号暂不支持图传')
       }
+      if (!info.width || !info.height) {
+        // 读到空的设备信息(宽/高为 0)：多为「投屏完成后设备正在刷新屏幕、蓝牙暂短断开」时立刻再投所致，
+        // 并非机型不支持——按连接问题提示，引导用户等刷新完成 / 检查连接后再试。
+        throw new Error('设备未连接，请检查手机或设备连接后继续')
+      }
 
-      // 设备空间校验：剩余可存张数 = 容量 - 已存张数（掩码置位数）
+      // 设备空间：剩余可存张数 = 容量 - 已存张数（掩码置位数）。不再整单预检「够不够放下全部」，
+      // 改为逐张尝试、放满为止：设备放满时下方 firstFreeIndex 返回 -1 抛「设备内存已满」，
+      // 此前已成功的张数照常算「部分成功」跳成功页（对齐产品：内存差 N 张时能把 N 张投进去）。
       let usedIndexes = protocol.maskToIndexes(info.imgMask)
       const free = (info.capacity || 0) - usedIndexes.length
       console.log(
-        `[投屏] 设备空间：容量 ${info.capacity}，已存 ${usedIndexes.length}，剩余 ${free}`
+        `[投屏] 设备空间：容量 ${info.capacity}，已存 ${usedIndexes.length}，剩余 ${free}，待投 ${total}`
       )
-      if (free < total) {
-        throw new Error(
-          `设备空间不足：剩余 ${Math.max(0, free)} 张，待投 ${total} 张`
-        )
-      }
 
       // 2) 逐张：原图传后端转换得 .bin → 下载帧数据 → 选空闲槽位 → 图传 → 设备成功才写投屏记录 → 刷新显示
       for (let i = 0; i < total; i++) {
@@ -216,7 +294,7 @@ Page({
           info.capacity
         )
         if (index < 0) {
-          throw new Error('设备已存满')
+          throw new Error('设备内存已满，请清理后继续。')
         }
         console.log(
           `[投屏] 第 ${i + 1}/${total} 张 图传(0x20)：index=${index} screenType=${info.screenType} ` +
@@ -297,7 +375,7 @@ Page({
       }
 
       console.log(`[投屏] 全部完成：成功 ${uploaded}/${total} 张`)
-      this.successResult(device, uploaded)
+      this.finishProjection(device, { uploaded, failCount: 0, total, message: '' })
     } catch (error) {
       // 再次/重新投屏：传固件失败也要新增一条失败记录(deviceUploadState=0)；成功记账已在循环内完成
       if (this._retryImageInFlight) {
@@ -306,14 +384,20 @@ Page({
       }
       const aborted =
         this._aborted || (error && error.message === 'UPLOAD_ABORTED')
-      const message = aborted
+      const rawMessage = aborted
         ? '投屏已中断：上传时手机息屏/切到后台，蓝牙会被挂起。请保持亮屏后重新投屏。'
         : (error && error.message) || '投屏失败'
+      // 归类：设备断联/蓝牙链路问题统一成「设备未连接…」、内存满统一成「设备内存已满…」；主动中断文案原样保留。
+      const message = aborted
+        ? rawMessage
+        : classifyFailureMessage(rawMessage, deviceId)
       console.error(
-        `[投屏] 失败（已成功 ${uploaded}/${total} 张）：${message}`,
+        `[投屏] 失败（已成功 ${uploaded}/${total} 张，原始错误：${rawMessage}）：${message}`,
         error
       )
-      this.failResult(device, uploaded, message)
+      // 「任意一张失败即中断」下本次至多 1 张真正失败 → failCount=1。已成功 uploaded>=1 走成功页(部分成功)，
+      // 一张都没成功才走失败页。两页都带明细计数(成功/失败/本次所选)与归类后的结果文案。
+      this.finishProjection(device, { uploaded, failCount: 1, total, message })
     } finally {
       wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false })
       // 不再传完即断：保持连接（设备单连接，下次投屏可直接复用、省去重新扫描+连接）。
@@ -486,41 +570,6 @@ Page({
       await deviceBle.deleteImage(deviceId, [index])
     } catch (error) {
       // 回滚删除失败不覆盖原始失败原因
-    }
-  },
-
-  successResult(device, count) {
-    this._sessionDevice = device // 供「继续投屏」复用这台设备
-    wx.removeStorageSync('pendingProjection') // 成功后清掉，避免重复投
-    const result = {
-      status: 'success',
-      deviceName: device.name || '相框',
-      imageCount: count
-    }
-    wx.setStorageSync('lastProjectionResult', result)
-    if (this._unloaded) {
-      return // 用户已退出本页：结果已落存储，别再对已销毁实例 setData
-    }
-    this.applyStatus('success', result)
-  },
-
-  failResult(device, count, message) {
-    // 失败保留 pendingProjection，便于「重新投屏」直接重试
-    const result = {
-      status: 'fail',
-      deviceName: device.name || '相框',
-      imageCount: count,
-      message
-    }
-    wx.setStorageSync('lastProjectionResult', result)
-    if (this._unloaded) {
-      // 用户主动退出触发的中断：结果已落存储（保留 pendingProjection 可重投），
-      // 不再对已销毁实例 setData，也不在用户已返回的页面上弹「投屏已中断」误导性 toast。
-      return
-    }
-    this.applyStatus('fail', result)
-    if (message) {
-      toast.warn({ title: message, icon: 'none' })
     }
   },
 
