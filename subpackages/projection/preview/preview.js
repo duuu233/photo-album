@@ -596,9 +596,118 @@ Page({
     wx.setStorageSync('pendingProjection', pending)
   },
 
+  // 把一张「没经用户裁剪/旋转」的图，按设备比例做 aspectFill 中心裁切并导出为新临时文件。
+  // 目的：用户不做任何编辑就投屏时，让上传后端/图传用的图与预览所见（photo-img mode=aspectFill
+  // 铺满设备比例的 photo-wrap，即中心裁切）完全一致——后端即便按设备分辨率转码也不会再变形。
+  // 返回 Promise<裁切后的 image>；读尺寸/画布/导出任一步失败都回退原 image（resolve，不阻断投屏）。
+  coverCropOne(image) {
+    return new Promise(resolve => {
+      const src = image && (image.tempFilePath || image.url)
+      if (!src) {
+        resolve(image)
+        return
+      }
+      wx.getImageInfo({
+        src,
+        success: info => {
+          const natW = info.width
+          const natH = info.height
+          const size = this.getDeviceCropSize()
+          const targetRatio = size.width / size.height
+          if (!(natW > 0) || !(natH > 0) || !(targetRatio > 0)) {
+            resolve(image)
+            return
+          }
+          // aspectFill 中心裁切：从原图中心取「设备比例」的最大矩形，超出的边裁掉（与预览铺满一致）
+          let sw
+          let sh
+          let sx
+          let sy
+          if (natW / natH > targetRatio) {
+            // 原图偏宽：高取满，裁掉左右
+            sh = natH
+            sw = Math.round(natH * targetRatio)
+            sx = Math.round((natW - sw) / 2)
+            sy = 0
+          } else {
+            // 原图偏高（或相等）：宽取满，裁掉上下
+            sw = natW
+            sh = Math.round(natW / targetRatio)
+            sx = 0
+            sy = Math.round((natH - sh) / 2)
+          }
+          // 输出限幅：长边最多 2000px（与 applyCrop 一致），足够覆盖任何相框分辨率
+          const MAX_EDGE = 2000
+          let outW = sw
+          let outH = sh
+          const longEdge = Math.max(outW, outH)
+          if (longEdge > MAX_EDGE) {
+            const k = MAX_EDGE / longEdge
+            outW = Math.max(1, Math.round(outW * k))
+            outH = Math.max(1, Math.round(outH * k))
+          }
+          const query = wx.createSelectorQuery()
+          query.select('#cropCanvas').fields({ node: true }).exec(res => {
+            const node = res && res[0] && res[0].node
+            if (!node) {
+              resolve(image)
+              return
+            }
+            node.width = outW
+            node.height = outH
+            const ctx = node.getContext('2d')
+            const img = node.createImage()
+            img.onload = () => {
+              ctx.clearRect(0, 0, outW, outH)
+              ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH)
+              wx.canvasToTempFilePath({
+                canvas: node,
+                success: r => {
+                  const updated = Object.assign({}, image)
+                  // 备份原图源，供「原图」还原（与 applyCrop 一致，已备份则不覆盖）
+                  if (!updated._origSrc) {
+                    updated._origSrc = updated.tempFilePath || updated.url || ''
+                  }
+                  updated.tempFilePath = r.tempFilePath
+                  updated.cropW = outW
+                  updated.cropH = outH
+                  updated.wrapStyle = this.computeWrapStyle(outW, outH)
+                  resolve(updated)
+                },
+                fail: () => resolve(image)
+              })
+            }
+            img.onerror = () => resolve(image)
+            img.src = src
+          })
+        },
+        fail: () => resolve(image)
+      })
+    })
+  },
+
+  // 遍历待投屏图：对「没做过裁剪/旋转」的首次投屏图（无 cropW，含裁剪后又「还原」回原图的）按设备比例
+  // aspectFill 中心裁切成与预览一致的图。两类原样保留、不裁切：
+  //   ① 用户已裁剪/旋转过的图（cropW>0）：尊重其处理结果；
+  //   ② 再次/重新投屏的直传帧（带 imgBle）：result.js 靠「有 imgBle 且无 tempFilePath」直传旧设备帧，
+  //      绝不能给它生成 tempFilePath 打破直传（用户若在预览页重新裁剪过，applyCrop 已产生 tempFilePath/cropW，走转换链路）。
+  // 串行处理（共用单个离屏 #cropCanvas，避免并发抢画布）。任一张裁切失败回退原图，不阻断投屏。
+  async coverCropUnedited(images) {
+    const result = []
+    for (let i = 0; i < images.length; i++) {
+      const image = images[i]
+      if (image && (image.cropW || image.imgBle)) {
+        result.push(image)
+      } else {
+        result.push(await this.coverCropOne(image))
+      }
+    }
+    return result
+  },
+
   // 确认投屏：基础校验后跳到结果页，由结果页真实连接设备并走 BLE 图传（带真实进度）。
   // 设备空间是否够、能否连接，都在结果页用真实读到的容量/掩码与连接结果判断，这里不再用假数据预判。
-  confirmProjection() {
+  async confirmProjection() {
     // 编辑态下按钮置灰不可投屏，需先保存或还原退出编辑
     if (this.data.editing) {
       return
@@ -620,8 +729,20 @@ Page({
       return
     }
 
-    // 把（可能裁剪过的）图片写回 Storage，再跳结果页真实图传
-    this.persistPending(this.data.images)
+    // 没做任何裁剪/旋转的图：按预览的 aspectFill（设备比例中心裁切）先裁一次再传，做到「所见即所得」，
+    // 后端即便按设备分辨率转码也不会再变形。已裁剪/旋转过的图沿用其结果（见 coverCropUnedited）。
+    wx.showLoading({ title: '处理中', mask: true })
+    let images
+    try {
+      images = await this.coverCropUnedited(this.data.images)
+    } catch (error) {
+      images = this.data.images // 裁切异常不阻断投屏，退回原图
+    }
+    wx.hideLoading()
+
+    // 把（裁剪/旋转/自动 aspectFill 后的）图片写回 Storage，再跳结果页真实图传
+    this.setData({ images })
+    this.persistPending(images)
     wx.redirectTo({
       url: '/subpackages/projection/result/result?status=progress'
     })

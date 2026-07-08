@@ -11,12 +11,16 @@
     <view class="page-loading__text">加载中…</view>
   </view>
 
-  <!-- 有照片：工具栏（数量+设备筛选）→ 照片网格 → 选中后出现的底部操作栏 -->
-  <block wx:elif="{{filteredPhotos.length}}">
-    <view class="album-toolbar">
+  <!-- 非加载态：设备筛选载体(有设备/照片就显示) + (有照片→网格 / 无照片→空态) -->
+  <block wx:else>
+    <!-- 工具栏：filter-wrap 是设备展示载体，只要设备接口/照片有数据(filters 非空)就显示，不因无照片而隐藏。
+         全选/张数属于照片操作，仅在有照片时才出现 -->
+    <view wx:if="{{filters.length}}" class="album-toolbar">
       <view class="toolbar-left">
-        <view class="select-all-btn" hover-class="none" bindtap="toggleSelectAll">全选</view>
-        <text class="photo-count">共 {{totalCount}} 张</text>
+        <block wx:if="{{filteredPhotos.length}}">
+          <view class="select-all-btn" hover-class="none" bindtap="toggleSelectAll">全选</view>
+          <text class="photo-count">共 {{totalCount}} 张</text>
+        </block>
       </view>
       <view class="filter-wrap">
         <view class="filter-btn" hover-class="none" bindtap="toggleFilterMenu">
@@ -30,44 +34,46 @@
       </view>
     </view>
 
-    <!-- 照片网格：有选中时加 has-bottom-bar 留出底部栏空间。每个 tile 点击切换选中 -->
-    <view class="photo-grid {{selectedCount ? 'has-bottom-bar' : ''}}">
-      <view wx:for="{{filteredPhotos}}" wx:key="id" class="photo-tile thumb-{{item.thumbType}}" data-id="{{item.id}}" bindtap="toggleSelect">
-        <!-- 有真实 url 显示图片，否则渲染 CSS 绘制的占位插画。
-             aspectFit：完整显示原图、保持比例不裁切不拉伸，留白落在格子底色上 -->
-        <image wx:if="{{item.url}}" class="photo-img" src="{{item.url}}" mode="aspectFit"></image>
-        <view wx:else class="photo-art">
-          <view class="art-sun"></view>
-          <view class="art-cloud"></view>
-          <view class="art-face"></view>
-          <view class="art-body"></view>
-          <view class="art-ground"></view>
-        </view>
-        <view class="select-circle {{selectedMap[item.id] ? 'is-selected' : ''}}">
-          <image wx:if="{{selectedMap[item.id]}}" class="select-icon" src="/assets/images/selected-icon.png" mode="aspectFit"></image>
+    <!-- 有照片：照片网格（选中时加 has-bottom-bar 留出底部栏空间）+ 底部操作栏 -->
+    <block wx:if="{{filteredPhotos.length}}">
+      <view class="photo-grid {{selectedCount ? 'has-bottom-bar' : ''}}">
+        <view wx:for="{{filteredPhotos}}" wx:key="id" class="photo-tile thumb-{{item.thumbType}}" data-id="{{item.id}}" bindtap="toggleSelect">
+          <!-- 有真实 url 显示图片，否则渲染 CSS 绘制的占位插画。
+               aspectFit：完整显示原图、保持比例不裁切不拉伸，留白落在格子底色上 -->
+          <image wx:if="{{item.url}}" class="photo-img" src="{{item.url}}" mode="aspectFit"></image>
+          <view wx:else class="photo-art">
+            <view class="art-sun"></view>
+            <view class="art-cloud"></view>
+            <view class="art-face"></view>
+            <view class="art-body"></view>
+            <view class="art-ground"></view>
+          </view>
+          <view class="select-circle {{selectedMap[item.id] ? 'is-selected' : ''}}">
+            <image wx:if="{{selectedMap[item.id]}}" class="select-icon" src="/assets/images/selected-icon.png" mode="aspectFit"></image>
+          </view>
         </view>
       </view>
-    </view>
 
-    <view class="album-bottom-bar" wx:if="{{selectedCount}}">
-      <view class="bottom-action action-refresh" hover-class="none" aria-label="刷新屏幕" bindtap="refreshScreen">
-        <image class="action-icon" src="/assets/images/album-icon01.png" mode="aspectFit"></image>
+      <view class="album-bottom-bar" wx:if="{{selectedCount}}">
+        <view class="bottom-action action-refresh" hover-class="none" aria-label="刷新屏幕" bindtap="refreshScreen">
+          <image class="action-icon" src="/assets/images/album-icon01.png" mode="aspectFit"></image>
+        </view>
+        <view class="bottom-action action-delete" hover-class="none" aria-label="删除照片" bindtap="showDeleteDialog">
+          <image class="action-icon" src="/assets/images/album-icon02.png" mode="aspectFit"></image>
+        </view>
+        <view class="bottom-action action-cancel" hover-class="none" aria-label="取消" bindtap="cancelSelect">
+          <image class="action-icon action-icon--cancel" src="/assets/images/album-icon03.png" mode="aspectFit"></image>
+        </view>
       </view>
-      <view class="bottom-action action-delete" hover-class="none" aria-label="删除照片" bindtap="showDeleteDialog">
-        <image class="action-icon" src="/assets/images/album-icon02.png" mode="aspectFit"></image>
-      </view>
-      <view class="bottom-action action-cancel" hover-class="none" aria-label="取消" bindtap="cancelSelect">
-        <image class="action-icon action-icon--cancel" src="/assets/images/album-icon03.png" mode="aspectFit"></image>
-      </view>
+    </block>
+
+    <!-- 无照片空态：引导用户重新投屏（此时若有设备，上方 filter-wrap 仍展示设备并默认选中） -->
+    <view wx:else class="album-empty">
+      <image class="empty-art" src="/assets/images/album-bg01.png" mode="aspectFit"></image>
+      <view class="empty-title">当前没有可查看的设备照片</view>
+      <view class="empty-desc">你可以重新投屏照片到设备</view>
     </view>
   </block>
-
-  <!-- 无照片空态：引导用户重新投屏 -->
-  <view class="album-empty" wx:else>
-    <image class="empty-art" src="/assets/images/album-bg01.png" mode="aspectFit"></image>
-    <view class="empty-title">当前没有可查看的设备照片</view>
-    <view class="empty-desc">你可以重新投屏照片到设备</view>
-  </view>
 
   <!-- 删除确认弹窗：点遮罩关闭，点弹窗内部 catchtap="noop" 阻止冒泡避免误关 -->
   <view class="confirm-mask" wx:if="{{showDeleteConfirm}}" catchtouchmove="noop" bindtap="hideDeleteDialog">

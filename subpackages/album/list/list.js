@@ -77,6 +77,22 @@ function buildDeviceFilters(photos) {
   return filters
 }
 
+// 由设备接口(getDevices)列表生成筛选项(设备名去重)。图库为空但用户有设备时用它——
+// filter-wrap 是设备展示载体，只要设备接口有数据就该显示设备并默认选中第一台。
+// 用与 resolveUserProductId 同一套 (device,index) normalizeDeviceName 规则，保证选中名能反查回 userProductId。
+function buildDeviceFiltersFromDevices(devices) {
+  const filters = []
+
+  ;(devices || []).forEach((device, index) => {
+    const name = normalizeDeviceName(device.name, index)
+    if (name && !filters.some(item => item.value === name)) {
+      filters.push({ label: name, value: name })
+    }
+  })
+
+  return filters
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -129,8 +145,12 @@ Page({
     //（旧的软隐藏是永久的，会把后端仍返回的图一直藏起来，导致「接口有 N 条却只显示 1 条」）
     const photos = buildDisplayPhotos(sourcePhotos, devices)
 
-    // 按照片里的设备名动态生成筛选项；当前筛选若已不在列表里（设备的照片被删光）则回退到第一项
-    const filters = buildDeviceFilters(photos)
+    // 筛选项(filter-wrap 是设备展示载体)：有照片时按照片里的设备名生成(每项都能筛出照片)；
+    // 图库为空但设备接口有数据时，回退用设备列表生成——让 filter-wrap 仍显示设备、不因无照片而隐藏。
+    const filters = photos.length
+      ? buildDeviceFilters(photos)
+      : buildDeviceFiltersFromDevices(devices)
+    // 当前筛选若已不在列表里（设备照片被删光/切换了筛选源）则回退到第一项，即默认选中设备列表第一台
     const currentFilter = filters.some(item => item.value === this.data.currentFilter)
       ? this.data.currentFilter
       : (filters[0] ? filters[0].value : '')
