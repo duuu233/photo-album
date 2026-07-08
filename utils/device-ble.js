@@ -308,16 +308,19 @@ async function createConnectionWithRetry(deviceId, attempts = 2) {
         return
       }
       lastError = error
-      if (i < attempts - 1) {
-        // 关掉可能残留的半连接，短暂等待后再试一次，显著提升首连成功率
-        if (wx.closeBLEConnection) {
-          try {
-            await wxp(wx.closeBLEConnection, { deviceId })
-          } catch (closeError) {
-            // 没有可关闭的连接，忽略
-          }
+      // 连接失败(含 connect time out)后，底层常残留一条「正在连接/半连接」，必须立即关掉释放设备——
+      // 否则设备被占用不再广播，紧接着的重试/重扫就「未搜索到该设备」（表现为「超时后要多点几次才连上」）。
+      // 关键：每次失败都关，尤其是最后一次——之前 close 只写在「还要重试」分支里，最后一次超时漏关，
+      // 正是「设备-createBLEConnection:fail connect time out → 小程序-未搜索到该设备」这条链路的根因。
+      if (wx.closeBLEConnection) {
+        try {
+          await wxp(wx.closeBLEConnection, { deviceId })
+        } catch (closeError) {
+          // 没有可关闭的连接，忽略
         }
-        await sleep(400)
+      }
+      if (i < attempts - 1) {
+        await sleep(400) // 等底层清理干净再重试，显著提升首连成功率
       }
     }
   }

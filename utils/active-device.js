@@ -131,6 +131,36 @@ function syncActiveDeviceId(device, deviceId) {
   }
 }
 
+// 完整扫描并连接一台已绑定设备的主链（定位 → openAdapter → 扫描 → 匹配 → ensureConnection）。
+// home/设备列表/设备详情的「连接蓝牙」按钮与操作前自动重连(ensureDeviceConnected)全共用这一份，
+// 改一处即全生效（此前四处各抄一遍，改一处漏三处）。返回连上的 target（含本次会话有效 deviceId 与广播 deviceNo）。
+// 扫不到抛「未搜索到该设备」；定位/权限/蓝牙错误按原样抛（error.code 如 PERMISSION_DENIED 保留）。
+// match(found, device)：扫描结果匹配器——首页/自动重连用纯序列号 matchScannedDevice，列表/详情传入带名称兜底的。
+// onConnectStart：可选。扫到目标、正式 ensureConnection 前回调一次，供调用方把 loading 从「搜索中」切到「连接中」。
+// 本函数不弹/不关 loading（由各调用方按自己的场景管理）。
+async function scanMatchConnect(device, match, onConnectStart) {
+  const location = await permission.getCurrentLocation()
+  if (!location) {
+    throw new Error('请先授权定位后再连接')
+  }
+  await bluetooth.openAdapter()
+  // until：扫到目标设备(match 命中)就立刻停扫返回，不苦等满 6s——正式连接不再比调试台直连慢一截
+  const found = await bluetooth.discoverDevices({
+    timeout: 6000,
+    until: list => !!match(list, device)
+  })
+  const target = match(found, device)
+  if (!target) {
+    throw new Error('未搜索到该设备，请确认设备已开机并在附近')
+  }
+  if (typeof onConnectStart === 'function') {
+    onConnectStart()
+  }
+  // 把扫描广播里的 Device_ID 登记到会话，后续页面据此交叉匹配认出这条连接
+  await deviceBle.ensureConnection(target.deviceId, { deviceNo: target.deviceNo })
+  return target
+}
+
 // 确保这台设备已连接，未连接则自动重连(定位→openAdapter→扫描匹配→连接)。
 // 返回连上的当下有效 deviceId；连不上抛错(error.code 保留，如 PERMISSION_DENIED)。
 // 已连接：直接返回，不弹 loading。未连接：默认弹「连接设备中」loading（options.showLoading:false 可关）。
@@ -147,24 +177,68 @@ async function ensureDeviceConnected(device, options = {}) {
     wx.showLoading({ title: '连接设备中', mask: true })
   }
   try {
-    const location = await permission.getCurrentLocation()
-    if (!location) {
-      throw new Error('请先授权定位后再连接')
-    }
-    await bluetooth.openAdapter()
-    const found = await bluetooth.discoverDevices({ timeout: 6000 })
-    const target = matchScannedDevice(found, device)
-    if (!target) {
-      throw new Error('未搜索到该设备，请确认设备已开机并在附近')
-    }
-    // 把扫描广播里的 Device_ID 登记到会话，后续页面据此交叉匹配认出这条连接
-    await deviceBle.ensureConnection(target.deviceId, { deviceNo: target.deviceNo })
+    // 自动重连不读设备信息、loading 全程「连接设备中」，故不传 onConnectStart
+    const target = await scanMatchConnect(device, matchScannedDevice)
     syncActiveDeviceId(device, target.deviceId)
     return target.deviceId
   } finally {
     if (showLoading) {
       wx.hideLoading()
     }
+  }
+}
+
+// 页面「连接蓝牙」按钮的共用连接核心（home/设备列表/设备详情共用）：
+//   复用活动会话(可选读信息活性校验) → 扫描(until 命中即返回) → 匹配 → 连接 → 读设备信息。
+// 页面只负责把返回值回填到各自的卡片 UI，不必再各抄一遍扫描连接主链。
+// 返回 { deviceId, info, reused }：
+//   - reused=true：复用了已存在的活动会话；未开 verifyReuse 时 info 为 null（没读设备信息）。
+//   - reused=false：新扫描连接；info 为 readDeviceInfo 结果。
+// 失败抛错（error.code 保留 PERMISSION_DENIED），调用方 catch 后用 showConnectError 统一提示。
+// options.match(found, device)：可选。扫描结果匹配器；默认 matchScannedDevice（纯序列号，首页用）。
+//   设备列表/详情传入带「名称兜底」的匹配器（老记录没序列号时按名连）。
+// options.verifyReuse：复用活动会话前是否先 readDeviceInfo 活性校验（列表/详情 true；首页省略即 false）。
+async function connectBoundDevice(device, options = {}) {
+  const match = typeof options.match === 'function' ? options.match : matchScannedDevice
+
+  // 1) 先认活动会话：会话还活着就直接复用，绝不重扫（设备单连接、被自己占线时不广播，重扫必「未搜索到」）
+  const existingId = findConnectedDeviceId(device)
+  if (existingId) {
+    if (!options.verifyReuse) {
+      return { deviceId: existingId, info: null, reused: true }
+    }
+    // 复用前读一次设备信息作活性校验：读得动才是真活着；读不动=后台断开未上报的死会话，清掉走完整扫描重连
+    wx.showLoading({ title: '连接设备中', mask: true })
+    try {
+      const info = await deviceBle.readDeviceInfo(existingId)
+      return { deviceId: existingId, info, reused: true }
+    } catch (error) {
+      deviceBle.disconnect(existingId)
+    } finally {
+      wx.hideLoading()
+    }
+  }
+
+  // 2) 完整扫描连接：搜索阶段「搜索设备中」，扫到目标后切「连接设备中」，再读一次真实设备信息
+  wx.showLoading({ title: '搜索设备中', mask: true })
+  try {
+    const target = await scanMatchConnect(device, match, () =>
+      wx.showLoading({ title: '连接设备中', mask: true })
+    )
+    const info = await deviceBle.readDeviceInfo(target.deviceId)
+    return { deviceId: target.deviceId, info, reused: false }
+  } finally {
+    wx.hideLoading()
+  }
+}
+
+// 连接失败的标准 UI 提示（与 connectBoundDevice 配套）：系统级「附近设备」权限被拒 → 弹系统设置引导；
+// 其余原因 → toast 原始报错（带来源前缀，如「设备-…timeout」）。三处「连接蓝牙」按钮 catch 统一复用它。
+function showConnectError(error) {
+  if (error && error.code === 'PERMISSION_DENIED') {
+    bluetooth.showPermissionGuide()
+  } else {
+    toast.warn({ title: (error && error.message) || '连接失败', icon: 'none' })
   }
 }
 
@@ -218,6 +292,8 @@ module.exports = {
   serialsMatch,
   matchScannedDevice,
   ensureDeviceConnected,
+  connectBoundDevice,
+  showConnectError,
   ensureConnectedForAction,
   ensureActiveDeviceConnection,
   promptSwitchDevice

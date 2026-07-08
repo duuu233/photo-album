@@ -3,8 +3,6 @@ const toast = require('../../utils/toast')
 const media = require('../../utils/media')
 const batteryUtil = require('../../utils/battery')
 const deviceBle = require('../../utils/device-ble')
-const bluetooth = require('../../utils/bluetooth')
-const permission = require('../../utils/permission')
 const activeDevice = require('../../utils/active-device')
 
 const app = getApp()
@@ -731,45 +729,18 @@ Page({
       return false
     }
     const selected = app.globalData.selectedDevice || this.data.currentDevice
-    // 先认活动会话（deviceId 直连 + 序列号交叉匹配）：会话还活着就直接复用，不重扫——
-    // 设备是单连接，被自己占线时不广播，重扫必然「未搜索到该设备」
-    const existingId = activeDevice.findConnectedDeviceId(selected)
-    if (existingId) {
-      this.markCurrentDeviceConnected(existingId, null)
-      toast.show({ title: '设备已连接', icon: 'none' })
-      return true
-    }
-
-    wx.showLoading({ title: '连接设备中', mask: true })
     try {
-      const location = await permission.getCurrentLocation()
-      if (!location) {
-        throw new Error('请先授权定位后再连接')
-      }
-      await bluetooth.openAdapter()
-      const found = await bluetooth.discoverDevices({ timeout: 6000 })
-      // 连接已绑定设备：只按硬件序列号（设备列表的 deviceId）容错匹配，不按名称——
-      // 名称匹配只属于绑定新设备流程（广播名是产品型号 EF6-370/EF6-589，改名后与设备名对不上）
-      const target = activeDevice.matchScannedDevice(found, selected)
-      if (!target) {
-        throw new Error('未搜索到该设备，请确认设备已开机并在附近')
-      }
-      // 把扫描广播里的 Device_ID 登记到会话，切页面后各页据此交叉匹配认出这条连接
-      await deviceBle.ensureConnection(target.deviceId, { deviceNo: target.deviceNo })
-      const info = await deviceBle.readDeviceInfo(target.deviceId)
-      this.markCurrentDeviceConnected(target.deviceId, info)
-      toast.show({ title: '已连接设备', icon: 'none' })
+      // 扫描+匹配+连接主链已收敛到 active-device.connectBoundDevice（首页/列表/详情共用一份，改一处全生效）。
+      // 首页沿用默认匹配器(纯序列号，不按名称——同型号广播名相同易连错别人的相框)、复用活动会话不做活性校验。
+      const res = await activeDevice.connectBoundDevice(selected)
+      this.markCurrentDeviceConnected(res.deviceId, res.info)
+      // reused=复用已存在的活动会话（未重扫）；否则是本次新扫描连接，文案沿用原先两种
+      toast.show({ title: res.reused ? '设备已连接' : '已连接设备', icon: 'none' })
       return true
     } catch (error) {
       // 系统级「附近设备」权限被拒：引导去系统设置；其余原因 toast 提示，停留在已绑定首页
-      if (error && error.code === 'PERMISSION_DENIED') {
-        bluetooth.showPermissionGuide()
-      } else {
-        toast.warn({ title: (error && error.message) || '连接失败', icon: 'none' })
-      }
+      activeDevice.showConnectError(error)
       return false
-    } finally {
-      wx.hideLoading()
     }
   },
 

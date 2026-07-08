@@ -169,7 +169,11 @@ Page({
   // 设备在别处被执行过清空时（图库照片已不在设备上），弹确认框提醒重新上传；
   // 确认后调 editUserProduct 把 isClearImg 复位为 0，后端不再返回「已清除」，避免每次进来都弹。
   async checkDeviceClearStatus(filterName) {
-    const userProductId = this.resolveUserProductId(filterName)
+    // 图库有照片：用筛选设备名反查其 userProductId（原流程）。
+    // 图库为空(无照片故无筛选项、filterName 为空、反查不到)：只要用户设备接口有数据，
+    // 就默认用设备列表第一项的设备ID 去查一键清除状态——设备被清空后图库自然为空，正需靠它弹「重新上传」提醒。
+    // 图库与设备接口都空 → userProductId 为空 → 直接 return 不查。
+    const userProductId = this.resolveUserProductId(filterName) || this.firstDeviceUserProductId()
     if (!userProductId) {
       return
     }
@@ -232,6 +236,13 @@ Page({
       item => item.deviceName === filterName && item.deviceId
     )
     return (photo && photo.deviceId) || ''
+  },
+
+  // 用户设备接口(getDevices)返回列表第一项的后端设备ID(userProductId，兜底 id)。
+  // 图库为空但用户有设备时，默认拿它去查一键清除状态；设备列表为空则返回 ''（连同空图库一起 → 不查）。
+  firstDeviceUserProductId() {
+    const first = (this.devices || [])[0]
+    return (first && (first.userProductId || first.id)) || ''
   },
 
   toggleFilterMenu() {
