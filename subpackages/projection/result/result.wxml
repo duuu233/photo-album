@@ -49,11 +49,15 @@
       <view class="info-row" hover-class="none" bindtap="goRecords">
         <view class="info-icon"><image class="info-icon__img" src="/assets/images/projection-result-icon02.png" mode="aspectFit"></image></view>
         <text class="info-label">投屏明细</text>
-        <!-- n/n = 实际参与投屏/本次所选：绿色=成功(successCount/所选)，红色=失败(failCount/所选)；部分成功两者都显示 -->
+        <!-- n/n = 实际参与投屏/本次所选：只有分子(/前)按成功/失败变色(绿/红)，「/分母」始终灰色；部分成功两段并排 -->
         <view class="info-detail">
-          <text wx:if="{{successCount > 0}}" class="detail-count detail-count--ok">{{successCount}}/{{selectedTotal}}</text>
+          <view wx:if="{{successCount > 0}}" class="detail-item">
+            <text class="detail-num detail-num--ok">{{successCount}}</text><text class="detail-total">/{{selectedTotal}}</text>
+          </view>
           <text wx:if="{{successCount > 0 && failCount > 0}}" class="detail-sep">,</text>
-          <text wx:if="{{failCount > 0}}" class="detail-count detail-count--fail">{{failCount}}/{{selectedTotal}}</text>
+          <view wx:if="{{failCount > 0}}" class="detail-item">
+            <text class="detail-num detail-num--fail">{{failCount}}</text><text class="detail-total">/{{selectedTotal}}</text>
+          </view>
         </view>
         <view class="ui-chevron info-arrow"></view>
       </view>

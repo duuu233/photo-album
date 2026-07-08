@@ -159,7 +159,7 @@
   font-size: 28rpx;
 }
 
-/* 投屏明细计数：绿色=成功(successCount/所选)、红色=失败(failCount/所选)，部分成功两者并排 */
+/* 投屏明细计数：只有分子(/前)变色——绿=成功、红=失败；「/分母」始终灰色。部分成功两段并排 */
 .info-detail {
   display: flex;
   align-items: center;
@@ -167,12 +167,22 @@
   font-weight: 600;
 }
 
-.detail-count--ok {
+.detail-item {
+  display: flex;
+  align-items: baseline;
+}
+
+.detail-num--ok {
   color: #12b76a;
 }
 
-.detail-count--fail {
+.detail-num--fail {
   color: #f0483e;
+}
+
+/* 「/」和分母：灰色 */
+.detail-total {
+  color: #808690;
 }
 
 .detail-sep {

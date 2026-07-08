@@ -815,11 +815,12 @@ async function setTime(deviceId, date) {
 // 设备返回更新后的 IMG_MASK。
 async function deleteImage(deviceId, indexes, timeout) {
   const mask = protocol.indexesToMask(indexes)
-  // 删除由设备逐张擦除，张数越多越慢(一键清空可能一次删几十张)。按张数放宽代码侧应答等待，
-  // 避免设备还在删就被判「应答超时」；下限沿用 6s、上限封顶 60s。调用方可传 timeout 显式覆盖。
+  // 删除由设备逐张擦除 flash，张数越多越慢(一键清空可能一次删几十张，设备全部删完才回一次应答)。
+  // 按张数放宽代码侧应答等待，避免设备还在删就被判「应答超时」误报「设备暂时无法连接」：
+  // 每张按 2s 预算(60 张≈120s)、下限 6s、上限封顶 180s。调用方可传 timeout 显式覆盖。
   // 注意：设备真正返回的超时/错误结果码(result≠0)仍走下方原逻辑抛出，此处只放宽「等不到应答」的超时。
   const count = indexes ? indexes.length : 0
-  const waitMs = timeout || Math.min(60000, Math.max(6000, count * 1000))
+  const waitMs = timeout || Math.min(180000, Math.max(6000, count * 2000))
   const ack = await request(deviceId, protocol.CMD.DELETE_IMG, mask, waitMs)
   // 设备拒绝(result≠0)时抛设备结果码的协议含义，避免「设备没删成功却显示成功」
   if (ack.result !== 0x00) {
