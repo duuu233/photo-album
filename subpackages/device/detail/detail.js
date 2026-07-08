@@ -1168,9 +1168,16 @@ Page({
       logClearDeviceData(traceId, '后端清空记录完成', { id: this.data.id })
       clearSucceeded = true
     } catch (error) {
+      const rawMsg = (error && error.message) || String(error)
       console.error('[一键清空][' + traceId + '] 清空失败:', error)
+      // 清空中途设备断联 / 连不上 / 应答超时等蓝牙链路问题：会话已断，或错误带「设备-」来源前缀
+      // （device-ble 的 ensureConnection/readDeviceInfo/deleteImage 失败都会被前缀成「设备-」）。
+      // 这类一律统一提示「设备暂时无法连接」，不把底层设备错误码抛给用户；
+      // 后端接口类错误（「接口-」前缀）仍如实提示，避免把接口问题误报成设备连不上。
+      const deviceLinkFailed = !deviceBle.isConnected(deviceId) || /^设备-/.test(rawMsg)
+      logClearDeviceData(traceId, '清空失败', { deviceLinkFailed, error: rawMsg })
       toast.warn({
-        title: error.message || '清空失败',
+        title: deviceLinkFailed ? '设备暂时无法连接' : rawMsg || '清空失败',
         icon: 'none'
       })
       return
