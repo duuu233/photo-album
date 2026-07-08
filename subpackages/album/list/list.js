@@ -123,6 +123,8 @@ Page({
     }
     const sourcePhotos = result[0]
     const devices = result[1]
+    // 设备列表存实例上（不参与渲染）：切换筛选时用设备名反查 userProductId 查一键清除状态
+    this.devices = devices
     // 列表以后端返回为准：删除已实际删掉设备(0x12)+后端记录，不再叠加本地软隐藏
     //（旧的软隐藏是永久的，会把后端仍返回的图一直藏起来，导致「接口有 N 条却只显示 1 条」）
     const photos = buildDisplayPhotos(sourcePhotos, devices)
@@ -158,6 +160,78 @@ Page({
       selectedMap: {},
       selectedCount: 0
     })
+
+    // 进入图库/每次切换设备都查一次该设备的一键清除状态（applyFilter 是两条路径的公共汇合点）
+    this.checkDeviceClearStatus(filter)
+  },
+
+  // 查询所选设备的一键清除状态（getUserProductClearImg，retData: 0=未清除, 1=已清除）。
+  // 设备在别处被执行过清空时（图库照片已不在设备上），弹确认框提醒重新上传；
+  // 确认后调 editUserProduct 把 isClearImg 复位为 0，后端不再返回「已清除」，避免每次进来都弹。
+  async checkDeviceClearStatus(filterName) {
+    const userProductId = this.resolveUserProductId(filterName)
+    if (!userProductId) {
+      return
+    }
+
+    // 自增序号标记「最新一次查询」：查询期间用户又切了设备，旧结果直接丢弃，避免弹错设备
+    const seq = (this.clearCheckSeq = (this.clearCheckSeq || 0) + 1)
+
+    let result
+    try {
+      result = await api.getUserProductClearImg(userProductId)
+    } catch (error) {
+      return // 后台查询失败静默忽略（接口层 showError:false），下次进入/切换设备会再查
+    }
+
+    if (seq !== this.clearCheckSeq || this.clearImgModalShowing) {
+      return
+    }
+
+    // retData 通常就是 0/1，兼容后端包一层对象返回 { isClearImg } 的情况
+    const cleared = Number(
+      result && typeof result === 'object' ? result.isClearImg : result
+    )
+    if (cleared !== 1) {
+      return
+    }
+
+    this.clearImgModalShowing = true
+    wx.showModal({
+      title: '提示',
+      content: '当前设备已被执行清空操作，请重新上传图片',
+      showCancel: false,
+      confirmText: '确认',
+      success: res => {
+        if (res.confirm) {
+          // 确认关闭后复位清除标记；失败时接口层会 toast（接口- 前缀），下次进入会再次提醒
+          api.editUserProduct({ userProductId, isClearImg: 0 }).catch(() => {})
+        }
+      },
+      complete: () => {
+        this.clearImgModalShowing = false
+      }
+    })
+  },
+
+  // 筛选项（设备名）→ 后端 userProductId：先按设备列表的名字匹配（与 buildDeviceFilters
+  // 同一套 normalizeDeviceName 规则），匹配不到再从照片上取 deviceId（即后端 userProductId）
+  resolveUserProductId(filterName) {
+    if (!filterName) {
+      return ''
+    }
+
+    const matched = (this.devices || []).find(
+      (device, index) => normalizeDeviceName(device.name, index) === filterName
+    )
+    if (matched && (matched.userProductId || matched.id)) {
+      return matched.userProductId || matched.id
+    }
+
+    const photo = this.data.photos.find(
+      item => item.deviceName === filterName && item.deviceId
+    )
+    return (photo && photo.deviceId) || ''
   },
 
   toggleFilterMenu() {

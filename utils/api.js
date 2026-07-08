@@ -481,6 +481,18 @@ module.exports = {
     })
   },
 
+  // 获取设备一键清除状态，id=userProductId。retData: 0=未清除, 1=已清除。
+  // 图库页进入/切换设备时后台查询用：失败静默（showError:false），下次切换设备会再查。
+  getUserProductClearImg(userProductId) {
+    const params =
+      typeof userProductId === 'object' ? userProductId : { id: userProductId }
+
+    return http.get('/Client/UserProduct/getUserProductClearImg', params, {
+      mock: false,
+      showError: false
+    })
+  },
+
   // 用户产品图片列表（我的图库）。params 支持分页与 userProductId 过滤
   getUserProductImgList(params = {}) {
     return http.get('/Client/UserProduct/getUserProductImgList', params, {
