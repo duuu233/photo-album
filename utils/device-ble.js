@@ -470,7 +470,14 @@ async function request(deviceId, cmd, payload, timeout = 6000) {
     throw error
   }
 
-  return ackPromise
+  const ack = await ackPromise
+  // 设备忙（规格书 v1.5 §6.6.1，RESULT=0x0B）：设备正在处理其它指令时对新指令回 0x0B。
+  // 所有走 ACK 的设备交互（读设备信息/电量/播放配置、设置播放/校时/删除/刷新、图传起止等）都经此 request()，
+  // 在这里集中拦截，无论读写一律提示「当前设备繁忙，请稍后重试」；经 wrapDevice 会补「设备-」来源前缀。
+  if (protocol.isBusyResult(ack.result)) {
+    throw new Error(protocol.BUSY_MESSAGE)
+  }
+  return ack
 }
 
 function sleep(ms) {

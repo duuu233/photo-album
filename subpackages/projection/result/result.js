@@ -48,6 +48,11 @@ function classifyFailureMessage(rawMessage, deviceId) {
   if (/内存已满|已存满|空间不足/.test(msg)) {
     return '设备内存已满，请清理后继续。'
   }
+  // 设备忙(0x0B)：设备答得上话、只是暂时在忙，别被下方「设备-」前缀误归成「设备未连接」，
+  // 原样提示「当前设备繁忙，请稍后重试」，引导用户稍后再投。
+  if (msg.indexOf(protocol.BUSY_MESSAGE) !== -1) {
+    return protocol.BUSY_MESSAGE
+  }
   const connLost =
     (deviceId && !deviceBle.isConnected(deviceId)) ||
     /^设备-/.test(msg) ||

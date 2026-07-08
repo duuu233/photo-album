@@ -289,6 +289,17 @@ function resultText(code) {
   return text ? text : `未知结果码 0x${(code || 0).toString(16).padStart(2, '0')}`
 }
 
+// 设备忙（v1.5 §6.6.1）：设备正忙于处理其它指令时，对新指令回 RESULT=0x0B。
+// BUSY_MESSAGE 是面向用户的统一提示；所有和设备交互的判断（device-ble.js 的 request() 集中拦截）
+// 一旦收到任意指令的 0x0B 应答，都用它提示，避免各处各写一套文案。
+const RESULT_BUSY = 0x0b
+const BUSY_MESSAGE = '当前设备繁忙，请稍后重试'
+
+// 判断一个 RESULT 结果码是否为「设备忙」。
+function isBusyResult(code) {
+  return (code & 0xff) === RESULT_BUSY
+}
+
 // ── 小端写入工具（组帧时把多字节数字按低字节在前压入数组）──
 function pushUint16LE(arr, value) {
   arr.push(value & 0xff, (value >> 8) & 0xff)
@@ -476,6 +487,9 @@ module.exports = {
   parseAdvertising,
   RESULT_TEXT,
   resultText,
+  RESULT_BUSY,
+  BUSY_MESSAGE,
+  isBusyResult,
   indexesToMask,
   maskToIndexes,
   firstFreeIndex,
