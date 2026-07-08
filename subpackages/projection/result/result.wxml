@@ -30,11 +30,11 @@
         </view>
         <view class="progress-tip-item">
           <text class="progress-tip-index">3</text>
-          <text class="progress-tip-text">投屏过程意外中断在投屏记录中可继续操作</text>
+          <text class="progress-tip-text">图片在投屏记录中可继续操作</text>
         </view>
         <view class="progress-tip-item">
           <text class="progress-tip-index">4</text>
-          <text class="progress-tip-text">投屏完成后，设备将自动刷新屏幕，蓝牙会暂短断开，请等待刷新后继续操作</text>
+          <text class="progress-tip-text">投屏完成后设备会自动刷新，刷新期间设备繁忙无法投屏，请等待刷新结束</text>
         </view>
       </view>
     </block>
