@@ -6,8 +6,6 @@ const deviceBle = require('../../../utils/device-ble')
 const otaBle = require('../../../utils/ota-ble')
 const protocol = require('../../../utils/frame-protocol')
 const media = require('../../../utils/media')
-const bluetooth = require('../../../utils/bluetooth')
-const permission = require('../../../utils/permission')
 const activeDevice = require('../../../utils/active-device')
 
 const app = getApp()
@@ -616,15 +614,29 @@ Page({
     if (device.deviceId) {
       deviceBle.disconnect(device.deviceId)
     }
-    const updated = Object.assign({}, device, { connected: false })
+    // 断开后这些「连接才可信」的实时数据不再有效：清掉固件读到的设备ID(0x01)与内存占用，
+    // 让 device 与显示一致回落。注意保留 deviceNo(后端序列号)——重连时 matchScannedDevice 靠它匹配本机。
+    const updated = Object.assign({}, device, {
+      connected: false,
+      firmwareDeviceId: '',
+      usedMemory: 0,
+      totalMemory: 0
+    })
     if (
       app.globalData.selectedDevice &&
       app.globalData.selectedDevice.id === updated.id
     ) {
       app.setSelectedDevice(updated)
     }
-    // 断开后轮播设置/固件版本不再可信，与未连接态保持一致回落到 --
-    this.setData({ device: updated, playbackLabel: '--', newVersionNo: '--' })
+    // 断开后轮播设置/固件版本/设备ID/内存都不再可信，与未连接态一致回落到 --（内存进度条一并归零）
+    this.setData({
+      device: updated,
+      deviceCode: '--',
+      memoryText: '--',
+      memoryPercent: 0,
+      playbackLabel: '--',
+      newVersionNo: '--'
+    })
     toast.show({ title: '已断开', icon: 'none' })
   },
 
@@ -650,57 +662,20 @@ Page({
     if (!device) {
       return null
     }
-
-    // 会话还活着（deviceId 直连 + 设备ID×广播ID 序列号交叉匹配）：直接复用，不重扫——
-    // 设备是单连接，被自己占线时不广播，重扫必然「未搜索到该设备」还白等 6 秒。
-    // 复用前读一次设备信息作活性校验：读不动说明是死会话（后台断开未上报），清掉走完整扫描重连。
-    const liveId = activeDevice.findConnectedDeviceId(device)
-    if (liveId) {
-      wx.showLoading({ title: '连接设备中', mask: true })
-      try {
-        const info = await deviceBle.readDeviceInfo(liveId)
-        const updated = this.applyConnectedDevice(device, liveId, info)
-        toast.show({ title: '已连接', icon: 'none' })
-        return updated
-      } catch (error) {
-        deviceBle.disconnect(liveId)
-      } finally {
-        wx.hideLoading()
-      }
-    }
-
-    wx.showLoading({ title: '搜索设备中', mask: true })
     try {
-      const location = await permission.getCurrentLocation()
-      if (!location) {
-        throw new Error('请先授权定位后再连接')
-      }
-      await bluetooth.openAdapter()
-      const found = await bluetooth.discoverDevices({ timeout: 6000 })
-      const target = this.matchScannedDevice(found, device)
-      if (!target) {
-        throw new Error('未搜索到该设备，请确认设备已开机并在附近')
-      }
-
-      // 广播 Device_ID 登记到会话，切页面后各页据此交叉匹配认出这条连接
-      wx.showLoading({ title: '连接设备中', mask: true })
-      await deviceBle.ensureConnection(target.deviceId, { deviceNo: target.deviceNo })
-      const info = await deviceBle.readDeviceInfo(target.deviceId)
-      const updated = this.applyConnectedDevice(device, target.deviceId, info)
+      // 扫描+匹配+连接主链已收敛到 active-device.connectBoundDevice（首页/列表/详情共用一份，改一处全生效）。
+      // 详情页传入带「名称兜底」的匹配器(老记录没序列号时按名连)，并对复用的活动会话先读设备信息做活性校验。
+      const res = await activeDevice.connectBoundDevice(device, {
+        match: (found, dev) => this.matchScannedDevice(found, dev),
+        verifyReuse: true
+      })
+      const updated = this.applyConnectedDevice(device, res.deviceId, res.info)
       toast.show({ title: '已连接', icon: 'none' })
       return updated
     } catch (error) {
-      if (error && error.code === 'PERMISSION_DENIED') {
-        bluetooth.showPermissionGuide()
-      } else {
-        toast.warn({
-          title: (error && error.message) || '连接失败',
-          icon: 'none'
-        })
-      }
+      // 系统级「附近设备」权限被拒：弹引导去系统设置，而非笼统的「连接失败」
+      activeDevice.showConnectError(error)
       return null
-    } finally {
-      wx.hideLoading()
     }
   },
 

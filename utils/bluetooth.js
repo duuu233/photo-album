@@ -213,6 +213,10 @@ function normalizeDevice(device) {
 // options.onUpdate(devices)：可选。每发现一台新设备、或已收录设备的展示信息(名称/电量/屏型)有变化时，
 //   立即回调一份「当前已搜到的列表」，供页面「搜出一个显示一个」增量渲染，不必等满 timeout。
 //   最终仍会在 timeout 到点后 resolve 完整列表（与不传 onUpdate 时行为一致，故对现有调用方零影响）。
+// options.until(devices)：可选。每次列表有更新时用「当前已搜到的列表」判断是否已达成目标（如已扫到要连的那台），
+//   返回真即立刻停扫并 resolve，不再苦等满 timeout —— 把「连接前扫描」从雷打不动 6s 压到扫到即走(通常 <1s)，
+//   这正是调试台「按 deviceId 直连」之所以快、而正式入口每次连接都要等满扫描窗口的差距所在。
+//   未命中时仍等满 timeout，给设备现身留足时间；不传 until 时行为完全不变（绑定/调试整窗扫描照旧）。
 async function discoverDevices(options) {
   const timeout = options && options.timeout ? options.timeout : 8000
   // allowAll：放开广播名白名单，收录附近所有蓝牙设备。仅供硬件调试页排查用
@@ -220,6 +224,7 @@ async function discoverDevices(options) {
   // 绑定/列表等正式入口不传此项，保持只显示目标相框。
   const allowAll = !!(options && options.allowAll)
   const onUpdate = options && typeof options.onUpdate === 'function' ? options.onUpdate : null
+  const until = options && typeof options.until === 'function' ? options.until : null
   // 正式入口：先取产品列表的 broadcastId 白名单（带缓存，多为命中缓存无网络开销）；allowAll 不过滤。
   const allowedIds = allowAll ? [] : await loadAllowedBroadcastIds()
 
@@ -271,11 +276,28 @@ async function discoverDevices(options) {
         foundMap[device.deviceId] = normalized // RSSI 始终更新，保证最终列表排序准确
         signatures[device.deviceId] = sig
       })
-      if (changed && onUpdate && !settled) {
+      if (settled) {
+        return
+      }
+      const list = sortedList()
+      if (changed && onUpdate) {
         try {
-          onUpdate(sortedList()) // 搜到一个显示一个：立即把当前列表回吐给页面增量渲染
+          onUpdate(list) // 搜到一个显示一个：立即把当前列表回吐给页面增量渲染
         } catch (error) {
           // 页面回调自身异常不能中断扫描
+        }
+      }
+      // 目标已扫到就提前收网、不等满 timeout：把「连接前扫描」从雷打不动 6s 压到扫到即走(通常 <1s)。
+      // 放在 onUpdate 之后，页面最后一次增量渲染照常；until 自身异常按「未命中」处理，退回等满 timeout。
+      if (until) {
+        let done = false
+        try {
+          done = !!until(list)
+        } catch (error) {
+          done = false
+        }
+        if (done) {
+          finish()
         }
       }
     }
