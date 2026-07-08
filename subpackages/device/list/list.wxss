@@ -185,7 +185,7 @@
   height: 84rpx;
   margin-top: 34rpx;
   /* 背景色与设备详情页 .device-actions.glass-panel 一致（取全局 .glass-panel） */
-  background: rgba(255, 255, 255, 0.4);
+  /* background: rgba(255, 255, 255, 0.4); */
   border-radius: 40rpx;
   border: 1px solid rgba(255, 255, 255, 0.31);
   box-shadow: 0 4px 12.1px 0 rgba(44, 63, 97, 0.03);
@@ -199,7 +199,7 @@
   gap: 10rpx;
   min-height: 84rpx;
   color: #777e88;
-  font-size: 24rpx;
+  font-size: 28rpx;
   font-weight: 500;
 }
 
@@ -222,14 +222,14 @@
 
 .action-frame-icon {
   flex: 0 0 auto;
-  width: 32rpx;
-  height: 30rpx;
+  width: 40rpx;
+  height: 40rpx;
 }
 
 .action-bt-icon {
   flex: 0 0 auto;
-  width: 28rpx;
-  height: 28rpx;
+  width: 40rpx;
+  height: 40rpx;
 }
 
 .empty-device {
