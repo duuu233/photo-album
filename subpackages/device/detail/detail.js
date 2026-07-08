@@ -1130,12 +1130,27 @@ Page({
           logClearDeviceData(traceId, '删除指令(0x12)报错，回读设备状态核对是否已实际清空', {
             deviceError: (deleteError && deleteError.message) || String(deleteError)
           })
+          // 设备可能还在擦除、此刻回不了 0x01：重读几次(每次间隔 4s、共 3 次)给它删完的时间，
+          // 别因一次回读失败就误报「设备暂时无法连接」。任一次读到就用，全部失败才沿用原始设备错误抛出。
           let after
-          try {
-            after = await deviceBle.readDeviceInfo(deviceId)
-          } catch (reReadError) {
-            // 回读也失败：无法确认设备是否已清空，沿用原始设备错误如实抛出（带来源前缀）
-            logClearDeviceData(traceId, '回读设备状态失败，无法确认清空结果，沿用原始设备错误', {
+          let reReadError
+          for (let attempt = 1; attempt <= 3 && !after; attempt++) {
+            if (attempt > 1) {
+              await new Promise(resolve => setTimeout(resolve, 4000))
+            }
+            try {
+              after = await deviceBle.readDeviceInfo(deviceId)
+            } catch (error) {
+              reReadError = error
+              logClearDeviceData(traceId, '回读设备状态失败，稍后重试', {
+                attempt,
+                reReadError: (error && error.message) || String(error)
+              })
+            }
+          }
+          if (!after) {
+            // 多次回读都失败：无法确认设备是否已清空，沿用原始设备错误如实抛出（带来源前缀）
+            logClearDeviceData(traceId, '多次回读设备状态均失败，无法确认清空结果，沿用原始设备错误', {
               reReadError: (reReadError && reReadError.message) || String(reReadError)
             })
             throw prefixDeviceError(deleteError)
@@ -1193,12 +1208,46 @@ Page({
       title: '已清空',
       icon: 'none'
     })
+    // 一键清空后马上回读设备信息(0x01)，把内存占用/电量立刻刷新到详情页（不等下面 loadDetail 的接口往返）
+    await this.refreshDeviceMemoryFromBle(deviceId)
     try {
       await this.loadDetail()
     } finally {
       logClearDeviceData(traceId, '一键清空设备指令打印结束')
       deviceBle.setMonitor(null)
     }
+  },
+
+  // 一键清空成功后立刻回读设备信息(0x01)并刷新详情页的内存占用/电量，不等 loadDetail 的接口往返，
+  // 让「已清空」后内存数马上归零。读失败(设备刚擦完可能短暂无响应)不影响清空结果，随后 loadDetail 仍会再同步一次。
+  async refreshDeviceMemoryFromBle(deviceId) {
+    if (!deviceId) {
+      return
+    }
+    let info
+    try {
+      info = await deviceBle.readDeviceInfo(deviceId)
+    } catch (error) {
+      return
+    }
+    const prev = this.data.device || {}
+    const device = Object.assign({}, prev, {
+      battery: typeof info.battery === 'number' ? info.battery : prev.battery,
+      usedMemory: info.imgCount,
+      totalMemory: info.capacity
+    })
+    const hasBattery = typeof device.battery === 'number'
+    this.setData({
+      device,
+      memoryPercent: memoryPercent(device),
+      memoryText: device.totalMemory
+        ? `${device.usedMemory}/${device.totalMemory}`
+        : '--',
+      batteryIcon: batteryUtil.getBatteryIcon(
+        hasBattery ? device.battery : batteryUtil.DEFAULT_BATTERY
+      ),
+      batteryText: hasBattery ? `${device.battery}%` : '--'
+    })
   },
 
   showDeleteConfirm() {
