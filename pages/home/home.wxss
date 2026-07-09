@@ -484,7 +484,7 @@ button {
 
 .projection-desc {
   color: #8a9099;
-  font-size: 22rpx;
+  font-size: 21rpx;
   line-height: 1;
 }
 
