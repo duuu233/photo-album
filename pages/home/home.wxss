@@ -424,7 +424,7 @@ button {
 
   margin: 20rpx 48rpx 0 48rpx;
 
-  overflow: hidden;
+  /* overflow: hidden; */
 }
 
 .bound-home .projection-grid,
@@ -438,7 +438,7 @@ button {
   display: flex;
   width: 318rpx;
   height: 310rpx;
-  /* border-radius: 40rpx; */
+  border-radius: 40rpx;
   /* 模仿 .carousel-glass 的阴影（0px 4px 16px rgba(60,53,16,0.12)），px→rpx 适配卡片 rpx 尺寸 */
   box-shadow: 0 8rpx 32rpx rgba(60, 53, 16, 0.12);
 }
@@ -458,7 +458,7 @@ button {
   height: 96rpx;
 }
 .projection-grid .media-art {
-  margin: 34rpx 0 0 26rpx;
+  margin: 40rpx 0 0 46rpx;
 }
 .projection-copy {
   z-index: 2;
