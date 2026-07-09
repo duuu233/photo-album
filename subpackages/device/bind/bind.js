@@ -3,6 +3,7 @@ const toast = require('../../../utils/toast')
 const permission = require('../../../utils/permission')
 const bluetooth = require('../../../utils/bluetooth')
 const deviceBle = require('../../../utils/device-ble')
+const activeDevice = require('../../../utils/active-device')
 const system = require('../../../utils/system')
 
 const app = getApp()
@@ -231,6 +232,11 @@ Page({
           item.deviceNo || item.productDeviceId || item.deviceId
         )
         if (!serial) {
+          return false
+        }
+        // 型号/尺寸对不上(不同型号设备)直接排除：防广播 4 字节与后端 6 字节偶合，把新设备(如 3.7寸)
+        // 误判成已绑定的别台(如 5.89寸)而不新建绑定。屏型以固件读到的为准，取不到再用广播的。
+        if (!activeDevice.sameScreen(item, (info && info.screenType) || scanDevice.screenType)) {
           return false
         }
         return candidates.some(

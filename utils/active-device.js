@@ -8,6 +8,7 @@ const deviceBle = require('./device-ble')
 const bluetooth = require('./bluetooth')
 const permission = require('./permission')
 const toast = require('./toast')
+const protocol = require('./frame-protocol')
 
 // 弹窗引导去首页切换设备 / 绑定新设备
 function promptSwitchDevice(content) {
@@ -51,6 +52,8 @@ function findConnectedDeviceId(device) {
     return ''
   }
   const hit = deviceBle.getActiveConnections().find(conn =>
+    // 先按型号/尺寸过一道闸：会话广播 screenType 与设备记录尺寸对不上（不同型号）直接跳过，防串台
+    sameScreen(device, conn.screenType) &&
     (conn.serials || []).some(serial =>
       serials.some(mine => serialsMatch(serial, mine))
     )
@@ -77,11 +80,50 @@ function serialsMatch(a, b) {
   if (!left || !right) {
     return false
   }
+  // 1) 完全相等：最可靠（后端 6 字节 deviceId vs 固件 0x01 读出的 6 字节，或广播 4 字节 vs 广播 4 字节）
+  if (left === right) {
+    return true
+  }
+  // 2) 长度相同却不相等 → 一定是两台不同设备（含双方都是完整 6 字节的常见情形），直接否。
+  //    这样即便两台设备序列号高度相似也不会误并。
+  if (left.length === right.length) {
+    return false
+  }
+  // 3) 长度不同：广播 4 字节(8 hex) vs 固件/后端 6 字节(12 hex)。只认「短的是长的前缀或后缀」的锚定匹配，
+  //    不再用任意位置 indexOf —— 否则两台设备序列号中段偶然重叠 4 字节就被误判成同一台（EF6-370 串到 EF6-589 的根因之一）。
+  const shorter = left.length < right.length ? left : right
+  const longer = left.length < right.length ? right : left
+  if (shorter.length < 8) {
+    // 短于 4 字节不足以判定同一台，避免误并
+    return false
+  }
   return (
-    left === right ||
-    (left.length >= 8 &&
-      right.length >= 8 &&
-      (left.indexOf(right) > -1 || right.indexOf(left) > -1))
+    longer.indexOf(shorter) === 0 ||
+    longer.lastIndexOf(shorter) === longer.length - shorter.length
+  )
+}
+
+// 屏幕型号(尺寸)一致性校验：设备记录的 width/height（后端按物理型号下发，用户改名也不变）
+// 与活动会话广播登记的 screenType 对应尺寸(SCREEN_TYPES)。两侧都拿得到且尺寸不一致 → 判为不同型号设备，
+// 交叉匹配一票否决，杜绝「序列号 4/6 字节偶合」把 3.7寸(480×720) 误连到 5.89寸(680×960)。
+// 任一侧信息缺失（老会话没登记 screenType / 设备记录没尺寸）→ 不阻断，回退到纯序列号匹配，保持兼容。
+function sameScreen(device, screenType) {
+  if (!screenType) {
+    return true
+  }
+  const spec = protocol.SCREEN_TYPES[screenType]
+  if (!spec || !spec.width || !spec.height) {
+    return true
+  }
+  const dw = Number(device && device.width) || 0
+  const dh = Number(device && device.height) || 0
+  if (!dw || !dh) {
+    return true
+  }
+  // 容忍横竖屏方向差异：宽高成对相等即可
+  return (
+    (dw === spec.width && dh === spec.height) ||
+    (dw === spec.height && dh === spec.width)
   )
 }
 
@@ -102,6 +144,8 @@ function matchScannedDevice(found, device) {
   }
   return (
     list.find(item =>
+      // 扫描项广播 screenType 与设备记录尺寸对不上（不同型号）直接跳过，防扫描重连时误配到别的型号设备
+      sameScreen(device, item && item.screenType) &&
       serials.some(serial => serialsMatch(item && item.deviceNo, serial))
     ) || null
   )
@@ -156,8 +200,11 @@ async function scanMatchConnect(device, match, onConnectStart) {
   if (typeof onConnectStart === 'function') {
     onConnectStart()
   }
-  // 把扫描广播里的 Device_ID 登记到会话，后续页面据此交叉匹配认出这条连接
-  await deviceBle.ensureConnection(target.deviceId, { deviceNo: target.deviceNo })
+  // 把扫描广播里的 Device_ID + 屏幕类型登记到会话，后续页面据此交叉匹配认出这条连接，并按型号/尺寸校验防串台
+  await deviceBle.ensureConnection(target.deviceId, {
+    deviceNo: target.deviceNo,
+    screenType: target.screenType
+  })
   return target
 }
 
@@ -290,6 +337,7 @@ module.exports = {
   isDeviceConnected,
   findConnectedDeviceId,
   serialsMatch,
+  sameScreen,
   matchScannedDevice,
   ensureDeviceConnected,
   connectBoundDevice,

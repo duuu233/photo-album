@@ -345,18 +345,32 @@ function attachSessionSerial(deviceId, serial) {
   }
 }
 
+// 把扫描广播里的屏幕类型(6.10.7 Screen_Type)登记到会话。交叉匹配活动会话时据此按「物理型号/尺寸」
+// 再校验一道：广播 4 字节与后端 6 字节序列号偶合时，不同型号(如 3.7寸 vs 5.89寸)会被尺寸一票否决，防串台。
+function attachSessionScreen(deviceId, screenType) {
+  const session = sessions[deviceId]
+  if (!session || !screenType) {
+    return
+  }
+  session.screenType = screenType
+}
+
 // 建立连接并发现 FF00 主服务下的写(FF01)/通知(FF02)特征，开启通知。结果缓存到会话。
 // 已连上直接复用；正在连则复用在途 Promise（避免并发重复连接），否则发起一次新连接。
 // meta.deviceNo（可选）：扫描广播里的 Device_ID，登记到会话供「设备ID×广播ID」交叉匹配。
+// meta.screenType（可选）：扫描广播里的屏幕类型，登记到会话供交叉匹配时按型号/尺寸再校验，防串到不同型号设备。
 async function ensureConnection(deviceId, meta) {
   const serial = meta && (meta.deviceNo || meta.serial)
+  const screenType = meta && meta.screenType
   if (sessions[deviceId] && sessions[deviceId].ready) {
     attachSessionSerial(deviceId, serial)
+    attachSessionScreen(deviceId, screenType)
     return sessions[deviceId]
   }
   if (connecting[deviceId]) {
     const session = await connecting[deviceId]
     attachSessionSerial(deviceId, serial)
+    attachSessionScreen(deviceId, screenType)
     return session
   }
   const promise = establishConnection(deviceId)
@@ -364,6 +378,7 @@ async function ensureConnection(deviceId, meta) {
   try {
     const session = await promise
     attachSessionSerial(deviceId, serial)
+    attachSessionScreen(deviceId, screenType)
     return session
   } finally {
     delete connecting[deviceId]
@@ -1017,6 +1032,8 @@ function getActiveConnections() {
         // 已登记的稳定序列号（广播/固件 Device_ID）：active-device 据此把「丢了 deviceId 的设备记录」
         // 与活动会话交叉匹配，认出「其实还连着」的设备
         serials: (session.serials || []).slice(),
+        // 广播登记的屏幕类型：active-device 交叉匹配时据此按型号/尺寸再校验，防串到不同型号设备
+        screenType: session.screenType || 0,
         mtu: session.mtu,
         dataChunk: session.dataChunk,
         writeType: session.writeType,
