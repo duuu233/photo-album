@@ -175,13 +175,11 @@
               <view class="projection-name">拍照</view>
               <view class="projection-desc">拍摄照片并投屏</view>
             </view>
-            <view class="projection-arrow-circle">
-              <image
-                class="projection-arrow-icon"
-                src="/assets/images/home-icon03.png"
-                mode="aspectFit"
-              />
-            </view>
+            <image
+              class="projection-arrow"
+              src="/assets/images/home-icon05.png"
+              mode="aspectFit"
+            />
           </view>
         </view>
         <view
@@ -202,13 +200,11 @@
               <view class="projection-name">相册</view>
               <view class="projection-desc">选择照片并投屏</view>
             </view>
-            <view class="projection-arrow-circle">
-              <image
-                class="projection-arrow-icon"
-                src="/assets/images/home-icon04.png"
-                mode="aspectFit"
-              />
-            </view>
+            <image
+              class="projection-arrow"
+              src="/assets/images/home-icon06.png"
+              mode="aspectFit"
+            />
           </view>
         </view>
       </view>
