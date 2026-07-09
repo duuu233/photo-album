@@ -7,9 +7,20 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   height: 112rpx;
-  background: rgba(255, 255, 255, 0.74);
   border-radius: 999rpx;
-  box-shadow: 0 18rpx 50rpx rgba(126, 150, 184, 0.14);
+}
+
+/* 底部胶囊背景改用带阴影的整图 home-bottom-btn.png（720×183，胶囊实体 + 投影已内置），替代原背景色 + box-shadow。
+   实测胶囊实体 x[32,687] y[32,145]=656×114，四周投影留白 L32/R32/T32/B37。
+   等比映射为 718×180rpx，使胶囊实体正好覆盖 tabbar 可视区(654×112rpx)；图向四周外扩到阴影范围、用负偏移定位，
+   从而保持可视宽高不变。z-index:-1 垫在两个 tab-item 之下。 */
+.tabbar-bg {
+  position: absolute;
+  left: -32rpx;
+  top: -31rpx;
+  width: 718rpx;
+  height: 180rpx;
+  z-index: -1;
 }
 
 .content-dimmed {

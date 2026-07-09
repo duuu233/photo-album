@@ -1,4 +1,5 @@
 <view class="custom-tabbar {{dimmed ? 'content-dimmed' : ''}}" style="--safe-bottom: {{safeBottom}}px;">
+  <image class="tabbar-bg" src="/assets/images/home-bottom-btn.png" mode="scaleToFill"></image>
   <view class="tab-item {{active === 'home' ? 'active' : ''}}" hover-class="none" bindtap="switchToHome">
     <image class="tab-icon" src="{{active === 'home' ? '/assets/images/tabbar-home02.svg' : '/assets/images/tabbar-home01.svg'}}" mode="aspectFit"></image>
     <view>首页</view>
