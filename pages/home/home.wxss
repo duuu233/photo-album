@@ -487,10 +487,23 @@ button {
   height: 118rpx;
 }
 
-.projection-arrow {
+/* 拍照/相册卡片右下角圆形箭头：新图标(home-icon03/04)只含箭头，用代码画一个等大(118rpx)透明圆，
+   外围给黑色柔光阴影——几何沿用 .projection-card(album-card) 的 0 8rpx 32rpx，仅把颜色改成黑色 */
+.projection-arrow-circle {
   z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 118rpx;
   height: 118rpx;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.12);
+}
+
+.projection-arrow-icon {
+  width: 48rpx;
+  height: 48rpx;
 }
 
 .home-mask {
