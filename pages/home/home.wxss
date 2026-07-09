@@ -494,16 +494,16 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 118rpx;
-  height: 118rpx;
+  width: 72rpx;
+  height: 72rpx;
   border-radius: 50%;
   background: transparent;
   box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.12);
 }
 
 .projection-arrow-icon {
-  width: 48rpx;
-  height: 48rpx;
+  width: 34rpx;
+  height: 34rpx;
 }
 
 .home-mask {
