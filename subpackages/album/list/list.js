@@ -145,15 +145,20 @@ Page({
     //（旧的软隐藏是永久的，会把后端仍返回的图一直藏起来，导致「接口有 N 条却只显示 1 条」）
     const photos = buildDisplayPhotos(sourcePhotos, devices)
 
-    // 筛选项(filter-wrap 是设备展示载体)：有照片时按照片里的设备名生成(每项都能筛出照片)；
-    // 图库为空但设备接口有数据时，回退用设备列表生成——让 filter-wrap 仍显示设备、不因无照片而隐藏。
-    const filters = photos.length
-      ? buildDeviceFilters(photos)
-      : buildDeviceFiltersFromDevices(devices)
-    // 当前筛选若已不在列表里（设备照片被删光/切换了筛选源）则回退到第一项，即默认选中设备列表第一台
+    // 筛选项(filter-wrap/下拉是设备展示载体)：始终以「设备接口全量绑定设备」为准，保证每台绑定设备都出现在下拉里——
+    // 含刚绑定、还没有照片的设备。此前有照片时只按「照片里的设备名」生成，无照片的设备被漏掉，导致下拉只剩有图的那台。
+    // 再并入「照片里出现、但设备列表里没有的设备名」(如设备改名后老照片仍带旧名)兜底，避免这些照片筛不出来。
+    const photoFilters = buildDeviceFilters(photos)
+    const filters = buildDeviceFiltersFromDevices(devices)
+    photoFilters.forEach(item => {
+      if (!filters.some(existing => existing.value === item.value)) {
+        filters.push(item)
+      }
+    })
+    // 默认选中：保留原选中(仍在列表) → 否则优先第一台「有照片」的设备(避免默认打开空设备，维持原有观感) → 再否则第一台
     const currentFilter = filters.some(item => item.value === this.data.currentFilter)
       ? this.data.currentFilter
-      : (filters[0] ? filters[0].value : '')
+      : ((photoFilters[0] && photoFilters[0].value) || (filters[0] ? filters[0].value : ''))
 
     this.setData({
       filters,
