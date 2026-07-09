@@ -436,6 +436,8 @@ button {
   position: relative;
   flex-direction: column;
   display: flex;
+  /* 让「图标 + 文案行」整体在卡片内垂直居中，替代原来的顶部大留白，观感更均衡居中 */
+  justify-content: center;
   width: 318rpx;
   height: 310rpx;
   border-radius: 40rpx;
@@ -458,11 +460,15 @@ button {
   height: 96rpx;
 }
 .projection-grid .media-art {
-  margin: 40rpx 0 0 46rpx;
+  /* 左端与下方文案统一到 34rpx 对齐（原来 46rpx 比文案更靠右、显得错位）；与文案间距 8rpx。
+     顶部 28rpx：抵消右下角箭头图标(home-icon05/06)自带的底部阴影透明留白(约 28rpx)——
+     否则 justify-content:center 只居中盒子、看起来会整体偏上，加这段让「可视内容」真正视觉居中。 */
+  margin: 28rpx 0 8rpx 34rpx;
 }
 .projection-copy {
   z-index: 2;
-  padding: 12rpx 0rpx 0 24rpx;
+  /* 左内边距与图标对齐到 34rpx；顶间距交给 media-art 的 margin-bottom，避免叠加 */
+  padding: 0 0 0 34rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
