@@ -915,58 +915,71 @@ async function uploadImage(deviceId, options) {
     throw new Error(protocol.resultText(startAck.result))
   }
 
-  // 2) 0x21 数据：每片大小按协商到的 MTU 决定（上限 236）；窗口 N 包，发满 N 包等一次 0x23(ACK_SEQ)。
-  // 固件已扩大 MCU 收包内存，一次可缓 10 包(此前只有 5)，故默认窗口 10。调用方可传 window 覆盖(如调试台对照)；
+  // 2) 0x21 数据：每片大小按协商到的 MTU 决定（上限 236）。采用「滑动窗口」：始终保持最多 WINDOW 个
+  // 未确认(in-flight)包在途，设备每用 0x23 把「已连续接收包号」往前推一格，就立刻补发新包填满窗口——
+  // 手机不再「发满一窗→停下干等 ACK→再发一窗」地空转(旧的批量停等模型)，把 ACK 往返的空档也利用起来，
+  // 从而在不越过 7.5ms 连接间隔 / 10 包缓冲这两个设备极限的前提下，把有效吞吐顶到发送节奏(pace)的上限。
+  // 固件已扩大 MCU 收包内存，一次可缓 10 包，故窗口上限 10；调用方可传 window 覆盖(如调试台对照)，
   // 未显式传时用「同步投屏」存下的值(没同步过回落默认 10)，并夹到固件上限，避免超缓冲丢包。
   const CHUNK = session.dataChunk || 236
   const WINDOW = normalizeTransferWindow(
     Number.isFinite(options.window) ? options.window : getTransferWindow()
   )
   // 每包发送间隔(ms)：调用方显式传 pace 时以它为准；否则用「同步投屏」存下的值(没同步过回落极速 3ms)。
-  // 越小越快，但太小设备会跟不上而丢包/卡住。
+  // 越小越快，但太小设备会跟不上而丢包/卡住。这是「设备侧可持续吸收速率」的节流阀——滑动窗口只填掉
+  // ACK 往返的空档，并不越过它，发送节奏仍由 pace 决定。
   const pace = Number.isFinite(options.pace)
     ? Math.max(0, options.pace)
     : getTransferPaceMs()
   const totalPackets = Math.ceil(dataSize / CHUNK)
-  let nextSeq = 0 // 下一个要发送的包号（= 已确认的最后包号 + 1）
-  let retries = 0 // 同一窗口的重试次数，连续失败则判定连接中断
-  // 窗口之间的停顿必须「小」：PRD 6.4.1 规定「设备超过 1 秒没收到下一包数据即判定传输中断」，
-  // 所以图传期间要持续快速喂数据，窗口之间绝不能长时间停顿，否则设备会单方面中止本次传输。
-  const windowPause = Math.max(10, pace)
+  let nextSeq = 0 // 下一个「尚未发送」的包号
+  let retries = 0 // 连续「等不到 ACK 推进」的次数，连续失败则判定连接中断
   onProgress(0, totalPackets, 'start')
 
   const tracker = createAckTracker(session)
   try {
-    while (nextSeq < totalPackets) {
+    // 直到设备连续确认到最后一包(tracker.last 达到 totalPackets-1)才算发完
+    while (tracker.last < totalPackets - 1) {
       if (shouldAbort()) {
         throw new Error('UPLOAD_ABORTED') // 息屏/切后台：立即停，避免在后台空转后报含糊错误
       }
       // 卡住后主动「收敛」：每多重试一次，窗口就缩小一包（最终降到 1 包）、每包间隔就拉大一截。
       // 很多固件只接收「按序的下一个包」、且 Flash 落盘期间会丢掉来不及处理的包；于是次待收包反复在设备
       // 忙时抵达被丢，ACK_SEQ 就永远停在它前一个不动。缩窗+减速能让这个待收包在设备空闲时「单独」抵达，
-      // 打破死结。初次发送(retries===0)完全不受影响，正常速度不变。
-      const burst = retries === 0 ? WINDOW : Math.max(1, WINDOW - retries)
+      // 打破死结。正常推进(retries===0)完全不受影响：满窗 + 原速。
+      const window = retries === 0 ? WINDOW : Math.max(1, WINDOW - retries)
       const sendPace = retries === 0 ? pace : Math.min(150, pace + 30 * retries)
-      const windowEnd = Math.min(nextSeq + burst, totalPackets)
-      // 逐包发送：每包之间留间隔做流控，避免冲爆发送缓冲导致写失败/丢包。
-      for (let seq = nextSeq; seq < windowEnd; seq++) {
+
+      // ① 填窗：只要「在途未确认包数 < window」且还有没发的包，就持续补发，保持窗口常满。
+      //    在途包数 = nextSeq - (tracker.last + 1) = nextSeq - tracker.last - 1（发一个后至多到 window，
+      //    绝不超过设备 10 包缓冲）。填窗过程中若 ACK 已推进(tracker.last 变大)，会自然多补几包填满新腾出的空间。
+      while (nextSeq < totalPackets && nextSeq - tracker.last - 1 < window) {
+        if (shouldAbort()) {
+          throw new Error('UPLOAD_ABORTED')
+        }
         const chunk = data.subarray(
-          seq * CHUNK,
-          Math.min((seq + 1) * CHUNK, dataSize)
+          nextSeq * CHUNK,
+          Math.min((nextSeq + 1) * CHUNK, dataSize)
         )
-        await writePacket(session, seq, chunk)
-        if (sendPace > 0) {
+        await writePacket(session, nextSeq, chunk)
+        nextSeq++
+        // 包间流控：仅当本轮还要继续补下一包时才停 pace；本轮已填满/发完就不拖尾、直接去等 ACK，
+        // 省掉旧批量模型里「窗口最后一包后仍多睡一次 pace」的空转。
+        const moreThisRound =
+          nextSeq < totalPackets && nextSeq - tracker.last - 1 < window
+        if (sendPace > 0 && moreThisRound) {
           await sleep(sendPace)
         }
       }
 
-      // 等设备的 0x23 把「已连续接收包号」推过 nextSeq-1（= 至少又确认了一个新包）。
-      // 超时必须 < 1s（PRD 6.4.1）：等不到 ACK 就尽快补发数据，赶在设备 1 秒接收超时前喂上；
-      // 否则设备会判定传输中断、清掉会话，之后再怎么重发都收不进，ACK_SEQ 会永远停住。
+      // ② 等设备的 0x23 把「已连续接收包号」再往前推一格（= 至少又确认了一个新包），随后立刻回到 ①
+      //    补发新包填满窗口——ACK 往返的空档就被后续数据填满，不再空等。
+      //    超时必须 < 1s（PRD 6.4.1）：等不到就赶在设备 1 秒接收超时前重发，否则设备判定传输中断、清掉会话。
+      const before = tracker.last
       try {
-        await tracker.waitAdvance(nextSeq - 1, 600)
+        await tracker.waitAdvance(before, 600)
       } catch (error) {
-        // 没等到推进：可能丢包或 ACK 迟到。立刻（极短退避）重发，务必赶在设备 1s 超时前把数据送到。
+        // 没等到推进：可能丢包或 ACK 迟到。缩窗+减速后回退重发未确认区间，务必赶在设备 1s 超时前送到。
         if (++retries > 15) {
           throw new Error(
             `图传中断：设备停在已接收第 ${tracker.last} 包不再前进。可能设备忙或处理不过来。当前 MTU=${session.mtu}、每包 ${CHUNK} 字节`
@@ -974,18 +987,21 @@ async function uploadImage(deviceId, options) {
         }
         // 把卡顿实况抛给页面：停在第几包(stuckAt)、第几次重发。便于判断是「设备中断(stuckAt 死住不动)」
         // 还是「链路慢(stuckAt 缓慢推进)」——这是向硬件提问时最关键的证据。
-        onProgress(Math.min(nextSeq, totalPackets), totalPackets, 'retry', {
-          stuckAt: tracker.last,
-          retries
-        })
+        onProgress(
+          Math.min(tracker.last + 1, totalPackets),
+          totalPackets,
+          'retry',
+          { stuckAt: tracker.last, retries }
+        )
+        // 回退到「设备已确认的下一个包」重发：下一轮 ① 会以缩小的窗口、放大的 pace 重新按序补发
+        nextSeq = tracker.last + 1
         await sleep(Math.min(150, 50 * retries)) // 极短退避(≤150ms)：保证「等待+退避」远小于设备 1s 超时
         continue
       }
 
-      nextSeq = tracker.last + 1 // 推进到设备已确认的下一个包
+      // 有推进：恢复满窗 + 原速；进度按「已确认包数」= tracker.last + 1 上报，随即回到 ① 补满窗口
       retries = 0
-      onProgress(Math.min(nextSeq, totalPackets), totalPackets, 'data')
-      await sleep(windowPause) // 窗口间小停顿（必须远小于 1s，见 6.4.1，否则设备会判定中断）
+      onProgress(Math.min(tracker.last + 1, totalPackets), totalPackets, 'data')
     }
   } finally {
     tracker.dispose() // 无论成功失败都摘掉常驻监听器

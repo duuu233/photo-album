@@ -260,27 +260,48 @@ Page({
         `[投屏] 设备空间：容量 ${info.capacity}，已存 ${usedIndexes.length}，剩余 ${free}，待投 ${total}`
       )
 
-      // 2) 逐张：原图传后端转换得 .bin → 下载帧数据 → 选空闲槽位 → 图传 → 设备成功才写投屏记录 → 刷新显示
+      // 2) 逐张：原图传后端转换得 .bin → 下载帧数据 → 选空闲槽位 → 图传 → 设备成功才写投屏记录 → 刷新显示。
+      // A3 预取流水线：设备帧的「后端转码 + 下载」是纯网络，与「BLE 图传」互不占用资源。所以在投第 i 张
+      // (走蓝牙)的同时，提前并行拉取第 i+1 张的设备帧；轮到它时通常已就绪，省去「传完一张才开始下一张
+      // 转码下载」的串行等待（批量投屏体感提速最明显的一块）。只预取下一张(最多 1 张在后台)，中断时浪费最小。
+      // 预取失败不在此处抛，包成 {error} 留到主循环 await 时再抛，走原有失败处理 / 失败记账。
+      const framePrefetch = []
+      const startPrefetch = idx => {
+        if (idx >= total || framePrefetch[idx]) {
+          return
+        }
+        framePrefetch[idx] = this.acquireFrame(images[idx], device, info, idx, total)
+          .then(result => ({ result }))
+          .catch(error => ({ error }))
+      }
+      startPrefetch(0) // 先启动第一张的取帧
+
       for (let i = 0; i < total; i++) {
         if (this._aborted) {
           throw new Error('UPLOAD_ABORTED')
         }
-        // 每张传输前把进度条清零：本张从 0% 独立开始（批量传输时每张 0→100）
-        this.setData({ progressCurrent: i + 1, progressPercent: 0 })
         const image = images[i]
         // 再次/重新投屏的图（记录页带入 imgBle 且未在预览页重新编辑过）：
         // 本张不论最终成功失败都要 addUserProductImgRecord 记账，失败记账由外层 catch 统一补
         const isRetry = !!(image.imgBle && !image.tempFilePath)
         this._retryImageInFlight = isRetry ? image : null
-        // 取本张要发给设备的六色 4bpp 帧 + 后端记录 id（见 acquireFrame）：
-        //   正常投屏走后端转换 → 下载 .bin（含 taskId/upirId）；再次/重新投屏直接下载 imgBle
-        const { frameData, taskId, upirId } = await this.acquireFrame(
-          image,
-          device,
-          info,
-          i,
-          total
-        )
+        // 每张传输前把进度条清零：本张从 0% 独立开始（批量传输时每张 0→100）。
+        // 取帧可能仍在进行(首张 / 弱网)，先给「准备」文案；已预取就绪则 await 立即返回。
+        this.setData({
+          progressCurrent: i + 1,
+          progressPercent: 0,
+          title: '图片处理中',
+          desc: `正在准备第 ${i + 1}/${total} 张…`
+        })
+        // 取本张要发给设备的六色 4bpp 帧 + 后端记录 id（见 acquireFrame）：预取已就绪则秒拿，
+        // 未就绪则在此等待。失败原样抛出，走外层失败处理。
+        const acquired = await framePrefetch[i]
+        if (acquired.error) {
+          throw acquired.error
+        }
+        const { frameData, taskId, upirId } = acquired.result
+        // 本张帧一到手，立刻启动下一张的预取，让它与本张 BLE 图传并行
+        startPrefetch(i + 1)
         const head = protocol.bytesToHex(frameData.subarray(0, 16))
         const expected4bpp = Math.ceil((info.width * info.height) / 2)
         console.log(
@@ -292,7 +313,7 @@ Page({
             `后端返回的不是设备要的六色4bpp帧：收到 ${frameData.length} 字节(头16=${head})，设备 ${info.width}×${info.height} 需要 ${expected4bpp} 字节`
           )
         }
-        this.setData({ desc: `正在投第 ${i + 1}/${total} 张…` })
+        this.setData({ title: '图片传输中', desc: `正在投第 ${i + 1}/${total} 张…` })
 
         const index = protocol.firstFreeIndex(
           protocol.indexesToMask(usedIndexes),
@@ -412,12 +433,13 @@ Page({
   },
 
   // 取本张要发给设备的六色 4bpp 帧 + 后端记录 id（原图传后端转换 → 下载 .bin）。
+  // 纯网络、无 UI 副作用：可被主循环「预取下一张」提前并行调用（见 runRealProjection 的预取流水线），
+  // 页面文案/进度统一由主循环控制，避免预取抢占当前正在投屏那张的界面。i/total 仅用于日志。
   async acquireFrame(image, device, info, i, total) {
     // 再次投屏（投屏记录页带入 imgBle）：记录里已有后端转换好的设备帧文件，直接下载 imgBle
     // 走 BLE 图传，不再调后端上传/转码接口(setUserProductUpload)。
     // 若用户在预览页重新裁剪/旋转过（产生 tempFilePath），旧帧已对不上编辑结果，仍走后端转换链路。
     if (image.imgBle && !image.tempFilePath) {
-      this.setData({ title: '图片传输中', desc: `正在传输第 ${i + 1}/${total} 张…` })
       console.log(`[投屏] 第 ${i + 1}/${total} 张 再次投屏：直接下载 imgBle=${image.imgBle}`)
       // 产品要求：再次/重新投屏一律直接用记录里的设备帧 .bin(imgBle)，
       // 不回退后端上传/转码；下载失败即本张失败（runRealProjection 外层 catch 会补记失败记录）
@@ -425,20 +447,13 @@ Page({
       return { frameData, upirId: image.upirId }
     }
 
-    // 先「转换照片」(传后端按设备尺寸转换 + 下载 .bin)，再「投屏」(BLE 图传)，标题区分两个阶段：
-    //   · 调后端上传/转码接口(setUserProductUpload) 期间 → 标题「图片转码中」；
-    //   · 后端转码完成、开始下载 .bin 并 BLE 图传 → 标题切「图片传输中」。
-    // 让用户看到的标题与实际正在做的事一致，而不是全程停在「图片转码中」。
-    this.setData({ title: '图片转码中', desc: `正在转换第 ${i + 1}/${total} 张照片…` })
-    // 后端转换：返回可下载的 .bin 地址 + taskId(更新设备上传状态用) + upirId(投屏记录id)
+    // 正常投屏：先「转换照片」(传后端按设备尺寸转换) 得到可下载的 .bin 地址 + taskId(更新设备上传状态用)
+    // + upirId(投屏记录id)，再下载 .bin 得到六色 4bpp 帧（客户端不做任何图像转换）。
     const { url, taskId, upirId } = await this.convertOnServer(
       image,
       device,
       info
     )
-    // 后端转码完成，进入「下载 + 传输」阶段：标题切「图片传输中」
-    this.setData({ title: '图片传输中', desc: `正在传输第 ${i + 1}/${total} 张…` })
-    // 后端按设备分辨率直接返回六色 4bpp 帧；下载后原样走 BLE 图传（客户端不做任何图像转换）
     const frameData = await this.downloadFrameBin(url)
     return { frameData, taskId, upirId }
   },
