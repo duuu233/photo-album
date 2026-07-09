@@ -439,7 +439,8 @@ button {
   width: 318rpx;
   height: 310rpx;
   /* border-radius: 40rpx; */
-  /* box-shadow: 0 18rpx 50rpx rgba(126, 150, 184, 0.14); */
+  /* 模仿 .carousel-glass 的阴影（0px 4px 16px rgba(60,53,16,0.12)），px→rpx 适配卡片 rpx 尺寸 */
+  box-shadow: 0 8rpx 32rpx rgba(60, 53, 16, 0.12);
 }
 
 .projection-card-bg {
