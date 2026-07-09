@@ -934,6 +934,15 @@ async function uploadImage(deviceId, options) {
   const totalPackets = Math.ceil(dataSize / CHUNK)
   let nextSeq = 0 // 下一个「尚未发送」的包号
   let retries = 0 // 连续「等不到 ACK 推进」的次数，连续失败则判定连接中断
+  // B2 自适应发送节奏：pace 是「已知安全」的基准间隔（同步投屏存的值 / 默认极速 3ms）。链路稳时把实际
+  // 间隔 curPace 从它往下探（更快），一卡顿就往回退（更慢），自动收敛到「当前设备+链路」的真实可持续
+  // 速率，不再钉死一个保守常量。窗口上限(WINDOW)与 writePacket 缓冲退避始终兜底流控，故下探到 0 也不会
+  // 冲爆缓冲。curPace 只在 [PACE_FLOOR, pace] 区间浮动——绝不慢于配置基准（更慢的情形交给重试期的加速）。
+  const PACE_FLOOR = 0 // 下探下限(ms)：窗口上限已兜住在途包数，最低可到 0（纯 ACK 自时钟）
+  const PACE_STEP = 0.5 // 每档下探/回退步长(ms)
+  const PACE_PROBE_AFTER = 6 // 连续多少个「干净窗口」(无重试地推进)才下探一档，起步保守
+  let curPace = pace // 当前实际每包间隔
+  let cleanRun = 0 // 连续「干净推进」计数，达到 PACE_PROBE_AFTER 就下探一档
   onProgress(0, totalPackets, 'start')
 
   const tracker = createAckTracker(session)
@@ -948,7 +957,9 @@ async function uploadImage(deviceId, options) {
       // 忙时抵达被丢，ACK_SEQ 就永远停在它前一个不动。缩窗+减速能让这个待收包在设备空闲时「单独」抵达，
       // 打破死结。正常推进(retries===0)完全不受影响：满窗 + 原速。
       const window = retries === 0 ? WINDOW : Math.max(1, WINDOW - retries)
-      const sendPace = retries === 0 ? pace : Math.min(150, pace + 30 * retries)
+      // 正常推进用自适应的 curPace(B2)；重试期在其上叠加 30ms/次强力减速，帮卡住的待收包单独抵达
+      const sendPace =
+        retries === 0 ? curPace : Math.min(150, curPace + 30 * retries)
 
       // ① 填窗：只要「在途未确认包数 < window」且还有没发的包，就持续补发，保持窗口常满。
       //    在途包数 = nextSeq - (tracker.last + 1) = nextSeq - tracker.last - 1（发一个后至多到 window，
@@ -995,11 +1006,22 @@ async function uploadImage(deviceId, options) {
         )
         // 回退到「设备已确认的下一个包」重发：下一轮 ① 会以缩小的窗口、放大的 pace 重新按序补发
         nextSeq = tracker.last + 1
+        // B2 回退：卡顿说明探得太快，把基准间隔上调一档（封顶在 pace，永不慢于配置基准），并清零干净连击
+        curPace = Math.min(pace, curPace + PACE_STEP)
+        cleanRun = 0
         await sleep(Math.min(150, 50 * retries)) // 极短退避(≤150ms)：保证「等待+退避」远小于设备 1s 超时
         continue
       }
 
-      // 有推进：恢复满窗 + 原速；进度按「已确认包数」= tracker.last + 1 上报，随即回到 ① 补满窗口
+      // 有推进：更新进度（已确认包数 = tracker.last + 1），随即回到 ① 补满窗口。
+      // B2 探测：只有「干净窗口」(本轮此前没在重试)才累积连击；连够 PACE_PROBE_AFTER 档就把 curPace 下探
+      // 一步(更快)。刚从卡顿恢复(retries>0)的这一轮不算干净，只清零连击，避免立刻又夷回刚失败的速率。
+      if (retries !== 0) {
+        cleanRun = 0
+      } else if (curPace > PACE_FLOOR && ++cleanRun >= PACE_PROBE_AFTER) {
+        curPace = Math.max(PACE_FLOOR, curPace - PACE_STEP)
+        cleanRun = 0
+      }
       retries = 0
       onProgress(Math.min(tracker.last + 1, totalPackets), totalPackets, 'data')
     }
