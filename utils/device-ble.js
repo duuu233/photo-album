@@ -524,25 +524,19 @@ const DEFAULT_TRANSFER_WINDOW = 10
 const TRANSFER_WINDOW_MAX = 10
 const TRANSFER_WINDOW_STORAGE_KEY = 'transferWindow'
 
-// 裸写一帧（默认写类型，由特征支持的属性决定——本设备 FF01 为无应答写）。
-async function writeFrame(session, cmd, payload, writeType) {
-  const value = protocol.buildFrame(cmd, payload)
-  reportFrame('TX', session.deviceId, cmd, value)
+// 写一个图传数据包（value 为已组好的完整 0x21 帧 ArrayBuffer，见 buildImgDataFrame/预组包），
+// 带「缓冲忙就退避重试」：写失败(常见 writeValueToCharacteristics error 是缓冲暂满)
+// 不立刻判死，稍等再试，几次都不行才抛出。
+async function writePacket(session, value, stats) {
   const params = {
     deviceId: session.deviceId,
     serviceId: session.serviceId,
     characteristicId: session.writeCharId,
     value
   }
-  if (writeType) {
-    params.writeType = writeType // 'write' 有应答(可靠) / 'writeNoResponse' 无应答(快但可能丢)
+  if (session.writeType) {
+    params.writeType = session.writeType // 'write' 有应答(可靠) / 'writeNoResponse' 无应答(快但可能丢)
   }
-  await wxp(wx.writeBLECharacteristicValue, params)
-}
-
-// 写一个图传数据包，带「缓冲忙就退避重试」：写失败(常见 writeValueToCharacteristics error 是缓冲暂满)
-// 不立刻判死，稍等再试，几次都不行才抛出。
-async function writePacket(session, seq, chunk, stats) {
   let attempt = 0
   for (;;) {
     const startedAt = Date.now()
@@ -550,12 +544,8 @@ async function writePacket(session, seq, chunk, stats) {
       stats.writeCalls++
     }
     try {
-      await writeFrame(
-        session,
-        protocol.CMD.IMG_DATA,
-        protocol.buildImgDataPayload(seq, chunk),
-        session.writeType
-      )
+      reportFrame('TX', session.deviceId, protocol.CMD.IMG_DATA, value)
+      await wxp(wx.writeBLECharacteristicValue, params)
       if (stats) {
         const duration = Date.now() - startedAt
         stats.writeTotalMs += duration
@@ -575,6 +565,37 @@ async function writePacket(session, seq, chunk, stats) {
       await sleep(80) // 发送缓冲可能暂时满，等一下再写
     }
   }
+}
+
+// 预组一张图的全部 0x21 数据帧（性能优化 D1）。分批让出事件循环：预取阶段与上一张 BLE 传输
+// 并行执行，长同步计算会饿死正在跑的 0x23 ACK 处理，每组 256 帧 yield 一次。
+async function buildAllImgDataFrames(bytes, chunkSize) {
+  const total = Math.ceil(bytes.length / chunkSize)
+  const frames = new Array(total)
+  for (let seq = 0; seq < total; seq++) {
+    frames[seq] = protocol.buildImgDataFrame(bytes, seq, chunkSize)
+    if ((seq & 0xff) === 0xff) {
+      await sleep(0)
+    }
+  }
+  return frames
+}
+
+// 图传预处理（性能优化 D1/D2）：整图 CRC32 + 按会话分包大小预组好全部 0x21 帧。
+// 纯计算、不碰蓝牙，设计为在「预取阶段」调用——与上一张图的 BLE 传输/本张的网络下载重叠，
+// 把这两块耗时从「拿到帧 → 发 0x20 → 逐包发送」的串行热路径上挪走。
+// 会话未就绪（首张与连接并行预取）时分包大小未知，只算 CRC32、frames 返回 null；
+// uploadImage 收到的 prepared 帧数/分包对不上时会自动回退为逐包现组，不影响正确性。
+async function prepareImageTransfer(deviceId, data) {
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data)
+  const crc32 = imageCodec.crc32Mpeg2(bytes)
+  const session = sessions[deviceId]
+  if (!session || !session.ready || !session.dataChunk) {
+    return { crc32, dataSize: bytes.length, chunkSize: 0, frames: null }
+  }
+  const chunkSize = session.dataChunk
+  const frames = await buildAllImgDataFrames(bytes, chunkSize)
+  return { crc32, dataSize: bytes.length, chunkSize, frames }
 }
 
 // 整个图传期间挂一个常驻监听器，持续记录设备回报的「已连续接收最后包号」的最大值。
@@ -905,7 +926,9 @@ async function refreshScreen(deviceId, index) {
 }
 
 // 上传一张图片（图传协议 6.8：0x20 帧头 → 0x21 窗口分包 + 0x23 累计应答 → 0x22 结束校验）。
-// options: { screenType, index, width, height, data(Uint8Array 已转好的六色帧缓存), onProgress(done,total,phase) }
+// options: { screenType, index, width, height, data(Uint8Array 已转好的六色帧缓存), onProgress(done,total,phase),
+//            prepared(可选，prepareImageTransfer 的预处理结果：整图 CRC32 + 预组好的 0x21 帧；
+//                     不传或与本次 data/分包对不上时自动回退为现算现组，行为不变) }
 // 返回结束应答里的 { result, imgMask, imgCount, storageFree }。任一步失败会 throw。
 function finalizeTransferStats(stats) {
   if (!stats.finishedAt) {
@@ -970,11 +993,23 @@ async function uploadImage(deviceId, options) {
           return false
         }
 
+  // 预取阶段的预处理结果（prepareImageTransfer，性能优化 D1/D2）：数据长度对得上才认，
+  // 防止上层把别张图的 prepared 传错进来（CRC32/帧都会错，设备端 0x22 校验必失败）。
+  const prepared =
+    options.prepared && options.prepared.dataSize === dataSize
+      ? options.prepared
+      : null
+
   try {
     // 1) 0x20 帧头：告诉设备屏幕类型/索引/宽高/数据大小/整图 CRC32，等设备点头后再发数据。
+    // D2：预取阶段已算好整图 CRC32 则直接复用，0x20 前不再同步扫一遍整图（5.89 寸 326KB）。
     const crcStartedAt = Date.now()
-    const crc32 = imageCodec.crc32Mpeg2(data)
+    const crc32 =
+      prepared && Number.isFinite(prepared.crc32)
+        ? prepared.crc32
+        : imageCodec.crc32Mpeg2(data)
     stats.crcMs = Date.now() - crcStartedAt
+    stats.crcPrecomputed = !!(prepared && Number.isFinite(prepared.crc32))
     const startAckStartedAt = Date.now()
     let startAck
     try {
@@ -1014,6 +1049,18 @@ async function uploadImage(deviceId, options) {
     stats.configuredPace = pace
     stats.finalPace = pace
 
+    // D1：预取阶段按会话分包大小预组好的全部 0x21 帧，分包/帧数对得上才用（会话重建后 MTU
+    // 可能变化）；没有或对不上（调试页直调、首张预取早于连接）则发送时逐包现组——
+    // buildImgDataFrame 用整块 set + 查表 CRC16，现组也比旧的逐字节 push 版快得多。
+    const prebuiltFrames =
+      prepared &&
+      prepared.chunkSize === CHUNK &&
+      prepared.frames &&
+      prepared.frames.length === totalPackets
+        ? prepared.frames
+        : null
+    stats.prebuiltFrames = !!prebuiltFrames
+
     let nextSeq = 0
     let highestSeqSent = -1
     let retries = 0
@@ -1042,11 +1089,10 @@ async function uploadImage(deviceId, options) {
             throw new Error('UPLOAD_ABORTED')
           }
           const seq = nextSeq
-          const chunk = data.subarray(
-            seq * CHUNK,
-            Math.min((seq + 1) * CHUNK, dataSize)
-          )
-          await writePacket(session, seq, chunk, stats)
+          const frameValue = prebuiltFrames
+            ? prebuiltFrames[seq]
+            : protocol.buildImgDataFrame(data, seq, CHUNK)
+          await writePacket(session, frameValue, stats)
           stats.sentPackets++
           if (seq <= highestSeqSent) {
             stats.retransmittedPackets++
@@ -1310,6 +1356,7 @@ module.exports = {
   setTime,
   deleteImage,
   refreshScreen,
+  prepareImageTransfer,
   uploadImage,
   setMonitor,
   isConnected,

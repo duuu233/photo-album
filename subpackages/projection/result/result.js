@@ -309,6 +309,35 @@ Page({
 
     let uploaded = 0
     try {
+      // A3 预取流水线：设备帧的「后端转码 + 下载」是纯网络，与「BLE 图传」互不占用资源。投第 i 张
+      // (走蓝牙)的同时提前并行拉取第 i+1 张的设备帧；只预取下一张(最多 1 张在后台)，中断时浪费最小。
+      // 预取失败不在此处抛，包成 {error} 留到主循环 await 时再抛，走原有失败处理 / 失败记账。
+      // sizeInfo 显式传入：首张早启动时用设备记录尺寸，其余用 0x01 读到的真实尺寸。
+      const framePrefetch = []
+      const startPrefetch = (idx, sizeInfo) => {
+        if (idx >= total || framePrefetch[idx]) {
+          return
+        }
+        framePrefetch[idx] = this.acquireFrame(images[idx], device, sizeInfo, idx, total)
+          .then(result => ({ result }))
+          .catch(error => ({ error }))
+      }
+
+      // F1 首张网络准备与「连接 → 0x01」并行（性能优化）：转码目标尺寸只依赖设备记录里
+      // 后端按物理型号下发的 width/height（再次投屏 imgBle 直传则完全不需要尺寸），不必等 0x01。
+      // 记录尺寸可用时立刻启动第一张的转码+下载，把冷连接 1~3s 的等待与网络准备重叠；
+      // 0x01 返回后校验尺寸，不一致（记录过期/异常）则作废预取按真实尺寸重取，
+      // 主循环的「帧字节数 = 宽×高÷2」校验仍是最后闸门，错帧绝不会发往设备。
+      const guessedSize =
+        Number(device.width) > 0 && Number(device.height) > 0
+          ? { width: Number(device.width), height: Number(device.height) }
+          : null
+      const firstDirect = !!(images[0].imgBle && !images[0].tempFilePath)
+      if (firstDirect || guessedSize) {
+        performance.firstPrefetchEarly = true
+        startPrefetch(0, guessedSize)
+      }
+
       // 1) 连接并读取真实设备信息（屏幕尺寸/类型/容量/已存掩码）。
       // 这几步在第一包数据发出前要花点时间（连接尤其慢），逐步更新文案，避免页面看起来卡在 0% 不动。
       this.setData({ desc: '正在连接设备…' })
@@ -355,20 +384,21 @@ Page({
       )
 
       // 2) 逐张：原图传后端转换得 .bin → 下载帧数据 → 选空闲槽位 → 图传 → 设备成功才写投屏记录 → 刷新显示。
-      // A3 预取流水线：设备帧的「后端转码 + 下载」是纯网络，与「BLE 图传」互不占用资源。所以在投第 i 张
-      // (走蓝牙)的同时，提前并行拉取第 i+1 张的设备帧；轮到它时通常已就绪，省去「传完一张才开始下一张
-      // 转码下载」的串行等待（批量投屏体感提速最明显的一块）。只预取下一张(最多 1 张在后台)，中断时浪费最小。
-      // 预取失败不在此处抛，包成 {error} 留到主循环 await 时再抛，走原有失败处理 / 失败记账。
-      const framePrefetch = []
-      const startPrefetch = idx => {
-        if (idx >= total || framePrefetch[idx]) {
-          return
-        }
-        framePrefetch[idx] = this.acquireFrame(images[idx], device, info, idx, total)
-          .then(result => ({ result }))
-          .catch(error => ({ error }))
+      // F1 校验：首张若已用设备记录尺寸早启动预取，此处对照 0x01 真实尺寸——不一致则作废重取
+      //（后台在跑的旧转码结果直接丢弃）。imgBle 直传（firstDirect）不依赖尺寸，无需作废。
+      if (
+        framePrefetch[0] &&
+        !firstDirect &&
+        guessedSize &&
+        (guessedSize.width !== info.width || guessedSize.height !== info.height)
+      ) {
+        console.warn(
+          `[投屏] 设备记录尺寸(${guessedSize.width}x${guessedSize.height})与设备实际(${info.width}x${info.height})不一致，首张预取作废重取`
+        )
+        performance.firstPrefetchDiscarded = true
+        framePrefetch[0] = null
       }
-      startPrefetch(0) // 先启动第一张的取帧
+      startPrefetch(0, info) // 未早启动/已作废时从这里启动首张取帧；早启动过则为空操作
 
       // 第一张网络准备已启动；连接间隔优化与它并行，避免这些 BLE 控制指令继续挡住原图上传/转码。
       phaseStartedAt = Date.now()
@@ -416,10 +446,10 @@ Page({
             (acquired.error && acquired.error.message) || '设备帧准备失败'
           throw acquired.error
         }
-        const { frameData, taskId, upirId, timings } = acquired.result
+        const { frameData, taskId, upirId, timings, prepared } = acquired.result
         imagePerformance.prepare = timings || {}
         // 本张帧一到手，立刻启动下一张的预取，让它与本张 BLE 图传并行
-        startPrefetch(i + 1)
+        startPrefetch(i + 1, info)
         const head = protocol.bytesToHex(frameData.subarray(0, 16))
         const expected4bpp = Math.ceil((info.width * info.height) / 2)
         console.log(
@@ -457,6 +487,8 @@ Page({
             width: info.width,
             height: info.height,
             data: frameData,
+            // D1/D2：预取阶段算好的整图 CRC32 + 预组好的 0x21 帧（对不上会自动回退现算现组）
+            prepared,
             traceId: performance.traceId,
             imageIndex: i,
             shouldAbort: () => this._aborted,
@@ -605,10 +637,12 @@ Page({
       // 产品要求：再次/重新投屏一律直接用记录里的设备帧 .bin(imgBle)，
       // 不回退后端上传/转码；下载失败即本张失败（runRealProjection 外层 catch 会补记失败记录）
       const downloaded = await this.downloadFrameBin(image.imgBle)
+      const prepared = await this.prepareTransfer(device, downloaded.frameData)
       return {
         frameData: downloaded.frameData,
         upirId: image.upirId,
-        timings: Object.assign({}, downloaded.timings, {
+        prepared: prepared.value,
+        timings: Object.assign({}, downloaded.timings, prepared.timings, {
           acquireMs: Date.now() - acquireStartedAt
         })
       }
@@ -622,13 +656,30 @@ Page({
       info
     )
     const downloaded = await this.downloadFrameBin(converted.url)
+    const prepared = await this.prepareTransfer(device, downloaded.frameData)
     return {
       frameData: downloaded.frameData,
       taskId: converted.taskId,
       upirId: converted.upirId,
-      timings: Object.assign({}, converted.timings, downloaded.timings, {
+      prepared: prepared.value,
+      timings: Object.assign({}, converted.timings, downloaded.timings, prepared.timings, {
         acquireMs: Date.now() - acquireStartedAt
       })
+    }
+  },
+
+  // 图传预处理（性能优化 D1/D2）：整图 CRC32 + 按会话分包大小预组全部 0x21 帧，放在预取阶段执行，
+  // 与上一张的 BLE 传输/本张的网络下载重叠，把这两块纯计算从图传串行热路径上挪走。
+  // 失败不阻断本张投屏（uploadImage 拿不到 prepared 会回退现算现组）；首张与连接并行预取时
+  // 会话未就绪，只有 CRC32（frames=null），同样由 uploadImage 兜底。
+  async prepareTransfer(device, frameData) {
+    const startedAt = Date.now()
+    try {
+      const value = await deviceBle.prepareImageTransfer(device.deviceId, frameData)
+      return { value, timings: { prepareMs: Date.now() - startedAt } }
+    } catch (error) {
+      console.warn('[投屏] 图传预处理失败，回退为传输时现算：', error)
+      return { value: null, timings: { prepareMs: Date.now() - startedAt } }
     }
   },
 

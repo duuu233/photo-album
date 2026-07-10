@@ -114,17 +114,24 @@ function popcount(bytes, start, length) {
 
 // CRC16-Modbus：初值 0xFFFF，多项式 0xA001（反转），覆盖 SOF~PAYLOAD（6.4.1）。
 // 注意：帧内按低字节在前（LSB first）写入，与 Modbus 惯例一致；若真机校验不过，优先怀疑此字节序。
+// 查表实现（性能优化 D1）：图传一张要对上千个 0x21 帧算 CRC16，逐位版在发送热路径上；
+// 表按同一多项式生成，结果与逐位版完全一致。入参数组 / Uint8Array 均可。
+const CRC16_MODBUS_TABLE = (() => {
+  const table = new Uint16Array(256)
+  for (let n = 0; n < 256; n++) {
+    let crc = n
+    for (let bit = 0; bit < 8; bit++) {
+      crc = crc & 1 ? (crc >> 1) ^ 0xa001 : crc >> 1
+    }
+    table[n] = crc
+  }
+  return table
+})()
+
 function crc16Modbus(bytes) {
   let crc = 0xffff
   for (let i = 0; i < bytes.length; i++) {
-    crc ^= bytes[i] & 0xff
-    for (let bit = 0; bit < 8; bit++) {
-      if (crc & 1) {
-        crc = (crc >> 1) ^ 0xa001
-      } else {
-        crc >>= 1
-      }
-    }
+    crc = (crc >> 8) ^ CRC16_MODBUS_TABLE[(crc ^ bytes[i]) & 0xff]
   }
   return crc & 0xffff
 }
@@ -410,6 +417,28 @@ function buildImgDataPayload(seq, chunk) {
   return payload
 }
 
+// 组一帧完整的 CMD=0x21 图片数据帧（性能优化 D1，含 SOF/LEN/CRC16，返回 ArrayBuffer 可直接写特征）。
+// 字节与 buildFrame(CMD.IMG_DATA, buildImgDataPayload(seq, chunk)) 完全一致，但用 Uint8Array 整块
+// set + 查表 CRC16，免去逐字节 push 的多次数组复制——一张图要组上千帧，这条路径在图传热路径/预组包上。
+// data: 整图 Uint8Array；seq: 包号（0 起）；chunkSize: 每包数据字节数（末包自动截短）。
+function buildImgDataFrame(data, seq, chunkSize) {
+  const start = seq * chunkSize
+  const end = Math.min(start + chunkSize, data.length)
+  const payloadLen = end - start + 2 // PKT_SEQ(2) + DATA
+  const frame = new Uint8Array(4 + payloadLen + 2) // SOF+CMD+LEN(2) + PAYLOAD + CRC16(2)
+  frame[0] = SOF
+  frame[1] = CMD.IMG_DATA
+  frame[2] = payloadLen & 0xff
+  frame[3] = (payloadLen >> 8) & 0xff
+  frame[4] = seq & 0xff
+  frame[5] = (seq >> 8) & 0xff
+  frame.set(data.subarray(start, end), 6)
+  const crc = crc16Modbus(frame.subarray(0, frame.length - 2))
+  frame[frame.length - 2] = crc & 0xff
+  frame[frame.length - 1] = (crc >> 8) & 0xff
+  return frame.buffer
+}
+
 // 解析 CMD=0x23 图传应答（6.6.2）：ACK_SEQ(2,小端) = 已连续收到的最后一个包号
 function parseImgAck(payload) {
   return { ackSeq: readUint16LE(toBytes(payload), 0) }
@@ -499,6 +528,7 @@ module.exports = {
   parseRefreshResult,
   buildImgStartPayload,
   buildImgDataPayload,
+  buildImgDataFrame,
   parseImgAck,
   parseImgEndResult,
   bytesToHex,

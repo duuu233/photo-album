@@ -332,18 +332,25 @@ function clearTransferQuantizeOptions() {
 
 // 整图 CRC32-MPEG2（6.8.1 的 IMG_CRC32）：
 //   初值 0xFFFFFFFF，多项式 0x04C11DB7，输入/输出都不反转，最终不异或。与 CRC16 的 Modbus 不是一回事。
+// 查表实现（性能优化 D2）：一张 5.89 寸帧 326KB 逐位算要 260 万次循环、卡在 0x20 发出之前，
+// 查表约快 8 倍；表按同一多项式生成，结果与逐位版完全一致。
+const CRC32_MPEG2_TABLE = (() => {
+  const table = new Uint32Array(256)
+  for (let n = 0; n < 256; n++) {
+    let crc = (n << 24) >>> 0
+    for (let bit = 0; bit < 8; bit++) {
+      crc = crc & 0x80000000 ? ((crc << 1) ^ 0x04c11db7) >>> 0 : (crc << 1) >>> 0
+    }
+    table[n] = crc
+  }
+  return table
+})()
+
 function crc32Mpeg2(input) {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input)
   let crc = 0xffffffff
   for (let i = 0; i < bytes.length; i++) {
-    crc = (crc ^ (bytes[i] << 24)) >>> 0
-    for (let bit = 0; bit < 8; bit++) {
-      if (crc & 0x80000000) {
-        crc = ((crc << 1) ^ 0x04c11db7) >>> 0
-      } else {
-        crc = (crc << 1) >>> 0
-      }
-    }
+    crc = ((crc << 8) ^ CRC32_MPEG2_TABLE[((crc >>> 24) ^ bytes[i]) & 0xff]) >>> 0
   }
   return crc >>> 0
 }
