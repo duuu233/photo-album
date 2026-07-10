@@ -63,6 +63,38 @@ function classifyFailureMessage(rawMessage, deviceId) {
   return msg
 }
 
+function readPerformanceEnvironment() {
+  let device = {}
+  let app = {}
+  try {
+    device = wx.getDeviceInfo ? wx.getDeviceInfo() : wx.getSystemInfoSync()
+  } catch (error) {
+    device = {}
+  }
+  try {
+    app = wx.getAppBaseInfo ? wx.getAppBaseInfo() : wx.getSystemInfoSync()
+  } catch (error) {
+    app = {}
+  }
+  const base = {
+    platform: device.platform || '',
+    system: device.system || '',
+    model: device.model || '',
+    brand: device.brand || '',
+    wechatVersion: app.version || '',
+    sdkVersion: app.SDKVersion || ''
+  }
+  if (!wx.getNetworkType) {
+    return Promise.resolve(base)
+  }
+  return new Promise(resolve => {
+    wx.getNetworkType({
+      success: res => resolve(Object.assign(base, { networkType: res.networkType || '' })),
+      fail: () => resolve(base)
+    })
+  })
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -170,6 +202,52 @@ Page({
     }
   },
 
+  queueRecordTask(label, taskFactory, imagePerformance) {
+    const startedAt = Date.now()
+    const task = Promise.resolve()
+      .then(taskFactory)
+      .then(
+        () => {
+          if (imagePerformance) {
+            imagePerformance.recordSuccess = true
+          }
+        },
+        error => {
+          if (imagePerformance) {
+            imagePerformance.recordSuccess = false
+            imagePerformance.recordError =
+              (error && error.message) || '投屏记录写入失败'
+          }
+          console.error(`[投屏] ${label}（设备状态不受影响）：`, error)
+        }
+      )
+      .then(() => {
+        if (imagePerformance) {
+          imagePerformance.recordMs = Date.now() - startedAt
+        }
+      })
+    this._recordTasks.push(task)
+    return task
+  },
+
+  async drainRecordTasks() {
+    const tasks = this._recordTasks || []
+    if (!tasks.length) {
+      return 0
+    }
+    const startedAt = Date.now()
+    await Promise.all(tasks)
+    return Date.now() - startedAt
+  },
+
+  reportProjectionPerformance(performance) {
+    const perf = performance || {}
+    ;(perf.images || []).forEach(item => {
+      console.log('[投屏性能] 单张汇总', item)
+    })
+    console.log('[投屏性能] 整单汇总', perf)
+  },
+
   // 真实投屏主流程：连接 → 读设备信息 → 逐张解码并图传 → 按真实结果置成功/失败
   async runRealProjection() {
     const pending = wx.getStorageSync('pendingProjection') || {}
@@ -209,6 +287,19 @@ Page({
     wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: true })
 
     const total = images.length
+    const pendingPerformance = pending.performance || {}
+    const performance = {
+      traceId:
+        pendingPerformance.traceId ||
+        `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      startedAt: Date.now(),
+      previewPrepareMs: pendingPerformance.previewPrepareMs || 0,
+      selectedTotal: total,
+      phases: {},
+      images: []
+    }
+    const environmentPromise = readPerformanceEnvironment()
+    this._recordTasks = []
     this.setData({
       progressTotal: total,
       progressCurrent: 0,
@@ -221,25 +312,28 @@ Page({
       // 1) 连接并读取真实设备信息（屏幕尺寸/类型/容量/已存掩码）。
       // 这几步在第一包数据发出前要花点时间（连接尤其慢），逐步更新文案，避免页面看起来卡在 0% 不动。
       this.setData({ desc: '正在连接设备…' })
+      performance.connectionReused = deviceBle.isConnected(deviceId)
+      let phaseStartedAt = Date.now()
       await deviceBle.ensureConnection(deviceId)
+      performance.phases.connectMs = Date.now() - phaseStartedAt
       this.setData({ desc: '正在读取设备信息…' })
-      const info = await deviceBle.readDeviceInfo(deviceId)
+      phaseStartedAt = Date.now()
+      const info = await deviceBle.readTransferInfo(deviceId)
+      performance.phases.readTransferInfoMs = Date.now() - phaseStartedAt
+      performance.device = {
+        screenType: info.screenType,
+        width: info.width,
+        height: info.height,
+        capacity: info.capacity,
+        firmwareVersion: device.firmwareVersion || ''
+      }
       console.log('[投屏] 设备信息：', {
         screenType: info.screenType,
         width: info.width,
         height: info.height,
         capacity: info.capacity,
-        imgCount: info.imgCount,
-        firmware: info.firmwareVersion
+        imgCount: info.imgCount
       })
-
-      // v1.4 固件支持主动设置 BLE 连接间隔。图传前切到 7.5ms（最小值/最快），可减少默认慢连接间隔造成的写入排队/卡顿。
-      // 旧固件或链路暂不支持时继续走原有图传逻辑，避免把优化能力变成硬依赖。
-      try {
-        await deviceBle.optimizeConnectionIntervalForTransfer(deviceId)
-      } catch (error) {
-        // 不阻断投屏
-      }
 
       if (info.screenType === 0x03) {
         // 固件明确上报 screenType=0x03：该机型确实不支持图传
@@ -276,6 +370,18 @@ Page({
       }
       startPrefetch(0) // 先启动第一张的取帧
 
+      // 第一张网络准备已启动；连接间隔优化与它并行，避免这些 BLE 控制指令继续挡住原图上传/转码。
+      phaseStartedAt = Date.now()
+      try {
+        performance.connectionInterval =
+          await deviceBle.optimizeConnectionIntervalForTransfer(deviceId)
+      } catch (error) {
+        performance.connectionIntervalError =
+          (error && error.message) || '连接间隔优化失败'
+      }
+      performance.phases.optimizeConnectionIntervalMs =
+        Date.now() - phaseStartedAt
+
       for (let i = 0; i < total; i++) {
         if (this._aborted) {
           throw new Error('UPLOAD_ABORTED')
@@ -285,6 +391,13 @@ Page({
         // 本张不论最终成功失败都要 addUserProductImgRecord 记账，失败记账由外层 catch 统一补
         const isRetry = !!(image.imgBle && !image.tempFilePath)
         this._retryImageInFlight = isRetry ? image : null
+        const imagePerformance = {
+          imageNumber: i + 1,
+          retryProjection: isRetry,
+          acquireWaitMs: 0,
+          recordMs: 0
+        }
+        performance.images.push(imagePerformance)
         // 每张传输前把进度条清零：本张从 0% 独立开始（批量传输时每张 0→100）。
         // 取帧可能仍在进行(首张 / 弱网)，先给「准备」文案；已预取就绪则 await 立即返回。
         this.setData({
@@ -295,11 +408,16 @@ Page({
         })
         // 取本张要发给设备的六色 4bpp 帧 + 后端记录 id（见 acquireFrame）：预取已就绪则秒拿，
         // 未就绪则在此等待。失败原样抛出，走外层失败处理。
+        const acquireWaitStartedAt = Date.now()
         const acquired = await framePrefetch[i]
+        imagePerformance.acquireWaitMs = Date.now() - acquireWaitStartedAt
         if (acquired.error) {
+          imagePerformance.acquireError =
+            (acquired.error && acquired.error.message) || '设备帧准备失败'
           throw acquired.error
         }
-        const { frameData, taskId, upirId } = acquired.result
+        const { frameData, taskId, upirId, timings } = acquired.result
+        imagePerformance.prepare = timings || {}
         // 本张帧一到手，立刻启动下一张的预取，让它与本张 BLE 图传并行
         startPrefetch(i + 1)
         const head = protocol.bytesToHex(frameData.subarray(0, 16))
@@ -329,25 +447,46 @@ Page({
 
         // 本张设备事务：只有 BLE 图传失败才回滚删掉刚传到设备的图、再向外抛出让整单判失败。
         // 图传成功后照片已物理写入相框，本张即算成功——后续写记录是后端记账，已与设备状态解耦。
+        let summary
+        let lastProgressUpdateAt = 0
+        let lastProgressPercent = -1
         try {
-          const summary = await deviceBle.uploadImage(deviceId, {
+          summary = await deviceBle.uploadImage(deviceId, {
             screenType: info.screenType,
             index,
             width: info.width,
             height: info.height,
             data: frameData,
+            traceId: performance.traceId,
+            imageIndex: i,
             shouldAbort: () => this._aborted,
-            // 进度条按「每一张」独立计算(0→100%)，不再叠加整体：
-            // 批量传输时第一张走 0-100、第二张再 0-100，以此类推，用户能看清当前这张的进度
-            onProgress: (done, totalPackets) => {
+            // ACK 仍实时驱动底层滑动窗口；页面最多约 8 次/秒更新，避免高频 setData 反过来拖慢 BLE。
+            onProgress: (done, totalPackets, phase) => {
               const frac = totalPackets ? done / totalPackets : 0
+              const percent = Math.min(100, Math.floor(frac * 100))
+              const now = Date.now()
+              const immediate =
+                phase === 'start' ||
+                phase === 'done' ||
+                phase === 'retry' ||
+                percent === 100
+              if (
+                !immediate &&
+                (percent === lastProgressPercent || now - lastProgressUpdateAt < 120)
+              ) {
+                return
+              }
+              lastProgressUpdateAt = now
+              lastProgressPercent = percent
               this.setData({
-                progressPercent: Math.min(100, Math.floor(frac * 100))
+                progressPercent: percent
               })
             }
           })
+          imagePerformance.ble = summary.transferStats || {}
           console.log(`[投屏] 第 ${i + 1}/${total} 张 设备图传成功`, summary)
         } catch (error) {
+          imagePerformance.ble = (error && error.transferStats) || {}
           console.error(
             `[投屏] 第 ${i + 1}/${total} 张 设备图传失败，回滚 index=${index}：`,
             error
@@ -361,25 +500,29 @@ Page({
         //   · 再次/重新投屏(imgBle 直传)：addUserProductImgRecord 新增一条成功记录；
         //   · 正常投屏(后端转码时已按失败态建记录)：editUserProductImgRecord 按 taskId 置成功。
         if (isRetry) {
-          await this.addRetryRecord(image, 1)
-          this._retryImageInFlight = null // 本张已记账，外层 catch 不再补记
+          // 设备已成功，本张不再可能补记失败；记账放入并行队列，不挡住下一张 BLE。
+          this._retryImageInFlight = null
+          this.queueRecordTask(
+            `第 ${i + 1}/${total} 张再次投屏记录写入失败`,
+            () => this.addRetryRecord(image, 1),
+            imagePerformance
+          )
         } else {
-          try {
-            await api.editUserProductImgRecord({
-              upirId,
-              taskId,
-              deviceUploadState: 1,
-              showError: false
-            })
-            console.log(
-              `[投屏] 第 ${i + 1}/${total} 张 投屏记录已置成功：taskId=${taskId}`
-            )
-          } catch (error) {
-            console.error(
-              `[投屏] 第 ${i + 1}/${total} 张 投屏记录写入失败（设备已传成功，不影响本张）：`,
-              error
-            )
-          }
+          this.queueRecordTask(
+            `第 ${i + 1}/${total} 张投屏记录写入失败`,
+            async () => {
+              await api.editUserProductImgRecord({
+                upirId,
+                taskId,
+                deviceUploadState: 1,
+                showError: false
+              })
+              console.log(
+                `[投屏] 第 ${i + 1}/${total} 张 投屏记录已置成功：taskId=${taskId}`
+              )
+            },
+            imagePerformance
+          )
         }
 
         // 该槽位记为已用，供下一张选空闲槽位
@@ -392,22 +535,33 @@ Page({
         // 批量传输时中途刷屏会导致后续图片传输失败。故中间张一律不刷屏，
         // 等全部传完后只对最后一张执行一次 0x24，切到最后这张显示。
         if (i === total - 1) {
+          const refreshStartedAt = Date.now()
           try {
             await deviceBle.refreshScreen(deviceId, index)
           } catch (error) {
             // 刷新失败不阻断整体成功
           }
+          performance.phases.refreshScreenMs = Date.now() - refreshStartedAt
         }
       }
 
+      performance.phases.recordDrainMs = await this.drainRecordTasks()
       console.log(`[投屏] 全部完成：成功 ${uploaded}/${total} 张`)
+      performance.outcome = 'success'
       this.finishProjection(device, { uploaded, failCount: 0, total, message: '' })
     } catch (error) {
       // 再次/重新投屏：传固件失败也要新增一条失败记录(deviceUploadState=0)；成功记账已在循环内完成
       if (this._retryImageInFlight) {
-        await this.addRetryRecord(this._retryImageInFlight, 0)
+        const failedImagePerformance = performance.images[performance.images.length - 1]
+        const failedImage = this._retryImageInFlight
         this._retryImageInFlight = null
+        this.queueRecordTask(
+          '再次投屏失败记录写入失败',
+          () => this.addRetryRecord(failedImage, 0),
+          failedImagePerformance
+        )
       }
+      performance.phases.recordDrainMs = await this.drainRecordTasks()
       const aborted =
         this._aborted || (error && error.message === 'UPLOAD_ABORTED')
       const rawMessage = aborted
@@ -421,10 +575,16 @@ Page({
         `[投屏] 失败（已成功 ${uploaded}/${total} 张，原始错误：${rawMessage}）：${message}`,
         error
       )
+      performance.outcome = aborted ? 'aborted' : 'failed'
+      performance.error = rawMessage
       // 「任意一张失败即中断」下本次至多 1 张真正失败 → failCount=1。已成功 uploaded>=1 走成功页(部分成功)，
       // 一张都没成功才走失败页。两页都带明细计数(成功/失败/本次所选)与归类后的结果文案。
       this.finishProjection(device, { uploaded, failCount: 1, total, message })
     } finally {
+      performance.uploaded = uploaded
+      performance.totalMs = Date.now() - performance.startedAt
+      performance.environment = await environmentPromise
+      this.reportProjectionPerformance(performance)
       wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false })
       // 不再传完即断：保持连接（设备单连接，下次投屏可直接复用、省去重新扫描+连接）。
       // 仅在物理断开(onBLEConnectionStateChange 清理)或用户手动断开时才真正断开。
@@ -436,6 +596,7 @@ Page({
   // 纯网络、无 UI 副作用：可被主循环「预取下一张」提前并行调用（见 runRealProjection 的预取流水线），
   // 页面文案/进度统一由主循环控制，避免预取抢占当前正在投屏那张的界面。i/total 仅用于日志。
   async acquireFrame(image, device, info, i, total) {
+    const acquireStartedAt = Date.now()
     // 再次投屏（投屏记录页带入 imgBle）：记录里已有后端转换好的设备帧文件，直接下载 imgBle
     // 走 BLE 图传，不再调后端上传/转码接口(setUserProductUpload)。
     // 若用户在预览页重新裁剪/旋转过（产生 tempFilePath），旧帧已对不上编辑结果，仍走后端转换链路。
@@ -443,19 +604,32 @@ Page({
       console.log(`[投屏] 第 ${i + 1}/${total} 张 再次投屏：直接下载 imgBle=${image.imgBle}`)
       // 产品要求：再次/重新投屏一律直接用记录里的设备帧 .bin(imgBle)，
       // 不回退后端上传/转码；下载失败即本张失败（runRealProjection 外层 catch 会补记失败记录）
-      const frameData = await this.downloadFrameBin(image.imgBle)
-      return { frameData, upirId: image.upirId }
+      const downloaded = await this.downloadFrameBin(image.imgBle)
+      return {
+        frameData: downloaded.frameData,
+        upirId: image.upirId,
+        timings: Object.assign({}, downloaded.timings, {
+          acquireMs: Date.now() - acquireStartedAt
+        })
+      }
     }
 
     // 正常投屏：先「转换照片」(传后端按设备尺寸转换) 得到可下载的 .bin 地址 + taskId(更新设备上传状态用)
     // + upirId(投屏记录id)，再下载 .bin 得到六色 4bpp 帧（客户端不做任何图像转换）。
-    const { url, taskId, upirId } = await this.convertOnServer(
+    const converted = await this.convertOnServer(
       image,
       device,
       info
     )
-    const frameData = await this.downloadFrameBin(url)
-    return { frameData, taskId, upirId }
+    const downloaded = await this.downloadFrameBin(converted.url)
+    return {
+      frameData: downloaded.frameData,
+      taskId: converted.taskId,
+      upirId: converted.upirId,
+      timings: Object.assign({}, converted.timings, downloaded.timings, {
+        acquireMs: Date.now() - acquireStartedAt
+      })
+    }
   },
 
   // 本张照片传后端转换：上传原图 → 后端按设备宽高(targetWidth×targetHeight)转换成设备帧并存 OSS，
@@ -463,7 +637,9 @@ Page({
   // 失败会抛出，让本张投屏判为失败并跳到失败场景。
   async convertOnServer(image, device, info) {
     const userProductId = device && (device.userProductId || device.id)
+    const sourceResolveStartedAt = Date.now()
     const filePath = await this.resolveLocalFilePath(image)
+    const sourceResolveMs = Date.now() - sourceResolveStartedAt
     if (!filePath) {
       throw new Error('图片文件不可用，无法转换')
     }
@@ -473,6 +649,7 @@ Page({
     console.log(
       `[投屏] 上传原图转换：userProductId=${userProductId} target=${info.width}x${info.height} isCompress=${isCompress} file=${filePath}`
     )
+    const uploadConvertStartedAt = Date.now()
     const res = await api.setUserProductUpload({
       filePath,
       userProductId,
@@ -483,6 +660,7 @@ Page({
       loading: false, // 结果页用 setData desc 自管进度，关掉全局 loading 遮罩
       showError: false // 失败统一走本页失败场景，不额外弹 toast
     })
+    const uploadConvertMs = Date.now() - uploadConvertStartedAt
 
     // 单文件上传返回的就是该对象；保险起见也兼容数组返回
     const item = Array.isArray(res) ? res[0] : res
@@ -494,7 +672,8 @@ Page({
     return {
       url,
       taskId: item.taskId,
-      upirId: item.upirId
+      upirId: item.upirId,
+      timings: { sourceResolveMs, uploadConvertMs }
     }
   },
 
@@ -502,19 +681,15 @@ Page({
   // 必填字段按后端约定：userProductId / img / imgBle / deviceUploadState；upirId 等其他字段有就带上。
   // 尽力而为：记账失败只记日志，不影响投屏结果展示（设备侧状态已成事实）。
   async addRetryRecord(image, deviceUploadState) {
-    try {
-      await api.addUserProductImgRecord({
-        upirId: image.upirId,
-        userProductId: image.userProductId,
-        img: image.url,
-        imgBle: image.imgBle,
-        deviceUploadState,
-        showError: false
-      })
-      console.log(`[投屏] 再次投屏已记账：deviceUploadState=${deviceUploadState}`)
-    } catch (error) {
-      console.error('[投屏] 再次投屏记账失败（不影响流程）：', error)
-    }
+    await api.addUserProductImgRecord({
+      upirId: image.upirId,
+      userProductId: image.userProductId,
+      img: image.url,
+      imgBle: image.imgBle,
+      deviceUploadState,
+      showError: false
+    })
+    console.log(`[投屏] 再次投屏已记账：deviceUploadState=${deviceUploadState}`)
   },
 
   // downloadFile 通用封装：单次尝试带超时，弱网下「downloadFile:fail timeout」/网络抖动自动退避重试。
@@ -569,14 +744,24 @@ Page({
   // 下载后端按设备分辨率转换好的六色 4bpp 帧(.bin)，读成 Uint8Array 直接喂给 BLE 图传。
   // 注意：生产环境需把 OSS 域名加入小程序「downloadFile 合法域名」白名单（开发期 urlCheck=false 不校验）。
   async downloadFrameBin(url) {
+    const downloadStartedAt = Date.now()
     const tempFilePath = await this.downloadFileWithRetry(url, '转换结果下载失败')
-    return new Promise((resolve, reject) => {
+    const frameDownloadMs = Date.now() - downloadStartedAt
+    const readStartedAt = Date.now()
+    const frameData = await new Promise((resolve, reject) => {
       wx.getFileSystemManager().readFile({
         filePath: tempFilePath,
         success: r => resolve(new Uint8Array(r.data)),
         fail: () => reject(new Error('转换结果读取失败'))
       })
     })
+    return {
+      frameData,
+      timings: {
+        frameDownloadMs,
+        frameReadMs: Date.now() - readStartedAt
+      }
+    }
   },
 
   // 单张投屏失败时的设备侧回滚：删掉本次刚传到设备的这张图（CMD 0x12），让设备与后端回到一致状态。

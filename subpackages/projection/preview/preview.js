@@ -588,11 +588,14 @@ Page({
   },
 
   // 把当前 images 写回 Storage(pendingProjection)，保证结果页拿到的是裁剪后的图
-  persistPending(images) {
+  persistPending(images, performance) {
     const pending = wx.getStorageSync('pendingProjection') || {}
     pending.images = images
     pending.device = this.data.device || pending.device
     pending.compressImage = this.data.compressImage
+    if (performance) {
+      pending.performance = Object.assign({}, pending.performance, performance)
+    }
     wx.setStorageSync('pendingProjection', pending)
   },
 
@@ -732,6 +735,7 @@ Page({
     // 没做任何裁剪/旋转的图：按预览的 aspectFill（设备比例中心裁切）先裁一次再传，做到「所见即所得」，
     // 后端即便按设备分辨率转码也不会再变形。已裁剪/旋转过的图沿用其结果（见 coverCropUnedited）。
     wx.showLoading({ title: '处理中', mask: true })
+    const prepareStartedAt = Date.now()
     let images
     try {
       images = await this.coverCropUnedited(this.data.images)
@@ -739,10 +743,16 @@ Page({
       images = this.data.images // 裁切异常不阻断投屏，退回原图
     }
     wx.hideLoading()
+    const performance = {
+      traceId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      previewPrepareMs: Date.now() - prepareStartedAt,
+      preparedImages: images.length
+    }
+    console.log('[投屏性能] 预览处理完成', performance)
 
     // 把（裁剪/旋转/自动 aspectFill 后的）图片写回 Storage，再跳结果页真实图传
     this.setData({ images })
-    this.persistPending(images)
+    this.persistPending(images, performance)
     wx.redirectTo({
       url: '/subpackages/projection/result/result?status=progress'
     })

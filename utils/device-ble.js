@@ -217,7 +217,10 @@ async function negotiateMtu(deviceId) {
   // 读取真实协商到的 MTU（安卓/较新 iOS 基础库支持）
   if (!mtu && wx.getBLEMTU) {
     try {
-      const res = await wxp(wx.getBLEMTU, { deviceId, writeType: 'write' })
+      const res = await wxp(wx.getBLEMTU, {
+        deviceId,
+        writeType: 'writeNoResponse'
+      })
       if (res && res.mtu) {
         mtu = res.mtu
       }
@@ -539,9 +542,13 @@ async function writeFrame(session, cmd, payload, writeType) {
 
 // 写一个图传数据包，带「缓冲忙就退避重试」：写失败(常见 writeValueToCharacteristics error 是缓冲暂满)
 // 不立刻判死，稍等再试，几次都不行才抛出。
-async function writePacket(session, seq, chunk) {
+async function writePacket(session, seq, chunk, stats) {
   let attempt = 0
   for (;;) {
+    const startedAt = Date.now()
+    if (stats) {
+      stats.writeCalls++
+    }
     try {
       await writeFrame(
         session,
@@ -549,8 +556,19 @@ async function writePacket(session, seq, chunk) {
         protocol.buildImgDataPayload(seq, chunk),
         session.writeType
       )
+      if (stats) {
+        const duration = Date.now() - startedAt
+        stats.writeTotalMs += duration
+        stats.writeMaxMs = Math.max(stats.writeMaxMs, duration)
+      }
       return
     } catch (error) {
+      if (stats) {
+        const duration = Date.now() - startedAt
+        stats.writeTotalMs += duration
+        stats.writeMaxMs = Math.max(stats.writeMaxMs, duration)
+        stats.writeFailures++
+      }
       if (++attempt > 4) {
         throw error
       }
@@ -562,15 +580,17 @@ async function writePacket(session, seq, chunk) {
 // 整个图传期间挂一个常驻监听器，持续记录设备回报的「已连续接收最后包号」的最大值。
 // 用「取最大值 + 等待推进」的方式，天然兼容重复/迟到/乱序的 0x23 应答，比一次性等单帧更稳。
 function createAckTracker(session) {
-  const state = { lastAckSeq: -1, waiters: [] }
+  const state = { lastAckSeq: -1, waiters: [], ackFrames: 0, advances: 0 }
 
   const listener = frame => {
     if (frame.cmd !== protocol.CMD.IMG_ACK || !frame.crcOk) {
       return
     }
+    state.ackFrames++
     const seq = protocol.parseImgAck(frame.payload).ackSeq
     if (seq > state.lastAckSeq) {
       state.lastAckSeq = seq
+      state.advances++
     }
     state.waiters.splice(0).forEach(wake => wake()) // 唤醒所有在等推进的人
   }
@@ -579,6 +599,12 @@ function createAckTracker(session) {
   return {
     get last() {
       return state.lastAckSeq
+    },
+    get ackFrames() {
+      return state.ackFrames
+    },
+    get advances() {
+      return state.advances
     },
     // 等到 lastAckSeq 超过 minExclusive（即至少又确认了一个新包），或超时 reject
     waitAdvance(minExclusive, timeout) {
@@ -616,13 +642,20 @@ function createAckTracker(session) {
   }
 }
 
-// 读设备信息：CMD=0x01 拿核心信息，再用 CMD=0x03 补固件号（固件失败不阻断主流程）
-async function readDeviceInfo(deviceId) {
+// 只读投屏关键路径需要的设备核心信息（CMD=0x01），不附带固件版本请求。
+async function readTransferInfo(deviceId) {
   const infoAck = await request(deviceId, protocol.CMD.GET_INFO)
   const info = protocol.parseDeviceInfo(infoAck.data)
   // 固件返回的真实 Device_ID(6 字节)登记到会话：即使连接时没带广播序列号（如直连旧 deviceId），
   // 读过一次设备信息后也能被「设备ID×广播ID」交叉匹配认出来
   attachSessionSerial(deviceId, info.deviceId)
+
+  return info
+}
+
+// 通用设备详情读取：核心信息之外再用 CMD=0x03 补固件号（失败不阻断主流程）。
+async function readDeviceInfo(deviceId) {
+  const info = await readTransferInfo(deviceId)
 
   try {
     const swAck = await request(deviceId, protocol.CMD.GET_SW_VER)
@@ -874,6 +907,20 @@ async function refreshScreen(deviceId, index) {
 // 上传一张图片（图传协议 6.8：0x20 帧头 → 0x21 窗口分包 + 0x23 累计应答 → 0x22 结束校验）。
 // options: { screenType, index, width, height, data(Uint8Array 已转好的六色帧缓存), onProgress(done,total,phase) }
 // 返回结束应答里的 { result, imgMask, imgCount, storageFree }。任一步失败会 throw。
+function finalizeTransferStats(stats) {
+  if (!stats.finishedAt) {
+    stats.finishedAt = Date.now()
+    stats.totalMs = stats.finishedAt - stats.startedAt
+  }
+  stats.averageWriteMs = stats.writeCalls
+    ? Number((stats.writeTotalMs / stats.writeCalls).toFixed(2))
+    : 0
+  stats.throughputKbps = stats.dataMs
+    ? Number((stats.dataSize / 1024 / (stats.dataMs / 1000)).toFixed(2))
+    : 0
+  return stats
+}
+
 async function uploadImage(deviceId, options) {
   const session = await ensureConnection(deviceId)
   const data =
@@ -881,6 +928,35 @@ async function uploadImage(deviceId, options) {
       ? options.data
       : new Uint8Array(options.data)
   const dataSize = data.length
+  const stats = {
+    traceId: options.traceId || '',
+    imageIndex: Number.isFinite(options.imageIndex) ? options.imageIndex : -1,
+    startedAt: Date.now(),
+    dataSize,
+    mtu: session.mtu,
+    chunkSize: 0,
+    totalPackets: 0,
+    window: 0,
+    configuredPace: 0,
+    finalPace: 0,
+    crcMs: 0,
+    startAckMs: 0,
+    dataMs: 0,
+    endAckMs: 0,
+    ackWaitMs: 0,
+    ackFrames: 0,
+    ackAdvances: 0,
+    ackTimeouts: 0,
+    retryEvents: 0,
+    sentPackets: 0,
+    retransmittedPackets: 0,
+    confirmedPackets: 0,
+    writeCalls: 0,
+    writeFailures: 0,
+    writeTotalMs: 0,
+    writeMaxMs: 0,
+    success: false
+  }
   const onProgress =
     typeof options.onProgress === 'function'
       ? options.onProgress
@@ -894,154 +970,187 @@ async function uploadImage(deviceId, options) {
           return false
         }
 
-  // 1) 0x20 帧头：告诉设备屏幕类型/索引/宽高/数据大小/整图 CRC32，等设备点头(RESULT=0x00)再发数据。
-  const crc32 = imageCodec.crc32Mpeg2(data)
-  const startAck = await request(
-    deviceId,
-    protocol.CMD.IMG_START,
-    protocol.buildImgStartPayload({
-      screenType: options.screenType,
-      index: options.index,
-      width: options.width,
-      height: options.height,
-      format: 0x01,
-      dataSize,
-      crc32
-    }),
-    10000
-  )
-  if (startAck.result !== 0x00) {
-    // 设备返回什么就提示什么：直接抛设备结果码的协议含义，不加 App 自造前缀
-    throw new Error(protocol.resultText(startAck.result))
-  }
-
-  // 2) 0x21 数据：每片大小按协商到的 MTU 决定（上限 236）。采用「滑动窗口」：始终保持最多 WINDOW 个
-  // 未确认(in-flight)包在途，设备每用 0x23 把「已连续接收包号」往前推一格，就立刻补发新包填满窗口——
-  // 手机不再「发满一窗→停下干等 ACK→再发一窗」地空转(旧的批量停等模型)，把 ACK 往返的空档也利用起来，
-  // 从而在不越过 7.5ms 连接间隔 / 10 包缓冲这两个设备极限的前提下，把有效吞吐顶到发送节奏(pace)的上限。
-  // 固件已扩大 MCU 收包内存，一次可缓 10 包，故窗口上限 10；调用方可传 window 覆盖(如调试台对照)，
-  // 未显式传时用「同步投屏」存下的值(没同步过回落默认 10)，并夹到固件上限，避免超缓冲丢包。
-  const CHUNK = session.dataChunk || 236
-  const WINDOW = normalizeTransferWindow(
-    Number.isFinite(options.window) ? options.window : getTransferWindow()
-  )
-  // 每包发送间隔(ms)：调用方显式传 pace 时以它为准；否则用「同步投屏」存下的值(没同步过回落极速 3ms)。
-  // 越小越快，但太小设备会跟不上而丢包/卡住。这是「设备侧可持续吸收速率」的节流阀——滑动窗口只填掉
-  // ACK 往返的空档，并不越过它，发送节奏仍由 pace 决定。
-  const pace = Number.isFinite(options.pace)
-    ? Math.max(0, options.pace)
-    : getTransferPaceMs()
-  const totalPackets = Math.ceil(dataSize / CHUNK)
-  let nextSeq = 0 // 下一个「尚未发送」的包号
-  let retries = 0 // 连续「等不到 ACK 推进」的次数，连续失败则判定连接中断
-  // B2 自适应发送节奏：pace 是「已知安全」的基准间隔（同步投屏存的值 / 默认极速 3ms）。链路稳时把实际
-  // 间隔 curPace 从它往下探（更快），一卡顿就往回退（更慢），自动收敛到「当前设备+链路」的真实可持续
-  // 速率，不再钉死一个保守常量。窗口上限(WINDOW)与 writePacket 缓冲退避始终兜底流控，故下探到 0 也不会
-  // 冲爆缓冲。curPace 只在 [PACE_FLOOR, pace] 区间浮动——绝不慢于配置基准（更慢的情形交给重试期的加速）。
-  const PACE_FLOOR = 0 // 下探下限(ms)：窗口上限已兜住在途包数，最低可到 0（纯 ACK 自时钟）
-  const PACE_STEP = 0.5 // 每档下探/回退步长(ms)
-  const PACE_PROBE_AFTER = 6 // 连续多少个「干净窗口」(无重试地推进)才下探一档，起步保守
-  let curPace = pace // 当前实际每包间隔
-  let cleanRun = 0 // 连续「干净推进」计数，达到 PACE_PROBE_AFTER 就下探一档
-  onProgress(0, totalPackets, 'start')
-
-  const tracker = createAckTracker(session)
   try {
-    // 直到设备连续确认到最后一包(tracker.last 达到 totalPackets-1)才算发完
-    while (tracker.last < totalPackets - 1) {
-      if (shouldAbort()) {
-        throw new Error('UPLOAD_ABORTED') // 息屏/切后台：立即停，避免在后台空转后报含糊错误
-      }
-      // 卡住后主动「收敛」：每多重试一次，窗口就缩小一包（最终降到 1 包）、每包间隔就拉大一截。
-      // 很多固件只接收「按序的下一个包」、且 Flash 落盘期间会丢掉来不及处理的包；于是次待收包反复在设备
-      // 忙时抵达被丢，ACK_SEQ 就永远停在它前一个不动。缩窗+减速能让这个待收包在设备空闲时「单独」抵达，
-      // 打破死结。正常推进(retries===0)完全不受影响：满窗 + 原速。
-      const window = retries === 0 ? WINDOW : Math.max(1, WINDOW - retries)
-      // 正常推进用自适应的 curPace(B2)；重试期在其上叠加 30ms/次强力减速，帮卡住的待收包单独抵达
-      const sendPace =
-        retries === 0 ? curPace : Math.min(150, curPace + 30 * retries)
+    // 1) 0x20 帧头：告诉设备屏幕类型/索引/宽高/数据大小/整图 CRC32，等设备点头后再发数据。
+    const crcStartedAt = Date.now()
+    const crc32 = imageCodec.crc32Mpeg2(data)
+    stats.crcMs = Date.now() - crcStartedAt
+    const startAckStartedAt = Date.now()
+    let startAck
+    try {
+      startAck = await request(
+        deviceId,
+        protocol.CMD.IMG_START,
+        protocol.buildImgStartPayload({
+          screenType: options.screenType,
+          index: options.index,
+          width: options.width,
+          height: options.height,
+          format: 0x01,
+          dataSize,
+          crc32
+        }),
+        10000
+      )
+    } finally {
+      stats.startAckMs = Date.now() - startAckStartedAt
+    }
+    if (startAck.result !== 0x00) {
+      throw new Error(protocol.resultText(startAck.result))
+    }
 
-      // ① 填窗：只要「在途未确认包数 < window」且还有没发的包，就持续补发，保持窗口常满。
-      //    在途包数 = nextSeq - (tracker.last + 1) = nextSeq - tracker.last - 1（发一个后至多到 window，
-      //    绝不超过设备 10 包缓冲）。填窗过程中若 ACK 已推进(tracker.last 变大)，会自然多补几包填满新腾出的空间。
-      while (nextSeq < totalPackets && nextSeq - tracker.last - 1 < window) {
+    // 2) 0x21 数据：按协商 MTU 分包，以累计 ACK 驱动滑动窗口。
+    const CHUNK = session.dataChunk || 236
+    const WINDOW = normalizeTransferWindow(
+      Number.isFinite(options.window) ? options.window : getTransferWindow()
+    )
+    const pace = Number.isFinite(options.pace)
+      ? Math.max(0, options.pace)
+      : getTransferPaceMs()
+    const totalPackets = Math.ceil(dataSize / CHUNK)
+    stats.chunkSize = CHUNK
+    stats.totalPackets = totalPackets
+    stats.window = WINDOW
+    stats.configuredPace = pace
+    stats.finalPace = pace
+
+    let nextSeq = 0
+    let highestSeqSent = -1
+    let retries = 0
+    const PACE_FLOOR = 0
+    const PACE_STEP = 0.5
+    const PACE_PROBE_AFTER = 6
+    let curPace = pace
+    let cleanRun = 0
+    onProgress(0, totalPackets, 'start')
+
+    const tracker = createAckTracker(session)
+    const dataStartedAt = Date.now()
+    try {
+      while (tracker.last < totalPackets - 1) {
         if (shouldAbort()) {
           throw new Error('UPLOAD_ABORTED')
         }
-        const chunk = data.subarray(
-          nextSeq * CHUNK,
-          Math.min((nextSeq + 1) * CHUNK, dataSize)
-        )
-        await writePacket(session, nextSeq, chunk)
-        nextSeq++
-        // 包间流控：仅当本轮还要继续补下一包时才停 pace；本轮已填满/发完就不拖尾、直接去等 ACK，
-        // 省掉旧批量模型里「窗口最后一包后仍多睡一次 pace」的空转。
-        const moreThisRound =
-          nextSeq < totalPackets && nextSeq - tracker.last - 1 < window
-        if (sendPace > 0 && moreThisRound) {
-          await sleep(sendPace)
-        }
-      }
 
-      // ② 等设备的 0x23 把「已连续接收包号」再往前推一格（= 至少又确认了一个新包），随后立刻回到 ①
-      //    补发新包填满窗口——ACK 往返的空档就被后续数据填满，不再空等。
-      //    超时必须 < 1s（PRD 6.4.1）：等不到就赶在设备 1 秒接收超时前重发，否则设备判定传输中断、清掉会话。
-      const before = tracker.last
-      try {
-        await tracker.waitAdvance(before, 600)
-      } catch (error) {
-        // 没等到推进：可能丢包或 ACK 迟到。缩窗+减速后回退重发未确认区间，务必赶在设备 1s 超时前送到。
-        if (++retries > 15) {
-          throw new Error(
-            `图传中断：设备停在已接收第 ${tracker.last} 包不再前进。可能设备忙或处理不过来。当前 MTU=${session.mtu}、每包 ${CHUNK} 字节`
+        const window = retries === 0 ? WINDOW : Math.max(1, WINDOW - retries)
+        const sendPace =
+          retries === 0 ? curPace : Math.min(150, curPace + 30 * retries)
+        stats.finalPace = curPace
+
+        while (nextSeq < totalPackets && nextSeq - tracker.last - 1 < window) {
+          if (shouldAbort()) {
+            throw new Error('UPLOAD_ABORTED')
+          }
+          const seq = nextSeq
+          const chunk = data.subarray(
+            seq * CHUNK,
+            Math.min((seq + 1) * CHUNK, dataSize)
           )
+          await writePacket(session, seq, chunk, stats)
+          stats.sentPackets++
+          if (seq <= highestSeqSent) {
+            stats.retransmittedPackets++
+          }
+          highestSeqSent = Math.max(highestSeqSent, seq)
+          nextSeq++
+          const moreThisRound =
+            nextSeq < totalPackets && nextSeq - tracker.last - 1 < window
+          if (sendPace > 0 && moreThisRound) {
+            await sleep(sendPace)
+          }
         }
-        // 把卡顿实况抛给页面：停在第几包(stuckAt)、第几次重发。便于判断是「设备中断(stuckAt 死住不动)」
-        // 还是「链路慢(stuckAt 缓慢推进)」——这是向硬件提问时最关键的证据。
-        onProgress(
-          Math.min(tracker.last + 1, totalPackets),
-          totalPackets,
-          'retry',
-          { stuckAt: tracker.last, retries }
-        )
-        // 回退到「设备已确认的下一个包」重发：下一轮 ① 会以缩小的窗口、放大的 pace 重新按序补发
-        nextSeq = tracker.last + 1
-        // B2 回退：卡顿说明探得太快，把基准间隔上调一档（封顶在 pace，永不慢于配置基准），并清零干净连击
-        curPace = Math.min(pace, curPace + PACE_STEP)
-        cleanRun = 0
-        await sleep(Math.min(150, 50 * retries)) // 极短退避(≤150ms)：保证「等待+退避」远小于设备 1s 超时
-        continue
-      }
 
-      // 有推进：更新进度（已确认包数 = tracker.last + 1），随即回到 ① 补满窗口。
-      // B2 探测：只有「干净窗口」(本轮此前没在重试)才累积连击；连够 PACE_PROBE_AFTER 档就把 curPace 下探
-      // 一步(更快)。刚从卡顿恢复(retries>0)的这一轮不算干净，只清零连击，避免立刻又夷回刚失败的速率。
-      if (retries !== 0) {
-        cleanRun = 0
-      } else if (curPace > PACE_FLOOR && ++cleanRun >= PACE_PROBE_AFTER) {
-        curPace = Math.max(PACE_FLOOR, curPace - PACE_STEP)
-        cleanRun = 0
+        // 尾包 ACK 可能已在最后一次 write 的回调返回前到达，先复查，避免完成后再空等 600ms。
+        if (tracker.last >= totalPackets - 1) {
+          break
+        }
+
+        const before = tracker.last
+        const ackWaitStartedAt = Date.now()
+        let waitError = null
+        try {
+          await tracker.waitAdvance(before, 600)
+        } catch (error) {
+          waitError = error
+        } finally {
+          stats.ackWaitMs += Date.now() - ackWaitStartedAt
+        }
+
+        if (waitError) {
+          // 超时回调和通知可能同时发生；重发前再复查一次，已推进就直接继续填窗。
+          if (tracker.last > before) {
+            retries = 0
+            stats.confirmedPackets = Math.min(tracker.last + 1, totalPackets)
+            onProgress(stats.confirmedPackets, totalPackets, 'data')
+            continue
+          }
+          stats.ackTimeouts++
+          stats.retryEvents++
+          if (++retries > 15) {
+            throw new Error(
+              `图传中断：设备停在已接收第 ${tracker.last} 包不再前进。可能设备忙或处理不过来。当前 MTU=${session.mtu}、每包 ${CHUNK} 字节`
+            )
+          }
+          onProgress(
+            Math.min(tracker.last + 1, totalPackets),
+            totalPackets,
+            'retry',
+            { stuckAt: tracker.last, retries }
+          )
+          nextSeq = tracker.last + 1
+          curPace = Math.min(pace, curPace + PACE_STEP)
+          cleanRun = 0
+          await sleep(Math.min(150, 50 * retries))
+          continue
+        }
+
+        if (retries !== 0) {
+          cleanRun = 0
+        } else if (curPace > PACE_FLOOR && ++cleanRun >= PACE_PROBE_AFTER) {
+          curPace = Math.max(PACE_FLOOR, curPace - PACE_STEP)
+          cleanRun = 0
+        }
+        retries = 0
+        stats.confirmedPackets = Math.min(tracker.last + 1, totalPackets)
+        onProgress(stats.confirmedPackets, totalPackets, 'data')
       }
-      retries = 0
-      onProgress(Math.min(tracker.last + 1, totalPackets), totalPackets, 'data')
+      stats.confirmedPackets = totalPackets
+      stats.finalPace = curPace
+    } finally {
+      stats.dataMs = Date.now() - dataStartedAt
+      stats.ackFrames = tracker.ackFrames
+      stats.ackAdvances = tracker.advances
+      tracker.dispose()
     }
-  } finally {
-    tracker.dispose() // 无论成功失败都摘掉常驻监听器
-  }
 
-  // 3) 0x22 结束：设备核对总长度与整图 CRC32，写入 Flash 并更新 IMG_MASK。
-  // 大图算整图 CRC32 + 落盘可能要好几秒，这里给足 20s 等待，避免误判超时。
-  const endAck = await request(deviceId, protocol.CMD.IMG_END, [], 20000)
-  if (endAck.result !== 0x00) {
-    // 设备返回什么就提示什么：直接抛设备结果码的协议含义，不加 App 自造前缀
-    throw new Error(protocol.resultText(endAck.result))
+    // 3) 0x22 结束：设备核对总长度与整图 CRC32，写入 Flash 并更新 IMG_MASK。
+    const endAckStartedAt = Date.now()
+    let endAck
+    try {
+      endAck = await request(deviceId, protocol.CMD.IMG_END, [], 20000)
+    } finally {
+      stats.endAckMs = Date.now() - endAckStartedAt
+    }
+    if (endAck.result !== 0x00) {
+      throw new Error(protocol.resultText(endAck.result))
+    }
+    stats.success = true
+    const summary = Object.assign(
+      { result: endAck.result },
+      protocol.parseImgEndResult(endAck.data)
+    )
+    summary.transferStats = finalizeTransferStats(stats)
+    onProgress(stats.totalPackets, stats.totalPackets, 'done')
+    return summary
+  } catch (error) {
+    const failure =
+      error instanceof Error
+        ? error
+        : new Error((error && error.message) || '设备图传失败')
+    stats.error = failure.message
+    failure.transferStats = finalizeTransferStats(stats)
+    throw failure
   }
-  const summary = Object.assign(
-    { result: endAck.result },
-    protocol.parseImgEndResult(endAck.data)
-  )
-  onProgress(totalPackets, totalPackets, 'done')
-  return summary
 }
 
 // 是否已与该设备建立可用的 BLE 会话（用于首页等真实展示「已连接/未连接」，不再恒为已连接）。
@@ -1182,6 +1291,7 @@ function wrapDevice(fn) {
 module.exports = {
   ensureConnection,
   request,
+  readTransferInfo,
   readDeviceInfo,
   readBattery,
   setPlayback,
@@ -1214,6 +1324,7 @@ module.exports = {
 ;[
   'ensureConnection',
   'request',
+  'readTransferInfo',
   'readDeviceInfo',
   'readBattery',
   'setPlayback',
