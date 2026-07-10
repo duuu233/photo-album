@@ -56,14 +56,6 @@
     </view>
   </view>
 
-  <view class="compress-row">
-    <view class="compress-info">
-      <text class="compress-label">压缩图片</text>
-      <text class="compress-tip">压缩到约 300-400KB，更省流量；关闭后上传原图</text>
-    </view>
-    <switch class="compress-switch" checked="{{compressImage}}" color="#ff621f" bindchange="onCompressChange"></switch>
-  </view>
-
   <view class="preview-submit {{editing ? 'is-disabled' : ''}}" hover-class="none" bindtap="confirmProjection">{{projecting ? '投屏中' : '开始投屏'}}</view>
 
   <!-- 离屏导出用画布（定位到屏幕外不可见）：裁剪时把选区绘制到这里再导出临时文件 -->

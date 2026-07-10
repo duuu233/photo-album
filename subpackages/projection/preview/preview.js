@@ -47,10 +47,7 @@ Page({
     const device = pending.device || null
     this.updateImageState(images, device, 0)
 
-    // 压缩开关：默认开启；用户改过则沿用上次选择（Storage 未设置时为 ''，不等于 false）
-    this.setData({
-      compressImage: wx.getStorageSync('projectionCompressImage') !== false
-    })
+    // 压缩图片：产品要求恒为开启，页面已隐藏开关入口，故不再读取 Storage 覆盖（保持 data 默认 true）
 
     // 预热连接：用户在预览页裁剪/确认的这几秒里，后台先把设备连上。
     // 这样点「确认投屏」后，结果页的 ensureConnection 能直接复用已就绪的会话，
