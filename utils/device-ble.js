@@ -511,10 +511,29 @@ function sleep(ms) {
 // 默认取「极速」档(3ms)：固件已扩大 MCU 收包内存(可缓 10 包)，配合 7.5ms 连接间隔按最快速率喂数据。
 // 调试页「同步投屏」可把实测调稳的 pace 写进下面的存储键覆盖它；卡顿时窗口内部还会自动缩窗+减速兜底。
 const PACKET_PACE_MS = 3
-// 图传前尝试把 BLE 连接间隔调到此值（默认 7.5ms / CONN_INTERVAL=6，即协议最小值，最快连接节奏）。失败时不阻断旧图传链路。
-// 调试页「同步投屏」会把输入框的值写进下面这个存储键；真实投屏图传前优先读它，没同步过则回落默认 7.5ms。
-const TRANSFER_CONN_INTERVAL_MS = 7.5
+// 图传前尝试把 BLE 连接间隔调到的默认值：按平台区分（2026-07-10 真机 A/B 数据，iPhone 12）。
+//   安卓：7.5ms（CONN_INTERVAL=6，协议最小值）——安卓中心侧通常批准；
+//   iOS：15ms——Apple 规范拒绝 <15ms 的参数更新请求，请求 7.5ms 会被系统忽略、链路停在
+//        自选的 30/45ms 上（实测请求 15ms 后 dataMs 15.2s→9.6s、吞吐 11.1→17.6KB/s）。
+// 调试页「同步投屏」写入的存储值仍优先于平台默认；设置失败不阻断旧图传链路。
+const TRANSFER_CONN_INTERVAL_MS_ANDROID = 7.5
+const TRANSFER_CONN_INTERVAL_MS_IOS = 15
 const TRANSFER_CONN_INTERVAL_STORAGE_KEY = 'transferConnIntervalMs'
+
+// 按运行平台取图传连接间隔默认值。只有明确是安卓才用 7.5ms；iOS/未知平台（探测失败、
+// 桌面端等）一律 15ms 保守取值——15ms 各平台都接受（最多慢一点），反之 iOS 请求 7.5ms
+// 会被拒、停在更慢的系统默认值上。鸿蒙(ohos)蓝牙栈行为同安卓，按 7.5ms。
+function defaultTransferConnIntervalMs() {
+  try {
+    const info = wx.getDeviceInfo ? wx.getDeviceInfo() : wx.getSystemInfoSync()
+    const platform = (info && info.platform) || ''
+    return platform === 'android' || platform === 'ohos'
+      ? TRANSFER_CONN_INTERVAL_MS_ANDROID
+      : TRANSFER_CONN_INTERVAL_MS_IOS
+  } catch (error) {
+    return TRANSFER_CONN_INTERVAL_MS_IOS
+  }
+}
 // 真实投屏图传每包发送间隔(ms)的存储键：调试页「同步投屏」把实测 pace 写进来，真实投屏优先读它，
 // 没同步过则回落默认 PACKET_PACE_MS(极速 3ms)。与连接间隔同套「调试台调好→同步到真实场景」的机制。
 const TRANSFER_PACE_STORAGE_KEY = 'transferPaceMs'
@@ -774,7 +793,8 @@ async function setConnectionIntervalMs(deviceId, ms) {
   )
 }
 
-// 真实投屏图传前要用的连接间隔(ms)：优先用调试页「同步投屏」存下的值，否则用默认 7.5ms。
+// 真实投屏图传前要用的连接间隔(ms)：优先用调试页「同步投屏」存下的值，
+// 否则用平台默认（安卓/鸿蒙 7.5ms、iOS 及其他 15ms，见 defaultTransferConnIntervalMs）。
 function getTransferConnIntervalMs() {
   try {
     const saved = Number(wx.getStorageSync(TRANSFER_CONN_INTERVAL_STORAGE_KEY))
@@ -784,7 +804,7 @@ function getTransferConnIntervalMs() {
   } catch (error) {
     // 读存储失败就用默认值
   }
-  return TRANSFER_CONN_INTERVAL_MS
+  return defaultTransferConnIntervalMs()
 }
 
 // 把真实投屏图传前要用的连接间隔(ms)持久化（调试页「同步投屏」调用）。
@@ -853,9 +873,17 @@ function setTransferWindow(n) {
   return value
 }
 
-// 图传前的连接参数优化：读当前值，必要时切到更快的连接间隔。
+// 图传前的连接参数优化：读当前值，必要时切到更快的连接间隔，并回读验证是否真实生效。
 // 未显式传 ms 时，用「同步投屏」存下的值（没同步过则默认 7.5ms）。
 // 兼容旧固件/异常链路：调用方可捕获错误后继续走原图传逻辑。
+//
+// 回读探针（性能测量 A 补充，2026-07-10）：0x13 回 result=0 只代表「设备接受了指令」；
+// 连接参数更新要由设备向手机系统发起、中心侧批准——iOS 按 Apple 规范常直接拒绝 <15ms 的
+// 请求，链路可能仍跑在旧值（真机 trace 曾见「设 7.5ms 成功」但 10 包窗口要 205ms，倒推
+// 间隔并未生效）。故设置后稍等参数更新协商完成，再回读 0x05 取「实际生效值」。
+// 返回 { changed, previous, requested, current, verified, applied }：
+//   current 一律是回读到的真实值（回读失败时回落 requested 并置 verified=false）；
+//   applied=true 表示回读值与目标一致（真的生效了）。回读失败不影响图传继续。
 async function optimizeConnectionIntervalForTransfer(deviceId, ms) {
   const targetUnits = normalizeConnectionIntervalUnits(
     protocol.connectionIntervalMsToUnits(ms || getTransferConnIntervalMs())
@@ -865,14 +893,26 @@ async function optimizeConnectionIntervalForTransfer(deviceId, ms) {
     return {
       changed: false,
       previous,
-      current: previous
+      current: previous,
+      verified: true,
+      applied: true
     }
   }
-  const current = await setConnectionInterval(deviceId, targetUnits)
+  const requested = await setConnectionInterval(deviceId, targetUnits)
+  let verifiedRead = null
+  try {
+    await sleep(300) // 参数更新要走几个连接事件才落定，立刻回读常拿到旧值
+    verifiedRead = await getConnectionInterval(deviceId)
+  } catch (error) {
+    verifiedRead = null // 探针尽力而为：回读失败不影响图传
+  }
   return {
     changed: true,
     previous,
-    current
+    requested: { units: requested.units, ms: requested.ms },
+    current: verifiedRead || { units: requested.units, ms: requested.ms },
+    verified: !!verifiedRead,
+    applied: !!verifiedRead && verifiedRead.units === targetUnits
   }
 }
 

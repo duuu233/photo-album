@@ -401,10 +401,19 @@ Page({
       startPrefetch(0, info) // 未早启动/已作废时从这里启动首张取帧；早启动过则为空操作
 
       // 第一张网络准备已启动；连接间隔优化与它并行，避免这些 BLE 控制指令继续挡住原图上传/转码。
+      // 内含 0x05 回读探针（约 +300ms，被并行的网络准备吸收）：识别「设置成功≠真实生效」。
       phaseStartedAt = Date.now()
       try {
         performance.connectionInterval =
           await deviceBle.optimizeConnectionIntervalForTransfer(deviceId)
+        const ci = performance.connectionInterval
+        if (ci && ci.changed && ci.verified && !ci.applied) {
+          // 手机系统拒绝了参数更新（iOS 常拒 <15ms）：链路仍跑在回读到的实际值上。
+          // 提速方向：调试页把连接间隔同步成 ≥15ms 再试，而不是继续怀疑发送侧。
+          console.warn(
+            `[投屏] 连接间隔未真实生效：请求 ${ci.requested.ms}ms，链路实际 ${ci.current.ms}ms（iOS 常拒绝 <15ms 的请求）`
+          )
+        }
       } catch (error) {
         performance.connectionIntervalError =
           (error && error.message) || '连接间隔优化失败'
@@ -566,14 +575,29 @@ Page({
         // 只有最后一张传完后才刷新屏幕(0x24)：部分固件收到 0x24 会断开蓝牙，
         // 批量传输时中途刷屏会导致后续图片传输失败。故中间张一律不刷屏，
         // 等全部传完后只对最后一张执行一次 0x24，切到最后这张显示。
+        // 感知优化(2026-07-10)：0x24 的应答要等墨水屏物理刷完才回（真机实测 ~4s），而刷屏结果
+        // 本来就不影响投屏成败（此前失败也被吞掉）。改为不 await——图片已全部写入设备，
+        // 立即进入收尾/成功页，刷屏在后台继续；耗时/失败异步补记 trace 并单独打一条日志
+        //（整单汇总先打出，不含此项）。代价：成功页出现时设备可能还在刷屏，立刻「继续投屏」
+        // 可能撞上设备忙(0x0B)/暂时断连，已有归类提示兜底（「当前设备繁忙…」/「设备未连接…」）。
         if (i === total - 1) {
           const refreshStartedAt = Date.now()
-          try {
-            await deviceBle.refreshScreen(deviceId, index)
-          } catch (error) {
-            // 刷新失败不阻断整体成功
-          }
-          performance.phases.refreshScreenMs = Date.now() - refreshStartedAt
+          deviceBle
+            .refreshScreen(deviceId, index)
+            .then(() => {
+              performance.phases.refreshScreenMs = Date.now() - refreshStartedAt
+              console.log(
+                `[投屏性能] 刷屏完成(异步)：${performance.phases.refreshScreenMs}ms`
+              )
+            })
+            .catch(error => {
+              performance.phases.refreshScreenMs = Date.now() - refreshStartedAt
+              performance.refreshScreenError =
+                (error && error.message) || '刷新失败'
+              console.warn(
+                `[投屏性能] 刷屏失败(异步，不影响投屏结果)：${performance.refreshScreenError}`
+              )
+            })
         }
       }
 
