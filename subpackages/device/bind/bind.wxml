@@ -6,6 +6,7 @@
   <page-nav title="绑定设备"></page-nav>
 
   <view class="bind-content {{showHelp ? 'content-dimmed' : ''}}">
+    <!-- 调试台入口：产品要求屏蔽，仅注释不删除，需要时放开即可
     <view class="debug-entry" hover-class="none" bindtap="openDebug">
       <view class="debug-entry__icon">🔧</view>
       <view class="debug-entry__copy">
@@ -14,6 +15,8 @@
       </view>
       <view class="debug-entry__arrow">›</view>
     </view>
+    -->
+
 
     <view class="radar-wrap">
       <image wx:if="{{!scanning && devices.length}}" class="radar-art" src="/assets/images/device_found_art.png" mode="aspectFit"></image>
