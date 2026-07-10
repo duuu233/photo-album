@@ -51,10 +51,11 @@ button {
 }
 
 .tab-item.active {
-  color: #ff6421;
+  color: #ED6315;
+  
 }
 
 .tab-icon {
-  width: 56rpx;
-  height: 56rpx;
+  width: 48rpx;
+  height: 48rpx;
 }
