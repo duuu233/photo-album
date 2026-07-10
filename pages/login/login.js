@@ -73,7 +73,7 @@ Page({
       // 成功提示用原生 wx.showToast：它挂在原生层，switchTab 后仍会继续显示
       wx.showToast({
         title: '登录成功',
-        icon: 'success',
+        icon: 'none',
         duration: 1500
       })
       // 过渡层背后预取首页设备列表（存 globalData，首页 loadHomeState 一次性消费）：
