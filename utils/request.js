@@ -226,13 +226,51 @@ function showError(message) {
   })
 }
 
+// —— 网络层失败(超时/断网)的静默重试与提示节流 ——
+// 单次超时 config.timeout(10s)，失败后最多再自动重试 NETWORK_RETRY_MAX 次(静默不提示)，
+// 用户端表现为 loading 最长约 30s(3 次尝试)才提示，避免以前「5-6s 就弹、loading 中隔几秒一个超时」的差体验。
+const NETWORK_RETRY_MAX = 2
+const NETWORK_RETRY_DELAY = 500
+// 多个请求同时超时时合并提示：GAP 内只弹一次网络错误 toast，避免连续刷屏
+const NETWORK_ERROR_TOAST_GAP = 3000
+let lastNetworkErrorToastAt = 0
+
+// 仅网络层失败(wx.request fail：超时/断网)才重试；业务错误(HTTP 4xx/5xx、业务 code)不重试，避免重复副作用(重复绑定/上传等)
+function isNetworkError(error) {
+  return !!error && error.code === 'NETWORK_ERROR'
+}
+
+// 网络失败的用户友好提示：超时与断网分开措辞
+function friendlyNetworkMessage(error) {
+  const raw = String((error && error.message) || '')
+  return /timeout/i.test(raw) ? '网络超时，请稍后再试' : '网络连接失败，请稍后再试'
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// 节流后的网络错误提示：GAP(3s) 内重复的网络错误只弹一次，合并突发的多个超时
+function showNetworkError(message) {
+  const now = Date.now()
+  if (now - lastNetworkErrorToastAt < NETWORK_ERROR_TOAST_GAP) {
+    return
+  }
+  lastNetworkErrorToastAt = now
+  showError(message)
+}
+
 // 统一的错误处理：默认弹 toast 提示；遇到 401 清除本地登录态后再抛给调用方
 function handleBusinessError(error, options) {
+  const networkError = isNetworkError(error)
   let message = error && error.message ? error.message : '请求失败'
 
-  // 接口报错统一加「接口-」前缀，方便和「设备-」(蓝牙/设备返回) 错误区分；幂等避免重复加。
-  // 同时写回 error.message，让用 showError:false 自行 toast 的调用方也带上前缀。
-  if (!/^接口-/.test(message)) {
+  if (networkError) {
+    // 网络失败(已静默重试仍不通)：统一友好提示，不加「接口-」前缀与 url —— 这是网络问题而非某个接口的问题。
+    message = friendlyNetworkMessage(error)
+  } else if (!/^接口-/.test(message)) {
+    // 接口报错统一加「接口-」前缀，方便和「设备-」(蓝牙/设备返回) 错误区分；幂等避免重复加。
+    // 同时写回 error.message，让用 showError:false 自行 toast 的调用方也带上前缀。
     message = '接口-' + message
   }
   if (error) {
@@ -240,9 +278,14 @@ function handleBusinessError(error, options) {
   }
 
   // 调用方可通过 options.showError === false 关闭自动提示（自行处理错误）
-  // 报错 toast 追加接口中文名与 url，方便定位是哪个接口出错；仅用于展示，不写回 error.message。
   if (options.showError !== false) {
-    showError(message + apiErrorSuffix(options.url))
+    if (networkError) {
+      // 网络错误做节流合并，且不追加接口 url(对用户是网络问题，具体接口无意义)
+      showNetworkError(message)
+    } else {
+      // 业务/服务器错误追加接口中文名与 url，方便定位是哪个接口出错；仅用于展示，不写回 error.message。
+      showError(message + apiErrorSuffix(options.url))
+    }
   }
 
   if (error && (error.code === 401 || error.code === 406)) {
@@ -304,13 +347,34 @@ function request(rawOptions) {
       })
   }
 
+  const sendOptions = {
+    url: buildUrl(appendQuery(options.url, clientQuery)),
+    method,
+    data,
+    header,
+    timeout: options.timeout || config.timeout
+  }
+
+  return requestWithRetry(sendOptions, NETWORK_RETRY_MAX)
+    .then(res => {
+      done()
+      return res
+    })
+    .catch(error => {
+      done()
+      return handleBusinessError(error, options)
+    })
+}
+
+// 单次网络请求：把 wx.request 包成 Promise，成功后按 HTTP 状态码/业务 code 二次判定，失败归一为 NETWORK_ERROR。
+function sendRequest(sendOptions) {
   return new Promise((resolve, reject) => {
     wx.request({
-      url: buildUrl(appendQuery(options.url, clientQuery)),
-      method,
-      data,
-      header,
-      timeout: options.timeout || config.timeout,
+      url: sendOptions.url,
+      method: sendOptions.method,
+      data: sendOptions.data,
+      header: sendOptions.header,
+      timeout: sendOptions.timeout,
       success(res) {
         // wx.request 只要收到响应就算 success，需在这里按 HTTP 状态码和业务 code 二次判定
         const body = res.data || {}
@@ -373,14 +437,19 @@ function request(rawOptions) {
       }
     })
   })
-    .then(res => {
-      done()
-      return res
-    })
-    .catch(error => {
-      done()
-      return handleBusinessError(error, options)
-    })
+}
+
+// 带静默重试的请求：仅网络层失败(超时/断网)时等待 NETWORK_RETRY_DELAY 后重试，最多 retriesLeft 次；
+// 业务/服务器错误直接抛出（重试无意义且可能造成重复副作用）。
+function requestWithRetry(sendOptions, retriesLeft) {
+  return sendRequest(sendOptions).catch(error => {
+    if (isNetworkError(error) && retriesLeft > 0) {
+      return delay(NETWORK_RETRY_DELAY).then(() =>
+        requestWithRetry(sendOptions, retriesLeft - 1)
+      )
+    }
+    throw error
+  })
 }
 
 function upload(rawOptions) {
@@ -436,7 +505,8 @@ function upload(rawOptions) {
         name,
         formData,
         header,
-        timeout: options.timeout || config.timeout,
+        // 上传用更长的 uploadTimeout(不受普通请求 10s 影响)；上传不做自动重试，避免重复上传/重复投屏记录
+        timeout: options.timeout || config.uploadTimeout,
         success(res) {
           const body = parseResponseData(res.data)
           const businessCode =
