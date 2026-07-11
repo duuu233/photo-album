@@ -155,6 +155,64 @@ function parseResponseData(data) {
   }
 }
 
+// 接口 url → 简短中文名：报错 toast 里带上「中文名 + url」，方便用户/客服一眼定位是哪个接口出错。
+// key 取 url 路径最后一段（方法名），兼容 /devices/:id/firmware 这类带路径参数的地址；映射不到就只带 url。
+const API_NAME_MAP = {
+  getProductList: '产品列表',
+  getProductFaqList: '常见问题列表',
+  getProductFaqDetail: '常见问题详情',
+  sendEmail: '发送邮件',
+  sendEmailToken: '发送邮箱验证码',
+  setUserProductUpload: '投屏图片上传',
+  getBasicData: '基础数据',
+  setFileUpload: '文件上传',
+  setWechatAppLogin: '微信登录',
+  getUserInfo: '用户信息',
+  changeNickName: '修改昵称',
+  changeAvatar: '修改头像',
+  loginOut: '退出登录',
+  userOff: '账号注销',
+  changeUserEmail: '修改邮箱',
+  addUserProduct: '绑定设备',
+  getUserProductList: '设备列表',
+  getUserProductDetail: '设备详情',
+  editUserProduct: '编辑设备',
+  delUserProduct: '删除设备',
+  clearUserProductImg: '一键清空设备图片',
+  getUserProductClearImg: '设备清空状态',
+  getUserProductImgList: '图库列表',
+  delUserProductImg: '删除图片',
+  getUserProductImgRecordList: '投屏记录列表',
+  editUserProductImgRecord: '更新投屏记录',
+  addUserProductImgRecord: '新增投屏记录',
+  delUserProductImgRecord: '删除投屏记录',
+  phone: '绑定手机号',
+  'reset-password': '重置密码',
+  password: '修改密码',
+  firmware: '获取固件',
+  'upgrade-result': '上报升级结果'
+}
+
+// 从 url 取出方法名段并映射中文名，返回 { path(去掉query的纯路径), name(映射不到为空) }
+function describeApi(url) {
+  const path = String(url || '').split('?')[0]
+  const segments = path.split('/').filter(Boolean)
+  const key = segments.length ? segments[segments.length - 1] : ''
+  return {
+    path,
+    name: API_NAME_MAP[key] || ''
+  }
+}
+
+// 拼接报错 toast 尾部的接口标识：「（中文名 url）」，无 url 时返回空串
+function apiErrorSuffix(url) {
+  const api = describeApi(url)
+  if (!api.path) {
+    return ''
+  }
+  return `（${api.name ? api.name + ' ' : ''}${api.path}）`
+}
+
 function showError(message) {
   if (!message) {
     return
@@ -162,7 +220,9 @@ function showError(message) {
 
   toast.show({
     title: message,
-    icon: 'none'
+    icon: 'none',
+    // 报错文案更长（带接口名+url），停留 5s 给用户足够时间看清故障来源
+    duration: 5000
   })
 }
 
@@ -180,8 +240,9 @@ function handleBusinessError(error, options) {
   }
 
   // 调用方可通过 options.showError === false 关闭自动提示（自行处理错误）
+  // 报错 toast 追加接口中文名与 url，方便定位是哪个接口出错；仅用于展示，不写回 error.message。
   if (options.showError !== false) {
-    showError(message)
+    showError(message + apiErrorSuffix(options.url))
   }
 
   if (error && (error.code === 401 || error.code === 406)) {
