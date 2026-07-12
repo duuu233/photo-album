@@ -180,7 +180,7 @@ Page({
         device: updated,
         intervalIndex: intervalIndex > -1 ? intervalIndex : this.data.intervalIndex
       })
-      toast.show({ title: '已保存', icon: 'none' })
+      // 轮播设置保存成功不再弹提示（界面已刷新即为反馈）；仅保存失败时提示。
       return true
     } catch (error) {
       toast.warn({

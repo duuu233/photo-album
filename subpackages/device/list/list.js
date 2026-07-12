@@ -272,7 +272,7 @@ Page({
           connected: false
         }) : item)
       })
-      toast.show({ title: '已断开', icon: 'none' })
+      // 断开成功不再弹提示（按钮/卡片已切「未连接」态即为反馈）；仅失败时提示。
       return
     }
 
@@ -292,7 +292,7 @@ Page({
         verifyReuse: true
       })
       const updated = this.applyConnectedDevice(device, res.deviceId, res.info)
-      toast.show({ title: '已连接', icon: 'none' })
+      // 连接成功不再弹提示（卡片切「已连接」态即为反馈，投屏流程也直接继续）；仅连接失败时提示。
       return updated
     } catch (error) {
       // 系统级「附近设备」权限被拒：弹引导去系统设置，而非笼统的「连接失败」

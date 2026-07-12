@@ -320,10 +320,7 @@ Page({
         return
       }
       wx.hideLoading()
-
-      // 连接并读取设备信息成功：先提示「连接成功」，短暂停留让用户看到后，再调用绑定接口
-      toast.show({ title: '连接成功', icon: 'none', duration: 800 })
-      await new Promise(resolve => setTimeout(resolve, 800))
+      // 连接并读取设备信息成功：不再弹「连接成功」提示，直接继续绑定流程；仅连接失败时提示。
     }
 
     // 避免同一台设备被重复绑定（设备页会因此出现多条同款记录）：用刚连上读到的硬件 Device_ID
@@ -336,7 +333,7 @@ Page({
         battery: info && typeof info.battery === 'number' ? info.battery : existed.battery
       })
       app.setSelectedDevice(reused)
-      toast.show({ title: '该设备已绑定，已为你连接', icon: 'none' })
+      // 设备已绑定并已为你连接：不再弹提示，直接返回上一页复用这条连接；仅失败时提示。
       // 保持 binding=true 直到返回上一页，避免窗口内被重复点击触发二次操作
       setTimeout(() => wx.navigateBack(), 500)
       return

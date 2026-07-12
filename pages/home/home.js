@@ -734,8 +734,7 @@ Page({
       // 首页沿用默认匹配器(纯序列号，不按名称——同型号广播名相同易连错别人的相框)、复用活动会话不做活性校验。
       const res = await activeDevice.connectBoundDevice(selected)
       this.markCurrentDeviceConnected(res.deviceId, res.info)
-      // reused=复用已存在的活动会话（未重扫）；否则是本次新扫描连接，文案沿用原先两种
-      toast.show({ title: res.reused ? '设备已连接' : '已连接设备', icon: 'none' })
+      // 连接成功不再弹提示（卡片已切「已连接」态即为反馈）；仅连接失败时提示。
       return true
     } catch (error) {
       // 系统级「附近设备」权限被拒：引导去系统设置；其余原因 toast 提示，停留在已绑定首页

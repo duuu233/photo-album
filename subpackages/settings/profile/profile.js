@@ -1,6 +1,5 @@
 const api = require('../../../utils/api')
 const system = require('../../../utils/system')
-const toast = require('../../../utils/toast')
 
 const app = getApp()
 
@@ -60,10 +59,7 @@ Page({
   async saveProfile() {
     const userInfo = await api.updateUserProfile(this.data.userInfo)
     this.syncUser(Object.assign({}, this.data.userInfo, userInfo))
-    toast.show({
-      title: '已保存',
-      icon: 'none'
-    })
+    // 更换头像/昵称保存成功不再弹提示（界面已更新即为反馈）；保存失败由接口层统一提示。
   },
 
   // 小程序仅支持首次绑定邮箱：未绑定去“绑定邮箱”，已绑定提示前往 App 修改

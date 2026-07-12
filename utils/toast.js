@@ -48,9 +48,9 @@ function warn(options) {
   if (!opts.icon) {
     opts.icon = 'none'
   }
-  // 报错/警告类停留更久（默认 5s），给用户足够时间看清故障来源与原因；调用方显式传 duration 时以其为准。
+  // 报错/警告类停留略久（默认 3s），既够看清故障来源与原因、又不至于长时间挡住操作；调用方显式传 duration 时以其为准。
   if (opts.duration === undefined) {
-    opts.duration = 5000
+    opts.duration = 3000
   }
   show(opts)
 }

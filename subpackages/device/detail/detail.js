@@ -524,7 +524,7 @@ Page({
         intervalIndex:
           intervalIndex > -1 ? intervalIndex : this.data.intervalIndex
       })
-      toast.show({ title: '已保存', icon: 'none' })
+      // 轮播设置保存成功不再弹提示（右侧值已刷新即为反馈）；仅保存失败时提示。
     } catch (error) {
       toast.warn({
         title: error.message || '保存失败',
@@ -637,7 +637,7 @@ Page({
       playbackLabel: '--',
       newVersionNo: '--'
     })
-    toast.show({ title: '已断开', icon: 'none' })
+    // 断开成功不再弹提示（顶部按钮已切「未连接」态即为反馈）；仅失败时提示。
   },
 
   // 顶部「连接 / 断开」：已连接则断开；未连接则重扫匹配本设备并连接（BLE deviceId 每次扫描会话才有效）。
@@ -670,7 +670,7 @@ Page({
         verifyReuse: true
       })
       const updated = this.applyConnectedDevice(device, res.deviceId, res.info)
-      toast.show({ title: '已连接', icon: 'none' })
+      // 连接成功不再弹提示（顶部切「已连接」态即为反馈，投屏流程也直接继续）；仅连接失败时提示。
       return updated
     } catch (error) {
       // 系统级「附近设备」权限被拒：弹引导去系统设置，而非笼统的「连接失败」
@@ -1294,10 +1294,7 @@ Page({
     ) {
       app.setSelectedDevice(null)
     }
-    toast.show({
-      title: '已删除',
-      icon: 'none'
-    })
+    // 删除成功不再弹提示，直接返回上一页（列表刷新即为反馈）；删除失败由接口层统一提示。
     setTimeout(() => wx.navigateBack(), 500)
   },
 
