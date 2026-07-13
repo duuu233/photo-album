@@ -407,7 +407,9 @@ Page({
         performance.connectionInterval =
           await deviceBle.optimizeConnectionIntervalForTransfer(deviceId)
         const ci = performance.connectionInterval
-        if (ci && ci.changed && ci.verified && !ci.applied) {
+        // 无条件下发 0x13 后，changed=false（传前读到的就是目标值）也可能没真生效——
+        // 只看回读结果 verified/applied，别再拿 changed 当前置条件，否则这条告警会被吞掉。
+        if (ci && ci.verified && !ci.applied) {
           // 手机系统拒绝了参数更新（iOS 常拒 <15ms）：链路仍跑在回读到的实际值上。
           // 提速方向：调试页把连接间隔同步成 ≥15ms 再试，而不是继续怀疑发送侧。
           console.warn(

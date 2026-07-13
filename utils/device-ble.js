@@ -882,22 +882,20 @@ function setTransferWindow(n) {
 // 请求，链路可能仍跑在旧值（真机 trace 曾见「设 7.5ms 成功」但 10 包窗口要 205ms，倒推
 // 间隔并未生效）。故设置后稍等参数更新协商完成，再回读 0x05 取「实际生效值」。
 // 返回 { changed, previous, requested, current, verified, applied }：
+//   changed 表示传前读到的值与目标不同（仅作诊断，不再据此跳过设置）；
 //   current 一律是回读到的真实值（回读失败时回落 requested 并置 verified=false）；
 //   applied=true 表示回读值与目标一致（真的生效了）。回读失败不影响图传继续。
+//
+// 无条件下发 0x13（2026-07-13）：曾按「读到的值已等于目标就跳过设置」短路，但 0x05 读回的可能是
+// 固件保存的配置值而非链路实时参数——新连接的链路参数由手机侧决定（iOS 常给 30~45ms），此时跳过
+// 0x13 就等于整场图传跑在手机默认间隔上（表现为「传一段停一下」、比调试台明显慢）。调试台的
+// applyAndVerifyConnInterval 一直是无条件下发，这里与它对齐：每次图传前都设一遍，代价仅一条指令。
 async function optimizeConnectionIntervalForTransfer(deviceId, ms) {
   const targetUnits = normalizeConnectionIntervalUnits(
     protocol.connectionIntervalMsToUnits(ms || getTransferConnIntervalMs())
   )
   const previous = await getConnectionInterval(deviceId)
-  if (previous.units === targetUnits) {
-    return {
-      changed: false,
-      previous,
-      current: previous,
-      verified: true,
-      applied: true
-    }
-  }
+  const changed = previous.units !== targetUnits
   const requested = await setConnectionInterval(deviceId, targetUnits)
   let verifiedRead = null
   try {
@@ -907,7 +905,7 @@ async function optimizeConnectionIntervalForTransfer(deviceId, ms) {
     verifiedRead = null // 探针尽力而为：回读失败不影响图传
   }
   return {
-    changed: true,
+    changed,
     previous,
     requested: { units: requested.units, ms: requested.ms },
     current: verifiedRead || { units: requested.units, ms: requested.ms },

@@ -7,6 +7,7 @@ const otaBle = require('../../../utils/ota-ble')
 const protocol = require('../../../utils/frame-protocol')
 const media = require('../../../utils/media')
 const activeDevice = require('../../../utils/active-device')
+const deviceName = require('../../../utils/device-name')
 
 const app = getApp()
 
@@ -411,14 +412,21 @@ Page({
     wx.showModal({
       title: '编辑设备名称',
       editable: true,
-      placeholderText: '请输入设备名称',
+      placeholderText: `请输入设备名称（1-${deviceName.DEVICE_NAME_MAX_LEN}个字符）`,
       content: this.data.device.name,
       success: async res => {
-        if (!res.confirm || !res.content.trim()) {
-          return // 取消或输入为空则不处理
+        if (!res.confirm) {
+          return // 取消则不处理
         }
 
-        const newName = res.content.trim()
+        // 弹窗自身无法限制输入长度，只能在确定后校验；不合法则提示并放弃本次保存
+        const checked = deviceName.validateDeviceName(res.content)
+        if (!checked.ok) {
+          toast.warn(checked.message)
+          return
+        }
+
+        const newName = checked.name
         await api.renameDevice(this.data.id, newName)
         // 改名是纯后端存储（名称以用户为维度，不写设备、不动蓝牙连接/广播）：
         // 只把新名字合并回现有 device，绝不能用接口的精简返回整体替换——

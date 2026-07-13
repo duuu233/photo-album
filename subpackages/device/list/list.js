@@ -5,6 +5,7 @@ const batteryUtil = require('../../../utils/battery')
 const deviceBle = require('../../../utils/device-ble')
 const media = require('../../../utils/media')
 const activeDevice = require('../../../utils/active-device')
+const deviceName = require('../../../utils/device-name')
 
 const app = getApp()
 
@@ -362,14 +363,21 @@ Page({
     wx.showModal({
       title: '编辑设备名称',
       editable: true,
-      placeholderText: '请输入设备名称',
+      placeholderText: `请输入设备名称（1-${deviceName.DEVICE_NAME_MAX_LEN}个字符）`,
       content: device.name,
       success: async res => {
-        if (!res.confirm || !res.content.trim()) {
+        if (!res.confirm) {
           return
         }
 
-        const newName = res.content.trim()
+        // 弹窗自身无法限制输入长度，只能在确定后校验；不合法则提示并放弃本次保存
+        const checked = deviceName.validateDeviceName(res.content)
+        if (!checked.ok) {
+          toast.warn(checked.message)
+          return
+        }
+
+        const newName = checked.name
         await api.renameDevice(id, newName)
         // 改名只做后端存储：全局选中设备只合并新名字，保留 deviceId 等连接字段。
         // 不能用接口精简返回整体替换——会丢 deviceId 造成假断联且重扫搜不到（设备被会话占线不广播）。

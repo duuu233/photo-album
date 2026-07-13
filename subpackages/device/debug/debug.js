@@ -1803,6 +1803,10 @@ Page({
           this.setData(patch)
         }
       })
+      // 与真实投屏的「[投屏性能] 单张汇总」打同一组字段（uploadImage 返回的 transferStats：
+      // mtu/chunkSize/totalPackets/window/configuredPace/finalPace/dataMs/ackWaitMs/
+      // ackTimeouts/retryEvents/throughputKbps…）。同一张图两边各传一次，字段一对就知道慢在哪。
+      console.log('[调试台图传]', summary.transferStats)
       const okText = `图传完成 ✓ 设备现存 ${summary.imgCount} 张，剩余 ${summary.storageFree} 字节`
       this.appendLog({ type: 'ok', text: okText })
       this.setData({ uploadStatus: okText, uploadStatusType: 'ok' })
