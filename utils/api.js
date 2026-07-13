@@ -311,9 +311,10 @@ module.exports = {
         deviceUploadState: options.deviceUploadState,
         targetWidth: options.targetWidth,
         targetHeight: options.targetHeight,
-        // 是否压缩图片：1=压缩(后端压到约300-400KB) / 0=不压缩传原图，不传默认压缩。
+        // 后端压缩恒开：1=后端把它存的图压到约300-400KB。原先预览页有个「压缩」开关可传 0（原图），
+        // 开关已下线（产品定为默认且只能压缩），这里固定 1，不再由调用方控制。
         // ⚠️ 字段名 isCompress 为约定假设，待后端确认（确认后只需改这一处）。
-        isCompress: options.isCompress === 0 ? 0 : 1
+        isCompress: 1
       },
       formData: options.formData,
       mock: false,

@@ -15,6 +15,16 @@ const toast = require('../../../utils/toast')
 const media = require('../../../utils/media')
 const activeDevice = require('../../../utils/active-device')
 
+// 上传前的兜底压缩（性能优化 2026-07-13）。只影响「上传+后端转码」耗时（真机曾达 5.7s），
+// **不影响图传耗时**——发给设备的六色帧恒为 宽×高÷2（3.7寸=172800字节），与源图大小无关。
+// 触发阈值：源图 > 400KB 才压（预览页现已导出 jpg，多数情况本就不大，压了也白压）。
+// 目标：长边不超过设备长边的 2 倍（480×720 → 1440）。后端还要缩到设备分辨率再量化成六色，
+// 保留 2 倍过采样对最终成像完全无损；再往下压才会开始影响抖动(dither)细节，故不做第二轮降质。
+// 任一步失败（老基础库没有 compressImage / 取不到尺寸 / 压缩报错）都回退原图上传，绝不阻断投屏。
+const UPLOAD_COMPRESS_TRIGGER_BYTES = 400 * 1024
+const UPLOAD_LONG_EDGE_SCALE = 2
+const UPLOAD_COMPRESS_QUALITY = 80
+
 const STATUS_TEXT = {
   progress: {
     title: '图片转码中',
@@ -258,8 +268,6 @@ Page({
     const images = (pending.images || []).filter(
       item => item && (item.tempFilePath || item.url)
     )
-    // 是否压缩图片（预览页开关写入）：仅明确关闭才传原图，缺省（老数据/记录页再次投屏）默认压缩
-    this._compressImage = pending.compressImage !== false
     const deviceId = device.deviceId
 
     if (!deviceId) {
@@ -721,18 +729,24 @@ Page({
       throw new Error('图片文件不可用，无法转换')
     }
 
-    // 压缩开关：开(默认)=1 后端压到约300-400KB；关=0 传原图
-    const isCompress = this._compressImage === false ? 0 : 1
+    // 压缩恒开（api.setUserProductUpload 固定传 isCompress=1，后端把它存的图压到约300-400KB）。
+    // 注意 isCompress 只约束后端存的图，管不到上传字节数——上传体积由预览页导出的临时文件决定
+    //（见 preview.js EXPORT_FILE_TYPE：已从微信默认的 png 改为 jpg，源图体积降一个数量级）。
+    // sourceBytes 就是用来盯这个的：uploadConvertMs 一旦变长，先看它是不是又变大了。
+    const sourceBytes = await this.readFileSize(filePath)
+    const shrunk = await this.compressForUpload(filePath, info, sourceBytes)
     console.log(
-      `[投屏] 上传原图转换：userProductId=${userProductId} target=${info.width}x${info.height} isCompress=${isCompress} file=${filePath}`
+      `[投屏] 上传原图转换：userProductId=${userProductId} target=${info.width}x${info.height} ` +
+        `源图=${(sourceBytes / 1024).toFixed(0)}KB ` +
+        `上传=${(shrunk.bytes / 1024).toFixed(0)}KB${shrunk.compressed ? `(已压缩 ${shrunk.compressMs}ms)` : '(未压缩)'} ` +
+        `file=${shrunk.filePath}`
     )
     const uploadConvertStartedAt = Date.now()
     const res = await api.setUserProductUpload({
-      filePath,
+      filePath: shrunk.filePath,
       userProductId,
       targetWidth: info.width,
       targetHeight: info.height,
-      isCompress,
       deviceUploadState: 0,
       loading: false, // 结果页用 setData desc 自管进度，关掉全局 loading 遮罩
       showError: false // 失败统一走本页失败场景，不额外弹 toast
@@ -750,8 +764,81 @@ Page({
       url,
       taskId: item.taskId,
       upirId: item.upirId,
-      timings: { sourceResolveMs, uploadConvertMs }
+      timings: {
+        sourceResolveMs,
+        sourceBytes,
+        uploadBytes: shrunk.bytes,
+        compressMs: shrunk.compressMs,
+        uploadConvertMs
+      }
     }
+  },
+
+  // 上传前兜底压缩：源图超过阈值才压，长边压到设备长边的 2 倍以内（见文件顶部常量注释）。
+  // 返回 { filePath, bytes, compressMs, compressed }；任何失败都原样返回原文件，投屏不受影响。
+  // 注意这只省「上传+转码」的时间，设备帧字节数(宽×高÷2)与源图无关，图传耗时一秒都不会变。
+  async compressForUpload(filePath, info, sourceBytes) {
+    const original = { filePath, bytes: sourceBytes, compressMs: 0, compressed: false }
+    if (
+      !sourceBytes ||
+      sourceBytes <= UPLOAD_COMPRESS_TRIGGER_BYTES ||
+      !wx.compressImage
+    ) {
+      return original
+    }
+
+    const startedAt = Date.now()
+    try {
+      const size = await new Promise((resolve, reject) => {
+        wx.getImageInfo({ src: filePath, success: resolve, fail: reject })
+      })
+      const longEdge = Math.max(size.width, size.height)
+      const maxLongEdge =
+        Math.max(info.width, info.height) * UPLOAD_LONG_EDGE_SCALE
+      // 已经够小就只重压质量、不再缩尺寸（ratio=1）
+      const ratio = longEdge > maxLongEdge ? maxLongEdge / longEdge : 1
+      const compressed = await new Promise((resolve, reject) => {
+        wx.compressImage({
+          src: filePath,
+          quality: UPLOAD_COMPRESS_QUALITY,
+          compressedWidth: Math.max(1, Math.round(size.width * ratio)),
+          compressedHeight: Math.max(1, Math.round(size.height * ratio)),
+          success: resolve,
+          fail: reject
+        })
+      })
+      const bytes = await this.readFileSize(compressed.tempFilePath)
+      const compressMs = Date.now() - startedAt
+      // 压完反而更大/读不到大小：用原图，别赌
+      if (!bytes || bytes >= sourceBytes) {
+        return Object.assign({}, original, { compressMs })
+      }
+      return {
+        filePath: compressed.tempFilePath,
+        bytes,
+        compressMs,
+        compressed: true
+      }
+    } catch (error) {
+      console.warn('[投屏] 上传前压缩失败，改用原图上传：', error)
+      return Object.assign({}, original, { compressMs: Date.now() - startedAt })
+    }
+  },
+
+  // 读上传源文件的字节数，纯性能观测用（uploadConvertMs 是否被大文件拖慢，一眼可见）。
+  // 取不到就当 0，绝不阻断投屏。
+  readFileSize(filePath) {
+    return new Promise(resolve => {
+      try {
+        wx.getFileSystemManager().getFileInfo({
+          filePath,
+          success: res => resolve(Number(res.size) || 0),
+          fail: () => resolve(0)
+        })
+      } catch (error) {
+        resolve(0)
+      }
+    })
   },
 
   // 再次/重新投屏的记账：设备图传成功(1)/失败(0)后都调 addUserProductImgRecord 新增一条投屏记录。

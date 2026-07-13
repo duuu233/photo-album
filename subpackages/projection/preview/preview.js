@@ -11,6 +11,20 @@ const DEFAULT_DEVICE_SIZE = { width: 480, height: 720 }
 const STAGE_W_RPX = 658
 const STAGE_H_RPX = 760
 
+// 画布导出格式（性能优化，2026-07-13）。canvasToTempFilePath 的 fileType 默认是 png——
+// 照片存 png 是同画质 jpg 的 5~10 倍（长边 2000 的照片常到 5MB+）。而本页导出的这个临时文件
+// 正是投屏要上传给后端转码的源图：真机 trace 里 uploadConvertMs 高达 5.7s，几乎全耗在传这个大 png 上。
+// 统一导出 jpg：后端拿到后还要缩到设备分辨率（如 480×720）并量化成六色，q=0.92 对最终成像完全无损，
+// 体积却只有 1/10。jpg 不支持透明，导出前先铺白底，避免透明区域变黑（照片无 alpha，纯属兜底）。
+const EXPORT_FILE_TYPE = 'jpg'
+const EXPORT_QUALITY = 0.92
+
+// 在画布上铺一层白底（jpg 无 alpha 通道，不铺底的话透明像素会被压成黑色）
+function fillWhite(ctx, width, height) {
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, width, height)
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -24,8 +38,6 @@ Page({
     editing: false,
     rotation: 0,
     projecting: false,
-    // 是否压缩图片后再传后端转码（后端压到约300-400KB）：默认开启，用户选择持久化到 Storage
-    compressImage: true,
 
     // 裁剪交互状态
     cropping: false, // 是否处于裁剪交互（显示裁剪层/手柄）
@@ -438,6 +450,7 @@ Page({
             const img = node.createImage()
             img.onload = () => {
               ctx.clearRect(0, 0, outW, outH)
+              fillWhite(ctx, outW, outH)
               // 以输出画布中心为原点旋转，再按原图尺寸居中绘制（90/270 时画布已宽高互换）
               ctx.save()
               ctx.translate(outW / 2, outH / 2)
@@ -446,6 +459,8 @@ Page({
               ctx.restore()
               wx.canvasToTempFilePath({
                 canvas: node,
+                fileType: EXPORT_FILE_TYPE,
+                quality: EXPORT_QUALITY,
                 success: (r) => {
                   const next = images.slice()
                   const updated = Object.assign({}, next[activeIndex])
@@ -536,9 +551,12 @@ Page({
       const img = node.createImage()
       img.onload = () => {
         ctx.clearRect(0, 0, outW, outH)
+        fillWhite(ctx, outW, outH)
         ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH)
         wx.canvasToTempFilePath({
           canvas: node,
+          fileType: EXPORT_FILE_TYPE,
+          quality: EXPORT_QUALITY,
           success: (r) => {
             const next = images.slice()
             const updated = Object.assign({}, next[activeIndex])
@@ -577,19 +595,11 @@ Page({
     })
   },
 
-  // 压缩开关：更新页面状态并持久化，结果页经 pendingProjection 拿到最终值
-  onCompressChange(e) {
-    const compressImage = !!(e.detail && e.detail.value)
-    this.setData({ compressImage })
-    wx.setStorageSync('projectionCompressImage', compressImage)
-  },
-
   // 把当前 images 写回 Storage(pendingProjection)，保证结果页拿到的是裁剪后的图
   persistPending(images, performance) {
     const pending = wx.getStorageSync('pendingProjection') || {}
     pending.images = images
     pending.device = this.data.device || pending.device
-    pending.compressImage = this.data.compressImage
     if (performance) {
       pending.performance = Object.assign({}, pending.performance, performance)
     }
@@ -659,9 +669,12 @@ Page({
             const img = node.createImage()
             img.onload = () => {
               ctx.clearRect(0, 0, outW, outH)
+              fillWhite(ctx, outW, outH)
               ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH)
               wx.canvasToTempFilePath({
                 canvas: node,
+                fileType: EXPORT_FILE_TYPE,
+                quality: EXPORT_QUALITY,
                 success: r => {
                   const updated = Object.assign({}, image)
                   // 备份原图源，供「原图」还原（与 applyCrop 一致，已备份则不覆盖）
