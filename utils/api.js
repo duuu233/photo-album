@@ -3,6 +3,10 @@
 const http = require('./request')
 const { md5 } = require('./md5')
 
+// setUserProductUpload 里请求后端把它存的那张图压到多大（KB）。后端默认约 300-400KB，
+// 图库/再次投屏预览看着偏肉，放宽到 1MB 上下（2026-07-14）。见下方 setUserProductUpload 的字段说明。
+const UPLOAD_COMPRESS_SIZE_KB = 1024
+
 function normalizeFilePaths(input) {
   const files = Array.isArray(input) ? input : [input]
 
@@ -311,10 +315,13 @@ module.exports = {
         deviceUploadState: options.deviceUploadState,
         targetWidth: options.targetWidth,
         targetHeight: options.targetHeight,
-        // 后端压缩恒开：1=后端把它存的图压到约300-400KB。原先预览页有个「压缩」开关可传 0（原图），
-        // 开关已下线（产品定为默认且只能压缩），这里固定 1，不再由调用方控制。
-        // ⚠️ 字段名 isCompress 为约定假设，待后端确认（确认后只需改这一处）。
-        isCompress: 1
+        // 后端压缩恒开：1=后端压它存的那张图（原先预览页有个「压缩」开关可传 0=原图，开关已下线，
+        // 产品定为默认且只能压缩，这里固定 1，不再由调用方控制）。
+        // compressSize=期望的压缩后大小(KB)：后端默认压到约 300-400KB，画质偏肉，改为放宽到 1MB 上下。
+        // ⚠️ 字段名 isCompress / compressSize 与 compressSize 的单位(KB)均为约定假设，待后端确认：
+        //    后端若不认 compressSize 会忽略它、仍按 300-400KB 压（改这一处即可对齐后端真实字段）。
+        isCompress: 1,
+        compressSize: UPLOAD_COMPRESS_SIZE_KB
       },
       formData: options.formData,
       mock: false,
