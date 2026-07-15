@@ -240,8 +240,8 @@
         <button class="btn btn-primary" disabled="{{busy || uploading}}" bindtap="cmdUploadTest">上传彩条测试图</button>
         <button class="btn btn-primary" disabled="{{busy || uploading}}" bindtap="cmdUploadAlbum">上传相册图片</button>
       </view>
-      <button class="btn btn-soft" disabled="{{busy || uploading}}" bindtap="cmdUploadLocalRaw">上传手机上的 .raw 直发</button>
-      <view class="row-tip">把已打包好的 .raw（字节数 = 宽×高÷2，EF6-370=172800）原样发给设备，不旋转/不转换——与正式投屏的 demo.raw 直发同源。选不到文件时：电脑微信把 .raw 发给「文件传输助手」，手机再来这里从聊天文件里选。</view>
+      <button class="btn btn-soft" disabled="{{busy || uploading}}" bindtap="cmdUploadLocalRaw">上传手机上的 .raw/.bin 直发</button>
+      <view class="row-tip">把已打包好的 .raw/.bin 帧（字节数 = 宽×高÷2，EF6-370=172800）原样发给设备，不旋转/不转换。.bin 即后端转换生成的 frame.bin，与正式投屏下载的 .bin 直发同源；.raw 是硬件给的 demo 帧，两者格式一致。带头部的文件也支持：文件 = 头部 + 帧数据时自动剥掉头部按尾部一帧发送（15 字节 0x20 帧头会解析并做 CRC32 校验，结果打进下方控制台）。选不到文件时：电脑微信把 .raw/.bin 发给「文件传输助手」，手机再来这里从聊天文件里选。</view>
       <view wx:if="{{uploading}}" class="progress">
         <view class="progress-bar"><view class="progress-fill" style="width: {{uploadPercent}}%"></view></view>
         <text class="progress-text">图传中 {{uploadPercent}}%</text>

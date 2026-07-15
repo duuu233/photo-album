@@ -1343,12 +1343,14 @@ Page({
     this.uploadFrame(frame, '上传相册图片(0x20~0x22)')
   },
 
-  // 上传手机上的 .raw 文件，直发设备（与正式投屏 result.js 的 demo.raw 直发同源）。
-  // .raw 必须是「已打包好的六色 4bpp 帧」：字节数 = 宽×高÷2（EF6-370 480×720 = 172800），
-  // 3.7 寸的横向源图旋转也已烘进文件里，这里原样发送、不旋转/不转换。
+  // 上传手机上的 .raw/.bin 文件，直发设备。.bin 即后端转换生成的 frame.bin（正式投屏下载的那份），
+  // .raw 是硬件给的 demo 帧，帧数据都是「已打包好的六色 4bpp 帧」：字节数 = 宽×高÷2
+  // （EF6-370 480×720 = 172800），3.7 寸横向源图的旋转也已烘进文件里，原样发送、不旋转/不转换。
+  // 两种打包都兼容：纯帧（无头部）与「头部 + 帧数据」（如 15 字节 0x20 帧头前缀），
+  // 解析/剥头/校验统一在 resolveLocalFrameData，不区分扩展名。
   //
   // 为什么用 chooseMessageFile：小程序被沙箱限制，读不了手机上任意目录的文件，
-  // 只能从「微信聊天会话」里选文件。最快的拿文件办法——电脑微信把 .raw 发给「文件传输助手」，
+  // 只能从「微信聊天会话」里选文件。最快的拿文件办法——电脑微信把 .raw/.bin 发给「文件传输助手」，
   // 手机上就能在这里的选择器里选到。该 API 在体验版/正式版都可用，无需特殊权限。
   cmdUploadLocalRaw() {
     if (!this.ensureUploadReady()) {
@@ -1369,34 +1371,37 @@ Page({
           return
         }
         const name = file.name || '(未命名)'
-        // 体验/正式版无法对聊天文件按扩展名强过滤，故用「字节数 == 宽×高÷2」兜底校验，文件名仅作提示。
+        // 体验/正式版无法对聊天文件按扩展名强过滤（.raw/.bin 都能选到），故用「字节数 == 宽×高÷2」兜底校验，文件名仅作提示。
         wx.getFileSystemManager().readFile({
           filePath: file.path,
           success: r => {
             const data = new Uint8Array(r.data)
-            if (data.length !== expectBytes) {
-              const msg = `.raw 字节数不符：选中「${name}」${data.length} 字节，本设备 ${info.width}×${info.height} 需 ${expectBytes} 字节。请确认是该尺寸的六色 4bpp 帧（宽×高÷2）。`
-              this.appendLog({ type: 'err', text: msg })
-              this.setData({ uploadStatus: msg, uploadStatusType: 'err' })
-              toast.warn({ title: '文件尺寸不符，已拦下', icon: 'none' })
+            // 兼容「纯帧」与「带头部」两种 .raw/.bin，解析细节见 resolveLocalFrameData。
+            const resolved = this.resolveLocalFrameData(data, info, name)
+            resolved.notes.forEach(note => this.appendLog(note))
+            if (!resolved.ok) {
+              const errText =
+                resolved.notes
+                  .filter(note => note.type === 'err')
+                  .map(note => note.text)
+                  .join('；') || '文件不可用'
+              this.setData({ uploadStatus: errText, uploadStatusType: 'err' })
+              toast.warn({ title: resolved.toast || '文件不可用，已拦下', icon: 'none' })
               return
             }
-            this.appendLog({
-              type: 'act',
-              text: `已读取本地 .raw：${name}，${data.length} 字节，原样直发（不旋转/不转换）`
-            })
+            const payload = resolved.payload
             const frame = {
-              data,
+              data: payload,
               width: info.width,
               height: info.height,
-              dataSize: data.length
+              dataSize: payload.length
             }
-            this.uploadFrame(frame, '上传本地 .raw 直发(0x20~0x22)')
+            this.uploadFrame(frame, '上传本地 .raw/.bin 直发(0x20~0x22)')
           },
           fail: err => {
             this.appendLog({
               type: 'err',
-              text: `读取 .raw 失败：${err.errMsg || '未知错误'}`
+              text: `读取 .raw/.bin 失败：${err.errMsg || '未知错误'}`
             })
             toast.warn({ title: '读取文件失败', icon: 'none' })
           }
@@ -1406,6 +1411,85 @@ Page({
         // 用户取消选择，无需提示
       }
     })
+  },
+
+  // 把本地 .raw/.bin 解析成「要直发给设备的六色 4bpp 帧」，兼容两种打包：
+  //   1) 纯帧：字节数 == 宽×高÷2（帧数据本身），原样直发。
+  //   2) 带头部：文件 = 头部 + 帧数据。约定帧数据在文件「尾部」（尾 宽×高÷2 字节），头部在前——
+  //      故只要文件比一帧长，就把多出来的前缀当头部剥掉、按尾部帧发送，能兼容任意长度头部。
+  //      头部恰为 15 字节时按 0x20 IMG_START 头精确解析（SCREEN_TYPE/INDEX/WIDTH/HEIGHT/FORMAT/
+  //      DATA_SIZE/CRC32），并做宽高/长度/CRC32 交叉校验，把结果打进控制台便于核对。
+  // 返回 { ok, payload(Uint8Array), notes:[{type,text}], toast }。用 .slice 拷出独立帧，避免下游按
+  // .buffer 取整块缓冲时把头部也带上。校验只拦「文件比一帧还短」，其余一律放行直发（设备端 0x22 会兜底校验整图 CRC32）。
+  resolveLocalFrameData(data, info, name) {
+    const label = name || '(未命名)'
+    const expectBytes = Math.floor((info.width * info.height) / 2)
+    const notes = []
+    if (data.length < expectBytes) {
+      return {
+        ok: false,
+        toast: '文件太小，已拦下',
+        notes: [
+          {
+            type: 'err',
+            text: `.raw/.bin 太小：选中「${label}」${data.length} 字节 < 一帧 ${expectBytes} 字节（${info.width}×${info.height} 六色4bpp = 宽×高÷2）。不是该尺寸的帧。`
+          }
+        ]
+      }
+    }
+    if (data.length === expectBytes) {
+      notes.push({
+        type: 'act',
+        text: `本地纯帧「${label}」：${data.length} 字节，无头部，原样直发（不旋转/不转换）`
+      })
+      return { ok: true, payload: data, notes }
+    }
+    // 文件比一帧长 => 带头部：尾部 expectBytes 字节为帧数据，前部为头部
+    const headerLen = data.length - expectBytes
+    const header = data.subarray(0, headerLen)
+    const payload = data.slice(headerLen)
+    if (headerLen === 15) {
+      // 疑似 0x20 IMG_START 头（15 字节，小端）：SCREEN_TYPE(1) INDEX(1) WIDTH(2) HEIGHT(2) FORMAT(1) DATA_SIZE(4) CRC32(4)
+      const hWidth = header[2] | (header[3] << 8)
+      const hHeight = header[4] | (header[5] << 8)
+      const hFormat = header[6]
+      const hDataSize =
+        (header[7] | (header[8] << 8) | (header[9] << 16) | (header[10] << 24)) >>> 0
+      const hCrc32 =
+        (header[11] | (header[12] << 8) | (header[13] << 16) | (header[14] << 24)) >>> 0
+      const actualCrc32 = imageCodec.crc32Mpeg2(payload)
+      const crcOk = actualCrc32 === hCrc32
+      const sizeOk = hDataSize === payload.length
+      const dimOk = hWidth === info.width && hHeight === info.height
+      const hex = v => '0x' + (v >>> 0).toString(16).padStart(8, '0').toUpperCase()
+      notes.push({
+        type: crcOk && sizeOk && dimOk ? 'act' : 'err',
+        text:
+          `带头部「${label}」：检测到 15 字节 0x20 帧头 ${hWidth}×${hHeight} format=0x${hFormat
+            .toString(16)
+            .padStart(2, '0')} DATA_SIZE=${hDataSize}${sizeOk ? '' : `(实际帧 ${payload.length}✗)`} ` +
+          `CRC32=${hex(hCrc32)}(实算${hex(actualCrc32)}${crcOk ? '✓' : '✗'}) 头=${protocol.bytesToHex(header)}，已剥头按尾部帧直发`
+      })
+      if (!dimOk) {
+        notes.push({
+          type: 'err',
+          text: `头部宽高 ${hWidth}×${hHeight} 与本设备 ${info.width}×${info.height} 不一致：仍按本设备尺寸取尾部 ${expectBytes} 字节发送，请核对文件是否为本机型。`
+        })
+      }
+      if (hFormat !== 0x01) {
+        notes.push({
+          type: 'err',
+          text: `头部 FORMAT=0x${hFormat.toString(16).padStart(2, '0')} 非 0x01：固件目前只支持 0x01（六色 4bpp 原始帧），继续直发但可能被设备拒绝。`
+        })
+      }
+      return { ok: true, payload, notes }
+    }
+    // 未知长度头部：只按「尾部一帧」剥离并告警，交由设备端校验
+    notes.push({
+      type: 'act',
+      text: `带头部「${label}」：文件 ${data.length} 字节 = 头部 ${headerLen} 字节 + 帧 ${expectBytes} 字节，已剥头按尾部帧直发。头部前16=${protocol.bytesToHex(header.subarray(0, Math.min(16, headerLen)))}（非 15 字节 0x20 头，未做 CRC 校验，请留意方向/颜色）`
+    })
+    return { ok: true, payload, notes }
   },
 
   // 上传前置检查：必须已连接且已读到设备信息（拿到屏幕尺寸/容量/掩码才能组帧头、选槽位）
