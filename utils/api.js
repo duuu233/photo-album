@@ -170,6 +170,8 @@ function normalizePhoto(photo = {}, index = 0) {
     deviceName: firstValue(photo.productName, photo.deviceName, '相框'),
     title: firstValue(photo.title, photo.productName, `照片 ${index + 1}`),
     url: firstValue(photo.img, photo.url, ''),
+    // 图库网格小图专用：优先后端新字段 imgThumb（缩略图），旧数据回退 img/url 避免空图
+    imgThumb: firstValue(photo.imgThumb, photo.img, photo.url, ''),
     createdAt: firstValue(photo.upTime, photo.joinTime, photo.createdAt, ''),
     onDevice: photo.onDevice !== false
   })
@@ -197,6 +199,9 @@ function normalizeProjectionRecord(record = {}, index = 0) {
     createdAt: firstValue(record.upTime, record.joinTime, record.createdAt, ''),
     deviceName: firstValue(record.productName, record.deviceName, '相框'),
     thumbUrl: firstValue(record.img, record.thumbUrl, record.url, ''),
+    // 投屏管理列表小图专用：优先后端新字段 imgThumb（缩略图），旧数据回退 img/url 避免空图。
+    // thumbUrl 保持整图，仍供「再次投屏」兜底用（见 records.js 的 imageUrl）。
+    imgThumb: firstValue(record.imgThumb, record.img, record.thumbUrl, record.url, ''),
     imageCount: normalizeNumber(record.imageCount, 1)
   })
 }
