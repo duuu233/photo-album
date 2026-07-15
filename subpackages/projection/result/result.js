@@ -316,6 +316,9 @@ Page({
     console.log(`[投屏] 开始：deviceId=${deviceId}，待投 ${total} 张`)
 
     let uploaded = 0
+    // 最后一张的异步刷屏(0x24)Promise：收尾把连接间隔回落到空闲档(100ms)时要等它跑完再发——
+    // 刷屏期间设备对新指令回忙(0x0B)，两者挤在一起会让回落白白失败。失败/中断路径无刷屏则保持 null。
+    let lastRefreshPromise = null
     try {
       // A3 预取流水线：设备帧的「后端转码 + 下载」是纯网络，与「BLE 图传」互不占用资源。投第 i 张
       // (走蓝牙)的同时提前并行拉取第 i+1 张的设备帧；只预取下一张(最多 1 张在后台)，中断时浪费最小。
@@ -592,7 +595,7 @@ Page({
         // 可能撞上设备忙(0x0B)/暂时断连，已有归类提示兜底（「当前设备繁忙…」/「设备未连接…」）。
         if (i === total - 1) {
           const refreshStartedAt = Date.now()
-          deviceBle
+          lastRefreshPromise = deviceBle
             .refreshScreen(deviceId, index)
             .then(() => {
               performance.phases.refreshScreenMs = Date.now() - refreshStartedAt
@@ -655,6 +658,16 @@ Page({
       // 不再传完即断：保持连接（设备单连接，下次投屏可直接复用、省去重新扫描+连接）。
       // 仅在物理断开(onBLEConnectionStateChange 清理)或用户手动断开时才真正断开。
       this._activeDeviceId = ''
+      // 图传结束：把连接间隔从图传极速档(7.5/15ms)回落到省电的空闲档(100ms)。best-effort、不 await 收尾。
+      // 若最后一张刚触发了异步刷屏(0x24)，等它跑完再回落——刷屏期间设备对新指令回忙(0x0B)，挤在一起会白白失败；
+      // 没有在途刷屏(失败/中断路径)则立即回落。applyIdleConnectionInterval 内部已吞错、未连接会自行跳过。
+      const resetIdleInterval = () =>
+        deviceBle.applyIdleConnectionInterval(deviceId).catch(() => {})
+      if (lastRefreshPromise) {
+        lastRefreshPromise.then(resetIdleInterval, resetIdleInterval)
+      } else {
+        resetIdleInterval()
+      }
     }
   },
 

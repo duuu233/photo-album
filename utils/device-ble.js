@@ -443,6 +443,9 @@ async function establishConnection(deviceId) {
       ready: true
     }
     sessions[deviceId] = session
+    // 连接建立后立即把 BLE 连接间隔设为省电的空闲档(100ms)：图传时才临时切到极速档、传完再回落到这里，
+    // 保证平时保活挂着的连接不长期跑在费电的极速间隔上。best-effort（内部吞错、2s 短超时），失败不阻断连接。
+    await applyIdleConnectionInterval(deviceId)
     return session
   } catch (error) {
     if (wx.closeBLEConnection) {
@@ -519,6 +522,15 @@ const PACKET_PACE_MS = 3
 const TRANSFER_CONN_INTERVAL_MS_ANDROID = 7.5
 const TRANSFER_CONN_INTERVAL_MS_IOS = 15
 const TRANSFER_CONN_INTERVAL_STORAGE_KEY = 'transferConnIntervalMs'
+
+// 空闲期(非图传)的省电连接间隔：连接建立后、以及每次图传结束后，都下发 0x13 把 BLE 连接间隔回落到此值。
+// 只有真正给设备传图时才由 optimizeConnectionIntervalForTransfer 临时切到极速档(安卓 7.5 / iOS 15ms)，传完回落——
+// 连接现在是保活的(app.onShow reconcile，不再传完即断)，长期挂在费电的极速间隔上没必要。
+// 100ms = 80 units（1 unit = 1.25ms），落在协议允许的 6~3200 units 内。
+const IDLE_CONN_INTERVAL_MS = 100
+// 设置空闲连接间隔用的应答超时(ms)：0x13 是 v1.4 才有的指令，老固件可能根本不回。收紧到 2s（默认 6s），
+// 别让「连接后设省电间隔」在老固件上把每次连接都白白拖慢 6s（对齐 Flutter 端 0x05/0x13 的 2s 超时）。
+const IDLE_CONN_INTERVAL_SET_TIMEOUT = 2000
 
 // 按运行平台取图传连接间隔默认值。只有明确是安卓才用 7.5ms；iOS/未知平台（探测失败、
 // 桌面端等）一律 15ms 保守取值——15ms 各平台都接受（最多慢一点），反之 iOS 请求 7.5ms
@@ -767,12 +779,14 @@ async function getConnectionInterval(deviceId) {
 }
 
 // 设置 BLE 连接间隔（CMD=0x13）。入参是协议原始 units，1 unit = 1.25ms。
-async function setConnectionInterval(deviceId, units) {
+// timeout（可选）：透传给 request 的应答超时；不传沿用默认 6s。空闲档回落用 2s，避免老固件不回时白等。
+async function setConnectionInterval(deviceId, units, timeout) {
   const value = normalizeConnectionIntervalUnits(units)
   const ack = await request(
     deviceId,
     protocol.CMD.SET_CONN_INTERVAL,
-    protocol.buildSetConnectionIntervalPayload(value)
+    protocol.buildSetConnectionIntervalPayload(value),
+    timeout
   )
   if (ack.result !== 0x00) {
     // 设备返回什么就提示什么：直接抛设备结果码的协议含义，不加 App 自造前缀
@@ -785,11 +799,12 @@ async function setConnectionInterval(deviceId, units) {
   }
 }
 
-// 设置 BLE 连接间隔（毫秒便捷入口）。会按 1.25ms 单位四舍五入。
-async function setConnectionIntervalMs(deviceId, ms) {
+// 设置 BLE 连接间隔（毫秒便捷入口）。会按 1.25ms 单位四舍五入。timeout（可选）透传给 setConnectionInterval。
+async function setConnectionIntervalMs(deviceId, ms, timeout) {
   return setConnectionInterval(
     deviceId,
-    protocol.connectionIntervalMsToUnits(ms)
+    protocol.connectionIntervalMsToUnits(ms),
+    timeout
   )
 }
 
@@ -911,6 +926,27 @@ async function optimizeConnectionIntervalForTransfer(deviceId, ms) {
     current: verifiedRead || { units: requested.units, ms: requested.ms },
     verified: !!verifiedRead,
     applied: !!verifiedRead && verifiedRead.units === targetUnits
+  }
+}
+
+// 把 BLE 连接间隔回落到空闲省电档（IDLE_CONN_INTERVAL_MS=100ms）：连接建立后、以及每次图传结束后调用，
+// 让链路只在真正传图时跑极速档(7.5/15ms)，其余时间用省电的长间隔。best-effort、绝不抛：
+//   ① 未连接直接跳过——不为了设间隔反而触发一次重连（图传失败后设备可能已断开）；
+//   ② 旧固件不支持 0x13 / 设备拒绝时吞掉错误，用 2s 短超时防老固件不回时把调用方拖住。
+// 注意：图传最后一张的异步刷屏(0x24)期间设备会对新指令回忙(0x0B)，调用方应等刷屏跑完再调本函数，
+// 否则这次回落会撞上 0x0B 白白失败（见 result.js 收尾里对 lastRefreshPromise 的链式处理）。
+async function applyIdleConnectionInterval(deviceId) {
+  if (!isConnected(deviceId)) {
+    return null
+  }
+  try {
+    return await setConnectionIntervalMs(
+      deviceId,
+      IDLE_CONN_INTERVAL_MS,
+      IDLE_CONN_INTERVAL_SET_TIMEOUT
+    )
+  } catch (error) {
+    return null
   }
 }
 
@@ -1385,6 +1421,7 @@ module.exports = {
   setConnectionInterval,
   setConnectionIntervalMs,
   optimizeConnectionIntervalForTransfer,
+  applyIdleConnectionInterval,
   getTransferConnIntervalMs,
   setTransferConnIntervalMs,
   getTransferPaceMs,
