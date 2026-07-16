@@ -40,7 +40,7 @@
         <view wx:for="{{filteredPhotos}}" wx:key="id" class="photo-tile thumb-{{item.thumbType}}" data-id="{{item.id}}" bindtap="toggleSelect">
           <!-- 有缩略图(imgThumb)则显示图片，否则渲染 CSS 绘制的占位插画。
                aspectFit：完整显示原图、保持比例不裁切不拉伸，留白落在格子底色上 -->
-          <image wx:if="{{item.imgThumb}}" class="photo-img" src="{{item.imgThumb}}" mode="aspectFit"></image>
+          <image wx:if="{{item.imgThumb}}" class="photo-img" src="{{item.imgThumb}}" mode="aspectFit" lazy-load></image>
           <view wx:else class="photo-art">
             <view class="art-sun"></view>
             <view class="art-cloud"></view>
@@ -69,7 +69,7 @@
 
     <!-- 无照片空态：引导用户重新投屏（此时若有设备，上方 filter-wrap 仍展示设备并默认选中） -->
     <view wx:else class="album-empty">
-      <image class="empty-art" src="/assets/images/album-bg01.png" mode="aspectFit"></image>
+      <image class="empty-art" src="/subpackages/album/images/album-bg01.png" mode="aspectFit"></image>
       <view class="empty-title">当前没有可查看的设备照片</view>
       <view class="empty-desc">你可以重新投屏照片到设备</view>
     </view>

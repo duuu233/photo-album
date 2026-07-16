@@ -292,6 +292,13 @@ Page({
     this._activeDeviceId = deviceId
     // 投屏期间保持屏幕常亮：避免息屏导致蓝牙被挂起、传输中断
     wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: true })
+    // 批量传输可达数十秒且左上角返回随时可点：传输期间拦截返回（左上角/安卓物理键/侧滑），
+    // 弹系统确认后才允许离开，防误触一下就静默中断、传了一半还没有任何提示。
+    if (wx.enableAlertBeforeUnload) {
+      wx.enableAlertBeforeUnload({
+        message: '正在投屏，退出将中断本次投屏，确定退出吗？'
+      })
+    }
 
     const total = images.length
     const pendingPerformance = pending.performance || {}
@@ -654,6 +661,8 @@ Page({
       performance.environment = await environmentPromise
       this.reportProjectionPerformance(performance)
       wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false })
+      // 投屏已收尾（成功/失败/中断都会走到这），解除返回拦截
+      wx.disableAlertBeforeUnload && wx.disableAlertBeforeUnload({ fail: () => {} })
       // 不再传完即断：保持连接（设备单连接，下次投屏可直接复用、省去重新扫描+连接）。
       // 仅在物理断开(onBLEConnectionStateChange 清理)或用户手动断开时才真正断开。
       this._activeDeviceId = ''

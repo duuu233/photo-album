@@ -570,6 +570,14 @@ Page({
       showPrimary: false
     })
 
+    // 升级传输要数分钟且左上角返回始终可点：真实升级期间拦截返回（左上角/安卓物理键/侧滑），
+    // 弹系统确认后才允许离开，防误触一下就静默中断 DFU、用户还以为升级完成了。干跑纯本地不拦。
+    if (!dryRun && wx.enableAlertBeforeUnload) {
+      wx.enableAlertBeforeUnload({
+        message: '正在升级固件，退出将中断本次升级，确定退出吗？'
+      })
+    }
+
     try {
       const result = await otaBle.upgradeFirmware(bleDeviceId, pkg, {
         pace: 20,
@@ -712,6 +720,8 @@ Page({
       })
     } finally {
       wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false })
+      // 升级已收尾（成功/失败/中断都会走到这），解除返回拦截
+      wx.disableAlertBeforeUnload && wx.disableAlertBeforeUnload({ fail: () => {} })
     }
   },
 

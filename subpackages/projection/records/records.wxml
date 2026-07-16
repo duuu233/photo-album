@@ -25,7 +25,7 @@
     <view wx:if="{{filteredRecords.length}}" class="record-list">
       <view class="record-card glass-panel" wx:for="{{filteredRecords}}" wx:key="id">
         <view class="thumb">
-          <image wx:if="{{item.imgThumb}}" class="thumb-img" src="{{item.imgThumb}}" mode="aspectFit"></image>
+          <image wx:if="{{item.imgThumb}}" class="thumb-img" src="{{item.imgThumb}}" mode="aspectFit" lazy-load></image>
         </view>
 
         <view class="record-body">

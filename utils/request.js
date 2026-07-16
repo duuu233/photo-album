@@ -2,6 +2,14 @@ const config = require('./config')
 const mock = require('./mock')
 const toast = require('./toast')
 
+// 正式版(release)强制禁用 mock，防止本地模拟接口把假数据带到线上；取不到环境信息时按正式版处理（最保守）
+let isReleaseEnv = true
+try {
+  isReleaseEnv = wx.getAccountInfoSync().miniProgram.envVersion === 'release'
+} catch (e) {
+  isReleaseEnv = true
+}
+
 const WECHAT_MINI_PROGRAM_TERMINAL = 3
 const LANGUAGE_CODE_MAP = {
   en: 1,
@@ -328,8 +336,8 @@ function request(rawOptions) {
     }
   }
 
-  // mock 模式（本地开发无后端时）走内存模拟接口，绕过真实网络请求
-  if ((config.useMock && options.mock !== false) || options.mock) {
+  // mock 模式（本地开发无后端时）走内存模拟接口，绕过真实网络请求；正式版强制走真实请求
+  if (!isReleaseEnv && ((config.useMock && options.mock !== false) || options.mock)) {
     return mock
       .handle({
         url: options.url,

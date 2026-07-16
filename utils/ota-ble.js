@@ -407,6 +407,15 @@ async function createConnectionWithRetry(deviceId, attempts = 2) {
         return // 底层仍保有该连接（可能是 FF00 图传连接），当成功处理
       }
       lastError = error
+      // 失败(含超时)后底层常残留一条「半连接」占住设备使其不再广播，必须每次失败都关掉释放——
+      // 否则紧接的重试/重扫会「未搜索到该设备」(与 device-ble.createConnectionWithRetry 同款处理)
+      if (wx.closeBLEConnection) {
+        try {
+          await wxp(wx.closeBLEConnection, { deviceId })
+        } catch (closeError) {
+          // 没有可关闭的连接，忽略
+        }
+      }
       if (i < attempts - 1) {
         await sleep(400)
       }
@@ -482,6 +491,25 @@ async function ensureOtaConnection(deviceId) {
   ensureGlobalListener()
   await createConnectionWithRetry(deviceId)
 
+  // 从服务发现到会话落表，任一步失败都必须关掉刚建立的连接：此时连接尚未登记进 sessions，
+  // 页面退出时 isConnected() 判不到它、无人清理——设备被这条「无主连接」占住不再广播，
+  // 之后怎么扫都「未搜索到该设备」，直到重启蓝牙才恢复。（与 device-ble 的失败清理策略对齐）
+  try {
+    return await buildOtaSession(deviceId)
+  } catch (error) {
+    if (wx.closeBLEConnection) {
+      try {
+        await wxp(wx.closeBLEConnection, { deviceId })
+      } catch (closeError) {
+        // 没有可关闭的连接，忽略
+      }
+    }
+    throw error
+  }
+}
+
+// 发现 FF10/FF11、打开通知、协商 MTU 并登记会话（失败清理由 ensureOtaConnection 兜底）
+async function buildOtaSession(deviceId) {
   const { service } = await discoverOtaService(deviceId)
   if (!service) {
     throw new Error('未发现设备 OTA 服务(FF10)')
