@@ -7,10 +7,12 @@ Page({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
-    records: [],
+    // 完整记录列表存实例字段 this.records（模板只渲染 filteredRecords，全量列表仅 retryProjection
+    // 查找用），不进 data 省一份 setData 序列化传输
     filteredRecords: [],
     filter: 'success',
-    loading: true
+    loading: true,
+    loadError: false // 接口失败标记：走「加载失败+重新加载」，不再伪装成「暂无记录」
   },
 
   onLoad() {
@@ -52,17 +54,25 @@ Page({
       const records = await api.getProjectionRecords({
         deviceUploadState: this.filterToUploadState(filter)
       })
+      this.records = records
       this.setData({
         filter,
-        records,
         // 后端已按状态过滤；再按 status 兜底过滤一层，兼容后端忽略该参数的情况
         filteredRecords: records.filter(item => item.status === filter),
-        loading: false
+        loading: false,
+        loadError: false
       })
     } catch (error) {
-      // 接口失败时 api 层已 toast 提示，这里仅结束 loading，落到空态
-      this.setData({ loading: false })
+      // 接口失败时 api 层已 toast 提示；标记 loadError 展示「加载失败+重新加载」——
+      // 落到「暂无记录」会让用户误以为记录被清空，且没有任何重试手段。
+      // 不动 filter/filteredRecords（切标签失败时维持原标签与原内容的一致性）。
+      this.setData({ loading: false, loadError: true })
     }
+  },
+
+  retryLoad() {
+    this.setData({ loading: true, loadError: false })
+    this.loadRecords()
   },
 
   switchFilter(e) {
@@ -75,11 +85,25 @@ Page({
 
   // 再次/重新投屏：用记录里的服务器图片地址重新走一遍正常投屏链路。
   // 就算当前没连接设备，也先扫描+连接设备，连上后再跳投屏预览页，由结果页从服务器拉取文件并 BLE 图传。
+  // 在途锁：前置要跑 1-2 个网络请求+扫描连接，弱网下点了没反应会诱发连点，
+  // 并发两条「查设备→连接→跳转」会双跳转报错（home.js 记录过同类 routeDone 崩点）。
   async retryProjection(e) {
+    if (this._retrying) {
+      return
+    }
+    this._retrying = true
+    try {
+      await this.doRetryProjection(e)
+    } finally {
+      this._retrying = false
+    }
+  },
+
+  async doRetryProjection(e) {
     const id = e.currentTarget.dataset.id
     const record =
       this.data.filteredRecords.find(item => item.id === id) ||
-      this.data.records.find(item => item.id === id)
+      (this.records || []).find(item => item.id === id)
     if (!record) {
       return
     }
@@ -101,7 +125,14 @@ Page({
     // 自动寻找并连接「该记录对应的设备」（而非全局选中设备）：先按记录定位到这台设备，
     // 再自动扫描+连接它（未连接会按序列号扫描匹配再连；连不上/无权限有 toast 提示）。
     // 满足「点再次/重新投屏就自动找到并连上该记录的设备」，无需先去首页选设备。
-    const targetDevice = await this.resolveRecordDevice(record)
+    // 查设备列表是静默请求，补一个「准备中」loading 让点击即时有反馈（后续连接阶段有自己的 loading）
+    wx.showLoading({ title: '准备中', mask: true })
+    let targetDevice = null
+    try {
+      targetDevice = await this.resolveRecordDevice(record)
+    } finally {
+      wx.hideLoading()
+    }
     if (
       !targetDevice ||
       !(
@@ -129,7 +160,13 @@ Page({
     // 记录里的 img 是后端按设备尺寸转换/压缩后的图，比例可能与原图不一致（预览会显得被拉伸），
     // 而图库 img 与首次投屏同源，能保证「投屏」与「再次投屏」进预览页显示一致；
     // 记录缺 uProductImgId / 照片已从图库删除 / 图库拉取失败时，退回记录里的图（保持可用）。
-    const originalUrl = await this.resolveAlbumOriginalUrl(record)
+    wx.showLoading({ title: '准备中', mask: true })
+    let originalUrl = ''
+    try {
+      originalUrl = await this.resolveAlbumOriginalUrl(record)
+    } finally {
+      wx.hideLoading()
+    }
     console.log(
       `[再次投屏] 预览图源：${originalUrl ? '图库原图' : '记录img(未匹配到图库原图)'} ${originalUrl || imageUrl}`
     )
@@ -225,7 +262,11 @@ Page({
           return
         }
 
-        await api.deleteProjectionRecord(id)
+        try {
+          await api.deleteProjectionRecord(id)
+        } catch (error) {
+          return // 失败已由接口层统一提示（api 层删除时有 mask loading 防连点）
+        }
         this.loadRecords()
       }
     })

@@ -590,6 +590,10 @@ Page({
         uploaded++
         // 本张传输完成：进度条置 100%，张数 +1（下一张会重新从 0 开始）
         this.setData({ progressCurrent: uploaded, progressPercent: 100 })
+        // 本张帧数据(frameData+预组帧 prepared，5.89 寸两份合计 ≈660KB)传完即不再需要：
+        // 立刻解除 framePrefetch[i] 的引用让其可被回收——此前整批传完前一直驻留，
+        // 批量投屏峰值内存随张数线性涨。只清本张，第 i+1 张的在途预取不动。
+        framePrefetch[i] = null
 
         // 只有最后一张传完后才刷新屏幕(0x24)：部分固件收到 0x24 会断开蓝牙，
         // 批量传输时中途刷屏会导致后续图片传输失败。故中间张一律不刷屏，

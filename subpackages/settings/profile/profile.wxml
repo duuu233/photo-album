@@ -32,11 +32,11 @@
       </view>
       <view class="thin-divider"></view>
 
-      <view class="profile-row" hover-class="none" bindtap="goEmail">
+      <!-- 邮箱仅展示：小程序不操作邮箱（绑定/修改请在 App 内），入口已屏蔽（2026-07-16） -->
+      <view class="profile-row">
         <text class="profile-label">邮箱</text>
         <view class="profile-value email-value">
           <text class="{{userInfo.email ? 'profile-text' : 'profile-placeholder-text'}}">{{userInfo.email || '暂未绑定'}}</text>
-          <view class="ui-chevron"></view>
         </view>
       </view>
     </view>

@@ -274,6 +274,19 @@ Page({
 
   noop() {},
 
+  // 登记最近一次 0x01 设备信息（loadDetail 的 15s 节流缓存）；写类操作改了设备状态后调
+  // invalidateBleInfo() 作废，下次 loadDetail 必然重读
+  cacheBleInfo(deviceId, info) {
+    this._lastBleInfo = info
+    this._lastBleInfoDeviceId = deviceId
+    this._lastBleInfoAt = Date.now()
+    this._bleInfoDirty = false
+  },
+
+  invalidateBleInfo() {
+    this._bleInfoDirty = true
+  },
+
   setSystemMetrics() {
     this.setData(system.getLayoutMetrics())
   },
@@ -291,9 +304,23 @@ Page({
     })
   },
 
+  // 在途去重：onShow 与「重新加载」/操作后刷新可能并发触发 loadDetail，并发的 0x01 读还会
+  // 撞上 device-ble 的同指令限制(CMD_PENDING)，让用户此刻点「连接」时被误判——见 connectBoundDevice。
+  async loadDetail() {
+    if (this._loadingDetail) {
+      return
+    }
+    this._loadingDetail = true
+    try {
+      await this.doLoadDetail()
+    } finally {
+      this._loadingDetail = false
+    }
+  },
+
   // 拉取设备详情并派生出页面展示字段（含轮播间隔下标、设备编号、内存文案等）
   // 接口失败时不再让 device 悬空：标记 loadError 走统一空态，提供「重新加载」入口
-  async loadDetail() {
+  async doLoadDetail() {
     if (!this.data.device) {
       this.setData({ loading: true, loadError: false })
     }
@@ -346,8 +373,26 @@ Page({
         bleDeviceId: liveId,
         connected: true
       })
-      try {
-        const info = await deviceBle.readDeviceInfo(device.deviceId)
+      // 0x01 读节流：空闲连接间隔(100ms)下一次读要数百 ms，每次 onShow 都读让页面切换「闪一下才稳定」。
+      // 同一连接 15s 内复用上次读到的信息；换了连接、超窗、或被写操作作废(_bleInfoDirty，见
+      // applyPlayback/formatDevice/一键清空)才真正重读，保证改完立即刷新不吃缓存。
+      const nowTs = Date.now()
+      let info =
+        !this._bleInfoDirty &&
+        this._lastBleInfo &&
+        this._lastBleInfoDeviceId === liveId &&
+        nowTs - (this._lastBleInfoAt || 0) < 15000
+          ? this._lastBleInfo
+          : null
+      if (!info) {
+        try {
+          info = await deviceBle.readDeviceInfo(device.deviceId)
+          this.cacheBleInfo(liveId, info)
+        } catch (error) {
+          // 详情展示不因读取设备信息失败而中断，电量/内存等沿用接口/选中设备的数据。
+        }
+      }
+      if (info) {
         device = Object.assign({}, device, {
           battery: info.battery,
           usedMemory: info.imgCount,
@@ -361,8 +406,6 @@ Page({
           // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
           firmwareDeviceId: info.deviceId || device.firmwareDeviceId
         })
-      } catch (error) {
-        // 详情展示不因读取设备信息失败而中断，电量/内存等沿用接口/选中设备的数据。
       }
     }
     // 把当前间隔小时数映射到选择器下标，缺省落到第 1 项（2 小时）
@@ -427,7 +470,11 @@ Page({
         }
 
         const newName = checked.name
-        await api.renameDevice(this.data.id, newName)
+        try {
+          await api.renameDevice(this.data.id, newName)
+        } catch (error) {
+          return // 失败已由接口层统一提示；本地不改名，避免界面与后端不一致
+        }
         // 改名是纯后端存储（名称以用户为维度，不写设备、不动蓝牙连接/广播）：
         // 只把新名字合并回现有 device，绝不能用接口的精简返回整体替换——
         // 那会丢 deviceId/deviceNo，页面误判断联；此时会话仍占着设备（单连接、不再广播），
@@ -508,6 +555,7 @@ Page({
     wx.showLoading({ title: '保存中', mask: true })
     try {
       await deviceBle.setPlayback(deviceId, mode, intervalSeconds)
+      this.invalidateBleInfo() // 播放配置已变，作废 0x01 节流缓存，下次 loadDetail 重读
       const updated = Object.assign({}, device, {
         deviceId,
         bleDeviceId: deviceId,
@@ -688,23 +736,36 @@ Page({
   },
 
   // 连接成功后的统一收尾（新连接与复用活动会话共用）：合并设备实时信息 → 设为全局选中设备 → 刷新页面 UI。
+  // info 可能为 null（复用活动会话且活性校验撞上在途指令 CMD_PENDING 时不读设备信息）：
+  // 此时只置连接态，电量/内存等沿用现有数据，稍后 loadDetail 会补齐。
   applyConnectedDevice(device, deviceId, info) {
-    const updated = Object.assign({}, device, {
-      deviceId,
-      bleDeviceId: deviceId,
-      connected: true,
-      battery: info.battery,
-      usedMemory: info.imgCount,
-      totalMemory: info.capacity,
-      playbackMode: info.playMode,
-      intervalSeconds: info.intervalSeconds,
-      intervalHours: info.intervalSeconds
-        ? Math.max(1, Math.round(info.intervalSeconds / 3600))
-        : device.intervalHours,
-      firmwareVersion: info.firmwareVersion || device.firmwareVersion,
-      // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
-      firmwareDeviceId: info.deviceId || device.firmwareDeviceId
-    })
+    if (info) {
+      this.cacheBleInfo(deviceId, info) // 新鲜 0x01 数据同步进节流缓存，紧随的 loadDetail 直接复用
+    }
+    const updated = Object.assign(
+      {},
+      device,
+      {
+        deviceId,
+        bleDeviceId: deviceId,
+        connected: true
+      },
+      info
+        ? {
+            battery: info.battery,
+            usedMemory: info.imgCount,
+            totalMemory: info.capacity,
+            playbackMode: info.playMode,
+            intervalSeconds: info.intervalSeconds,
+            intervalHours: info.intervalSeconds
+              ? Math.max(1, Math.round(info.intervalSeconds / 3600))
+              : device.intervalHours,
+            firmwareVersion: info.firmwareVersion || device.firmwareVersion,
+            // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
+            firmwareDeviceId: info.deviceId || device.firmwareDeviceId
+          }
+        : null
+    )
     app.setSelectedDevice(updated)
 
     const hasBattery = typeof updated.battery === 'number'
@@ -951,7 +1012,12 @@ Page({
             '[OTA测试][' + traceId + '] 进度 ' + percent + '% [' + (progress.phase || '') + '] ' +
               (progress.message || '')
           )
-          this.setData({ otaTestStatus: (dryRun ? '干跑' : '测试') + ' ' + percent + '%' })
+          // 同值去重：回调由 PRN 窗口 ACK 驱动、频率较高，百分比没变就不 setData
+          const statusText = (dryRun ? '干跑' : '测试') + ' ' + percent + '%'
+          if (statusText !== this._lastOtaTestStatus) {
+            this._lastOtaTestStatus = statusText
+            this.setData({ otaTestStatus: statusText })
+          }
         },
         shouldAbort: () => this._otaTestAbort
       })
@@ -961,6 +1027,7 @@ Page({
       console.log('[OTA测试][' + traceId + '] 结果对象：', result)
 
       let okText
+      let unconfirmedTest = false
       if (result.dryRun) {
         const crcHex = '0x' + (result.crc32 >>> 0).toString(16).toUpperCase().padStart(8, '0')
         console.log(
@@ -979,6 +1046,7 @@ Page({
           '[OTA测试][' + traceId + '] 数据已全部发送，但未收到设备 END(0xF3) 整包校验确认——升级未确认成功，请重试或抓帧核对。'
         )
         okText = '未确认(请重试)'
+        unconfirmedTest = true
       } else {
         console.log(
           '[OTA测试][' + traceId + '] 设备已回 END(0xF3) 整包校验=成功：升级完成，文件 ' + result.size +
@@ -991,7 +1059,12 @@ Page({
       }
 
       this.setData({ otaTestStatus: okText })
-      toast.show({ title: okText, icon: 'none' })
+      if (unconfirmedTest) {
+        // 未确认是失败语义（没拿到设备 0xF3 确认）：按约定走 warn 加「设备-」来源前缀
+        toast.warn({ title: '设备-' + okText, icon: 'none' })
+      } else {
+        toast.show({ title: okText, icon: 'none' })
+      }
     } catch (error) {
       const aborted = this._otaTestAbort || (error && error.message === 'OTA_ABORTED')
       console.error('[OTA测试][' + traceId + '] ========== 升级失败 ==========')
@@ -1218,6 +1291,7 @@ Page({
     let info
     try {
       info = await deviceBle.readDeviceInfo(deviceId)
+      this.cacheBleInfo(deviceId, info) // 刚读到的最新值同步进节流缓存，紧随的 loadDetail 直接复用
     } catch (error) {
       return
     }
@@ -1291,18 +1365,26 @@ Page({
 
   // 删除设备：若删除的是当前选中设备，需清空全局选中状态
   async confirmDeleteDevice() {
-    if (!this.data.device) {
+    // _deleting 锁防连点：成功后到 navigateBack 有 500ms 窗口，期间再点会对已删设备重复请求、
+    // 弹一条误导性的报错；成功路径不释放锁（页面马上销毁），仅失败释放供重试
+    if (!this.data.device || this._deleting) {
       return
     }
-
-    await api.deleteDevice(this.data.id)
+    this._deleting = true
+    try {
+      await api.deleteDevice(this.data.id)
+    } catch (error) {
+      this._deleting = false
+      return // 失败已由接口层统一提示，确认弹窗保留供重试
+    }
     if (
       app.globalData.selectedDevice &&
       app.globalData.selectedDevice.id === this.data.id
     ) {
       app.setSelectedDevice(null)
     }
-    // 删除成功不再弹提示，直接返回上一页（列表刷新即为反馈）；删除失败由接口层统一提示。
+    // 删除成功立即收起确认弹窗（否则 500ms 窗口内弹窗还停在屏上），再返回上一页（列表刷新即为反馈）
+    this.hideDeleteConfirm()
     setTimeout(() => wx.navigateBack(), 500)
   },
 
@@ -1321,11 +1403,16 @@ Page({
           return
         }
 
-        await api.formatDevice(this.data.id)
+        try {
+          await api.formatDevice(this.data.id)
+        } catch (error) {
+          return // 失败已由接口层统一提示
+        }
         toast.show({
           title: '格式化完成',
           icon: 'none'
         })
+        this.invalidateBleInfo() // 设备照片已被清，作废 0x01 节流缓存让 loadDetail 重读内存占用
         this.loadDetail()
       }
     })

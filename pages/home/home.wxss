@@ -16,10 +16,29 @@
   pointer-events: none;
 }
 
+/* 本地占位背景：立即渲染打底，OSS 大图未就绪时兜住画面（不露白底） */
+.home-bg-placeholder {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
 .home-bg-image {
+  position: relative; /* 盖在占位图之上 */
   display: block;
   width: 100%;
   height: 100%;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+/* OSS 大图加载完成后淡入替换占位图 */
+.home-bg-image.is-ready {
+  opacity: 1;
 }
 
 /* 前景图预加载占位：移出视口且不占布局，只为触发加载完成事件做首页展示门控 */

@@ -62,22 +62,7 @@ Page({
     // 更换头像/昵称保存成功不再弹提示（界面已更新即为反馈）；保存失败由接口层统一提示。
   },
 
-  // 小程序仅支持首次绑定邮箱：未绑定去“绑定邮箱”，已绑定提示前往 App 修改
-  goEmail() {
-    if (this.data.userInfo.email) {
-      wx.showModal({
-        title: '修改邮箱',
-        content: '小程序暂不支持修改邮箱，请前往 App 修改。',
-        showCancel: false,
-        confirmText: '我知道了'
-      })
-      return
-    }
-
-    wx.navigateTo({
-      url: '/subpackages/settings/bind-email/bind-email'
-    })
-  },
+  // 邮箱入口已屏蔽（2026-07-16）：小程序不操作邮箱，绑定/修改均在 App 内完成
 
   goBack() {
     wx.navigateBack()

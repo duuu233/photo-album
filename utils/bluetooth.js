@@ -1,8 +1,14 @@
 const protocol = require('./frame-protocol')
 const api = require('./api')
 
-// 保存当前的“发现设备”监听回调引用，停止搜索时用它来精确解绑（off 需要传入同一函数引用）
-let foundHandler = null
+// 共享扫描会话：硬件扫描全局只有一路（activeScan），并发的 discoverDevices 调用作为「订阅者」
+// 挂到同一会话上，各自带自己的 onUpdate/until/timeout，各自命中/到点各自 resolve；
+// 全部订阅者退订后才真正停硬件扫描。取代旧的模块级单例 foundHandler，修复两类历史问题：
+// ① 两路扫描并发时后者覆盖单例——先结束的一路 off 解绑的是对方的回调，自己的永久残留
+//    （闭包持有页面实例，随扫描次数累积泄漏）；
+// ② 任一路 stopBluetoothDevicesDiscovery 停掉共享硬件扫描，把还在跑的另一路饿死，
+//    表现为偶发「未搜索到该设备」。
+let activeScan = null
 
 // 仅保留目标相框：按广播名（name / localName）做白名单筛选，其余蓝牙设备一律不进搜索结果。
 // 白名单不再写死，而是取自产品列表接口(/Client/Product/getProductList)里每个产品的 broadcastId 字段，
@@ -140,23 +146,130 @@ function showEmptyResultGuide() {
   return true
 }
 
-// 停止搜索并清理监听，避免后台持续扫描耗电与回调泄漏
-function stopDiscovery() {
+// 结束共享会话：停硬件扫描 + 精确解绑本会话自己的 handler（不会误伤后续新会话）。
+// 会话上未结算的订阅者不受影响，仍在各自 timeout 到点后拿「已累计结果」resolve。
+function teardownScan(scan) {
+  if (scan.stopped) {
+    return
+  }
+  scan.stopped = true
+  if (activeScan === scan) {
+    activeScan = null
+  }
   if (wx.stopBluetoothDevicesDiscovery) {
     wx.stopBluetoothDevicesDiscovery({})
   }
-
-  if (foundHandler && wx.offBluetoothDeviceFound) {
-    wx.offBluetoothDeviceFound(foundHandler)
+  if (scan.handler && wx.offBluetoothDeviceFound) {
+    wx.offBluetoothDeviceFound(scan.handler)
   }
-
-  foundHandler = null
+  scan.handler = null
 }
 
-// 是否正在扫描附近设备（foundHandler 非空即扫描中）。
-// 自动重连据此避让用户的手动扫描，避免两路 startBluetoothDevicesDiscovery 并发互相干扰。
+// 订阅者视角的设备列表：按各自口径过滤（调试 allowAll 不过滤，正式入口按 broadcastId 白名单），
+// 按信号强度降序。白名单按「当前累计到的名称」判——设备名/localName 常在后续广播包才带全，
+// 旧实现首包没名字就永远进不了名单（名字包晚到被丢弃），这里后到的名字包一样能让设备入列。
+function subscriberList(scan, subscriber) {
+  return Object.keys(scan.foundMap)
+    .map(id => scan.foundMap[id])
+    .filter(device => subscriber.allowAll || isAllowedFrame(device, subscriber.allowedIds))
+    .sort((a, b) => b.RSSI - a.RSSI)
+}
+
+// 结算一位订阅者（到点/until 命中/被 failScan 拒绝之外的正常路径）：resolve 自己的过滤视图，
+// 从会话摘除；最后一位离开时才真正停硬件扫描。
+function settleSubscriber(scan, subscriber) {
+  if (subscriber.settled) {
+    return
+  }
+  subscriber.settled = true
+  clearTimeout(subscriber.timer)
+  scan.subscribers = scan.subscribers.filter(item => item !== subscriber)
+  subscriber.resolve(subscriberList(scan, subscriber))
+  if (!scan.subscribers.length) {
+    teardownScan(scan)
+  }
+}
+
+// 给订阅者派发一次更新：changed（有设备新增/展示信息变化）才回吐 onUpdate；until 每批都判
+// （与旧实现一致），命中即提前结算、不等满 timeout。
+function notifySubscriber(scan, subscriber, changed) {
+  if (subscriber.settled) {
+    return
+  }
+  const list = subscriberList(scan, subscriber)
+  if (changed && subscriber.onUpdate && list.length) {
+    try {
+      subscriber.onUpdate(list) // 搜到一个显示一个：立即把当前列表回吐给页面增量渲染
+    } catch (error) {
+      // 页面回调自身异常不能中断扫描
+    }
+  }
+  if (subscriber.until) {
+    let done = false
+    try {
+      done = !!subscriber.until(list)
+    } catch (error) {
+      done = false // until 自身异常按「未命中」处理，退回等满 timeout
+    }
+    if (done) {
+      settleSubscriber(scan, subscriber)
+    }
+  }
+}
+
+// 把一位调用方挂到共享会话：先立即回吐存量结果（后来的订阅者不必等下一个广播包），
+// 此后随广播增量更新；自己的 until 命中或 timeout 到点即各自 resolve，互不影响。
+function subscribeScan(scan, options) {
+  return new Promise((resolve, reject) => {
+    const subscriber = {
+      allowAll: options.allowAll,
+      allowedIds: options.allowedIds,
+      onUpdate: options.onUpdate,
+      until: options.until,
+      settled: false,
+      timer: null,
+      resolve,
+      reject
+    }
+    scan.subscribers.push(subscriber)
+    subscriber.timer = setTimeout(() => settleSubscriber(scan, subscriber), options.timeout)
+    notifySubscriber(scan, subscriber, true)
+  })
+}
+
+// 起扫失败：会话作废，拒绝所有已挂上的订阅者（并发订阅者可能已搭上这趟失败的车）
+function failScan(scan, error) {
+  teardownScan(scan)
+  const pending = scan.subscribers.slice()
+  scan.subscribers = []
+  pending.forEach(subscriber => {
+    if (subscriber.settled) {
+      return
+    }
+    subscriber.settled = true
+    clearTimeout(subscriber.timer)
+    subscriber.reject(error)
+  })
+}
+
+// 停止搜索并清理监听，避免后台持续扫描耗电与回调泄漏（页面卸载/手动停止时调用）。
+// 语义与旧实现一致：立即停硬件扫描；在途的 discoverDevices 不被打断，仍在各自 timeout
+// 到点后 resolve（拿到已累计的结果）；之后新发起的 discoverDevices 会重新起一路硬件扫描。
+function stopDiscovery() {
+  if (activeScan) {
+    teardownScan(activeScan)
+    return
+  }
+  // 无在途会话也兜底停一次硬件扫描（保持旧行为）
+  if (wx.stopBluetoothDevicesDiscovery) {
+    wx.stopBluetoothDevicesDiscovery({})
+  }
+}
+
+// 是否正在扫描附近设备。自动重连据此避让用户的手动扫描——如今并发调用会共享同一路扫描，
+// 该函数主要供上层做展示/策略判断。
 function isDiscovering() {
-  return !!foundHandler
+  return !!(activeScan && !activeScan.stopped)
 }
 
 // 把蓝牙信号强度(RSSI，单位 dBm，越接近 0 越强)翻译成用户能看懂的文字档位。
@@ -228,93 +341,62 @@ async function discoverDevices(options) {
   // 正式入口：先取产品列表的 broadcastId 白名单（带缓存，多为命中缓存无网络开销）；allowAll 不过滤。
   const allowedIds = allowAll ? [] : await loadAllowedBroadcastIds()
 
+  if (!canUseBluetooth()) {
+    throw new Error('当前环境不支持蓝牙搜索')
+  }
+
+  const subscriberOptions = { timeout, allowAll, allowedIds, onUpdate, until }
+
+  // 已有在途扫描：直接订阅共享会话——绝不并行起第二路硬件扫描，也不会 stop 掉别人的那路
+  if (activeScan && !activeScan.stopped) {
+    return subscribeScan(activeScan, subscriberOptions)
+  }
+
+  const scan = {
+    foundMap: {}, // 以 deviceId 为键去重，同一设备多次广播只保留最新一条
+    signatures: {}, // 各设备上次的展示签名(名称|电量|屏型)：只在展示信息变化时才增量回调，避免 RSSI 抖动刷屏
+    subscribers: [],
+    handler: null,
+    stopped: false
+  }
+
+  // 会话层不做白名单过滤、收录所有上报的设备帧；白名单在各订阅者视角（subscriberList）过滤——
+  // 不同订阅者口径不同（调试 allowAll vs 正式白名单），且名字包晚到的设备也能事后被认出。
+  scan.handler = res => {
+    const devices = res.devices || []
+    let changed = false
+    devices.forEach(device => {
+      if (!device.deviceId) {
+        return
+      }
+      const normalized = normalizeDevice(device)
+      const sig = `${normalized.name}|${normalized.battery}|${normalized.screenType}`
+      // 新设备，或名称/电量/屏型变化才算「有变化」；纯 RSSI 波动不触发回调（否则会高频刷屏）
+      if (!scan.foundMap[device.deviceId] || scan.signatures[device.deviceId] !== sig) {
+        changed = true
+      }
+      scan.foundMap[device.deviceId] = normalized // RSSI 始终更新，保证最终列表排序准确
+      scan.signatures[device.deviceId] = sig
+    })
+    // slice()：until 命中会在遍历中结算并从 subscribers 摘除自己，不能边遍历边改原数组
+    scan.subscribers.slice().forEach(subscriber => notifySubscriber(scan, subscriber, changed))
+  }
+
+  activeScan = scan
+
   return new Promise((resolve, reject) => {
-    if (!canUseBluetooth()) {
-      reject(new Error('当前环境不支持蓝牙搜索'))
-      return
-    }
-
-    const foundMap = {} // 以 deviceId 为键去重，同一设备多次广播只保留最新一条
-    const signatures = {} // 各设备上次回调用的展示签名(名称|电量|屏型)：只在展示信息变化时才增量回调，避免 RSSI 抖动刷屏
-    let settled = false // 保证只 resolve/reject 一次
-    let timer = null
-
-    // 当前已搜到的设备，按信号强度降序（离得近的排前面）
-    const sortedList = () =>
-      Object.keys(foundMap).map(id => foundMap[id]).sort((a, b) => b.RSSI - a.RSSI)
-
-    const finish = () => {
-      if (settled) {
-        return
-      }
-      settled = true
-      clearTimeout(timer)
-      stopDiscovery()
-      resolve(sortedList())
-    }
-
-    // 每次发现设备的回调：累积到 foundMap，搜索期间不整体等待——有新设备/展示信息变化就 onUpdate 增量回吐。
-    // 新设备必须广播名命中白名单（产品列表的 broadcastId）才收录；已收录的目标设备后续广播包继续刷新
-    // （电量/名称/信号常在后续包才带全），避免因某个包暂时缺 localName 而漏更新。
-    foundHandler = res => {
-      const devices = res.devices || []
-      let changed = false
-      devices.forEach(device => {
-        if (!device.deviceId) {
-          return
-        }
-        // allowAll(调试) 时不做白名单筛选，收录所有设备；正式入口仍只收命中 broadcastId 的目标相框
-        if (!allowAll && !foundMap[device.deviceId] && !isAllowedFrame(device, allowedIds)) {
-          return
-        }
-        const normalized = normalizeDevice(device)
-        const sig = `${normalized.name}|${normalized.battery}|${normalized.screenType}`
-        // 新设备，或名称/电量/屏型变化才算「有变化」；纯 RSSI 波动不触发回调（否则会高频刷屏）
-        if (!foundMap[device.deviceId] || signatures[device.deviceId] !== sig) {
-          changed = true
-        }
-        foundMap[device.deviceId] = normalized // RSSI 始终更新，保证最终列表排序准确
-        signatures[device.deviceId] = sig
-      })
-      if (settled) {
-        return
-      }
-      const list = sortedList()
-      if (changed && onUpdate) {
-        try {
-          onUpdate(list) // 搜到一个显示一个：立即把当前列表回吐给页面增量渲染
-        } catch (error) {
-          // 页面回调自身异常不能中断扫描
-        }
-      }
-      // 目标已扫到就提前收网、不等满 timeout：把「连接前扫描」从雷打不动 6s 压到扫到即走(通常 <1s)。
-      // 放在 onUpdate 之后，页面最后一次增量渲染照常；until 自身异常按「未命中」处理，退回等满 timeout。
-      if (until) {
-        let done = false
-        try {
-          done = !!until(list)
-        } catch (error) {
-          done = false
-        }
-        if (done) {
-          finish()
-        }
-      }
-    }
-
     // 注意：必须先注册监听再开始搜索，否则可能漏掉最早广播的设备
-    wx.onBluetoothDeviceFound(foundHandler)
+    wx.onBluetoothDeviceFound(scan.handler)
     wx.startBluetoothDevicesDiscovery({
       // 允许重复上报：设备名/电量常在后续广播包才带上，开重复上报可持续刷新展示信息
       allowDuplicatesKey: true,
       interval: 0,
-      success() {
-        // 搜索成功开启后，等待 timeout 到点再汇总 resolve（增量结果已在 onUpdate 里实时给过页面）
-        timer = setTimeout(finish, timeout)
+      success: () => {
+        // 扫描成功开启后，发起者作为第一位订阅者挂上会话（timeout 到点/until 命中各自结算）
+        subscribeScan(scan, subscriberOptions).then(resolve, reject)
       },
       fail(error) {
-        clearTimeout(timer)
-        stopDiscovery()
+        failScan(scan, new Error(error.errMsg || '蓝牙搜索失败'))
         reject(new Error(error.errMsg || '蓝牙搜索失败'))
       }
     })

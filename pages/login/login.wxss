@@ -183,9 +183,14 @@
 .login-agreement__check-group {
   display: flex;
   flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
   width: 42rpx;
   height: 42rpx;
-  margin-right: 12rpx;
+  /* 扩大点击热区到约 86rpx（图标视觉仍 42rpx）：padding 撑热区、负 margin 抵消布局占位，
+     右侧 22-10=12rpx 与原 margin-right 间距一致。42rpx≈21px 的热区在登录首步很难点中 */
+  padding: 22rpx;
+  margin: -22rpx -10rpx -22rpx -22rpx;
 }
 
 .login-agreement__check-icon {

@@ -433,8 +433,16 @@ Page({
         src,
         success: (info) => {
           const swap = angle === 90 || angle === 270
-          const outW = swap ? info.height : info.width
-          const outH = swap ? info.width : info.height
+          // 输出限幅：与 applyCrop/coverCropOne 同款（长边最多 2000px）。相机原图可达 12MP，
+          // 不限幅时旋转要建 ~48MB 的 RGBA 画布并全幅重绘，低端机卡数秒甚至内存告警闪退；
+          // 下游上传前还会缩到设备分辨率，2000px 对画质零损失。
+          const MAX_EDGE = 2000
+          const longEdge = Math.max(info.width, info.height)
+          const k = longEdge > MAX_EDGE ? MAX_EDGE / longEdge : 1
+          const drawW = Math.max(1, Math.round(info.width * k))
+          const drawH = Math.max(1, Math.round(info.height * k))
+          const outW = swap ? drawH : drawW
+          const outH = swap ? drawW : drawH
           const query = wx.createSelectorQuery()
           query.select('#cropCanvas').fields({ node: true }).exec((res) => {
             const node = res && res[0] && res[0].node
@@ -451,11 +459,11 @@ Page({
             img.onload = () => {
               ctx.clearRect(0, 0, outW, outH)
               fillWhite(ctx, outW, outH)
-              // 以输出画布中心为原点旋转，再按原图尺寸居中绘制（90/270 时画布已宽高互换）
+              // 以输出画布中心为原点旋转，再按限幅后的尺寸居中绘制（90/270 时画布已宽高互换）
               ctx.save()
               ctx.translate(outW / 2, outH / 2)
               ctx.rotate((angle * Math.PI) / 180)
-              ctx.drawImage(img, -info.width / 2, -info.height / 2, info.width, info.height)
+              ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH)
               ctx.restore()
               wx.canvasToTempFilePath({
                 canvas: node,
@@ -725,6 +733,11 @@ Page({
     if (this.data.editing) {
       return
     }
+    // 投屏中防连点（此前 projecting 状态位定义了、模板也引用了，但从未赋值）：
+    // hideLoading 到 redirectTo 之间存在连点窗口，双跳转会报 routeDone 类错误
+    if (this.data.projecting) {
+      return
+    }
 
     if (!this.data.device) {
       toast.warn({ title: '请选择设备', icon: 'none' })
@@ -744,6 +757,7 @@ Page({
 
     // 没做任何裁剪/旋转的图：按预览的 aspectFill（设备比例中心裁切）先裁一次再传，做到「所见即所得」，
     // 后端即便按设备分辨率转码也不会再变形。已裁剪/旋转过的图沿用其结果（见 coverCropUnedited）。
+    this.setData({ projecting: true }) // 按钮切「投屏中」并锁定，跳转失败时在下方复位
     wx.showLoading({ title: '处理中', mask: true })
     const prepareStartedAt = Date.now()
     let images
@@ -764,7 +778,11 @@ Page({
     this.setData({ images })
     this.persistPending(images, performance)
     wx.redirectTo({
-      url: '/subpackages/projection/result/result?status=progress'
+      url: '/subpackages/projection/result/result?status=progress',
+      fail: () => {
+        // 跳转失败（极少见）：复位锁，允许用户重试
+        this.setData({ projecting: false })
+      }
     })
   },
 

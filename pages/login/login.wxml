@@ -28,9 +28,10 @@
         mode="aspectFit"></image>
     </view>
     <view class="login-agreement__text">
-      <text>我已阅读并同意</text>
+      <!-- 纯文字部分也可点选/取消勾选（协议链接仍各自打开对应页面，事件不冲突） -->
+      <text bindtap="onAgreementChange">我已阅读并同意</text>
       <text class="login-agreement__link" bindtap="openUserAgreement">《用户协议》</text>
-      <text>和</text>
+      <text bindtap="onAgreementChange">和</text>
       <text class="login-agreement__link" bindtap="openPrivacyPolicy">《隐私政策》</text>
     </view>
   </view>

@@ -55,7 +55,7 @@
     <block wx:else>
       <view class="scan-copy">
         <view class="scan-title">未发现设备</view>
-        <view class="scan-desc">设备连接中断，请检查设备状态后重试</view>
+        <view class="scan-desc">未搜索到附近设备，请确认设备已开机并靠近手机</view>
       </view>
       <view class="scan-help-link" hover-class="none" bindtap="openHelp">扫描不到怎么办?</view>
       <view class="primary-action bind-bottom" hover-class="none" bindtap="scan">重新扫描</view>

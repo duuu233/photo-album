@@ -43,12 +43,18 @@ function reportFrame(dir, deviceId, cmd, bytes, note) {
   }
 }
 
-// 微信返回的 UUID 是 128 位全大写串（如 0000FF01-0000-...），只取其中的 16 位短码做匹配
+// 微信返回的 UUID 是 128 位全大写串（如 0000FF01-0000-...），只取其中的 16 位短码做匹配。
+// 兼容短形态入参（"FF02" / "0000FF02"）：取末 4 位——旧实现对 4 字符入参 slice(4,8) 返回空串，
+// 而 matchUuid(任意短UUID, '') 恒真，短 UUID 机型上 FF11(OTA) 的通知会穿过特征过滤
+// 灌进 FF00 解帧缓冲（首字节非 0xAA 堵缓冲 → 此后指令全部「应答超时」）。
 function short16(uuid) {
-  return String(uuid || '')
+  const norm = String(uuid || '')
     .toUpperCase()
     .replace(/-/g, '')
-    .slice(4, 8)
+  if (norm.length <= 8) {
+    return norm.slice(-4)
+  }
+  return norm.slice(4, 8)
 }
 
 // 兼容设备上报的多种 UUID 形态：
@@ -460,7 +466,11 @@ async function request(deviceId, cmd, payload, timeout = 6000) {
   const session = await ensureConnection(deviceId)
 
   if (session.pending[cmd]) {
-    throw new Error(`指令 0x${cmd.toString(16)} 正在等待应答`)
+    // 带 code 供上层判断（如 active-device.verifyReuse）：这个错误说明会话活着且正忙，
+    // 不能与「读不动的死会话」混为一谈；靠错误文案匹配太脆弱，故给机器可读的 code。
+    const busyError = new Error(`指令 0x${cmd.toString(16)} 正在等待应答`)
+    busyError.code = 'CMD_PENDING'
+    throw busyError
   }
 
   const ackPromise = new Promise((resolve, reject) => {

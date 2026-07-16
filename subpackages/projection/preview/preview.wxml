@@ -56,7 +56,7 @@
     </view>
   </view>
 
-  <view class="preview-submit {{editing ? 'is-disabled' : ''}}" hover-class="none" bindtap="confirmProjection">{{projecting ? '投屏中' : '开始投屏'}}</view>
+  <view class="preview-submit {{editing || projecting ? 'is-disabled' : ''}}" hover-class="none" bindtap="confirmProjection">{{projecting ? '投屏中' : '开始投屏'}}</view>
 
   <!-- 离屏导出用画布（定位到屏幕外不可见）：裁剪时把选区绘制到这里再导出临时文件 -->
   <canvas type="2d" id="cropCanvas" class="crop-canvas"></canvas>

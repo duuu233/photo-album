@@ -1,16 +1,21 @@
 <!-- 首页根容器：通过 CSS 变量把状态栏高度/底部安全区传给样式，适配各机型 -->
 <view class="home-root" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
-  <!-- 背景图随当前场景切换，具体路径由 sceneState 派生 -->
+  <!-- 背景：本地占位图(3K，OSS 背景的强压缩版)立即渲染打底，OSS 大图加载完淡入盖上——
+       首屏不再被远程图门控（此前弱网下用户要白等最多 6s），bgReady 只驱动淡入不再挡内容 -->
   <view class="home-bg" aria-hidden="true">
     <image
-      class="home-bg-image"
+      class="home-bg-placeholder"
+      src="/assets/images/home-bg-placeholder.jpg"
+      mode="aspectFill" />
+    <image
+      class="home-bg-image {{bgReady ? 'is-ready' : ''}}"
       src="{{homeBgImage}}"
       mode="aspectFill"
       data-asset="bg"
       bindload="onHomeAssetLoaded"
       binderror="onHomeAssetError" />
   </view>
-  <!-- 前景图预加载：不显示，仅用于「背景图+前景图都加载完再展示首页」的 loading 门控 -->
+  <!-- 前景图预加载：不显示，仅用于提前拉起前景图缓存（不再门控首页展示） -->
   <image
     class="home-asset-preload"
     src="{{homeFgImage}}"
@@ -24,8 +29,8 @@
     bind:backtap="backFromBinding"
   >
   </page-nav>
-  <!-- 首屏加载中：拉设备列表确定已绑定/未绑定，或背景图/前景图尚未加载完成前先展示 loading -->
-  <view wx:if="{{pageLoading || !bgReady}}" class="page-loading">
+  <!-- 首屏加载中：只等设备列表落定场景（pageLoading），不再等远程背景图——本地占位图已打底 -->
+  <view wx:if="{{pageLoading}}" class="page-loading">
     <view class="page-loading__spinner">
     </view>
     <view class="page-loading__text">加载中…</view>
@@ -357,7 +362,7 @@
       <block wx:else>
         <view class="scan-copy no-device-copy">
           <view class="scan-title">未发现设备</view>
-          <view class="scan-desc">设备连接中断，请检查设备状态后重试</view>
+          <view class="scan-desc">未搜索到附近设备，请确认设备已开机并靠近手机</view>
         </view>
         <view
           class="scan-help-link"

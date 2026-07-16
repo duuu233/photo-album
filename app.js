@@ -14,10 +14,11 @@ function wxLogin() {
 
 App({
   onLaunch() {
-    // 记录每次启动时间，用于调试/排查问题（最新的排在最前）
+    // 记录每次启动时间，用于调试/排查问题（最新的排在最前）。
+    // 截断到 50 条：此前只增不减，长期用户启动路径上的同步读写 Storage 会越来越慢
     const logs = wx.getStorageSync('logs') || []
     logs.unshift(Date.now())
-    wx.setStorageSync('logs', logs)
+    wx.setStorageSync('logs', logs.slice(0, 50))
 
     // 启动即从本地缓存恢复上次的登录态与选中设备，避免每次都重新登录
     this.restoreSession()

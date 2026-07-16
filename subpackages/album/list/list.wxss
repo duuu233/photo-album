@@ -525,6 +525,22 @@
   font-size: 26rpx;
 }
 
+/* 加载失败态的「重新加载」按钮（与设备详情页 status-retry 同款视觉） */
+.empty-retry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 240rpx;
+  min-height: 80rpx;
+  margin: 44rpx auto 0;
+  padding: 0 56rpx;
+  color: #ffffff;
+  background: linear-gradient(180deg, #ff9140 0%, #ff6a20 100%);
+  border-radius: 999rpx;
+  box-shadow: 0 16rpx 32rpx rgba(255, 102, 31, 0.22);
+  font-size: 28rpx;
+}
+
 .empty-action {
   position: fixed;
   right: 46rpx;

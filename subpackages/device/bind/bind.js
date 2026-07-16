@@ -323,6 +323,10 @@ Page({
       // 连接并读取设备信息成功：不再弹「连接成功」提示，直接继续绑定流程；仅连接失败时提示。
     }
 
+    // 绑定判重/落库阶段（最多两次 getDevices，弱网可达数秒）也给连续 loading：
+    // 此前「连接设备中」消失后这段是零反馈，页面像卡住，用户会以为没点上
+    wx.showLoading({ title: '绑定设备中', mask: true })
+
     // 避免同一台设备被重复绑定（设备页会因此出现多条同款记录）：用刚连上读到的硬件 Device_ID
     // 去已绑定列表里找，命中就复用那条、不再新建，并沿用刚建立的连接（绑定成功 = 已连接）。
     const existed = await this.findBoundDevice(scanDevice, info)
@@ -332,6 +336,7 @@ Page({
         bleDeviceId: scanDevice.deviceId,
         battery: info && typeof info.battery === 'number' ? info.battery : existed.battery
       })
+      wx.hideLoading()
       app.setSelectedDevice(reused)
       // 设备已绑定并已为你连接：不再弹提示，直接返回上一页复用这条连接；仅失败时提示。
       // 保持 binding=true 直到返回上一页，避免窗口内被重复点击触发二次操作
@@ -350,6 +355,7 @@ Page({
     try {
       device = await api.bindDevice(payload)
     } catch (error) {
+      wx.hideLoading()
       // 绑定失败仍停留在本页：已连过就断开，避免占着设备的单连接妨碍重试
       if (bleConnected) {
         deviceBle.disconnect(scanDevice.deviceId)
@@ -379,6 +385,7 @@ Page({
     }
     app.setSelectedDevice(device)
 
+    wx.hideLoading()
     toast.show({
       title: '绑定成功',
       icon: 'none'

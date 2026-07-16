@@ -93,6 +93,17 @@ function buildDeviceFiltersFromDevices(devices) {
   return filters
 }
 
+// 已选照片 id 列表 / 计数：selectedMap 用数据路径更新后（toggleSelect），取消选中的键
+// 值为 false 而非被删除，所以取值与计数都必须按「值为真」过滤，不能直接 Object.keys().length
+function selectedIds(map) {
+  const source = map || {}
+  return Object.keys(source).filter(id => source[id])
+}
+
+function countSelected(map) {
+  return selectedIds(map).length
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -100,15 +111,17 @@ Page({
     filters: DEFAULT_FILTERS,
     currentFilter: '',
     showFilterMenu: false,
-    sourcePhotos: [],
-    photos: [],
+    // sourcePhotos/photos 不进 data：模板只渲染 filteredPhotos，这两份全量列表纯 JS 使用
+    // （见 this.sourcePhotos/this.photos）。100 张时三份全字段照片一起 setData 序列化可达上百 KB，
+    // 已逼近 setData 性能红线，移出后传输量降到 1/3。
     filteredPhotos: [],
     selectedMap: {},
     selectedCount: 0,
     totalCount: TOTAL_PLACEHOLDER_COUNT,
     showDeleteConfirm: false,
     deleteClosing: false, // 删除确认弹窗是否正在播放退场动画
-    loading: true // 首屏接口返回前为 true，避免空态先闪一下
+    loading: true, // 首屏接口返回前为 true，避免空态先闪一下
+    loadError: false // 接口失败标记：走「加载失败+重新加载」空态，不再伪装成「暂无照片」
   },
 
   onLoad() {
@@ -116,6 +129,12 @@ Page({
   },
 
   onShow() {
+    this.loadPhotos()
+  },
+
+  // 失败态「重新加载」：先回到 loading 转圈（即时反馈），再走一遍正常加载
+  retryLoad() {
+    this.setData({ loading: true, loadError: false })
     this.loadPhotos()
   },
 
@@ -133,8 +152,9 @@ Page({
         api.getDevices()
       ])
     } catch (error) {
-      // 接口失败时 api 层已 toast 提示，这里仅结束 loading，落到空态
-      this.setData({ loading: false })
+      // 接口失败时 api 层已 toast 提示；标记 loadError 展示「加载失败+重新加载」——
+      // 落到「暂无照片」空态会让用户误以为数据被清空了，且除退出重进外没有任何重试手段
+      this.setData({ loading: false, loadError: true })
       return
     }
     const sourcePhotos = result[0]
@@ -160,22 +180,25 @@ Page({
       ? this.data.currentFilter
       : ((photoFilters[0] && photoFilters[0].value) || (filters[0] ? filters[0].value : ''))
 
+    // 全量照片列表存实例字段（不参与渲染，模板只用 filteredPhotos），省 setData 序列化开销
+    this.sourcePhotos = sourcePhotos
+    this.photos = photos
+
     this.setData({
       filters,
       currentFilter,
-      sourcePhotos,
-      photos,
       totalCount: photos.length,
       selectedMap: {},
       selectedCount: 0,
       showDeleteConfirm: false,
-      loading: false
+      loading: false,
+      loadError: false
     })
     this.applyFilter(currentFilter, photos)
   },
 
   // 按设备名筛选照片（无「全部」选项）；filter 为空（无照片/无设备）时回退展示全部，切换筛选时清空已选
-  applyFilter(filter, photos = this.data.photos) {
+  applyFilter(filter, photos = this.photos || []) {
     const filteredPhotos = filter ? photos.filter(item => item.deviceName === filter) : photos
 
     this.setData({
@@ -257,7 +280,7 @@ Page({
       return matched.userProductId || matched.id
     }
 
-    const photo = this.data.photos.find(
+    const photo = (this.photos || []).find(
       item => item.deviceName === filterName && item.deviceId
     )
     return (photo && photo.deviceId) || ''
@@ -282,17 +305,15 @@ Page({
 
   toggleSelect(e) {
     const id = e.currentTarget.dataset.id
-    const selectedMap = Object.assign({}, this.data.selectedMap)
-
-    if (selectedMap[id]) {
-      delete selectedMap[id]
-    } else {
-      selectedMap[id] = true
-    }
-
+    const next = !this.data.selectedMap[id]
+    // 数据路径更新：只 diff 这一格。此前整个 map 重传会让全部网格 tile 的绑定重算，
+    // 100 张时点选有可感知延迟。取消项置 false 而非删键，计数/取已选统一按「值为真」过滤
+    //（见 selectedIds/countSelected；cancelSelect/applyFilter 整体清空时会把 false 键一并清掉）。
     this.setData({
-      selectedMap,
-      selectedCount: Object.keys(selectedMap).length
+      ['selectedMap.' + id]: next,
+      selectedCount: countSelected(
+        Object.assign({}, this.data.selectedMap, { [id]: next })
+      )
     })
   },
 
@@ -325,7 +346,7 @@ Page({
 
     this.setData({
       selectedMap,
-      selectedCount: Object.keys(selectedMap).length
+      selectedCount: countSelected(selectedMap)
     })
   },
 
@@ -377,7 +398,7 @@ Page({
   // 删除选中照片：先把设备固件上对应槽位删掉(CMD 0x12)，设备删成功后再删后端记录，
   // 保证「列表 / 后端 / 设备」三处一致。设备删除失败则整体中止，避免列表删了但相框里还在。
   async confirmDeleteSelected() {
-    const ids = Object.keys(this.data.selectedMap)
+    const ids = selectedIds(this.data.selectedMap)
 
     if (!ids.length) {
       this.hideDeleteDialog()
@@ -472,7 +493,7 @@ Page({
   // 刷新屏幕：图库照片大多已存在于固件，只需找到其在设备上的槽位索引，让相框切到这张图。
   // 仅支持单选——多选/全选是为了批量删除，单选才走刷新屏幕逻辑。
   async refreshScreen() {
-    const ids = Object.keys(this.data.selectedMap)
+    const ids = selectedIds(this.data.selectedMap)
 
     if (!ids.length) {
       toast.warn({
@@ -538,7 +559,7 @@ Page({
   // 直接用后端列表顺序(常见最新在前)去对 occupied[pos] 会刷错图 —— 这正是「指定刷新图片不对」的根因。
   // 读不到掩码时回退到位置本身。
   resolveDeviceImageIndex(photoId, device, occupied) {
-    const onDevicePhotos = this.data.photos.filter(item => item.onDevice !== false)
+    const onDevicePhotos = (this.photos || []).filter(item => item.onDevice !== false)
     const deviceKey = String((device && (device.userProductId || device.id)) || '')
     const deviceName = device ? normalizeDeviceName(device.name, 0) : ''
 

@@ -222,13 +222,15 @@ Page({
     // 首屏拉设备列表（判断已绑定/未绑定）前为 true，先展示 loading，
     // 等 loadHomeState 走到 setScene 落定场景再关闭，避免「未绑定」空态先闪一下再变「已绑定」。
     pageLoading: true,
-    // 大背景图 + 前景图都加载完成前为 false，先展示 loading，避免首页在图未就绪时先露白底
+    // 大背景图 + 前景图都加载完成后置 true。现在只驱动 OSS 背景图的淡入（本地占位图已打底），
+    // 不再作为首页展示的门控——此前弱网下首页要白等远程图最多 6s
     bgReady: false
   }, sceneState(SCENES.UNBOUND)),
 
   onLoad(options = {}) {
     this.scanTimer = null // 模拟扫描的定时器句柄，离开页面时需清除
-    // 背景/前景图加载门控：两张都 load(或 error) 后才放行首页；兜底 6s 防止事件不触发时一直卡 loading
+    // 背景/前景图加载标记：两张都 load(或 error) 后 bgReady=true 触发 OSS 背景淡入；
+    // 兜底 6s 防止事件不触发时一直停在占位图（已不再门控首页内容展示）
     this.homeAssetLoaded = { bg: false, fg: false }
     this.bgReadyTimer = setTimeout(() => {
       this.bgReadyTimer = null
@@ -278,7 +280,9 @@ Page({
     }
   },
 
-  // 登录后拉取真实头像，没有头像时回退默认图；未登录则只展示默认图
+  // 登录后拉取真实头像，没有头像时回退默认图；未登录则只展示默认图。
+  // 头像几乎不变：优先用会话内已有的 globalData.userInfo（登录/个人资料页保存都会同步它），
+  // 仅会话内还没拉到过用户信息时才请求一次——此前每次切 tab/返回首页都白拉一遍 getUserProfile。
   async loadUserAvatar() {
     if (!app.globalData.token && !wx.getStorageSync('token')) {
       this.setData({
@@ -287,8 +291,25 @@ Page({
       return
     }
 
+    const cachedUser = app.globalData.userInfo
+    if (cachedUser && cachedUser.avatarUrl) {
+      if (this.data.avatarUrl !== cachedUser.avatarUrl) {
+        this.setData({ avatarUrl: cachedUser.avatarUrl })
+      }
+      return
+    }
+    // 拉过一次但用户确实没设头像：本次会话不再反复拉（失败时不置位，下次 onShow 重试）
+    if (this._avatarFetched) {
+      return
+    }
+
     try {
       const userInfo = await api.getUserProfile()
+      this._avatarFetched = true
+      // 同步回全局，其它页面（个人资料等）也能复用，不必再各拉一遍
+      if (userInfo && (app.globalData.userInfo || userInfo.avatarUrl)) {
+        app.globalData.userInfo = Object.assign({}, app.globalData.userInfo, userInfo)
+      }
       this.setData({
         avatarUrl: userInfo.avatarUrl || DEFAULT_AVATAR
       })

@@ -11,6 +11,14 @@
     <view class="page-loading__text">加载中…</view>
   </view>
 
+  <!-- 加载失败：与「暂无照片」空态严格区分（弱网时伪装成空态会让用户以为照片被清空），并给一键重试 -->
+  <view wx:elif="{{loadError}}" class="album-empty">
+    <image class="empty-art" src="/subpackages/album/images/album-bg01.png" mode="aspectFit"></image>
+    <view class="empty-title">加载失败</view>
+    <view class="empty-desc">网络异常或服务出错，请稍后重试</view>
+    <view class="empty-retry" hover-class="none" bindtap="retryLoad">重新加载</view>
+  </view>
+
   <!-- 非加载态：设备筛选载体(有设备/照片就显示) + (有照片→网格 / 无照片→空态) -->
   <block wx:else>
     <!-- 工具栏：filter-wrap 是设备展示载体，只要设备接口/照片有数据(filters 非空)就显示，不因无照片而隐藏。

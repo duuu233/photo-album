@@ -758,11 +758,15 @@ function applyStartAck(session, ack) {
     throw new Error(session.aborted || 'OTA 连接已断开')
   }
   if (ack.result !== 0x00) {
-    throw new Error(
+    // 带 code 供 doStart 识别：这是设备的确定性答复（大小超限/资源不足等），
+    // 与「超时/写失败」不同，换特征/写类型重发同一 objType 毫无意义
+    const rejected = new Error(
       'OTA 启动被拒绝：' +
         otaResultText(ack.result) +
         (ack.rawHex ? `（ACK=${ack.rawHex}）` : '')
     )
+    rejected.code = 'OTA_START_REJECTED'
+    throw rejected
   }
 
   if (ack.prn) {
@@ -781,6 +785,8 @@ async function doStart(session, size, options) {
       : 5000
   let lastError = null
   let timeoutError = null
+  let rejectionError = null // 设备明确拒绝（RESULT≠0）的首个拒因，最优先上抛保真
+  const rejectedObjTypes = {} // 被设备明确拒绝过的 objType：其余「特征×写类型」组合不再重试
 
   if (!attempts.length) {
     throw new Error(
@@ -795,6 +801,9 @@ async function doStart(session, size, options) {
       throw new Error('OTA_ABORTED')
     }
     const attempt = attempts[i]
+    if (rejectedObjTypes[String(attempt.objType)]) {
+      continue // 该 objType 已被设备确定性拒绝，换写法重发只会拖长失败时间
+    }
     const frame = buildStartFrame(size, attempt.objType)
     const waiter = createStartAckWaiter(session, timeout, attempt)
 
@@ -817,7 +826,11 @@ async function doStart(session, size, options) {
       return ack
     } catch (error) {
       waiter.cancel()
-      if (!isUnsupportedWriteError(error)) {
+      if (error && error.code === 'OTA_START_REJECTED') {
+        // 确定性拒绝：记住首个拒因并短路该 objType 的剩余组合（objType 语义不同仍各给一次机会）
+        rejectionError = rejectionError || error
+        rejectedObjTypes[String(attempt.objType)] = true
+      } else if (!isUnsupportedWriteError(error)) {
         lastError = error
         if (error && error.message && error.message.indexOf('OTA START 应答超时') > -1) {
           timeoutError = error
@@ -827,6 +840,10 @@ async function doStart(session, size, options) {
     }
   }
 
+  // 设备的明确拒因最保真，优先上抛；其次超时（比「写失败」更接近根因）
+  if (rejectionError) {
+    throw rejectionError
+  }
   if (timeoutError) {
     throw timeoutError
   }

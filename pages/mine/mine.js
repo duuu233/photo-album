@@ -46,6 +46,7 @@ Page({
   async loadUserInfo() {
     // 游客模式：未登录展示默认头部，不强制跳登录（登录留到具体操作时再触发）
     if (!app.globalData.token && !wx.getStorageSync('token')) {
+      this._mineLoaded = false // 登出后回默认态，此前的成功数据不再保留
       this.setData({
         avatarUrl: '',
         nickName: '微信用户',
@@ -64,6 +65,7 @@ Page({
       ])
       const displayUserId = userInfo.id || userInfo.userNo || '--'
       const displayName = userInfo.nickName || '微信用户'
+      this._mineLoaded = true
       this.setData({
         avatarUrl: userInfo.avatarUrl || '',
         nickName: displayName,
@@ -72,12 +74,16 @@ Page({
         deviceCount: Number(userInfo.productCount) || devices.length
       })
     } catch (error) {
-      this.setData({
-        nickName: '微信用户',
-        userId: '--',
-        photoCount: 0,
-        deviceCount: 0
-      })
+      // 失败保留上次成功值：弱网切到「我的」页把照片/设备数清零，用户会误以为数据没了。
+      // 只有从未成功加载过（首次进入即失败）才落占位（接口层已 toast，此处不再提示）
+      if (!this._mineLoaded) {
+        this.setData({
+          nickName: '微信用户',
+          userId: '--',
+          photoCount: 0,
+          deviceCount: 0
+        })
+      }
     }
   },
 

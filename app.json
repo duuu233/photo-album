@@ -25,8 +25,6 @@
       "pages": [
         "index/index",
         "profile/profile",
-        "bind-email/bind-email",
-        "change-email/change-email",
         "language/language",
         "guide/guide",
         "update/update",
@@ -35,6 +33,12 @@
       ]
     }
   ],
+  "preloadRule": {
+    "pages/home/home": {
+      "network": "all",
+      "packages": ["subpackages/projection", "subpackages/device"]
+    }
+  },
   "window": {
     "navigationStyle": "custom",
     "navigationBarTextStyle": "black",

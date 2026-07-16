@@ -48,7 +48,8 @@ function warn(options) {
   if (!opts.icon) {
     opts.icon = 'none'
   }
-  // 报错/警告类停留略久（默认 3s），既够看清故障来源与原因、又不至于长时间挡住操作；调用方显式传 duration 时以其为准。
+  // 报错/警告类停留略久（默认 3s，2026-07-16 确认以 3s 为准），既够看清故障来源与原因、
+  // 又不至于长时间挡住操作；调用方显式传 duration 时以其为准。
   if (opts.duration === undefined) {
     opts.duration = 3000
   }

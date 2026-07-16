@@ -297,11 +297,38 @@ function handleBusinessError(error, options) {
   }
 
   if (error && (error.code === 401 || error.code === 406)) {
+    handleSessionExpired()
+  }
+
+  throw error
+}
+
+// 登录过期(401/406)统一登出：早先只清 Storage 不清 globalData，requireLogin 判的是 globalData.token，
+// 过期后依然放行、每个请求反复报错，用户卡死在假登录态。这里整体清会话并引导重登；
+// 多请求并发 401 时用节流避免重复跳转，已在登录页则不跳（防循环）。
+let lastSessionExpiredJumpAt = 0
+function handleSessionExpired() {
+  const app = typeof getApp === 'function' ? getApp() : null
+  if (app && typeof app.clearSession === 'function') {
+    app.clearSession()
+  } else {
+    // App 尚未就绪（启动早期）时兜底清 Storage
     wx.removeStorageSync('token')
     wx.removeStorageSync('userInfo')
   }
 
-  throw error
+  const now = Date.now()
+  if (now - lastSessionExpiredJumpAt < 3000) {
+    return
+  }
+  const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+  const current = pages[pages.length - 1]
+  if (current && current.route === 'pages/login/login') {
+    return
+  }
+  lastSessionExpiredJumpAt = now
+  // 与 requireLogin/ensureLogin 一致用 navigateTo（保留滑动过渡），失败(如页面栈满)不再补救
+  wx.navigateTo({ url: '/pages/login/login', fail: () => {} })
 }
 
 // 全局请求入口：处理鉴权头、loading、mock 分流与统一的成功/失败解析

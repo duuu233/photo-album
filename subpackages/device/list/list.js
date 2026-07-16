@@ -25,6 +25,7 @@ Page({
     selectedId: '',
     selectMode: false,
     loading: true,
+    loadError: false, // 接口失败标记：走「加载失败+重新加载」，不再伪装成「暂无设备」
     showMediaSheet: false, // 「拍照/相册」选择弹层是否展示（点某台设备的「投屏」后弹出）
     mediaSheetClosing: false // 选择弹层是否正在播放退场动画
   },
@@ -55,8 +56,10 @@ Page({
     try {
       sourceDevices = await api.getDevices()
     } catch (error) {
-      // 接口失败时 api 层已 toast 提示，这里仅结束 loading，落到空态
-      this.setData({ loading: false })
+      // 接口失败时 api 层已 toast 提示；已有列表内容就沿用旧内容（静默失败），
+      // 首次加载失败才标记 loadError 展示「加载失败+重新加载」——落到「暂无设备」
+      // 会让用户误以为设备被解绑了，且没有任何重试手段
+      this.setData({ loading: false, loadError: !this.data.devices.length })
       return
     }
     const selected = app.globalData.selectedDevice
@@ -105,8 +108,15 @@ Page({
         canDeleteHint: !item.connected && index === list.length - 1
       })),
       selectedId: selected ? selected.id : '',
-      loading: false
+      loading: false,
+      loadError: false
     })
+  },
+
+  // 失败态「重新加载」：先回到 loading 转圈（即时反馈），再走一遍正常加载
+  retryLoad() {
+    this.setData({ loading: true, loadError: false })
+    this.loadDevices()
   },
 
   // 设备硬件序列号(Device_ID)：跨扫描会话稳定，用于去重 / 匹配同一台物理设备。
@@ -303,19 +313,29 @@ Page({
   },
 
   // 连接成功后的统一收尾（新连接与复用活动会话共用）：合并设备实时信息 → 设为全局选中设备 → 刷新列表项。
+  // info 可能为 null（复用活动会话且活性校验撞上在途指令 CMD_PENDING 时不读设备信息）：
+  // 此时只置连接态，电量/内存等沿用现有数据。
   applyConnectedDevice(device, deviceId, info) {
-    const updated = Object.assign({}, device, {
-      deviceId, // 刷新成本次会话有效的 deviceId，供后续断开/图传复用
-      bleDeviceId: deviceId,
-      connected: true,
-      battery: info.battery,
-      usedMemory: info.imgCount,
-      totalMemory: info.capacity,
-      playbackMode: info.playMode,
-      intervalSeconds: info.intervalSeconds,
-      intervalHours: info.intervalSeconds ? Math.max(1, Math.round(info.intervalSeconds / 3600)) : device.intervalHours,
-      firmwareVersion: info.firmwareVersion || device.firmwareVersion
-    })
+    const updated = Object.assign(
+      {},
+      device,
+      {
+        deviceId, // 刷新成本次会话有效的 deviceId，供后续断开/图传复用
+        bleDeviceId: deviceId,
+        connected: true
+      },
+      info
+        ? {
+            battery: info.battery,
+            usedMemory: info.imgCount,
+            totalMemory: info.capacity,
+            playbackMode: info.playMode,
+            intervalSeconds: info.intervalSeconds,
+            intervalHours: info.intervalSeconds ? Math.max(1, Math.round(info.intervalSeconds / 3600)) : device.intervalHours,
+            firmwareVersion: info.firmwareVersion || device.firmwareVersion
+          }
+        : null
+    )
 
     // 连接成功即设为当前选中设备：设备是单连接，「正连着的」就是当前在用的。
     // 这样切到别的页面再回来、或自动重连时，都能据 selectedDevice.deviceId 认出这条活动会话。

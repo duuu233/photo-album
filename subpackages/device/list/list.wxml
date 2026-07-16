@@ -18,6 +18,16 @@
       <view class="page-loading__text">加载中…</view>
     </view>
 
+    <!-- 加载失败：与「暂无设备」空态严格区分（弱网时伪装成空态会让用户以为设备被解绑），并给一键重试 -->
+    <view wx:elif="{{loadError}}" class="empty-device glass-panel">
+      <view class="empty-device__art">
+        <view class="frame-logo"></view>
+      </view>
+      <view class="empty-device__title">加载失败</view>
+      <view class="empty-device__desc">网络异常或服务出错，请稍后重试。</view>
+      <view class="empty-device__btn" hover-class="none" bindtap="retryLoad">重新加载</view>
+    </view>
+
     <view wx:elif="{{devices.length}}" class="device-list">
       <view class="device-card glass-panel {{item.connected ? '' : 'is-offline'}}" wx:for="{{devices}}" wx:key="id" wx:for-index="index" data-id="{{item.id}}" bindtap="selectDevice">
         <view class="device-card__main">

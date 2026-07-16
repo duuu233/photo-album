@@ -260,6 +260,11 @@ async function connectBoundDevice(device, options = {}) {
       const info = await deviceBle.readDeviceInfo(existingId)
       return { deviceId: existingId, info, reused: true }
     } catch (error) {
+      // 「同指令正在等待应答」(CMD_PENDING) 恰恰说明会话活着且正忙（如详情页 onShow 的 0x01 在途）——
+      // 按活会话直接复用；误当死会话断开的话，设备恢复广播需要时间，紧接的重扫大概率「未搜索到」。
+      if (error && error.code === 'CMD_PENDING') {
+        return { deviceId: existingId, info: null, reused: true }
+      }
       deviceBle.disconnect(existingId)
     } finally {
       wx.hideLoading()
@@ -290,7 +295,7 @@ function showConnectError(error) {
 }
 
 // 操作前确保已连接（未连接自动重连）。成功返回有效 deviceId；失败按标准 UI 提示并返回 ''（调用方据此 return）。
-// 提示规则：系统级「附近设备」权限被拒 → 弹系统设置引导；其它失败 → toast「请先连接设备」。
+// 提示规则：与三处「连接蓝牙」按钮共用 showConnectError——权限被拒弹系统设置引导，其余如实展示原因。
 async function ensureConnectedForAction(device) {
   if (!device || !(device.deviceId || device.bleDeviceId || device.deviceNo || device.name)) {
     toast.warn({ title: '请先连接设备', icon: 'none' })
@@ -299,11 +304,9 @@ async function ensureConnectedForAction(device) {
   try {
     return await ensureDeviceConnected(device)
   } catch (error) {
-    if (error && error.code === 'PERMISSION_DENIED') {
-      bluetooth.showPermissionGuide()
-    } else {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
-    }
+    // 如实展示失败原因（未搜到/超时/权限…）：用户此刻正是在等自动连接，笼统的「请先连接设备」
+    // 与其行为矛盾且不可操作；scanMatchConnect 生成的具体原因不该被吞掉。
+    showConnectError(error)
     return ''
   }
 }

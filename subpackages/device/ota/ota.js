@@ -511,13 +511,29 @@ Page({
       done: '固件升级中'
     }
     const statusTitle = STAGE_TITLE[phase] || this.data.statusTitle
-    this.setData({
-      screenStatus: 'progress',
-      statusTitle,
-      artImage: artFor('progress'),
-      progressPercent: percent,
-      progressText: progress.message || ''
-    })
+    const progressText = progress.message || ''
+    // 去重：进度回调由 PRN 窗口 ACK 驱动、频率较高，三个展示值都没变就不 setData；
+    // 静态字段(标题/插画/screenStatus)只在标题切换时才重传（参照 result.js 的进度节流思路）
+    if (
+      percent === this._lastProgressPercent &&
+      statusTitle === this._lastProgressTitle &&
+      progressText === this._lastProgressText
+    ) {
+      return
+    }
+    const payload = { progressPercent: percent }
+    if (statusTitle !== this._lastProgressTitle || this.data.screenStatus !== 'progress') {
+      payload.screenStatus = 'progress'
+      payload.statusTitle = statusTitle
+      payload.artImage = artFor('progress')
+    }
+    if (progressText !== this._lastProgressText) {
+      payload.progressText = progressText
+    }
+    this._lastProgressPercent = percent
+    this._lastProgressTitle = statusTitle
+    this._lastProgressText = progressText
+    this.setData(payload)
   },
 
   async runUpgrade() {
@@ -550,6 +566,10 @@ Page({
 
     this._abortUpgrade = false
     this._lastPhase = '' // 重置阶段，供失败时区分下载/升级
+    // 重置进度去重追踪器（onUpgradeProgress），避免「重新升级」时与上一轮的值误判为未变化
+    this._lastProgressPercent = -1
+    this._lastProgressTitle = ''
+    this._lastProgressText = ''
     wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: true })
     this.setData({
       state: 'upgrading',
@@ -622,7 +642,8 @@ Page({
           artImage: artFor('fail'),
           showPrimary: true
         })
-        toast.show({ title: doneText, icon: 'none' })
+        // 未确认是失败语义（没拿到设备 0xF3 确认）：按约定走 warn 加「设备-」来源前缀
+        toast.warn({ title: '设备-' + doneText, icon: 'none' })
         return
       }
 

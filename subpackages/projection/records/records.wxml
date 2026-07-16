@@ -19,6 +19,13 @@
       <view class="page-loading__text">加载中…</view>
     </view>
 
+    <!-- 加载失败：与「暂无记录」空态严格区分，并给一键重试 -->
+    <view wx:elif="{{loadError}}" class="empty-record glass-panel">
+      <view class="empty-record__title">加载失败</view>
+      <view class="empty-record__desc">网络异常或服务出错，请稍后重试</view>
+      <view class="empty-retry" hover-class="none" bindtap="retryLoad">重新加载</view>
+    </view>
+
     <block wx:else>
     <view class="record-count">共 {{filteredRecords.length}} 条记录</view>
 

@@ -7,6 +7,12 @@ function isEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 }
 
+// App 登录密码强度：至少 8 位且同时包含字母和数字。
+// 该密码是真实登录凭证（后端 md5 存储），无强度要求时用户可设 "1" 这类秒破弱口令。
+function isStrongPassword(value) {
+  return typeof value === 'string' && value.length >= 8 && /[A-Za-z]/.test(value) && /\d/.test(value)
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -117,18 +123,30 @@ Page({
     }
   },
 
-  async submit() {
-    if (!this.data.canSubmit) {
-      toast.warn({
-        title: '请补全信息并确认密码',
-        icon: 'none'
-      })
-      return
+  // 提交前逐项校验，按序给出具体原因——原先只有灰按钮+「请补全信息并确认密码」的笼统提示，
+  // 用户找不到到底哪一项错了（尤其两次密码不一致这种看不出来的）
+  validateForm() {
+    const { email, code, password, confirmPassword } = this.data
+    if (!isEmail(email)) {
+      return '请输入正确邮箱'
     }
+    if (!code) {
+      return '请输入验证码'
+    }
+    if (!isStrongPassword(password)) {
+      return '密码需至少8位，且同时包含字母和数字'
+    }
+    if (password !== confirmPassword) {
+      return '两次输入的密码不一致'
+    }
+    return ''
+  },
 
-    if (!isEmail(this.data.email)) {
+  async submit() {
+    const invalidMessage = this.validateForm()
+    if (invalidMessage) {
       toast.warn({
-        title: '请输入正确邮箱',
+        title: invalidMessage,
         icon: 'none'
       })
       return
