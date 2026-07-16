@@ -15,14 +15,13 @@ const toast = require('../../../utils/toast')
 const media = require('../../../utils/media')
 const activeDevice = require('../../../utils/active-device')
 
-// 上传前的兜底压缩（性能优化 2026-07-13；2026-07-14 放宽到 ~1MB）。只影响「上传+后端转码」耗时
-//（真机曾达 5.7s），**不影响图传耗时**——发给设备的六色帧恒为 宽×高÷2（3.7寸=172800字节），与源图大小无关。
-// 触发阈值：源图 > 1MB 才压（1MB 以内直接原样上传，不再白白降一道质）。
-// 目标：压完落在 1MB 上下——长边不超过设备长边的 3 倍（480×720 → 2160）、质量 90。
-// 后端还要缩到设备分辨率再量化成六色，过采样越足抖动(dither)细节越稳；上限只为拦住动辄十几 MB 的原图。
+// 上传前缩到设备尺寸（性能优化 2026-07-13；2026-07-14 曾放宽到 ~1MB；2026-07-16 改为直接缩到设备物理分辨率）。
+// 只影响「上传+后端转码」耗时（真机曾达 5.7s），**不影响图传耗时**——发给设备的六色帧恒为 宽×高÷2
+//（3.7寸=172800字节），与源图大小无关。
+// preview 已按设备比例 aspectFill 裁过，这里只把长边缩到「设备长边」（480×720 → 720），不改比例；
+// 后端拿到就在目标分辨率上直接量化成六色，不再吃高清原图。已不大于设备尺寸的图原样上传、不再降质。质量 90。
 // 任一步失败（老基础库没有 compressImage / 取不到尺寸 / 压缩报错）都回退原图上传，绝不阻断投屏。
-const UPLOAD_COMPRESS_TRIGGER_BYTES = 1024 * 1024
-const UPLOAD_LONG_EDGE_SCALE = 3
+// ⚠️ 少了过采样余量，后端抖动(dither)细节可能略糙——本次为验证效果，先真机对比画质再决定是否保留。
 const UPLOAD_COMPRESS_QUALITY = 90
 
 const STATUS_TEXT = {
@@ -745,7 +744,7 @@ Page({
     // 压缩恒开（api.setUserProductUpload 固定传 isCompress=1 + compressSize=1024KB，后端把它存的图压到 1MB 上下）。
     // 注意 isCompress/compressSize 只约束后端存的图，管不到上传字节数——上传体积由预览页导出的临时文件
     // 决定（见 preview.js EXPORT_FILE_TYPE：已从微信默认的 png 改为 jpg，源图体积降一个数量级），
-    // 再经下面 compressForUpload 兜底压到 1MB 上下。
+    // 再经下面 compressForUpload 缩到设备物理分辨率（长边=设备长边）。
     // sourceBytes 就是用来盯这个的：uploadConvertMs 一旦变长，先看它是不是又变大了。
     const sourceBytes = await this.readFileSize(filePath)
     const shrunk = await this.compressForUpload(filePath, info, sourceBytes)
@@ -788,16 +787,13 @@ Page({
     }
   },
 
-  // 上传前兜底压缩：源图超过阈值才压，长边压到设备长边的 3 倍以内（见文件顶部常量注释）。
+  // 上传前缩到设备尺寸：把要传给后端的图缩到设备物理分辨率（长边=设备长边），后端就在目标分辨率上
+  // 直接量化成六色，不再吃高清原图。preview 已按设备比例裁过，这里只缩分辨率不改比例。
   // 返回 { filePath, bytes, compressMs, compressed }；任何失败都原样返回原文件，投屏不受影响。
-  // 注意这只省「上传+转码」的时间，设备帧字节数(宽×高÷2)与源图无关，图传耗时一秒都不会变。
+  // 注意这只省「上传+转码」的字节数，设备帧字节数(宽×高÷2)与源图无关，图传耗时一秒都不会变。
   async compressForUpload(filePath, info, sourceBytes) {
     const original = { filePath, bytes: sourceBytes, compressMs: 0, compressed: false }
-    if (
-      !sourceBytes ||
-      sourceBytes <= UPLOAD_COMPRESS_TRIGGER_BYTES ||
-      !wx.compressImage
-    ) {
+    if (!wx.compressImage || !(Number(info.width) > 0) || !(Number(info.height) > 0)) {
       return original
     }
 
@@ -807,10 +803,12 @@ Page({
         wx.getImageInfo({ src: filePath, success: resolve, fail: reject })
       })
       const longEdge = Math.max(size.width, size.height)
-      const maxLongEdge =
-        Math.max(info.width, info.height) * UPLOAD_LONG_EDGE_SCALE
-      // 已经够小就只重压质量、不再缩尺寸（ratio=1）
-      const ratio = longEdge > maxLongEdge ? maxLongEdge / longEdge : 1
+      const deviceLongEdge = Math.max(info.width, info.height)
+      // 已不大于设备尺寸就别再缩/重压，免得白丢一道质（原样返回）
+      if (!(longEdge > deviceLongEdge)) {
+        return Object.assign({}, original, { compressMs: Date.now() - startedAt })
+      }
+      const ratio = deviceLongEdge / longEdge
       const compressed = await new Promise((resolve, reject) => {
         wx.compressImage({
           src: filePath,
@@ -834,7 +832,7 @@ Page({
         compressed: true
       }
     } catch (error) {
-      console.warn('[投屏] 上传前压缩失败，改用原图上传：', error)
+      console.warn('[投屏] 上传前缩放失败，改用原图上传：', error)
       return Object.assign({}, original, { compressMs: Date.now() - startedAt })
     }
   },
