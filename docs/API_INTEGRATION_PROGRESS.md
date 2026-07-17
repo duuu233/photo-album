@@ -1,5 +1,10 @@
 # API Integration Progress
 
+> 🛠 **维护约定**：每次修改本文件涉及的问题/功能，务必在下方「操作日志」补一条（日期 + 改了什么 + 关联文件/commit），**最新在上**——别让文档与代码脱节。
+
+## 操作日志（最新在上）
+- **2026-07-17**：`setUserProductUpload` 参数参考补「⚠️`targetWidth/targetHeight` 后端目前未消费、上传图须已是设备物理分辨率」实况注（配合 `preview.js` 导出改到设备分辨率的投屏失败修复）。见 memory `projection-upload-must-be-device-resolution`。
+
 接口文档：https://api.boltfox.cn/swagger-ui.html#/
 
 后端地址：https://api.boltfox.cn

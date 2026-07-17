@@ -1,5 +1,10 @@
 # OTA / DFU 升级问题排查与修复进度
 
+> 🛠 **维护约定**：每次修改本文件涉及的问题/功能，务必在下方「操作日志」补一条（日期 + 改了什么 + 关联文件/commit），**最新在上**——别让文档与代码脱节。
+
+## 操作日志（最新在上）
+- **2026-07-17**：加入本操作日志约定；本文件正文本轮未改。⏳待办：`API_INTEGRATION_PROGRESS.md` OTA 段写「APP 不发 END、设备回 0xF3」，与 memory `ota-dfu-0xfc-finding` 的「APP 发 END(0xF3)」表述不一致，待真机确认后统一。
+
 > 记录日期：2026-06-30（2026-07-01 更新）
 > 状态：**修复已实施（`utils/ota-ble.js`），待真机联调验证**
 > 入口页面：`subpackages/device/detail/detail` →（长按 OTA 升级 / 跳转）→ `subpackages/device/ota/ota`
