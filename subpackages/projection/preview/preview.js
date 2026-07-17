@@ -22,6 +22,10 @@ const EXPORT_QUALITY = 0.92
 // 统一编辑态里图片相对「铺满裁剪框(cover)」还能再放大的上限倍数（防止无限放大成马赛克）
 const MAX_ZOOM_FACTOR = 8
 
+// 「长按拖拽旋转」模式参数：按住多久(ms)进入旋转、进入前允许的最大位移(px，超过则判为平移不再触发旋转)
+const LONG_PRESS_MS = 300
+const LONG_PRESS_MOVE_TOL = 10
+
 // 在画布上铺一层白底（jpg 无 alpha 通道，不铺底的话透明像素会被压成黑色）
 function fillWhite(ctx, width, height) {
   ctx.fillStyle = '#ffffff'
@@ -50,6 +54,8 @@ Page({
     editTransform: '', // translate/rotate/scale 组合串——仅此字段随手势高频 setData
     frame: null, // 固定裁剪框 {left,top,width,height}(px)，锁定设备比例、居中不动
     editHint: true, // 首次进入编辑显示手势提示，触摸后隐藏
+    editHintText: '', // 手势提示文案，随旋转模式变化
+    rotateMode: 'pinch', // 旋转交互模式：'pinch'=双指旋转 / 'drag'=长按图片拖拽旋转（顶部可切换对比）
 
     deviceWrapStyle: '' // 未裁剪图片的 photo-wrap 初始尺寸：按设备比例铺，作为预览
   },
@@ -93,6 +99,7 @@ Page({
     // 切换图片即视为换了一张，退出编辑态（丢弃未保存的手势变换）
     this._edit = null
     this._gesture = null
+    this._clearLongPress()
     this.setData({
       activeIndex: index,
       activeImage: this.data.images[index] || null,
@@ -208,6 +215,8 @@ Page({
             const baseW = info.width * baseScale
             const baseH = info.height * baseScale
             // 数值真值都放 this._edit，避免手势里频繁读 setData 后的 data（异步、易错）
+            // stageLeft/Top 是编辑层（=舞台）在视口的偏移，frameLeft/Top 是裁剪框在层内偏移——
+            // 「长按拖拽旋转」要把手指视口坐标换算成「相对图片中心的角度」，需这两组偏移把坐标系对齐。
             this._edit = {
               src,
               natW: info.width,
@@ -215,6 +224,10 @@ Page({
               baseScale,
               baseW,
               baseH,
+              stageLeft: rect.left,
+              stageTop: rect.top,
+              frameLeft: frame.left,
+              frameTop: frame.top,
               frameW: fw,
               frameH: fh,
               zoom: 1,
@@ -223,6 +236,7 @@ Page({
               angle: 0
             }
             this._gesture = null
+            this._clearLongPress()
             this.setData({
               editing: true,
               activeTool: 'crop',
@@ -232,7 +246,8 @@ Page({
               editImgLeft: frame.left + fw / 2 - baseW / 2,
               editImgTop: frame.top + fh / 2 - baseH / 2,
               frame,
-              editHint: true
+              editHint: true,
+              editHintText: this._hintText(this.data.rotateMode)
             })
             // 初始按 cover 摆正并夹取（tx/ty=0、zoom=1、angle=0）
             this._applyEdit(1, 0, 0, 0)
@@ -301,12 +316,59 @@ Page({
     })
   },
 
+  // 手势提示文案：随旋转模式变化
+  _hintText(mode) {
+    return mode === 'drag'
+      ? '单指拖动 · 双指缩放 · 长按图片拖动旋转 · 点「旋转」转90°'
+      : '单指拖动 · 双指缩放/旋转 · 点「旋转」转90°'
+  },
+
+  // 顶部切换旋转交互模式（双指旋转 / 长按拖拽旋转），便于对比。切换即中断当前手势并重弹提示。
+  setRotateMode(e) {
+    const mode = e.currentTarget.dataset.mode
+    if ((mode !== 'pinch' && mode !== 'drag') || mode === this.data.rotateMode) {
+      return
+    }
+    this._clearLongPress()
+    this._gesture = null
+    this.setData({ rotateMode: mode, editHint: true, editHintText: this._hintText(mode) })
+  },
+
+  // 清掉「长按拖拽旋转」的计时器（手指移动过多、抬起、切模式、离开编辑态时都要清）
+  _clearLongPress() {
+    if (this._lpTimer) {
+      clearTimeout(this._lpTimer)
+      this._lpTimer = null
+    }
+  },
+
+  // 长按到时：把当前单指手势从「平移」升级为「旋转」，以图片中心为轴、按手指所在角度带动旋转。
+  _armRotate() {
+    this._lpTimer = null
+    const g = this._gesture
+    const ed = this._edit
+    if (!g || g.mode !== 'pan' || !ed) {
+      return
+    }
+    // 图片中心的视口坐标（用起手时的 base.tx/ty 作稳定轴心）
+    const pivotX = ed.stageLeft + ed.frameLeft + ed.frameW / 2 + g.base.tx
+    const pivotY = ed.stageTop + ed.frameTop + ed.frameH / 2 + g.base.ty
+    g.mode = 'rotate'
+    g.pivotX = pivotX
+    g.pivotY = pivotY
+    g.startFingerAngle = Math.atan2(g.curY - pivotY, g.curX - pivotX)
+    // 轻振动反馈「已进入旋转」（部分机型不支持 type，失败静默）
+    wx.vibrateShort({ type: 'light', fail: () => {} })
+  },
+
   // 记录一次手势的初始基准（单指=平移，双指=缩放+旋转+随中点平移）。切换手指数时用它重新起手。
+  // 「长按拖拽旋转」模式下，单指起手会同时挂一个长按计时器，按住不动到时即升级为旋转。
   _startGesture(touches) {
     const g = this._edit
     if (!g) {
       return
     }
+    this._clearLongPress()
     const base = { zoom: g.zoom, tx: g.tx, ty: g.ty, angle: g.angle }
     if (touches.length >= 2) {
       const a = touches[0]
@@ -321,7 +383,10 @@ Page({
       }
     } else {
       const t = touches[0]
-      this._gesture = { mode: 'pan', x: t.clientX, y: t.clientY, base }
+      this._gesture = { mode: 'pan', x: t.clientX, y: t.clientY, curX: t.clientX, curY: t.clientY, base }
+      if (this.data.rotateMode === 'drag') {
+        this._lpTimer = setTimeout(() => this._armRotate(), LONG_PRESS_MS)
+      }
     }
   },
 
@@ -335,7 +400,10 @@ Page({
     this._startGesture(e.touches)
   },
 
-  // 手势移动：单指平移；双指同时缩放+旋转（绕图片中心）+随双指中点平移。变换即时夹取，框内永不露白边。
+  // 手势移动：
+  //  · 双指 → 缩放 + 随中点平移；仅「双指旋转」模式下同时旋转（「长按旋转」模式双指只缩放不转）。
+  //  · 单指 → 平移；「长按旋转」模式按住到时后升级为绕图片中心的旋转（跟手指角度带动）。
+  // 变换即时夹取，框内永不露白边。
   onEditTouchMove(e) {
     const g = this._gesture
     if (!g || !this._edit) {
@@ -353,28 +421,46 @@ Page({
       const ang = Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX)
       const midX = (a.clientX + b.clientX) / 2
       const midY = (a.clientY + b.clientY) / 2
+      // 「长按旋转」模式下双指不参与旋转（旋转只由长按拖拽产生），保证两种交互对比时互不干扰
+      const rotDelta = this.data.rotateMode === 'pinch' ? ((ang - g.ang) * 180) / Math.PI : 0
       this._applyEdit(
         g.base.zoom * (dist / g.dist),
         g.base.tx + (midX - g.midX),
         g.base.ty + (midY - g.midY),
-        g.base.angle + ((ang - g.ang) * 180) / Math.PI
+        g.base.angle + rotDelta
       )
-    } else {
-      if (g.mode !== 'pan') {
-        this._startGesture(touches) // 双指抬起一指后继续拖：改记单指基准
-        return
-      }
-      const t = touches[0]
+      return
+    }
+
+    const t = touches[0]
+    // 长按已升级为旋转：手指绕图片中心转多少度，图片就转多少度
+    if (g.mode === 'rotate') {
+      const fingerAngle = Math.atan2(t.clientY - g.pivotY, t.clientX - g.pivotX)
       this._applyEdit(
         g.base.zoom,
-        g.base.tx + (t.clientX - g.x),
-        g.base.ty + (t.clientY - g.y),
-        g.base.angle
+        g.base.tx,
+        g.base.ty,
+        g.base.angle + ((fingerAngle - g.startFingerAngle) * 180) / Math.PI
       )
+      return
     }
+    if (g.mode !== 'pan') {
+      this._startGesture(touches) // 双指抬起一指后继续拖：改记单指基准
+      return
+    }
+    g.curX = t.clientX
+    g.curY = t.clientY
+    const dx = t.clientX - g.x
+    const dy = t.clientY - g.y
+    // 长按计时中若手指移动过多，判为平移、取消长按（不再触发旋转）
+    if (this._lpTimer && Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOL) {
+      this._clearLongPress()
+    }
+    this._applyEdit(g.base.zoom, g.base.tx + dx, g.base.ty + dy, g.base.angle)
   },
 
   onEditTouchEnd(e) {
+    this._clearLongPress()
     // 还有手指没抬起（如双指松了一指）：以剩余手指重新起手，保证继续拖动跟手
     if (e.touches && e.touches.length >= 1) {
       this._startGesture(e.touches)
@@ -422,6 +508,7 @@ Page({
         next[activeIndex] = updated
         this._edit = null
         this._gesture = null
+        this._clearLongPress()
         this.setData({
           images: next,
           activeImage: updated,
@@ -506,6 +593,7 @@ Page({
             next[activeIndex] = updated
             this._edit = null
             this._gesture = null
+            this._clearLongPress()
             this.setData({
               images: next,
               activeImage: updated,

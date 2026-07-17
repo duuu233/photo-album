@@ -41,7 +41,13 @@
         <view class="edit-corner corner-bl"></view>
         <view class="edit-corner corner-br"></view>
       </view>
-      <view wx:if="{{editHint}}" class="edit-hint">单指拖动 · 双指缩放/旋转 · 点「旋转」转90°</view>
+      <view wx:if="{{editHint}}" class="edit-hint">{{editHintText}}</view>
+    </view>
+
+    <!-- 旋转交互切换（对比用）：放在编辑层之上、作为其兄弟节点，独立接管点击，不触发图片手势 -->
+    <view wx:if="{{editing}}" class="rotate-mode-switch">
+      <view class="rms-item {{rotateMode === 'pinch' ? 'is-on' : ''}}" data-mode="pinch" catchtap="setRotateMode">双指旋转</view>
+      <view class="rms-item {{rotateMode === 'drag' ? 'is-on' : ''}}" data-mode="drag" catchtap="setRotateMode">长按旋转</view>
     </view>
   </view>
 
