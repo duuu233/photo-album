@@ -73,6 +73,7 @@
 - `sendEmail(data)`：`userEmail`、`sendType`。`sendType` 参考 Swagger：`1=注册邮件`、`2=找回密码邮件/修改密码`、`3=修改邮箱`。
 - `sendEmailToken(data)`：按 Swagger 为已登录验证码接口；公共 `userToken` 会通过 header 传递。
 - `setUserProductUpload(options)`：`filePath` 或 `filePaths/files`、`userProductId`、`deviceUploadState`、`targetWidth`/`targetHeight`(目标像素宽高)、可选 `formData`；可传 `loading:false` 关闭全局 loading、`showError:false` 自行处理错误。返回 `{ url, taskId, upirId, name }`。
+  - ⚠️ **实况（2026-07-17）**：`targetWidth/targetHeight` 目前**后端未消费**——线上后端按「上传图片本身的像素」量化出六色帧（上传 725×1024 就出 726×1024÷2=371712 字节，非设备 680×960 的 326400 → 投屏失败）。所以**上传图必须预先缩到正好设备物理分辨率**（已在 `preview.js` 导出处做），别以为传了 targetWidth/targetHeight 后端就会缩。详见 memory `projection-upload-must-be-device-resolution`。
 - 微信小程序原生 `wx.uploadFile` 单次稳定上传一个文件字段；当前封装支持传多个文件路径，并使用同一个 `fileParam` 字段逐个上传。
 
 ### 小程序跳过

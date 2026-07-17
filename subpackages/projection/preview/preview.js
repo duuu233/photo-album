@@ -433,9 +433,12 @@ Page({
         src,
         success: (info) => {
           const swap = angle === 90 || angle === 270
-          // 输出限幅：与 applyCrop/coverCropOne 同款（长边最多 2000px）。相机原图可达 12MP，
-          // 不限幅时旋转要建 ~48MB 的 RGBA 画布并全幅重绘，低端机卡数秒甚至内存告警闪退；
-          // 下游上传前还会缩到设备分辨率，2000px 对画质零损失。
+          // 输出限幅：长边最多 2000px。旋转是「整图」变换、非设备比例，这里不能直接缩到设备尺寸
+          //（会变形）；它只是中间产物——旋转后若再裁剪，applyCrop 会把结果精确缩到设备物理分辨率。
+          // 相机原图可达 12MP，不限幅时旋转要建 ~48MB 的 RGBA 画布并全幅重绘，低端机卡顿甚至闪退。
+          // 注意：仅旋转不裁剪时（cropW 已被下面置上，投屏页不再 aspectFill 裁切）该图会以整图比例上传，
+          // 目前靠 result.js compressForUpload 兜底缩长边（只等比缩、不改比例），非设备比例仍可能对不上——
+          // 若要彻底修，旋转后也应走一次 aspectFill 到设备尺寸（见待办，勿在此处强行缩设备尺寸）。
           const MAX_EDGE = 2000
           const longEdge = Math.max(info.width, info.height)
           const k = longEdge > MAX_EDGE ? MAX_EDGE / longEdge : 1
@@ -533,16 +536,13 @@ Page({
     sw = Math.max(1, Math.min(sw, cropNaturalW - sx))
     sh = Math.max(1, Math.min(sh, cropNaturalH - sy))
 
-    // 输出限幅：长边最多 2000px，足够覆盖任何相框分辨率，又不至于画布过大
-    const MAX_EDGE = 2000
-    let outW = sw
-    let outH = sh
-    const longEdge = Math.max(outW, outH)
-    if (longEdge > MAX_EDGE) {
-      const k = MAX_EDGE / longEdge
-      outW = Math.max(1, Math.round(outW * k))
-      outH = Math.max(1, Math.round(outH * k))
-    }
+    // 直接导出到设备物理分辨率：后端按上传图的像素量化成六色帧，上传图必须正好是设备尺寸，
+    // 否则帧字节数(宽×高÷2)对不上设备、投屏失败。裁剪框已锁定设备比例，等比 fit 到设备尺寸
+    // 即精确得到设备像素、比例一致不会变形；比设备小的裁剪会放大（correctness 优先）。
+    const dev = this.getDeviceCropSize()
+    const fit = Math.min(dev.width / sw, dev.height / sh)
+    const outW = Math.max(1, Math.round(sw * fit))
+    const outH = Math.max(1, Math.round(sh * fit))
 
     wx.showLoading({ title: '裁剪中', mask: true })
     const query = wx.createSelectorQuery()
@@ -654,16 +654,13 @@ Page({
             sx = 0
             sy = Math.round((natH - sh) / 2)
           }
-          // 输出限幅：长边最多 2000px（与 applyCrop 一致），足够覆盖任何相框分辨率
-          const MAX_EDGE = 2000
-          let outW = sw
-          let outH = sh
-          const longEdge = Math.max(outW, outH)
-          if (longEdge > MAX_EDGE) {
-            const k = MAX_EDGE / longEdge
-            outW = Math.max(1, Math.round(outW * k))
-            outH = Math.max(1, Math.round(outH * k))
-          }
+          // 直接导出到设备物理分辨率：后端是按「上传图的像素」量化成六色帧的（帧字节数=宽×高÷2），
+          // 上传图必须正好是设备尺寸，否则帧大小对不上设备、投屏必失败（如 725×1024→726×1024÷2=371712，
+          // 设备 680×960 只要 326400）。裁剪矩形 sw×sh 已是设备比例，等比 fit 到设备尺寸即精确得到设备像素、
+          // 比例一致不会变形；比设备小的图会放大（correctness 优先，画质本就受六色量化限制）。
+          const fit = Math.min(size.width / sw, size.height / sh)
+          const outW = Math.max(1, Math.round(sw * fit))
+          const outH = Math.max(1, Math.round(sh * fit))
           const query = wx.createSelectorQuery()
           query.select('#cropCanvas').fields({ node: true }).exec(res => {
             const node = res && res[0] && res[0].node
