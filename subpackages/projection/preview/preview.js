@@ -55,7 +55,7 @@ Page({
     frame: null, // 固定裁剪框 {left,top,width,height}(px)，锁定设备比例、居中不动
     editHint: true, // 首次进入编辑显示手势提示，触摸后隐藏
     editHintText: '', // 手势提示文案，随旋转模式变化
-    rotateMode: 'pinch', // 旋转交互模式：'pinch'=双指旋转 / 'drag'=长按图片拖拽旋转（顶部可切换对比）
+    rotateMode: 'drag', // 旋转交互模式：'drag'=长按图片拖拽旋转（默认）/ 'pinch'=双指旋转（顶部可切换对比）
 
     deviceWrapStyle: '' // 未裁剪图片的 photo-wrap 初始尺寸：按设备比例铺，作为预览
   },
