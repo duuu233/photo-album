@@ -74,7 +74,6 @@
         <text>3.设备蓝牙是否工作正常，手机蓝牙是否打开</text>
         <text>4.设备是否与手机距离过远，隔离或有其他遮挡物</text>
       </view>
-      <view class="primary-action" hover-class="none" bindtap="scan">重新扫描</view>
     </view>
   </view>
 
