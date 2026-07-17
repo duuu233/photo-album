@@ -15,29 +15,33 @@
     <swiper wx:if="{{images.length}}" class="preview-swiper" current="{{activeIndex}}" bindchange="onSwiperChange">
       <swiper-item wx:for="{{images}}" wx:key="index">
         <view class="photo-wrap" style="{{item.wrapStyle || deviceWrapStyle}}">
-          <image wx:if="{{item.tempFilePath || item.url}}" class="photo-img" src="{{item.tempFilePath || item.url}}" mode="aspectFill" style="transform: rotate({{index === activeIndex ? rotation : 0}}deg);"></image>
+          <image wx:if="{{item.tempFilePath || item.url}}" class="photo-img" src="{{item.tempFilePath || item.url}}" mode="aspectFill"></image>
           <view wx:else class="photo-img photo-placeholder">图片占位</view>
         </view>
       </swiper-item>
     </swiper>
     <view wx:else class="photo-wrap empty-photo">暂无待投屏照片</view>
 
-    <!-- 裁剪交互层：覆盖在 swiper 之上，单独显示当前图片并提供可拖拽/缩放的裁剪框 -->
-    <view wx:if="{{cropping}}" class="crop-layer" catchtouchmove="onCropTouchMove" catchtouchend="onCropTouchEnd" catchtouchcancel="onCropTouchEnd">
-      <image class="crop-image" src="{{activeImage.tempFilePath || activeImage.url}}" mode="scaleToFill"
-             style="left:{{cropImageRect.left}}px; top:{{cropImageRect.top}}px; width:{{cropImageRect.width}}px; height:{{cropImageRect.height}}px;"></image>
-      <view class="crop-shade" style="left:{{cropBox.left}}px; top:{{cropBox.top}}px; width:{{cropBox.width}}px; height:{{cropBox.height}}px;"></view>
-      <view class="crop-frame" style="left:{{cropBox.left}}px; top:{{cropBox.top}}px; width:{{cropBox.width}}px; height:{{cropBox.height}}px;">
-        <view class="crop-move" catchtouchstart="onCropHandleStart" data-handle="move"></view>
+    <!-- 统一编辑层：盖在 swiper 之上。裁剪框固定（锁设备比例），图片在框下自由 平移/缩放/旋转，框内即最终成像。 -->
+    <view wx:if="{{editing}}" class="edit-layer"
+          catchtouchstart="onEditTouchStart"
+          catchtouchmove="onEditTouchMove"
+          catchtouchend="onEditTouchEnd"
+          catchtouchcancel="onEditTouchEnd">
+      <image class="edit-image" src="{{editSrc}}" mode="scaleToFill"
+             style="left:{{editImgLeft}}px; top:{{editImgTop}}px; width:{{editBaseW}}px; height:{{editBaseH}}px; transform:{{editTransform}};"></image>
+      <view class="edit-shade" style="left:{{frame.left}}px; top:{{frame.top}}px; width:{{frame.width}}px; height:{{frame.height}}px;"></view>
+      <view class="edit-frame" style="left:{{frame.left}}px; top:{{frame.top}}px; width:{{frame.width}}px; height:{{frame.height}}px;">
         <view class="crop-third crop-third--v1"></view>
         <view class="crop-third crop-third--v2"></view>
         <view class="crop-third crop-third--h1"></view>
         <view class="crop-third crop-third--h2"></view>
-        <view class="crop-corner corner-tl" catchtouchstart="onCropHandleStart" data-handle="tl"></view>
-        <view class="crop-corner corner-tr" catchtouchstart="onCropHandleStart" data-handle="tr"></view>
-        <view class="crop-corner corner-bl" catchtouchstart="onCropHandleStart" data-handle="bl"></view>
-        <view class="crop-corner corner-br" catchtouchstart="onCropHandleStart" data-handle="br"></view>
+        <view class="edit-corner corner-tl"></view>
+        <view class="edit-corner corner-tr"></view>
+        <view class="edit-corner corner-bl"></view>
+        <view class="edit-corner corner-br"></view>
       </view>
+      <view wx:if="{{editHint}}" class="edit-hint">单指拖动 · 双指缩放/旋转 · 点「旋转」转90°</view>
     </view>
   </view>
 

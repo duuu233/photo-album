@@ -62,7 +62,6 @@
 .photo-img {
   width: 100%;
   height: 100%;
-  transition: transform 0.25s ease;
 }
 
 .photo-placeholder,
@@ -74,8 +73,8 @@
   font-size: 28rpx;
 }
 
-/* 裁剪交互层：盖在 swiper 之上，单独显示当前图片 */
-.crop-layer {
+/* 统一编辑层：盖在 swiper 之上，图片在固定裁剪框下自由 平移/缩放/旋转 */
+.edit-layer {
   position: absolute;
   inset: 0;
   z-index: 5;
@@ -84,27 +83,41 @@
   border-radius: 40rpx;
 }
 
-.crop-image {
+/* 被变换的图片：transform 由手势实时下发，绕中心 平移/旋转/缩放 */
+.edit-image {
   position: absolute;
+  transform-origin: center center;
+  will-change: transform;
 }
 
-/* 选区外的遮罩：用超大 box-shadow 把裁剪框以外区域压暗 */
-.crop-shade {
+/* 裁剪框外的遮罩：用超大 box-shadow 把框以外区域压暗（不拦截触摸，手势要落到图片上） */
+.edit-shade {
   position: absolute;
-  box-shadow: 0 0 0 2000px rgba(17, 21, 28, 0.58);
+  box-shadow: 0 0 0 2000px rgba(17, 21, 28, 0.55);
   pointer-events: none;
 }
 
-.crop-frame {
+/* 固定裁剪框：只做视觉参考，不拦截触摸 */
+.edit-frame {
   position: absolute;
   box-sizing: border-box;
   border: 2rpx solid rgba(255, 255, 255, 0.95);
+  pointer-events: none;
 }
 
-/* 框内可拖动区域：整体平移裁剪框 */
-.crop-move {
+/* 编辑手势提示：首次进入显示，触摸后隐藏 */
+.edit-hint {
   position: absolute;
-  inset: 0;
+  left: 50%;
+  bottom: 24rpx;
+  transform: translateX(-50%);
+  padding: 10rpx 24rpx;
+  color: #ffffff;
+  font-size: 22rpx;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 999rpx;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 /* 三等分参考线 */
@@ -142,11 +155,11 @@
   height: 1px;
 }
 
-/* 四角拖拽手柄 */
-.crop-corner {
+/* 裁剪框四角装饰（仅视觉，不可拖拽；裁剪靠移动图片实现） */
+.edit-corner {
   position: absolute;
-  width: 48rpx;
-  height: 48rpx;
+  width: 40rpx;
+  height: 40rpx;
   border: 6rpx solid #ffffff;
   z-index: 2;
 }
