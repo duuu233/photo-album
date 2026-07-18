@@ -38,12 +38,26 @@
   border-radius: 50%;
 }
 
+/* 标题 flex:1（basis 0）吃掉剩余宽度，右侧取值只在放不下时收缩 */
 .setting-row .row-label {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
+/* 取值过长（如 boltstarservice@boltstar.net）单行省略号，不换行——
+   行高 124rpx 固定，换行会把文字挤出卡片 */
 .setting-row .row-value {
+  flex: 0 1 auto;
+  min-width: 0;
   margin-right: 18rpx;
+  margin-left: 16rpx;
+  overflow: hidden;
+  text-align: right;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .orange-icon {

@@ -7,7 +7,7 @@ Page({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
-    contact: '99999@qq.com',
+    contact: 'boltstarservice@boltstar.net',
     dialogType: '',
     dialogTitle: '',
     dialogDesc: '',
