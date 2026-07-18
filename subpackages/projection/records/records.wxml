@@ -58,7 +58,9 @@
 
     <view class="empty-record glass-panel" wx:else>
       <view class="empty-record__title">{{filter === 'success' ? '暂无成功记录' : '暂无失败记录'}}</view>
-      <view class="empty-record__desc">{{filter === 'success' ? '完成一次照片投屏后会显示在这里。' : '投屏失败时会保留原因，方便排查。'}}</view>
+      <!-- 失败 tab 不再显示「投屏失败时会保留原因，方便排查。」（2026-07-19 产品要求，App 同步）。
+           用 wx:if 整块不渲染，而不是把文案置空——置空会留下一个带 margin 的空节点。 -->
+      <view class="empty-record__desc" wx:if="{{filter === 'success'}}">完成一次照片投屏后会显示在这里。</view>
     </view>
     </block>
   </view>
