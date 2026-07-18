@@ -52,6 +52,19 @@ function normalizeNumber(value, fallback) {
   return Number.isFinite(number) ? number : fallback
 }
 
+// 设备图片槽位索引 → 接口入参：后端约定 String 类型。
+// ⚠️ 0 是合法槽位（相框第一个位置），不能当空值丢掉；只有「本次没有索引可上报」才返回
+// undefined（序列化时被丢弃，后端按不传处理）。
+function imgIndexParam(value) {
+  // ⚠️ 必须先挡掉 undefined/null/''：Number(null) 和 Number('') 都等于 0，
+  // 不挡的话「没有索引」会被误报成「0 号位」，反过来污染相框第一个位置的记录。
+  if (value === undefined || value === null || value === '') {
+    return undefined
+  }
+  const index = Number(value)
+  return Number.isInteger(index) && index >= 0 ? String(index) : undefined
+}
+
 function normalizeUserProfile(user = {}) {
   return {
     id: firstValue(user.userNo, user.userId, user.id),
@@ -172,6 +185,9 @@ function normalizePhoto(photo = {}, index = 0) {
     url: firstValue(photo.img, photo.url, ''),
     // 图库网格小图专用：优先后端新字段 imgThumb（缩略图），旧数据回退 img/url 避免空图
     imgThumb: firstValue(photo.imgThumb, photo.img, photo.url, ''),
+    // 这张图在设备上的物理槽位索引（投屏成功时上报，String）：图库删除/刷新屏幕按它定位。
+    // firstValue 只跳过 undefined/null/''，所以 0 与 '0' 都能原样保留；取不到时为 '' 表示「无索引」。
+    imgIndex: firstValue(photo.imgIndex, ''),
     createdAt: firstValue(photo.upTime, photo.joinTime, photo.createdAt, ''),
     onDevice: photo.onDevice !== false
   })
@@ -202,6 +218,9 @@ function normalizeProjectionRecord(record = {}, index = 0) {
     // 投屏管理列表小图专用：优先后端新字段 imgThumb（缩略图），旧数据回退 img/url 避免空图。
     // thumbUrl 保持整图，仍供「再次投屏」兜底用（见 records.js 的 imageUrl）。
     imgThumb: firstValue(record.imgThumb, record.img, record.thumbUrl, record.url, ''),
+    // 这条记录当次投屏占用的设备槽位索引（String，0 合法）。记录页本身不读它——
+    // 再次/重新投屏都是重新找空位；保留透传是为了排查时能对上设备实际位置。
+    imgIndex: firstValue(record.imgIndex, ''),
     imageCount: normalizeNumber(record.imageCount, 1)
   })
 }
@@ -544,6 +563,7 @@ module.exports = {
 
   // 编辑投屏记录：BLE 图传到设备成功后调用，用上传接口返回的 taskId/upirId 把该条投屏记录的
   // 设备上传状态置为成功(deviceUploadState=1)。设备图传失败则不调用（记录保持失败态）。
+  // imgIndex=这张图实际写入设备的物理槽位索引，供图库删除/刷新屏幕定位（见 docs/图片索引-imgIndex方案.md）。
   // body 只传业务字段；device/language/terminal/userToken 由 request.js 经 header/query 注入。
   editUserProductImgRecord(data = {}) {
     return http.post(
@@ -551,7 +571,8 @@ module.exports = {
       {
         upirId: data.upirId,
         taskId: data.taskId,
-        deviceUploadState: data.deviceUploadState
+        deviceUploadState: data.deviceUploadState,
+        imgIndex: imgIndexParam(data.imgIndex)
       },
       {
         mock: false,
@@ -562,6 +583,8 @@ module.exports = {
 
   // 添加投屏记录：再次投屏（记录页用 imgBle 直传设备，不再走后端转码上传）设备图传成功后调用，
   // 新增一条投屏记录。body 只传业务字段，按当前有的值赋值（taskId 再次投屏链路没有，传 undefined 会被序列化丢弃）；
+  // imgIndex 同 editUserProductImgRecord：再次/重新投屏也会占用一个新槽位，必须一并上报，
+  // 否则这条新记录在图库里没有索引、删不掉（见 docs/图片索引-imgIndex方案.md）。图传失败的补记不传。
   // device/language/terminal/userToken 由 request.js 经 header/query 注入。
   addUserProductImgRecord(data = {}) {
     return http.post(
@@ -572,7 +595,8 @@ module.exports = {
         img: data.img,
         imgBle: data.imgBle,
         taskId: data.taskId,
-        deviceUploadState: data.deviceUploadState
+        deviceUploadState: data.deviceUploadState,
+        imgIndex: imgIndexParam(data.imgIndex)
       },
       {
         mock: false,

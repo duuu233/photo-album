@@ -44,6 +44,17 @@ function getActiveDeviceNames(devices) {
     .map((device, index) => normalizeDeviceName(device.name, index))
 }
 
+// 后端记录的设备槽位索引(imgIndex, String) → 数字；无索引/非法值统一返回 -1。
+// ⚠️ 0 是合法槽位（相框第一个位置），所以只能判 undefined/null/''，绝不能写 if (!imgIndex)——
+// 否则第一个位置上的照片永远删不掉、刷不到。见 docs/图片索引-imgIndex方案.md 的问题 E。
+function parseImgIndex(value) {
+  if (value === undefined || value === null || value === '') {
+    return -1
+  }
+  const index = Number(value)
+  return Number.isInteger(index) && index >= 0 ? index : -1
+}
+
 // 补全单张照片的展示字段（标题、缩略图类型、大小等）
 function normalizePhoto(photo, index) {
   return Object.assign({}, photo, {
@@ -553,13 +564,24 @@ Page({
     }
   },
 
-  // 选中照片 → 固件图片槽位索引：
-  // 固件已占用槽位(occupied)是「按索引升序」的，且上传时用 firstFreeIndex 从最小空闲槽位起填，
-  // 即最早上传的图落在最小槽位。所以要把本设备照片按「上传先后」排好，第 N 张才对应升序槽位里的第 N 个。
-  // 直接用后端列表顺序(常见最新在前)去对 occupied[pos] 会刷错图 —— 这正是「指定刷新图片不对」的根因。
-  // 读不到掩码时回退到位置本身。
+  // 选中照片 → 固件图片槽位索引。删除图片(0x12)与刷新屏幕(0x24)共用这一处解析。
+  //
+  // ① 首选后端记录的真实槽位 imgIndex：投屏成功时由 result.js 上报的设备物理位置，是准确值。
+  // ② 没有 imgIndex 时才回退推算（投屏成功但记账失败会产生这种记录，见 docs/图片索引-imgIndex方案.md
+  //    的问题 B）：固件已占用槽位(occupied)按索引升序，上传时用 firstFreeIndex 从最小空闲槽位起填，
+  //    即最早上传的图落在最小槽位；所以把本设备照片按「上传先后」排好，第 N 张对应升序槽位里的第 N 个。
+  //    直接用后端列表顺序(常见最新在前)去对 occupied[pos] 会刷错图 —— 这是「指定刷新图片不对」的旧根因。
+  //    ⚠️ 推算前必须剔除「已被其它照片的 imgIndex 钉住」的槽位，否则推算结果会撞上别人的位置。
   resolveDeviceImageIndex(photoId, device, occupied) {
     const onDevicePhotos = (this.photos || []).filter(item => item.onDevice !== false)
+
+    // ① 有真实索引直接用
+    const target = onDevicePhotos.filter(item => item.id === photoId)[0]
+    const known = parseImgIndex(target && target.imgIndex)
+    if (known >= 0) {
+      return known
+    }
+
     const deviceKey = String((device && (device.userProductId || device.id)) || '')
     const deviceName = device ? normalizeDeviceName(device.name, 0) : ''
 
@@ -574,24 +596,33 @@ Page({
       devicePhotos = onDevicePhotos
     }
 
-    // 按上传先后升序排列，使「第 N 张」与升序槽位 occupied[N] 对齐：
+    // ② 回退推算：候选槽位 = 固件已占用槽位 − 已被真实索引占用的槽位；
+    //    参与排队的也只剩「同样没有索引」的照片，两边一一对应才不会错位。
+    const claimed = onDevicePhotos
+      .map(item => parseImgIndex(item.imgIndex))
+      .filter(index => index >= 0)
+    const candidates = (occupied || []).filter(index => claimed.indexOf(index) === -1)
+
+    // 按上传先后升序排列，使「第 N 张」与升序候选槽位 candidates[N] 对齐：
     // 主键 uProductImgId 自增，越小越早上传；取不到时退回按上传时间(createdAt)升序。
-    const orderedPhotos = devicePhotos.slice().sort((a, b) => {
-      const ai = Number(a.uProductImgId)
-      const bi = Number(b.uProductImgId)
-      if (Number.isFinite(ai) && Number.isFinite(bi) && ai !== bi) {
-        return ai - bi
-      }
-      return String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
-    })
+    const orderedPhotos = devicePhotos
+      .filter(item => parseImgIndex(item.imgIndex) < 0)
+      .sort((a, b) => {
+        const ai = Number(a.uProductImgId)
+        const bi = Number(b.uProductImgId)
+        if (Number.isFinite(ai) && Number.isFinite(bi) && ai !== bi) {
+          return ai - bi
+        }
+        return String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
+      })
 
     const pos = orderedPhotos.findIndex(item => item.id === photoId)
     if (pos < 0) {
       return -1
     }
 
-    if (occupied && occupied.length) {
-      return pos < occupied.length ? occupied[pos] : -1
+    if (candidates.length) {
+      return pos < candidates.length ? candidates[pos] : -1
     }
     return pos
   },

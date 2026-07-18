@@ -559,12 +559,15 @@ Page({
         // 不把整单判失败，避免设备已传成功却被误删/误判失败。两条链路：
         //   · 再次/重新投屏(imgBle 直传)：addUserProductImgRecord 新增一条成功记录；
         //   · 正常投屏(后端转码时已按失败态建记录)：editUserProductImgRecord 按 taskId 置成功。
+        // 两条链路都要带上本张实际写入设备的槽位索引 index(imgIndex)：图库删除/刷新屏幕靠它
+        // 定位相框上的物理位置，不上报的话这张图在图库里就成了「不知道在哪」的记录。
+        // ⚠️ index 可能为 0（相框第一个位置），是合法值，勿按假值过滤。见 docs/图片索引-imgIndex方案.md。
         if (isRetry) {
           // 设备已成功，本张不再可能补记失败；记账放入并行队列，不挡住下一张 BLE。
           this._retryImageInFlight = null
           this.queueRecordTask(
             `第 ${i + 1}/${total} 张再次投屏记录写入失败`,
-            () => this.addRetryRecord(image, 1),
+            () => this.addRetryRecord(image, 1, index),
             imagePerformance
           )
         } else {
@@ -575,10 +578,11 @@ Page({
                 upirId,
                 taskId,
                 deviceUploadState: 1,
+                imgIndex: index,
                 showError: false
               })
               console.log(
-                `[投屏] 第 ${i + 1}/${total} 张 投屏记录已置成功：taskId=${taskId}`
+                `[投屏] 第 ${i + 1}/${total} 张 投屏记录已置成功：taskId=${taskId} imgIndex=${index}`
               )
             },
             imagePerformance
@@ -869,16 +873,23 @@ Page({
   // 再次/重新投屏的记账：设备图传成功(1)/失败(0)后都调 addUserProductImgRecord 新增一条投屏记录。
   // 必填字段按后端约定：userProductId / img / imgBle / deviceUploadState；upirId 等其他字段有就带上。
   // 尽力而为：记账失败只记日志，不影响投屏结果展示（设备侧状态已成事实）。
-  async addRetryRecord(image, deviceUploadState) {
+  // imgIndex=本张实际写入设备的槽位索引，仅图传成功(deviceUploadState=1)时传；
+  // 失败的补记不传（图没落到设备上，且回滚已把该槽位删掉，给了索引反而会指向别人的图）。
+  async addRetryRecord(image, deviceUploadState, imgIndex) {
     await api.addUserProductImgRecord({
       upirId: image.upirId,
       userProductId: image.userProductId,
       img: image.url,
       imgBle: image.imgBle,
       deviceUploadState,
+      imgIndex: deviceUploadState === 1 ? imgIndex : undefined,
       showError: false
     })
-    console.log(`[投屏] 再次投屏已记账：deviceUploadState=${deviceUploadState}`)
+    console.log(
+      `[投屏] 再次投屏已记账：deviceUploadState=${deviceUploadState} imgIndex=${
+        deviceUploadState === 1 ? imgIndex : '(未传)'
+      }`
+    )
   },
 
   // downloadFile 通用封装：单次尝试带超时，弱网下「downloadFile:fail timeout」/网络抖动自动退避重试。
