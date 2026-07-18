@@ -30,15 +30,8 @@
         <text class="profile-label">ID</text>
         <text class="profile-text">{{userInfo.id || '--'}}</text>
       </view>
-      <view class="thin-divider"></view>
 
-      <!-- 邮箱仅展示：小程序不操作邮箱（绑定/修改请在 App 内），入口已屏蔽（2026-07-16） -->
-      <view class="profile-row">
-        <text class="profile-label">邮箱</text>
-        <view class="profile-value email-value">
-          <text class="{{userInfo.email ? 'profile-text' : 'profile-placeholder-text'}}">{{userInfo.email || '暂未绑定'}}</text>
-        </view>
-      </view>
+      <!-- 邮箱行已隐藏（2026-07-18）：小程序不展示也不操作邮箱，绑定/修改均在 App 内完成 -->
     </view>
 
     <view class="settings-primary profile-submit" hover-class="none" bindtap="saveProfile">保存资料</view>

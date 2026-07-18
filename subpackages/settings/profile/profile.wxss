@@ -66,8 +66,7 @@
   gap: 18rpx;
 }
 
-.profile-text,
-.profile-placeholder-text {
+.profile-text {
   overflow: hidden;
   color: #777e88;
   font-size: 28rpx;
@@ -75,10 +74,6 @@
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.profile-placeholder-text {
-  color: #8b9098;
 }
 
 .profile-avatar {

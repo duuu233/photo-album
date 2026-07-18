@@ -3,6 +3,7 @@
 > 🛠 **维护约定**：每次修改本文件涉及的问题/功能，务必在下方「操作日志」补一条（日期 + 改了什么 + 关联文件/commit），**最新在上**——别让文档与代码脱节。
 
 ## 操作日志（最新在上）
+- **2026-07-18**：个人信息页邮箱行整行隐藏（用户要求），同步把「用户接口」下 `goEmail()` 那条已失效说明划掉并注明现状；`api.js` 的 `sendEmail`/`changeUserEmail` 封装仍保留无调用方。关联 `subpackages/settings/profile/*`、`docs/代码审查修复清单-2026-07-16.md`。
 - **2026-07-17**：`setUserProductUpload` 参数参考补「⚠️`targetWidth/targetHeight` 后端目前未消费、上传图须已是设备物理分辨率」实况注（配合 `preview.js` 导出改到设备分辨率的投屏失败修复）。见 memory `projection-upload-must-be-device-resolution`。
 
 接口文档：https://api.boltfox.cn/swagger-ui.html#/
@@ -112,7 +113,7 @@
 ### 页面接入
 
 - `subpackages/settings/bind-email/bind-email.js`：绑定邮箱（用户当前未绑定）→ `sendEmail(sendType:3)` 取码 + `changeUserEmail({ userEmail, verifyCode, password, confirmPassword })`。
-- `subpackages/settings/profile/profile.js`：`goEmail()` 仅在**未绑定**时进入 bind-email；**已绑定**时弹窗提示「小程序暂不支持修改邮箱，请前往 App 修改」，不跳转。
+- ~~`subpackages/settings/profile/profile.js`：`goEmail()` 仅在**未绑定**时进入 bind-email；**已绑定**时弹窗提示「小程序暂不支持修改邮箱，请前往 App 修改」，不跳转。~~ **已失效**：2026-07-16 `goEmail` 已删除、邮箱行改纯展示；2026-07-18 该行整行隐藏，个人信息页不再出现邮箱字段。
 - 小程序仅支持首次绑定邮箱，修改邮箱引导至 App。`subpackages/settings/change-email/` 页面当前不在小程序流程内使用（保留备用，调用同一 `changeUserEmail`）。
 
 ### 小程序跳过
