@@ -72,9 +72,8 @@
   border-radius: 16px;
   background: rgba(42, 43, 43, 0.04); */
 
-  /* 底色原先只在连接态加（.device-logo-is-connected），2026-07-19 起不分连接状态
-     一律使用，故并入基类，避免留一个恒定生效却叫 is-connected 的类名误导后人。 */
-  background: rgba(255, 175, 139, 0.1);
+  /* 2026-07-19：设备图改用首页那张 home-icon02，它四角透明、自带圆角底色，
+     再叠一层底色会在四角露出色晕（首页并没有底色容器），故这里不设 background。 */
 }
 .device-logo__icon {
   width: 120rpx;

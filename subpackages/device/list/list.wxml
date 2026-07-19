@@ -31,10 +31,11 @@
     <view wx:elif="{{devices.length}}" class="device-list">
       <view class="device-card glass-panel {{item.connected ? '' : 'is-offline'}}" wx:for="{{devices}}" wx:key="id" wx:for-index="index" data-id="{{item.id}}" bindtap="selectDevice">
         <view class="device-card__main">
-          <!-- 2026-07-19 产品要求：设备图不再区分连接状态，离线也用已连接那套
-               （橙色 icon04 + 底色）。灰色的 icon05 已停用；连接状态由蓝牙角标和状态文案表达。 -->
+          <!-- 2026-07-19 产品要求：设备图统一用首页那张 home-icon02（首页/列表/详情三处同图），
+               且不区分连接状态；连接状态由蓝牙角标和状态文案表达。
+               该图四角透明自带圆角，故 .device-logo 不再加底色（首页也没有底色）。 -->
           <view class="device-logo">
-            <image class="device-logo__icon" src="/assets/images/device-list-icon04.png" mode="aspectFit"></image>
+            <image class="device-logo__icon" src="/assets/images/home-icon02.png" mode="aspectFit"></image>
           </view>
 
           <view class="device-copy">

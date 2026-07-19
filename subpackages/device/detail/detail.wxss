@@ -75,8 +75,8 @@
   justify-content: center;
   width: 92rpx;
   height: 92rpx;
-  background: rgba(255, 106, 32, 0.1);
-  border-radius: 24rpx;
+  /* 2026-07-19：设备图改用首页那张 home-icon02，它四角透明、自带圆角底色，
+     再叠一层底色会在四角露出色晕（首页并没有底色容器），故不设 background。 */
 }
 
 .summary-icon__img {
