@@ -1,13 +1,32 @@
 @import '../shared.wxss';
 
 /* 本页改用 bg01 作为页面背景图（见 .mock-bg），关闭 settings-shell 自带的渐变背景与装饰圆环 */
+/* 竖向 flex：导航固定高度，余下空间全给 scroll-view，
+   这样常见问题超出一屏时可以在卡片区域内滚动查看
+   （页面配的是 disableScroll，且 .settings-shell 有 overflow:hidden，靠页面滚动是滚不动的）*/
 .guide-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
   background: none;
 }
 
 .guide-shell::before,
 .guide-shell::after {
   display: none;
+}
+
+/* 导航不参与压缩，否则内容一多会被挤扁 */
+.guide-shell page-nav {
+  flex: none;
+}
+
+.guide-scroll {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  /* flex 子项默认 min-height:auto，不加这条会被内容撑高、反而滚不起来 */
+  min-height: 0;
 }
 
 .search-box {
@@ -43,8 +62,18 @@
 
 .guide-card {
   margin-top: 24rpx;
+  /* 底部留出安全区，最后一条不被 Home Indicator 压住 */
+  margin-bottom: calc(var(--safe-bottom, 0px) + 24rpx);
   padding: 20rpx 24rpx 10rpx 24rpx;
   border-radius: 28rpx;
+}
+
+/* 加载中 / 空态提示 */
+.guide-tip {
+  padding: 56rpx 0;
+  color: rgba(42, 43, 43, 0.5);
+  font-size: 26rpx;
+  text-align: center;
 }
 
 .guide-item {

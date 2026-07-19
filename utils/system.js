@@ -1,56 +1,18 @@
-// 本应用支持的三种语言及其展示名
-const LANGUAGE_LABELS = {
-  'zh-Hans': '简体中文',
-  'zh-Hant': '繁体中文',
-  en: 'English'
-}
+// 语种相关逻辑已统一收口到 utils/language（含日语，且优先取用户选择）。
+// 这里只做转发，保留原有导出名，避免调用方（app.js 登录上报）改动。
+const language = require('./language')
 
-// 读取系统原始语言串：优先用新版 getAppBaseInfo，降级到 getSystemInfoSync，全部失败兜底简中
-function getRawLanguage() {
-  try {
-    if (wx.getAppBaseInfo) {
-      const appBaseInfo = wx.getAppBaseInfo()
-      if (appBaseInfo && appBaseInfo.language) {
-        return appBaseInfo.language
-      }
-    }
+const LANGUAGE_LABELS = language.LANGUAGE_LABELS
 
-    const systemInfo = wx.getSystemInfoSync()
-    return systemInfo.language || 'zh-Hans'
-  } catch (error) {
-    return 'zh-Hans'
-  }
-}
-
-// 把五花八门的语言串（zh_TW / zh-HK / en-US 等）归一到应用支持的三种之一
-function normalizeLanguage(language) {
-  const raw = String(language || '').replace('_', '-').toLowerCase()
-
-  // 台/港/澳繁体统一归为繁体中文
-  if (raw.indexOf('zh-hant') === 0 || raw.indexOf('zh-tw') === 0 || raw.indexOf('zh-hk') === 0 || raw.indexOf('zh-mo') === 0) {
-    return 'zh-Hant'
-  }
-
-  if (raw.indexOf('en') === 0) {
-    return 'en'
-  }
-
-  // 其余 zh 开头一律按简体中文处理
-  if (raw.indexOf('zh') === 0) {
-    return 'zh-Hans'
-  }
-
-  return 'zh-Hans'
-}
-
+// 当前生效语种。注意 value 取的是**用户选择优先**的语种，不再是纯系统语言——
+// 登录时上报这个值，后端才能按用户实际选的语种返回内容。
 function getSystemLanguageInfo() {
-  const raw = getRawLanguage()
-  const value = normalizeLanguage(raw)
+  const value = language.getSelectedLanguage()
 
   return {
-    raw,
+    raw: value,
     value,
-    label: LANGUAGE_LABELS[value] || LANGUAGE_LABELS['zh-Hans']
+    label: language.getLanguageLabel(value)
   }
 }
 
@@ -87,6 +49,7 @@ module.exports = {
   LANGUAGE_LABELS,
   getLayoutMetrics,
   getSystemLanguageInfo,
-  normalizeLanguage,
+  // 转发自 utils/language，保持旧调用方可用
+  normalizeLanguage: language.normalizeLanguage,
   isDevTools
 }

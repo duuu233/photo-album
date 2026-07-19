@@ -1,6 +1,7 @@
 const config = require('./config')
 const mock = require('./mock')
 const toast = require('./toast')
+const language = require('./language')
 
 // 正式版(release)强制禁用 mock，防止本地模拟接口把假数据带到线上；取不到环境信息时按正式版处理（最保守）
 let isReleaseEnv = true
@@ -11,12 +12,6 @@ try {
 }
 
 const WECHAT_MINI_PROGRAM_TERMINAL = 3
-const LANGUAGE_CODE_MAP = {
-  en: 1,
-  'zh-Hans': 2,
-  'zh-Hant': 3,
-  ja: 4
-}
 
 // 允许直接传字符串当作 url，统一转成 options 对象
 function normalizeOptions(options) {
@@ -69,35 +64,10 @@ function getSystemInfo() {
   }
 }
 
-function normalizeLanguage(language) {
-  const raw = String(language || '')
-    .replace('_', '-')
-    .toLowerCase()
-
-  if (
-    raw.indexOf('zh-hant') === 0 ||
-    raw.indexOf('zh-tw') === 0 ||
-    raw.indexOf('zh-hk') === 0 ||
-    raw.indexOf('zh-mo') === 0
-  ) {
-    return 'zh-Hant'
-  }
-
-  if (raw.indexOf('ja') === 0) {
-    return 'ja'
-  }
-
-  if (raw.indexOf('en') === 0) {
-    return 'en'
-  }
-
-  return 'zh-Hans'
-}
-
+// 语种统一走 utils/language：优先用户在「语种设置」里选的，其次跟随系统。
+// 之前这里只读系统语言，导致用户切了语种后端仍按系统语言返回内容。
 function getLanguageCode() {
-  const info = getSystemInfo()
-  const normalized = normalizeLanguage(info.language)
-  return LANGUAGE_CODE_MAP[normalized] || LANGUAGE_CODE_MAP['zh-Hans']
+  return language.getLanguageCode()
 }
 
 function appendClientHeaders(header, token) {

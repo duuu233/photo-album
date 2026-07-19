@@ -10,21 +10,29 @@
     <image class="search-icon" src="/assets/images/search-icon01.png" mode="aspectFit"></image>
   </view> -->
 
-  <view class="glass-card guide-card">
-    <view wx:for="{{guides}}" wx:key="id" class="guide-item {{item.open ? 'open' : ''}}">
-      <view class="guide-head" hover-class="none" data-id="{{item.id}}" bindtap="toggleGuide">
-        <image class="question-icon" src="/assets/images/why-icon01.png" mode="aspectFit"></image>
-        <text>{{item.title}}</text>
-        <view class="fold-icon"></view>
-      </view>
-      <view wx:if="{{item.open}}" class="guide-body">
-        <rich-text wx:if="{{item.content}}" class="guide-rich" nodes="{{item.content}}" user-select></rich-text>
-        <block wx:else>
-          <text wx:for="{{item.lines}}" wx:for-item="line" wx:key="*this" user-select>{{line}}</text>
-        </block>
-      </view>
+  <!-- 条数超出一屏时靠这个 scroll-view 滚动查看：
+       页面本身是 disableScroll + overflow:hidden 的固定背景布局，不能靠页面滚动。 -->
+  <scroll-view class="guide-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+    <view class="glass-card guide-card">
+      <view wx:if="{{loading}}" class="guide-tip">加载中…</view>
+      <view wx:elif="{{!guides.length}}" class="guide-tip">暂无常见问题</view>
+      <block wx:else>
+        <view wx:for="{{guides}}" wx:key="id" class="guide-item {{item.open ? 'open' : ''}}">
+          <view class="guide-head" hover-class="none" data-id="{{item.id}}" bindtap="toggleGuide">
+            <image class="question-icon" src="/assets/images/why-icon01.png" mode="aspectFit"></image>
+            <text>{{item.title}}</text>
+            <view class="fold-icon"></view>
+          </view>
+          <view wx:if="{{item.open}}" class="guide-body">
+            <rich-text wx:if="{{item.content}}" class="guide-rich" nodes="{{item.content}}" user-select></rich-text>
+            <block wx:else>
+              <text wx:for="{{item.lines}}" wx:for-item="line" wx:key="*this" user-select>{{line}}</text>
+            </block>
+          </view>
+        </view>
+      </block>
     </view>
-  </view>
+  </scroll-view>
 
   <global-toast id="globalToast"></global-toast>
 </view>
