@@ -14,10 +14,13 @@
   </view> -->
 
   <view class="glass-card setting-list">
-    <view class="setting-row" hover-class="none" bindtap="copyContact">
+    <!-- 邮箱较长，单行放不下会被截成省略号（关键信息就没了），改成「标题在上、邮箱整串在下」两行 -->
+    <view class="setting-row contact-row" hover-class="none" bindtap="copyContact">
       <view class="setting-icon blue-icon"><image class="setting-icon__img" src="/assets/images/set-icon02.png" mode="aspectFit"></image></view>
-      <text class="row-label">联系我们</text>
-      <text class="row-value">{{contact}}</text>
+      <view class="contact-text">
+        <text class="row-label">联系我们</text>
+        <text class="row-value">{{contact}}</text>
+      </view>
       <image class="copy-icon" src="/assets/images/copy-icon01.png" mode="aspectFit"></image>
     </view>
     <view class="setting-row" hover-class="none" bindtap="goPrivacy">

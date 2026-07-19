@@ -1,5 +1,6 @@
 const api = require('../../../utils/api')
 const language = require('../../../utils/language')
+const richHtml = require('../../../utils/rich-html')
 
 // 单页条数：后端 pageSize 上限未知（默认才 10），取 50 并配合翻页兜住全量。
 const PAGE_SIZE = 50
@@ -15,7 +16,9 @@ function faqToGuide(item, index) {
     // 默认全部收起（2026-07-19 产品要求），不再默认展开首项。
     open: false,
     loaded: !!content,
-    content,
+    // 后端富文本可能是 HTML / 转义 HTML / 纯文本，统一归一后交给 rich-text 渲染，
+    // 否则 <p> 之类的标签要么被当纯文字显示、要么整段不换行（详见 utils/rich-html.js）。
+    content: richHtml.toRichHtml(content),
     lines: content ? content.split(/\r?\n/).filter(Boolean) : []
   }
 }
@@ -178,7 +181,7 @@ Page({
         this.setData({
           guides: this.data.guides.map(item => item.id === id ? Object.assign({}, item, {
             loaded: true,
-            content,
+            content: richHtml.toRichHtml(content),
             lines: content ? content.split(/\r?\n/).filter(Boolean) : item.lines
           }) : item)
         })

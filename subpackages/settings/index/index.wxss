@@ -47,8 +47,6 @@
   text-overflow: ellipsis;
 }
 
-/* 取值过长（如 boltstarservice@boltstar.net）单行省略号，不换行——
-   行高 124rpx 固定，换行会把文字挤出卡片 */
 .setting-row .row-value {
   flex: 0 1 auto;
   min-width: 0;
@@ -58,6 +56,30 @@
   text-align: right;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* 联系我们：邮箱 boltstarservice@boltstar.net 同行放不下（标题右侧只剩约 312rpx，
+   邮箱约需 390rpx），原来省略号一截就只剩 "boltstarserv…"，复制得到的却是全串，看着像 bug。
+   改成上下两行：标题在上、邮箱整串在下。两行约 82rpx，仍在 124rpx 行高内，不撑高卡片。
+   注意本段必须排在 .setting-row .row-value 之后——两者特指度相同，靠顺序覆盖。 */
+.contact-row .contact-text {
+  flex: 1;
+  min-width: 0;
+  margin-right: 18rpx;
+}
+
+.contact-row .row-label {
+  display: block;
+}
+
+.contact-row .row-value {
+  display: block;
+  margin: 6rpx 0 0;
+  overflow: visible;
+  text-align: left;
+  white-space: normal;
+  word-break: break-all;
+  font-size: 26rpx;
 }
 
 .orange-icon {
