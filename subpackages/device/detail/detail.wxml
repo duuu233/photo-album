@@ -12,10 +12,12 @@
   <block wx:if="{{device}}">
     <view class="mock-content detail-content">
       <view class="device-summary glass-panel">
+        <!-- 2026-07-19 产品要求：改用与设备列表同款设备图（原来是 mine-icon03，
+             那是另一张图）；且不分连接状态，离线也用这张。 -->
         <view class="summary-icon">
           <image
             class="summary-icon__img"
-            src="/assets/images/mine-icon03.png"
+            src="/assets/images/device-list-icon04.png"
             mode="aspectFit" />
         </view>
         <view class="summary-copy">

@@ -31,8 +31,10 @@
     <view wx:elif="{{devices.length}}" class="device-list">
       <view class="device-card glass-panel {{item.connected ? '' : 'is-offline'}}" wx:for="{{devices}}" wx:key="id" wx:for-index="index" data-id="{{item.id}}" bindtap="selectDevice">
         <view class="device-card__main">
-          <view class="device-logo {{item.connected ? 'device-logo-is-connected' : ''}}">
-            <image class="device-logo__icon" src="{{item.connected ? '/assets/images/device-list-icon04.png' : '/assets/images/device-list-icon05.png'}}" mode="aspectFit"></image>
+          <!-- 2026-07-19 产品要求：设备图不再区分连接状态，离线也用已连接那套
+               （橙色 icon04 + 底色）。灰色的 icon05 已停用；连接状态由蓝牙角标和状态文案表达。 -->
+          <view class="device-logo">
+            <image class="device-logo__icon" src="/assets/images/device-list-icon04.png" mode="aspectFit"></image>
           </view>
 
           <view class="device-copy">
