@@ -10,12 +10,23 @@ const api = require('./api')
 //    表现为偶发「未搜索到该设备」。
 let activeScan = null
 
+// 最近一次「停硬件扫描」的在途 Promise。stopBluetoothDevicesDiscovery 是异步的，旧代码发完就不管，
+// 调用方(scanMatchConnect)拿到扫描结果后立刻发起 createBLEConnection——此时底层扫描往往还没真停，
+// 扫描与连接抢射频，弱信号下连接失败率明显上升（强信号能扛过去，「正常」档就扛不住了）。
+// 这里把停扫 Promise 化，供 whenScanStopped() 等待，连接前先让射频安静下来。
+let stopDiscoveryPromise = null
+
 // 仅保留目标相框：按广播名（name / localName）做白名单筛选，其余蓝牙设备一律不进搜索结果。
 // 白名单不再写死，而是取自产品列表接口(/Client/Product/getProductList)里每个产品的 broadcastId 字段，
 // 后端新增/调整支持的机型时无需改前端。拉取失败（未登录/网络异常）时退回内置广播名兜底，保证仍能搜到设备。
 //   兜底：3.7 寸 EF6-370 / 5.89 寸 EF6-589
 // 屏幕类型/电量若广播包带了厂商数据就顺带解析出来（frame-protocol.parseAdvertising）。
 const FALLBACK_BROADCAST_IDS = ['EF6-370', 'EF6-589']
+
+// 停扫等待上限(ms)：个别机型 stopBluetoothDevicesDiscovery 不回调，超时即当已停，别把连接无限拖住。
+const SCAN_STOP_TIMEOUT_MS = 600
+// 停扫落地后的沉淀时间(ms)：回调返回不等于射频立刻空闲，给底层一点时间再发起连接。
+const SCAN_SETTLE_MS = 120
 
 // 产品列表 broadcastId 白名单缓存：首次扫描拉取后整次会话复用；失败不缓存，便于下次重试。
 let cachedBroadcastIds = null
@@ -156,13 +167,44 @@ function teardownScan(scan) {
   if (activeScan === scan) {
     activeScan = null
   }
+  // 停扫改为可等待：把回调包成 Promise 存起来，连接前 whenScanStopped() 等它落地再连（见文件头 stopDiscoveryPromise）。
+  // 仍然「不阻塞本函数」——teardownScan 的调用链是同步的，这里只负责把在途状态记下来。
   if (wx.stopBluetoothDevicesDiscovery) {
-    wx.stopBluetoothDevicesDiscovery({})
+    stopDiscoveryPromise = new Promise(resolve => {
+      let done = false
+      const finish = () => {
+        if (!done) {
+          done = true
+          resolve()
+        }
+      }
+      try {
+        wx.stopBluetoothDevicesDiscovery({ success: finish, fail: finish })
+      } catch (error) {
+        finish()
+      }
+      // 兜底：个别机型 stopBluetoothDevicesDiscovery 不回调，别让连接被无限拖住
+      setTimeout(finish, SCAN_STOP_TIMEOUT_MS)
+    })
   }
   if (scan.handler && wx.offBluetoothDeviceFound) {
     wx.offBluetoothDeviceFound(scan.handler)
   }
   scan.handler = null
+}
+
+// 等「停扫」真正落地：连接前调用，避免扫描与连接抢射频（弱信号下这是连不上的主因之一）。
+// 硬件扫描仍在为其他订阅者运行时直接返回——绝不为了自己连接去掐断别人的扫描（会把对方饿死，见文件头 ②）。
+// 停扫落地后再多沉淀 SCAN_SETTLE_MS，给底层留出真正释放射频的时间。
+async function whenScanStopped() {
+  if (activeScan && !activeScan.stopped) {
+    return // 别人还在扫，停不得
+  }
+  if (stopDiscoveryPromise) {
+    await stopDiscoveryPromise
+    stopDiscoveryPromise = null
+    await new Promise(resolve => setTimeout(resolve, SCAN_SETTLE_MS))
+  }
 }
 
 // 订阅者视角的设备列表：按各自口径过滤（调试 allowAll 不过滤，正式入口按 broadcastId 白名单），
@@ -430,6 +472,7 @@ module.exports = {
   discoverDevices,
   connectDevice,
   stopDiscovery,
+  whenScanStopped,
   isDiscovering,
   showPermissionGuide,
   showEmptyResultGuide

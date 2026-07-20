@@ -11,6 +11,15 @@ const permission = require('./permission')
 const toast = require('./toast')
 const protocol = require('./frame-protocol')
 
+// 连接前的信号闸（2026-07-20，治「信号正常档经常连不上」）：
+// 扫描命中目标时若 RSSI 弱于此值，不立刻发起连接，先等一个短窗口看有没有更强的一帧。
+// -70dBm 取在「强(≥-67)」与「正常(-67~-78)」的交界略偏弱处：强/极强一律立即连（行为不变），
+// 只有正常档偏弱的那一段才进入等待。档位定义见 bluetooth.rssiToSignalText。
+const WEAK_SIGNAL_RSSI = -70
+// 弱信号等待上限(ms)：期间来一帧达标的就立刻连；等满了也照常连，绝不因信号弱阻断用户。
+// 1.5s 是「值得等一等」与「用户觉得卡住了」的折中——广播间隔通常 100~500ms，够收十几帧。
+const WEAK_SIGNAL_WAIT_MS = 1500
+
 // 弹窗引导去首页切换设备 / 绑定新设备
 function promptSwitchDevice(content) {
   wx.showModal({
@@ -289,9 +298,30 @@ async function scanMatchConnect(device, match, onConnectStart) {
   // 未搜索到，用户表现为「要点两次才连上」。App 侧已踩过并修（ble_controller.dart 同名注释），
   // 这里对齐。有 until 命中即停兜底，设备已在广播时依然是扫到即走（通常 <1s），
   // 加长窗口只影响设备确实还没现身的场景。
+  // 弱信号不抢第一帧（2026-07-20）：命中即停扫会在「刚擦边收到第一帧」时就发起连接，
+  // 而那一帧往往是整个窗口里信号最差的时刻，连接成功率最低——这正是「极强档一点就连上、
+  // 正常档(-67~-78dBm)经常连不上」的形状。信号够强(或读不到 RSSI)时行为完全不变：扫到即走。
+  // 信号弱时给一个短暂的等待窗，期间只要来一帧达标的就立刻连（抓住好时机），
+  // 等满 WEAK_SIGNAL_WAIT_MS 仍不达标也照常连——绝不因为信号弱就不让用户连。
+  let weakSinceAt = 0
   const found = await bluetooth.discoverDevices({
     timeout: 12000,
-    until: list => !!match(list, device)
+    until: list => {
+      const hit = match(list, device)
+      if (!hit) {
+        return false
+      }
+      const rssi = Number(hit.RSSI) || 0
+      // rssi 为 0/非法 = 该机型没上报信号强度，无从判断，按原行为立即连
+      if (!rssi || rssi >= WEAK_SIGNAL_RSSI) {
+        return true
+      }
+      if (!weakSinceAt) {
+        weakSinceAt = Date.now()
+        return false
+      }
+      return Date.now() - weakSinceAt >= WEAK_SIGNAL_WAIT_MS
+    }
   })
   const target = match(found, device)
   if (!target) {
@@ -300,6 +330,9 @@ async function scanMatchConnect(device, match, onConnectStart) {
   if (typeof onConnectStart === 'function') {
     onConnectStart()
   }
+  // 等硬件扫描真正停下来再发起连接：扫描与连接抢射频，弱信号下是连接失败的主因之一。
+  // 其他订阅者还在扫时内部直接返回（不掐断别人），此时保持原有行为。
+  await bluetooth.whenScanStopped()
   // 把扫描广播里的 Device_ID + 屏幕类型登记到会话，后续页面据此交叉匹配认出这条连接，并按型号/尺寸校验防串台
   await deviceBle.ensureConnection(target.deviceId, {
     deviceNo: target.deviceNo,

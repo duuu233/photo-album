@@ -395,11 +395,19 @@ async function negotiateMtu(deviceId) {
   return mtu || 185
 }
 
-async function createConnectionWithRetry(deviceId, attempts = 2) {
+// 重试预算与 device-ble.createConnectionWithRetry 保持一致（2026-07-20 为弱信号一并调整）：
+// 4 次 × 6s 超时 + 递增退避 300/600/1200ms，取代原「2 次 × 10s + 固定 400ms」。
+// 理由见 device-ble 同名函数的注释。两处是各自独立的会话池、代码各一份，改一处必须同步改另一处，
+// 否则「普通连接连得上、进 OTA 却连不上」这种只在弱信号下现形的差异极难排查。
+const CONNECT_ATTEMPTS = 4
+const CONNECT_TIMEOUT_MS = 6000
+const CONNECT_BACKOFF_MS = [300, 600, 1200]
+
+async function createConnectionWithRetry(deviceId, attempts = CONNECT_ATTEMPTS) {
   let lastError = null
   for (let i = 0; i < attempts; i++) {
     try {
-      await wxp(wx.createBLEConnection, { deviceId, timeout: 10000 })
+      await wxp(wx.createBLEConnection, { deviceId, timeout: CONNECT_TIMEOUT_MS })
       return
     } catch (error) {
       const msg = ((error && error.message) || '').toLowerCase()
@@ -417,7 +425,7 @@ async function createConnectionWithRetry(deviceId, attempts = 2) {
         }
       }
       if (i < attempts - 1) {
-        await sleep(400)
+        await sleep(CONNECT_BACKOFF_MS[Math.min(i, CONNECT_BACKOFF_MS.length - 1)])
       }
     }
   }

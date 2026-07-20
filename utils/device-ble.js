@@ -302,13 +302,23 @@ async function discoverCharacteristics(
   return null
 }
 
-// 建立底层 BLE 连接，带一次自动重试。安卓首连常偶发 10003(connection fail)/10012(操作超时)，
-// 立即重试一次通常即可成功；若底层报「已连接」则直接当成功返回。多次失败才抛出供上层提示。
-async function createConnectionWithRetry(deviceId, attempts = 2) {
+// 建立底层 BLE 连接，带自动重试。安卓首连常偶发 10003(connection fail)/10012(操作超时)，
+// 重试通常即可成功；若底层报「已连接」则直接当成功返回。多次失败才抛出供上层提示。
+//
+// 重试预算（2026-07-20 为弱信号调整）：原为「2 次 × 10s 超时 + 固定 400ms 间隔」。
+// BLE 连接的实际形状是「要么两三秒内建起来，要么连接请求在空中就丢了」——干等 10s 基本救不回来，
+// 却把总预算烧掉一半，弱信号(「正常」档 -67~-78dBm)下等于只有两次机会。
+// 改为「4 次 × 6s 超时 + 递增退避 300/600/1200ms」：最坏墙钟 6*4+2.1≈26s，与原来的 ~20s 同量级，
+// 但尝试次数翻倍。退避递增是因为连不上往往是瞬时干扰，隔久一点再试比密集重试更容易撞上好时机。
+const CONNECT_ATTEMPTS = 4
+const CONNECT_TIMEOUT_MS = 6000
+const CONNECT_BACKOFF_MS = [300, 600, 1200]
+
+async function createConnectionWithRetry(deviceId, attempts = CONNECT_ATTEMPTS) {
   let lastError = null
   for (let i = 0; i < attempts; i++) {
     try {
-      await wxp(wx.createBLEConnection, { deviceId, timeout: 10000 })
+      await wxp(wx.createBLEConnection, { deviceId, timeout: CONNECT_TIMEOUT_MS })
       return
     } catch (error) {
       const msg = ((error && error.message) || '').toLowerCase()
@@ -329,7 +339,9 @@ async function createConnectionWithRetry(deviceId, attempts = 2) {
         }
       }
       if (i < attempts - 1) {
-        await sleep(400) // 等底层清理干净再重试，显著提升首连成功率
+        // 等底层清理干净再重试，显著提升首连成功率。退避递增（300/600/1200ms），
+        // 超出数组长度时沿用最后一档，改 CONNECT_ATTEMPTS 不必同步改这里。
+        await sleep(CONNECT_BACKOFF_MS[Math.min(i, CONNECT_BACKOFF_MS.length - 1)])
       }
     }
   }
