@@ -31,8 +31,16 @@ const MAX_ZOOM_FACTOR = 8
 // 所以**后端不会报错**——但设备按 680px 一行解析，拿到 960px 一行的数据会整幅错位/斜切，
 // 表现为花屏且无任何报错，极难排查。务必保持「取景横、导出竖 + 转 90°」这个组合。
 const VIEW_SWAPPED = true
-// 导出时整幅构图的旋转量：+90° 顺时针（与「旋转」按钮 rotate90 的方向一致）。
-const EXPORT_ROTATE_RAD = Math.PI / 2
+// 导出时整幅构图的旋转量（度，顺时针）：
+//   90°  —— 把横向取景转进竖向画布所必需的量；
+//   +180° —— 2026-07-20 真机校正：只转 90° 时画面在设备上是倒的，故再补半圈。
+// 合计 270°。这个值是**唯一真源**，预览的反向转正由它推出（见 PREVIEW_COUNTER_ROTATE_DEG），
+// 改这里两边自动同步——绝不要在两处各写各的角度，否则「设备上正了、手机预览里倒了」这类问题会反复出现。
+const EXPORT_ROTATE_DEG = 270
+const EXPORT_ROTATE_RAD = (EXPORT_ROTATE_DEG * Math.PI) / 180
+// 预览把成图反向转正的角度：与导出角互为相反数，保证「手机上看到的」永远是用户构图时的样子。
+// 用户所见 = 构图 + 导出角 + 本角 ≡ 构图。CSS 接受负角/超过 360°，无需归一化。
+const PREVIEW_COUNTER_ROTATE_DEG = -EXPORT_ROTATE_DEG
 
 // 「长按拖拽旋转」模式参数：按住多久(ms)进入旋转、进入前允许的最大位移(px，超过则判为平移不再触发旋转)
 const LONG_PRESS_MS = 300
@@ -196,9 +204,9 @@ Page({
     return `width:${size.dispW.toFixed(2)}rpx;height:${size.dispH.toFixed(2)}rpx;`
   },
 
-  // 已按设备缓冲区转过 90° 的成图（导出结果），在预览里要**反向转回来**展示，
-  // 否则用户看到的是躺倒的照片——文件本身是竖向 680×960、内容是横的，直接铺进横向 photo-wrap 会又转又裁。
-  // 做法：图片元素用「对调后的尺寸」(竖向 dispH×dispW)，绕中心 rotate(-90deg)，转完正好铺满横向的 wrap。
+  // 已按设备缓冲区转过 EXPORT_ROTATE_DEG 的成图（导出结果），在预览里要**反向转回来**展示，
+  // 否则用户看到的是躺倒/颠倒的照片——文件本身是竖向 680×960、内容是横的，直接铺进横向 photo-wrap 会又转又裁。
+  // 做法：图片元素用「对调后的尺寸」(竖向 dispH×dispW)，绕中心反向旋转，转完正好铺满横向的 wrap。
   // photo-wrap 已是 position:relative + overflow:hidden（见 wxss），这里绝对定位居中即可。
   computeRotatedImgStyle(viewW, viewH) {
     const size = this.computeWrapSize(viewW, viewH)
@@ -208,7 +216,7 @@ Page({
     return (
       `position:absolute;left:50%;top:50%;` +
       `width:${size.dispH.toFixed(2)}rpx;height:${size.dispW.toFixed(2)}rpx;` +
-      `transform:translate(-50%,-50%) rotate(-90deg);`
+      `transform:translate(-50%,-50%) rotate(${PREVIEW_COUNTER_ROTATE_DEG}deg);`
     )
   },
 
