@@ -15,7 +15,8 @@
     <swiper wx:if="{{images.length}}" class="preview-swiper" current="{{activeIndex}}" bindchange="onSwiperChange">
       <swiper-item wx:for="{{images}}" wx:key="index">
         <view class="photo-wrap" style="{{item.wrapStyle || deviceWrapStyle}}">
-          <image wx:if="{{item.tempFilePath || item.url}}" class="photo-img" src="{{item.tempFilePath || item.url}}" mode="aspectFill"></image>
+          <!-- imgStyle：成图已按设备缓冲区转过 90°，这里反向转回来展示，否则看到的是躺倒的照片（见 computeRotatedImgStyle） -->
+          <image wx:if="{{item.tempFilePath || item.url}}" class="photo-img" style="{{item.imgStyle || ''}}" src="{{item.tempFilePath || item.url}}" mode="aspectFill"></image>
           <view wx:else class="photo-img photo-placeholder">图片占位</view>
         </view>
       </swiper-item>

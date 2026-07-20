@@ -22,6 +22,18 @@ const EXPORT_QUALITY = 0.92
 // 统一编辑态里图片相对「铺满裁剪框(cover)」还能再放大的上限倍数（防止无限放大成马赛克）
 const MAX_ZOOM_FACTOR = 8
 
+// 可视区域宽高对调（2026-07-20）：相框横着摆，所以取景整体「躺下来」。注意区分两个坐标系，别混：
+//   · **可视区域/取景框**（photo-wrap、edit-frame、九宫格）= 设备宽高**对调**后的横向比例，用户按横构图；
+//   · **导出画布**仍是设备物理分辨率（竖向 outW×outH），把整幅构图旋转 90° 画进去。
+//     上传图必须正好等于设备物理分辨率，这是硬约束（后端按上传图像素量化六色帧、忽略 targetWidth/Height）。
+//
+// ⚠️ 导出绝不能直接输出横向尺寸（960×680）：像素总数与竖向相同、帧字节数(宽×高÷2)也相同，
+// 所以**后端不会报错**——但设备按 680px 一行解析，拿到 960px 一行的数据会整幅错位/斜切，
+// 表现为花屏且无任何报错，极难排查。务必保持「取景横、导出竖 + 转 90°」这个组合。
+const VIEW_SWAPPED = true
+// 导出时整幅构图的旋转量：+90° 顺时针（与「旋转」按钮 rotate90 的方向一致）。
+const EXPORT_ROTATE_RAD = Math.PI / 2
+
 // 「长按拖拽旋转」模式参数：按住多久(ms)进入旋转、进入前允许的最大位移(px，超过则判为平移不再触发旋转)
 const LONG_PRESS_MS = 300
 const LONG_PRESS_MOVE_TOL = 10
@@ -78,34 +90,11 @@ Page({
     }
   },
 
-  onReady() {
-    // 首次进入自动「点一次旋转」：与用户手动点底部「旋转」完全等价——进入统一编辑态并把图片转 90°。
-    // 裁剪框、导出链路一律不动（框仍锁设备比例，导出仍是设备物理分辨率 680×960）。
-    //
-    // 放 onReady 而不是 onLoad：enterEdit 要用 boundingClientRect 量舞台尺寸，onLoad 时节点尚未渲染，量不到。
-    // onReady 每个页面实例只跑一次，所以只有「首次加载」会自动转；之后切图会退出编辑态（onSwiperChange），
-    // 不会再自动转，用户想继续转就自己点按钮。
-    this.autoRotateOnce()
-  },
-
-  // 进入页面时模拟一次「旋转」点击。静默执行：没有可编辑的图 / 量不到舞台 / 读不到图片信息时，
-  // 都不弹提示、不进编辑态，页面停在普通预览态即可——这是自动行为，不该冒出用户根本没触发过的报错。
-  autoRotateOnce() {
-    if (!this.data.images.length) {
-      return
-    }
-    this.enterEdit({ silent: true }).then(ok => {
-      if (ok) {
-        this.rotate90()
-      }
-    })
-  },
-
   // 统一刷新图片相关状态：当前预览图与张数（设备空间是否够由结果页按真实容量/掩码判断）
   updateImageState(images, device, activeIndex) {
     const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1)) // 防止下标越界
-    // 未裁剪图片的初始展示比例 = 当前绑定设备的比例（与裁剪锁定的比例一致），作为投屏预览
-    const size = this.getDeviceCropSize(device)
+    // 未裁剪图片的初始展示比例 = 可视区域比例（设备宽高对调后的横向，与裁剪框锁定的比例一致），作为投屏预览
+    const size = this.getViewSize(device)
 
     this.setData({
       device,
@@ -171,11 +160,21 @@ Page({
     }
   },
 
-  // 由处理后图片的真实像素宽高，算出 photo-wrap 的展示尺寸（rpx）：在舞台内等比缩放。
-  // 返回内联 style 字符串；未处理(传入非法宽高)时返回空串，让 photo-wrap 回到 CSS 默认尺寸。
-  computeWrapStyle(w, h) {
+  // 可视区域（取景）的宽高：设备物理宽高对调后的横向尺寸，见 VIEW_SWAPPED。
+  // 只用于「用户看到的框」——photo-wrap 展示尺寸、编辑态裁剪框比例、九宫格。
+  // 导出画布尺寸始终取 getDeviceCropSize()（设备物理分辨率，竖向），两者别混。
+  getViewSize(device) {
+    const dev = this.getDeviceCropSize(device)
+    return VIEW_SWAPPED
+      ? { width: dev.height, height: dev.width }
+      : { width: dev.width, height: dev.height }
+  },
+
+  // 由一组宽高算出 photo-wrap 在舞台内等比缩放后的展示尺寸（rpx）。
+  // 返回 {dispW, dispH}；宽高非法时返回 null。
+  computeWrapSize(w, h) {
     if (!(w > 0) || !(h > 0)) {
-      return ''
+      return null
     }
     const aspect = w / h
     let dispW = STAGE_W_RPX
@@ -184,22 +183,44 @@ Page({
       dispH = STAGE_H_RPX
       dispW = dispH * aspect
     }
-    return `width:${dispW.toFixed(2)}rpx;height:${dispH.toFixed(2)}rpx;`
+    return { dispW, dispH }
+  },
+
+  // 由处理后图片的真实像素宽高，算出 photo-wrap 的展示尺寸（rpx）：在舞台内等比缩放。
+  // 返回内联 style 字符串；未处理(传入非法宽高)时返回空串，让 photo-wrap 回到 CSS 默认尺寸。
+  computeWrapStyle(w, h) {
+    const size = this.computeWrapSize(w, h)
+    if (!size) {
+      return ''
+    }
+    return `width:${size.dispW.toFixed(2)}rpx;height:${size.dispH.toFixed(2)}rpx;`
+  },
+
+  // 已按设备缓冲区转过 90° 的成图（导出结果），在预览里要**反向转回来**展示，
+  // 否则用户看到的是躺倒的照片——文件本身是竖向 680×960、内容是横的，直接铺进横向 photo-wrap 会又转又裁。
+  // 做法：图片元素用「对调后的尺寸」(竖向 dispH×dispW)，绕中心 rotate(-90deg)，转完正好铺满横向的 wrap。
+  // photo-wrap 已是 position:relative + overflow:hidden（见 wxss），这里绝对定位居中即可。
+  computeRotatedImgStyle(viewW, viewH) {
+    const size = this.computeWrapSize(viewW, viewH)
+    if (!size) {
+      return ''
+    }
+    return (
+      `position:absolute;left:50%;top:50%;` +
+      `width:${size.dispH.toFixed(2)}rpx;height:${size.dispW.toFixed(2)}rpx;` +
+      `transform:translate(-50%,-50%) rotate(-90deg);`
+    )
   },
 
   // 进入统一编辑态：量出舞台尺寸 + 图片真实尺寸，摆好「固定裁剪框(设备比例) + 铺满该框的图片」。
   // 之后用户单指平移 / 双指缩放旋转 / 点旋转按钮 90°，图片在框下自由变换，框不动，框内即最终成像。
   // 返回 Promise<boolean>（true=已进入编辑态），供「旋转」按钮进入后再转 90°。
-  // options.silent：失败时不弹提示（进入页面自动转 90° 时用，见 autoRotateOnce）。
-  enterEdit(options) {
-    const silent = !!(options && options.silent)
+  enterEdit() {
     return new Promise((resolve) => {
       const image = this.data.images[this.data.activeIndex]
       const src = image && (image.tempFilePath || image.url)
       if (!src) {
-        if (!silent) {
-          toast.warn({ title: '暂无可编辑的图片', icon: 'none' })
-        }
+        toast.warn({ title: '暂无可编辑的图片', icon: 'none' })
         resolve(false)
         return
       }
@@ -213,9 +234,7 @@ Page({
       query.exec((res) => {
         const rect = res && res[0]
         if (!rect || !rect.width) {
-          if (!silent) {
-            toast.warn({ title: '初始化编辑失败', icon: 'none' })
-          }
+          toast.warn({ title: '初始化编辑失败', icon: 'none' })
           resolve(false)
           return
         }
@@ -224,9 +243,11 @@ Page({
           success: (info) => {
             const stageW = rect.width
             const stageH = rect.height
-            const dev = this.getDeviceCropSize()
-            const ratio = dev.width / dev.height
-            // 固定裁剪框：舞台内「设备比例」的最大居中矩形
+            // 取景框比例取「可视区域」= 设备宽高对调后的横向比例（见 VIEW_SWAPPED）。
+            // 九宫格/遮罩/四角都是 .edit-frame 的子元素，跟着 frame 走，无需另改。
+            const view = this.getViewSize()
+            const ratio = view.width / view.height
+            // 固定裁剪框：舞台内「可视区域比例」的最大居中矩形
             let fw = stageW
             let fh = fw / ratio
             if (fh > stageH) {
@@ -283,9 +304,7 @@ Page({
             resolve(true)
           },
           fail: () => {
-            if (!silent) {
-              toast.warn({ title: '读取图片失败', icon: 'none' })
-            }
+            toast.warn({ title: '读取图片失败', icon: 'none' })
             resolve(false)
           }
         })
@@ -536,6 +555,7 @@ Page({
         updated.cropW = 0
         updated.cropH = 0
         updated.wrapStyle = ''
+        updated.imgStyle = '' // 还原成原图（未转过 90°），不能再套反向旋转
         next[activeIndex] = updated
         this._edit = null
         this._gesture = null
@@ -574,11 +594,9 @@ Page({
     const dev = this.getDeviceCropSize()
     const outW = dev.width
     const outH = dev.height
-    // 显示 px → canvas px 的放大系数（裁剪框宽 → 设备宽）。frame 已锁设备比例，故高度也自洽（frameH*k=outH）。
-    const k = outW / g.frameW
-    // 图片中心在裁剪框内的位置（显示坐标 → canvas 坐标）
-    const cx = (g.frameW / 2 + g.tx) * k
-    const cy = (g.frameH / 2 + g.ty) * k
+    // 取景框是横的、导出画布是竖的，故放大系数按「取景框宽 → 画布**高**」算（整幅要转 90° 画进去）。
+    // frame 已锁可视区域比例，故另一维自洽：frameH * k = outW。
+    const k = VIEW_SWAPPED ? outH / g.frameW : outW / g.frameW
     // 原图 px → canvas px：baseScale(显示/原图) × zoom × k
     const s = g.baseScale * g.zoom * k
     const rad = (g.angle * Math.PI) / 180
@@ -600,7 +618,13 @@ Page({
         ctx.clearRect(0, 0, outW, outH)
         fillWhite(ctx, outW, outH)
         ctx.save()
-        ctx.translate(cx, cy)
+        // 先落到画布中心，再把整幅构图转 90°：此后坐标系就等价于「横向取景框」，
+        // 于是图片相对取景框中心的平移(tx,ty)、用户自己的旋转(rad)、缩放(s) 都能原样套用。
+        ctx.translate(outW / 2, outH / 2)
+        if (VIEW_SWAPPED) {
+          ctx.rotate(EXPORT_ROTATE_RAD)
+        }
+        ctx.translate(g.tx * k, g.ty * k)
         ctx.rotate(rad)
         ctx.scale(s, s)
         ctx.drawImage(img, -g.natW / 2, -g.natH / 2, g.natW, g.natH)
@@ -617,10 +641,16 @@ Page({
               updated._origSrc = updated.tempFilePath || updated.url || ''
             }
             updated.tempFilePath = r.tempFilePath
-            // 记录处理后真实宽高，并预算 photo-wrap 展示尺寸：展示当前图时按设备比例铺满
+            // cropW/cropH 记的是**文件真实像素**（设备物理分辨率，竖向），别改成可视区域尺寸——
+            // coverCropUnedited 用 cropW>0 判「已编辑」，结果页也按它走转换链路。
+            const view = this.getViewSize()
             updated.cropW = outW
             updated.cropH = outH
-            updated.wrapStyle = this.computeWrapStyle(outW, outH)
+            // 展示按横向可视区域铺；成图是转过 90° 的竖向文件，故再给图片一个反向旋转把它摆正
+            updated.wrapStyle = this.computeWrapStyle(view.width, view.height)
+            updated.imgStyle = VIEW_SWAPPED
+              ? this.computeRotatedImgStyle(view.width, view.height)
+              : ''
             next[activeIndex] = updated
             this._edit = null
             this._gesture = null
@@ -677,12 +707,14 @@ Page({
           const natW = info.width
           const natH = info.height
           const size = this.getDeviceCropSize()
-          const targetRatio = size.width / size.height
+          // 裁切比例取「可视区域」（横向），与预览里 photo-wrap / 裁剪框所见一致
+          const view = this.getViewSize()
+          const targetRatio = view.width / view.height
           if (!(natW > 0) || !(natH > 0) || !(targetRatio > 0)) {
             resolve(image)
             return
           }
-          // aspectFill 中心裁切：从原图中心取「设备比例」的最大矩形，超出的边裁掉（与预览铺满一致）
+          // aspectFill 中心裁切：从原图中心取「可视区域比例」的最大矩形，超出的边裁掉（与预览铺满一致）
           let sw
           let sh
           let sx
@@ -700,13 +732,12 @@ Page({
             sx = 0
             sy = Math.round((natH - sh) / 2)
           }
-          // 直接导出到设备物理分辨率：后端是按「上传图的像素」量化成六色帧的（帧字节数=宽×高÷2），
+          // 导出画布恒为设备物理分辨率（竖向）：后端是按「上传图的像素」量化成六色帧的（帧字节数=宽×高÷2），
           // 上传图必须正好是设备尺寸，否则帧大小对不上设备、投屏必失败（如 725×1024→726×1024÷2=371712，
-          // 设备 680×960 只要 326400）。裁剪矩形 sw×sh 已是设备比例，等比 fit 到设备尺寸即精确得到设备像素、
+          // 设备 680×960 只要 326400）。裁剪矩形 sw×sh 已是可视区域(横向)比例，转 90° 后与画布严丝合缝，
           // 比例一致不会变形；比设备小的图会放大（correctness 优先，画质本就受六色量化限制）。
-          const fit = Math.min(size.width / sw, size.height / sh)
-          const outW = Math.max(1, Math.round(sw * fit))
-          const outH = Math.max(1, Math.round(sh * fit))
+          const outW = size.width
+          const outH = size.height
           const query = wx.createSelectorQuery()
           query.select('#cropCanvas').fields({ node: true }).exec(res => {
             const node = res && res[0] && res[0].node
@@ -721,7 +752,16 @@ Page({
             img.onload = () => {
               ctx.clearRect(0, 0, outW, outH)
               fillWhite(ctx, outW, outH)
-              ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH)
+              if (VIEW_SWAPPED) {
+                // 整幅转 90° 画进竖向画布：旋转后的坐标系里目标矩形是 outH×outW（横向，与裁剪矩形同比例）
+                ctx.save()
+                ctx.translate(outW / 2, outH / 2)
+                ctx.rotate(EXPORT_ROTATE_RAD)
+                ctx.drawImage(img, sx, sy, sw, sh, -outH / 2, -outW / 2, outH, outW)
+                ctx.restore()
+              } else {
+                ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH)
+              }
               wx.canvasToTempFilePath({
                 canvas: node,
                 fileType: EXPORT_FILE_TYPE,
@@ -733,9 +773,13 @@ Page({
                     updated._origSrc = updated.tempFilePath || updated.url || ''
                   }
                   updated.tempFilePath = r.tempFilePath
+                  // cropW/cropH = 文件真实像素（设备物理分辨率，竖向）；展示按横向可视区域并反向转正
                   updated.cropW = outW
                   updated.cropH = outH
-                  updated.wrapStyle = this.computeWrapStyle(outW, outH)
+                  updated.wrapStyle = this.computeWrapStyle(view.width, view.height)
+                  updated.imgStyle = VIEW_SWAPPED
+                    ? this.computeRotatedImgStyle(view.width, view.height)
+                    : ''
                   resolve(updated)
                 },
                 fail: () => resolve(image)
