@@ -5,6 +5,7 @@
 // 为何断联要重扫再连：微信 BLE deviceId 是「本次扫描会话」临时分配的，后端只存序列号，
 //   直接拿旧 deviceId ensureConnection 多半失败，必须先重扫拿到当下有效 deviceId 再连。
 const deviceBle = require('./device-ble')
+const deviceInfo = require('./device-info')
 const bluetooth = require('./bluetooth')
 const permission = require('./permission')
 const toast = require('./toast')
@@ -188,9 +189,15 @@ async function scanMatchConnect(device, match, onConnectStart) {
     throw new Error('请先授权定位后再连接')
   }
   await bluetooth.openAdapter()
-  // until：扫到目标设备(match 命中)就立刻停扫返回，不苦等满 6s——正式连接不再比调试台直连慢一截
+  // until：扫到目标设备(match 命中)就立刻停扫返回，不苦等满窗口——正式连接不再比调试台直连慢一截
+  //
+  // 12 秒（原 6 秒）：相框被 GATT 占着时不广播，断开后要好几秒才恢复广播。单连接落地后
+  // 「切换设备」必然是「断开上一台 → 立刻扫连这一台」，6 秒窗口经常等不到设备现身就判
+  // 未搜索到，用户表现为「要点两次才连上」。App 侧已踩过并修（ble_controller.dart 同名注释），
+  // 这里对齐。有 until 命中即停兜底，设备已在广播时依然是扫到即走（通常 <1s），
+  // 加长窗口只影响设备确实还没现身的场景。
   const found = await bluetooth.discoverDevices({
-    timeout: 6000,
+    timeout: 12000,
     until: list => !!match(list, device)
   })
   const target = match(found, device)
@@ -252,12 +259,22 @@ async function connectBoundDevice(device, options = {}) {
   const existingId = findConnectedDeviceId(device)
   if (existingId) {
     if (!options.verifyReuse) {
-      return { deviceId: existingId, info: null, reused: true }
+      // 不做活性校验，但全局缓存里若正好有这条连接 15s 内的 0x01 结果就顺手带回去：
+      // 零成本（peekFresh 不碰 BLE），首页因此也能拿到真实电量，不必回退到更早的缓存值。
+      // 必须用 peekFresh 而非 peek——调用方会把这里的 info 当作「本次读到的」去打时间戳，
+      // 给个旧值会让时间戳说谎（见 device-info.js 的方法注释）。
+      return {
+        deviceId: existingId,
+        info: deviceInfo.peekFresh(existingId),
+        reused: true
+      }
     }
-    // 复用前读一次设备信息作活性校验：读得动才是真活着；读不动=后台断开未上报的死会话，清掉走完整扫描重连
+    // 复用前读一次设备信息作活性校验：读得动才是真活着；读不动=后台断开未上报的死会话，清掉走完整扫描重连。
+    // 这里**故意不吃节流缓存**——校验的意义就在于真的发一次指令，命中缓存会把死会话误判成活的。
     wx.showLoading({ title: '连接设备中', mask: true })
     try {
       const info = await deviceBle.readDeviceInfo(existingId)
+      deviceInfo.put(existingId, info) // 真读到的结果登记进全局缓存，紧随的页面加载直接复用
       return { deviceId: existingId, info, reused: true }
     } catch (error) {
       // 「同指令正在等待应答」(CMD_PENDING) 恰恰说明会话活着且正忙（如详情页 onShow 的 0x01 在途）——
@@ -278,6 +295,7 @@ async function connectBoundDevice(device, options = {}) {
       wx.showLoading({ title: '连接设备中', mask: true })
     )
     const info = await deviceBle.readDeviceInfo(target.deviceId)
+    deviceInfo.put(target.deviceId, info) // 登记进全局缓存，紧随的页面加载不必再读一次
     return { deviceId: target.deviceId, info, reused: false }
   } finally {
     wx.hideLoading()

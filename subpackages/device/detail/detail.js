@@ -3,6 +3,7 @@ const toast = require('../../../utils/toast')
 const system = require('../../../utils/system')
 const batteryUtil = require('../../../utils/battery')
 const deviceBle = require('../../../utils/device-ble')
+const deviceInfo = require('../../../utils/device-info')
 const otaBle = require('../../../utils/ota-ble')
 const protocol = require('../../../utils/frame-protocol')
 const media = require('../../../utils/media')
@@ -225,7 +226,8 @@ Page({
     id: '',
     device: null,
     memoryPercent: 0,
-    batteryIcon: batteryUtil.getBatteryIcon(batteryUtil.DEFAULT_BATTERY),
+    // 首帧未知电量：传 null 取未知档图标（旧写法取 DEFAULT_BATTERY=100 会先闪一下满电）
+    batteryIcon: batteryUtil.getBatteryIcon(null),
     deviceCode: '',
     memoryText: '',
     macAddress: '',
@@ -274,17 +276,14 @@ Page({
 
   noop() {},
 
-  // 登记最近一次 0x01 设备信息（loadDetail 的 15s 节流缓存）；写类操作改了设备状态后调
-  // invalidateBleInfo() 作废，下次 loadDetail 必然重读
+  // 0x01 节流缓存已收归全局（utils/device-info.js）：此前它是本页私有字段，切到首页/设备列表
+  // 就失效，别处读 0x01 的地方也各读各的。这两个方法保留为薄封装，调用方无需改动。
   cacheBleInfo(deviceId, info) {
-    this._lastBleInfo = info
-    this._lastBleInfoDeviceId = deviceId
-    this._lastBleInfoAt = Date.now()
-    this._bleInfoDirty = false
+    deviceInfo.put(deviceId, info)
   },
 
   invalidateBleInfo() {
-    this._bleInfoDirty = true
+    deviceInfo.invalidate()
   },
 
   setSystemMetrics() {
@@ -373,39 +372,41 @@ Page({
         bleDeviceId: liveId,
         connected: true
       })
-      // 0x01 读节流：空闲连接间隔(100ms)下一次读要数百 ms，每次 onShow 都读让页面切换「闪一下才稳定」。
-      // 同一连接 15s 内复用上次读到的信息；换了连接、超窗、或被写操作作废(_bleInfoDirty，见
-      // applyPlayback/formatDevice/一键清空)才真正重读，保证改完立即刷新不吃缓存。
-      const nowTs = Date.now()
-      let info =
-        !this._bleInfoDirty &&
-        this._lastBleInfo &&
-        this._lastBleInfoDeviceId === liveId &&
-        nowTs - (this._lastBleInfoAt || 0) < 15000
-          ? this._lastBleInfo
-          : null
-      if (!info) {
-        try {
-          info = await deviceBle.readDeviceInfo(device.deviceId)
-          this.cacheBleInfo(liveId, info)
-        } catch (error) {
-          // 详情展示不因读取设备信息失败而中断，电量/内存等沿用接口/选中设备的数据。
-        }
+      // 0x01 读节流+在途去重统一由 utils/device-info.js 承担：同一连接 15s 内复用上次结果，
+      // 换连接/超窗/被写操作作废(invalidateBleInfo，见 applyPlayback/一键清空)才真正重读。
+      // 空闲连接间隔(100ms)下一次读要数百 ms，每次 onShow 都读会让页面切换「闪一下才稳定」。
+      let info = null
+      try {
+        info = await deviceInfo.read(liveId)
+      } catch (error) {
+        // 详情展示不因读取设备信息失败而中断，电量/内存等沿用接口/选中设备的数据。
       }
       if (info) {
-        device = Object.assign({}, device, {
-          battery: info.battery,
-          usedMemory: info.imgCount,
-          totalMemory: info.capacity,
-          playbackMode: info.playMode,
-          intervalSeconds: info.intervalSeconds,
-          intervalHours: info.intervalSeconds
-            ? Math.max(1, Math.round(info.intervalSeconds / 3600))
-            : device.intervalHours,
-          firmwareVersion: info.firmwareVersion || device.firmwareVersion,
-          // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
-          firmwareDeviceId: info.deviceId || device.firmwareDeviceId
-        })
+        device = Object.assign(
+          {},
+          device,
+          {
+            usedMemory: info.imgCount,
+            totalMemory: info.capacity,
+            playbackMode: info.playMode,
+            intervalSeconds: info.intervalSeconds,
+            intervalHours: info.intervalSeconds
+              ? Math.max(1, Math.round(info.intervalSeconds / 3600))
+              : device.intervalHours,
+            firmwareVersion: info.firmwareVersion || device.firmwareVersion,
+            // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
+            firmwareDeviceId: info.deviceId || device.firmwareDeviceId
+          },
+          // 电量带时间戳写入，供首页/列表判断新鲜度（见 utils/battery.js）
+          batteryUtil.stampBattery(info.battery)
+        )
+        // 回写选中设备：本页是三个页面里**唯一真读 BLE** 的地方，这里的电量是全局唯一的真值。
+        // 不回写的话首页/设备列表只能拿到更早的缓存值，表现就是「来回切三个页面电量一直在变」
+        // （详情真值 ↔ 首页兜底值 反复跳）。本分支处在 liveId 命中内，即当前设备就是正连着的
+        // 那一台；设备为单连接模型，连着的即选中的，直接合并到 selectedDevice 安全。
+        app.setSelectedDevice(
+          Object.assign({}, app.globalData.selectedDevice || {}, device)
+        )
       }
     }
     // 把当前间隔小时数映射到选择器下标，缺省落到第 1 项（2 小时）
@@ -419,17 +420,15 @@ Page({
         ? String(device.deviceNo).replace(/\D/g, '').slice(-6)
         : ''
     const deviceCode = (device && device.firmwareDeviceId) || digitId || '--'
-    const hasBattery = device && typeof device.battery === 'number'
+    // 电量取值/文案统一走 batteryUtil（内含未连接、无时间戳、超时三道未知判定）
     // 轮播设置/固件升级的右侧值只在已连接时展示，未连接一律 -- 占位（点击时提示先连接设备）
     const connected = !!(device && device.connected)
 
     this.setData({
       device,
       memoryPercent: memoryPercent(device),
-      batteryIcon: batteryUtil.getBatteryIcon(
-        hasBattery ? device.battery : batteryUtil.DEFAULT_BATTERY
-      ),
-      batteryText: hasBattery ? `${device.battery}%` : '--',
+      batteryIcon: batteryUtil.batteryIconOf(device),
+      batteryText: batteryUtil.batteryText(device),
       deviceCode,
       memoryText:
         device && device.totalMemory
@@ -751,31 +750,31 @@ Page({
         connected: true
       },
       info
-        ? {
-            battery: info.battery,
-            usedMemory: info.imgCount,
-            totalMemory: info.capacity,
-            playbackMode: info.playMode,
-            intervalSeconds: info.intervalSeconds,
-            intervalHours: info.intervalSeconds
-              ? Math.max(1, Math.round(info.intervalSeconds / 3600))
-              : device.intervalHours,
-            firmwareVersion: info.firmwareVersion || device.firmwareVersion,
-            // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
-            firmwareDeviceId: info.deviceId || device.firmwareDeviceId
-          }
+        ? Object.assign(
+            {
+              usedMemory: info.imgCount,
+              totalMemory: info.capacity,
+              playbackMode: info.playMode,
+              intervalSeconds: info.intervalSeconds,
+              intervalHours: info.intervalSeconds
+                ? Math.max(1, Math.round(info.intervalSeconds / 3600))
+                : device.intervalHours,
+              firmwareVersion: info.firmwareVersion || device.firmwareVersion,
+              // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
+              firmwareDeviceId: info.deviceId || device.firmwareDeviceId
+            },
+            // 电量带时间戳（info 为 null 时整块跳过，沿用旧值+旧时间戳，由 TTL 自行判定过期）
+            batteryUtil.stampBattery(info.battery)
+          )
         : null
     )
     app.setSelectedDevice(updated)
 
-    const hasBattery = typeof updated.battery === 'number'
     this.setData({
       device: updated,
       memoryPercent: memoryPercent(updated),
-      batteryIcon: batteryUtil.getBatteryIcon(
-        hasBattery ? updated.battery : batteryUtil.DEFAULT_BATTERY
-      ),
-      batteryText: hasBattery ? `${updated.battery}%` : '--',
+      batteryIcon: batteryUtil.batteryIconOf(updated),
+      batteryText: batteryUtil.batteryText(updated),
       memoryText: updated.totalMemory
         ? `${updated.usedMemory}/${updated.totalMemory}`
         : '--',
@@ -1160,7 +1159,9 @@ Page({
       await deviceBle.ensureConnection(deviceId)
       logClearDeviceData(traceId, 'BLE 连接已就绪', { deviceId })
 
-      const info = await deviceBle.readDeviceInfo(deviceId)
+      // force：要删哪些槽位取决于这份 imgMask，属破坏性操作的依据，绝不能吃 15s 节流缓存。
+      // 读到的结果同样回填全局缓存（清空成功后 invalidateBleInfo 会再作废它）。
+      const info = await deviceInfo.read(deviceId, { force: true })
       const indexes = protocol.maskToIndexes(info.imgMask)
       logClearDeviceData(traceId, '设备信息(0x01/0x03解析结果)', Object.assign({}, info, {
         imgMaskHex: protocol.bytesToHex(info.imgMask),
@@ -1195,7 +1196,9 @@ Page({
               await new Promise(resolve => setTimeout(resolve, 4000))
             }
             try {
-              after = await deviceBle.readDeviceInfo(deviceId)
+              // force：这次回读是用来核对「是否真的清空了」，命中缓存会读到清空前的旧 mask，
+              // 直接导致误判成「没清干净」并把设备错误抛给用户
+              after = await deviceInfo.read(deviceId, { force: true })
             } catch (error) {
               reReadError = error
               logClearDeviceData(traceId, '回读设备状态失败，稍后重试', {
@@ -1290,28 +1293,34 @@ Page({
     }
     let info
     try {
-      info = await deviceBle.readDeviceInfo(deviceId)
-      this.cacheBleInfo(deviceId, info) // 刚读到的最新值同步进节流缓存，紧随的 loadDetail 直接复用
+      // force：刚清空完必须看到新值，不能吃 15s 节流缓存（读到的结果会回填缓存，
+      // 紧随的 loadDetail 直接复用，不会再多读一次）
+      info = await deviceInfo.read(deviceId, { force: true })
     } catch (error) {
       return
     }
     const prev = this.data.device || {}
-    const device = Object.assign({}, prev, {
-      battery: typeof info.battery === 'number' ? info.battery : prev.battery,
-      usedMemory: info.imgCount,
-      totalMemory: info.capacity
-    })
-    const hasBattery = typeof device.battery === 'number'
+    const device = Object.assign(
+      {},
+      prev,
+      {
+        usedMemory: info.imgCount,
+        totalMemory: info.capacity
+      },
+      batteryUtil.stampBattery(info.battery)
+    )
+    // 同样回写选中设备：这也是一次真实 0x01 读，首页/列表应当跟着刷新（见 doLoadDetail 的同款注释）
+    app.setSelectedDevice(
+      Object.assign({}, app.globalData.selectedDevice || {}, device)
+    )
     this.setData({
       device,
       memoryPercent: memoryPercent(device),
       memoryText: device.totalMemory
         ? `${device.usedMemory}/${device.totalMemory}`
         : '--',
-      batteryIcon: batteryUtil.getBatteryIcon(
-        hasBattery ? device.battery : batteryUtil.DEFAULT_BATTERY
-      ),
-      batteryText: hasBattery ? `${device.battery}%` : '--'
+      batteryIcon: batteryUtil.batteryIconOf(device),
+      batteryText: batteryUtil.batteryText(device)
     })
   },
 

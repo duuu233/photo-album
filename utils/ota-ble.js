@@ -488,6 +488,17 @@ async function ensureOtaConnection(deviceId) {
     throw new Error('当前微信版本不支持蓝牙 OTA')
   }
 
+  // 单连接跨模块释放：OTA(FF10) 与普通会话(FF00) 是两个独立的 sessions 池，各自只清自己那本账。
+  // 不清的话，「连着 A → 进 B 的 OTA 页」会把 A 一直占着，A 从此不广播、哪儿都搜不到。
+  //
+  // 只释放**其他设备**：同一 deviceId 上 FF10 与 FF00 共用同一条物理 GATT 连接
+  // （见 ota.js onUnload「避免干跑时误关详情页持有的 FF00 连接」），断掉它等于把 OTA
+  // 自己要用的连接也关了。
+  //
+  // 惰性 require 而非顶部引入：两个模块会互相引用，顶部 require 在加载期会拿到半成品导出对象。
+  // 反向（普通连接释放 OTA 会话）不需要——OTA 页 onUnload 已自行断开。
+  require('./device-ble').disconnectOthers(deviceId)
+
   ensureGlobalListener()
   await createConnectionWithRetry(deviceId)
 

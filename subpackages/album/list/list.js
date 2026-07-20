@@ -2,6 +2,7 @@ const api = require('../../../utils/api')
 const media = require('../../../utils/media')
 const system = require('../../../utils/system')
 const deviceBle = require('../../../utils/device-ble')
+const deviceInfo = require('../../../utils/device-info')
 const protocol = require('../../../utils/frame-protocol')
 const activeDevice = require('../../../utils/active-device')
 const toast = require('../../../utils/toast')
@@ -428,7 +429,8 @@ Page({
     try {
       // 读固件已占用槽位（升序），用同一份快照把每张选中照片解析成对应槽位；
       // 不在本设备上的（解析为 -1）跳过，只删能对上的。curImgIndex 用于判断是否删到屏显图。
-      const info = await deviceBle.readDeviceInfo(device.deviceId)
+      // force：槽位掩码是删除操作的依据，绝不能吃 15s 节流缓存（读到旧掩码会删错槽位）。
+      const info = await deviceInfo.read(device.deviceId, { force: true })
       const occupied = protocol.maskToIndexes(info.imgMask)
       const slotIndexes = ids
         .map(id => this.resolveDeviceImageIndex(id, device, occupied))
@@ -535,7 +537,8 @@ Page({
     wx.showLoading({ title: '刷新中', mask: true })
     try {
       // 读固件当前已占用的图片槽位（升序），按所选照片在本设备照片中的位置取对应槽位
-      const info = await deviceBle.readDeviceInfo(device.deviceId)
+      // force：槽位掩码是刷屏指定目标的依据，吃到旧掩码会刷错图
+      const info = await deviceInfo.read(device.deviceId, { force: true })
       const occupied = protocol.maskToIndexes(info.imgMask)
       const index = this.resolveDeviceImageIndex(photoId, device, occupied)
 

@@ -78,13 +78,21 @@ Page({
         // 精确相等必对不上，正连着的设备会被误判「未连接」（与首页 loadHomeState 同一套规则）
         activeDevice.serialsMatch(this.deviceSerial(item), selectedSerial)
       )
+      // 电量与其时间戳必须**成对**搬运：只搬值不搬戳，新鲜度判定会把它当来路不明的历史值
+      // 丢弃（见 battery.js resolveBattery 第②道闸）。后端不存电量，实际总是走 selected 这侧。
       const merged = !isSelected
         ? item
-        : Object.assign({}, item, {
-            deviceId: item.deviceId || selected.deviceId,
-            bleDeviceId: item.bleDeviceId || selected.bleDeviceId || selected.deviceId,
-            battery: typeof item.battery === 'number' ? item.battery : selected.battery
-          })
+        : Object.assign(
+            {},
+            item,
+            {
+              deviceId: item.deviceId || selected.deviceId,
+              bleDeviceId: item.bleDeviceId || selected.bleDeviceId || selected.deviceId
+            },
+            typeof item.battery === 'number'
+              ? { battery: item.battery, batteryAt: item.batteryAt || null }
+              : { battery: selected.battery, batteryAt: selected.batteryAt || null }
+          )
       // 用 App 当前真实的蓝牙会话状态覆盖后端的 connected：后端并不知道本机的蓝牙连接。
       // 判连接用「deviceId 直连 + 设备ID×广播ID 序列号交叉匹配」（findConnectedDeviceId）：
       // 接口重拉的记录常不带 BLE deviceId，只按 deviceId 判断会把还连着的设备错显示成「未连接」；
@@ -101,9 +109,9 @@ Page({
       // 先算内存百分比，再标记“可删除提示”仅显示在最后一个离线设备上（引导用户清理）
       devices: devices.map(item => Object.assign({}, item, {
         memoryPercent: memoryPercent(item),
-        batteryIcon: batteryUtil.getBatteryIcon(item.battery),
-        // 电量未知（蓝牙未读到）时不展示百分比，避免出现 null%
-        batteryText: typeof item.battery === 'number' ? `${item.battery}%` : ''
+        // 电量文案/图标统一由 batteryUtil 判定（未连接、无时间戳、超过有效期一律未知 '--'）
+        batteryIcon: batteryUtil.batteryIconOf(item),
+        batteryText: batteryUtil.batteryText(item)
       })).map((item, index, list) => Object.assign({}, item, {
         canDeleteHint: !item.connected && index === list.length - 1
       })),
@@ -325,15 +333,19 @@ Page({
         connected: true
       },
       info
-        ? {
-            battery: info.battery,
-            usedMemory: info.imgCount,
-            totalMemory: info.capacity,
-            playbackMode: info.playMode,
-            intervalSeconds: info.intervalSeconds,
-            intervalHours: info.intervalSeconds ? Math.max(1, Math.round(info.intervalSeconds / 3600)) : device.intervalHours,
-            firmwareVersion: info.firmwareVersion || device.firmwareVersion
-          }
+        ? Object.assign(
+            {
+              usedMemory: info.imgCount,
+              totalMemory: info.capacity,
+              playbackMode: info.playMode,
+              intervalSeconds: info.intervalSeconds,
+              intervalHours: info.intervalSeconds ? Math.max(1, Math.round(info.intervalSeconds / 3600)) : device.intervalHours,
+              firmwareVersion: info.firmwareVersion || device.firmwareVersion
+            },
+            // 电量带时间戳（info 为 null 时整块跳过：沿用旧值+旧戳，由 TTL 判过期，
+            // 绝不把旧值当成本次读到的新值重新打戳）
+            batteryUtil.stampBattery(info.battery)
+          )
         : null
     )
 
@@ -344,8 +356,8 @@ Page({
     this.setData({
       devices: this.data.devices.map(item => item.id === device.id ? Object.assign({}, updated, {
         memoryPercent: memoryPercent(updated),
-        batteryIcon: batteryUtil.getBatteryIcon(updated.battery),
-        batteryText: typeof updated.battery === 'number' ? `${updated.battery}%` : ''
+        batteryIcon: batteryUtil.batteryIconOf(updated),
+        batteryText: batteryUtil.batteryText(updated)
       }) : item)
     })
     return updated

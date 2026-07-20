@@ -382,10 +382,18 @@ async function ensureConnection(deviceId, meta) {
     attachSessionScreen(deviceId, screenType)
     return session
   }
+  // 单连接：即将新建一条连接，先释放本机持有的其他会话。
+  // 复用已就绪会话 / 复用在途 Promise 两个分支都在上面 return 了，所以「连同一台」永远走不到
+  // 这里 —— 天然幂等，不会把自己刚建好的连接断掉。
+  disconnectOthers(deviceId)
   const promise = establishConnection(deviceId)
   connecting[deviceId] = promise
   try {
     const session = await promise
+    // 再释放一次：上面那次只看得见「当时已登记在 sessions 里的」会话。若另一路 ensureConnection
+    // 恰好在我们建连期间完成（例如投屏预览页 preview.js 那个 fire-and-forget 的预热连接），
+    // 它的会话是在那之后才登记的，会漏网。后完成者胜 —— 与「用户最后点的那台才是要用的」一致。
+    disconnectOthers(deviceId)
     attachSessionSerial(deviceId, serial)
     attachSessionScreen(deviceId, screenType)
     return session
@@ -1327,6 +1335,20 @@ function disconnectAll() {
   return ids
 }
 
+// 单连接：释放除 keepDeviceId 之外的全部会话，返回被释放的 deviceId 列表。
+//
+// 为什么必须有这个：设备是单连接（PRD 6.2.3），残留会话会一直占着那台相框，而相框被占用时
+// **不再广播** —— 于是它此后在任何页面都搜不到，用户看到的是「这台相框坏了」，只能杀掉小程序。
+// getActiveConnections 头上的注释早就描述了这个故障，但此前只能靠调试页手动「断开全部」兜底。
+//
+// 注意此前的形状：establishConnection 的**失败**路径严格执行了释放（见其 catch），
+// **成功**路径反而没有任何释放策略 —— 缺的就是这里。
+function disconnectOthers(keepDeviceId) {
+  const ids = Object.keys(sessions).filter(id => id !== keepDeviceId)
+  ids.forEach(id => disconnect(id))
+  return ids
+}
+
 // 断开连接并清理会话（离开详情/绑定页时调用）
 function disconnect(deviceId) {
   cleanupSession(deviceId, '已主动断开连接')
@@ -1448,6 +1470,7 @@ module.exports = {
   hasAnyActiveConnection,
   getActiveConnections,
   disconnectAll,
+  disconnectOthers,
   disconnect,
   reconcileConnections
 }

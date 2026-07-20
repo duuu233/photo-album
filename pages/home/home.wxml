@@ -105,13 +105,15 @@
                     mode="aspectFill" />
                   <text>{{item.connected ? '已连接' : '未连接'}}</text>
                 </view>
-                <!-- 仅在已连接设备后才展示电量图标与数值 -->
+                <!-- 仅在已连接设备后才展示电量图标与数值。
+                     文案统一由 batteryText 给出（'87%' 或未知时的 '--'），模板不再自己拼 '%'——
+                     电量读不到时旧写法会渲染成假的百分比，用户分辨不出真假 -->
                 <view wx:if="{{item.connected}}" class="battery-row">
                   <image
                     class="battery-level-icon"
                     src="{{item.batteryIcon}}"
                     mode="aspectFit" />
-                  <text>{{item.battery}}%</text>
+                  <text>{{item.batteryText}}</text>
                 </view>
                 <!-- 未连接时展示「连接蓝牙」按钮；catchtap 阻止冒泡到卡片的进入设备列表 -->
                 <view

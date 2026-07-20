@@ -51,12 +51,16 @@ const SCENE_ALIASES = {
 // 未设置头像时的兜底图：与「我的」页保持一致
 const DEFAULT_AVATAR = '/assets/images/mine-header.jpg'
 
+// 未绑定设备时的占位卡片。电量置未知：这是一张假设备卡，给它一个像模像样的 30% 会和真实设备
+// 的电量混为一谈——历史上正是这个 30 通过 normalizeDevice 的兜底泄漏成了所有真实设备的默认电量。
 const DEFAULT_DEVICE = {
   id: 'frame_room',
   name: '房间相册',
   connected: true,
-  battery: 30,
-  batteryIcon: batteryUtil.getBatteryIcon(30)
+  battery: null,
+  batteryAt: null,
+  batteryText: batteryUtil.UNKNOWN_BATTERY_TEXT,
+  batteryIcon: batteryUtil.getBatteryIcon(null)
 }
 
 const NEARBY_DEVICES = [
@@ -80,14 +84,8 @@ const NEARBY_DEVICES = [
   }
 ]
 
-// 把电量限制在 0~100 的整数范围内，非法值兜底 30
-function clampBattery(value) {
-  const number = Number(value)
-  if (Number.isNaN(number)) {
-    return 30
-  }
-  return Math.max(0, Math.min(100, Math.round(number)))
-}
+// 电量的归一化/新鲜度/文案统一由 utils/battery.js 承担，本页不再自备兜底逻辑
+// （原本这里有个「非法值兜底 30」的 clampBattery，是首页显示假电量的源头）。
 
 // 把传入的场景标识（可能是别名）解析为标准场景，无法识别时回到未绑定首页
 function normalizeScene(scene) {
@@ -137,13 +135,10 @@ function normalizeDevice(device) {
   if (!device) {
     return null
   }
-  const battery = clampBattery(
-    typeof device.battery === 'number' ? device.battery : 30
-  )
   // 活动会话按「设备ID×广播ID」交叉匹配认领：接口重拉的记录不带 BLE deviceId，只按 deviceId 直连判断
   // 会把还连着的设备错显示成「未连接」（假断联）；交叉匹配命中后顺带把当下有效 deviceId 回填给记录
   const liveId = activeDevice.findConnectedDeviceId(device)
-  return {
+  const normalized = {
     id: device.id || DEFAULT_DEVICE.id,
     deviceId: liveId || device.deviceId || '', // 真实蓝牙 deviceId：投屏页据此连接设备并图传
     // 硬件序列号(Device_ID)：跨扫描会话稳定，按需连接时据此匹配扫描结果，须随设备一路带下去
@@ -154,9 +149,16 @@ function normalizeDevice(device) {
     // 屏幕分辨率：投屏预览页裁剪按此 width/height 锁定比例，透传给下游（接口就绪后即生效）
     width: device.width,
     height: device.height,
-    battery,
-    batteryIcon: batteryUtil.getBatteryIcon(battery)
+    // 电量：原样透传缓存里的值与时间戳，可不可信交给 batteryUtil 判（未连接/无戳/超时=未知）。
+    // 本页按设计不主动读 BLE（onShow 必须快），显示的就是「上次真读到的值」，所以时间戳不能丢。
+    battery: batteryUtil.normalizeBattery(device.battery),
+    batteryAt: device.batteryAt || null
   }
+  // connected 已就位，才能算出电量文案/图标（未连接一律未知）
+  return Object.assign(normalized, {
+    batteryText: batteryUtil.batteryText(normalized),
+    batteryIcon: batteryUtil.batteryIconOf(normalized)
+  })
 }
 
 // 由当前 scene 派生出 WXML 用到的一组布尔/文案标记，集中在此避免模板里写复杂判断。
@@ -214,7 +216,6 @@ Page({
     deviceList: [DEFAULT_DEVICE],
     currentDeviceIndex: 0,
     hasDevice: false,
-    batteryWidth: DEFAULT_DEVICE.battery,
     nearbyDevices: NEARBY_DEVICES,
     sceneFromQuery: false,
     networkOffline: false,
@@ -386,7 +387,6 @@ Page({
     if (!app.globalData.token && !wx.getStorageSync('token')) {
       this.setData({
         currentDevice: DEFAULT_DEVICE,
-        batteryWidth: DEFAULT_DEVICE.battery,
         hasDevice: false
       })
       this.setScene(SCENES.UNBOUND, {
@@ -417,13 +417,24 @@ Page({
           // 精确相等在两侧格式不一致时对不上，正连着的设备会被误判「未连接」（改名刷新列表时尤其明显）
           activeDevice.serialsMatch(this.deviceSerial(item), cachedSerial)
         )
-        return sameAsCached
-          ? Object.assign({}, item, {
-              deviceId: item.deviceId || cached.deviceId,
-              bleDeviceId: item.bleDeviceId || cached.bleDeviceId || cached.deviceId,
-              battery: typeof item.battery === 'number' ? item.battery : cached.battery
-            })
-          : item
+        if (!sameAsCached) {
+          return item
+        }
+        // 电量与其时间戳必须**成对**搬运：只搬值不搬戳，新鲜度判定会把它当来路不明的历史值
+        // 丢弃（见 battery.js resolveBattery 第②道闸）。后端不存电量，实际总是走 cached 这侧。
+        const batteryPair =
+          typeof item.battery === 'number'
+            ? { battery: item.battery, batteryAt: item.batteryAt || null }
+            : { battery: cached.battery, batteryAt: cached.batteryAt || null }
+        return Object.assign(
+          {},
+          item,
+          {
+            deviceId: item.deviceId || cached.deviceId,
+            bleDeviceId: item.bleDeviceId || cached.bleDeviceId || cached.deviceId
+          },
+          batteryPair
+        )
       })
 
       const normalizedList = mergedDevices.map(normalizeDevice).filter(Boolean)
@@ -450,7 +461,6 @@ Page({
         currentDevice,
         deviceList: list,
         currentDeviceIndex,
-        batteryWidth: currentDevice ? currentDevice.battery : DEFAULT_DEVICE.battery,
         hasDevice: hasRealDevice
       })
 
@@ -465,7 +475,6 @@ Page({
 
       this.setData({
         currentDevice: DEFAULT_DEVICE,
-        batteryWidth: DEFAULT_DEVICE.battery,
         hasDevice: false
       })
       this.setScene(SCENES.UNBOUND, {
@@ -680,8 +689,7 @@ Page({
 
     this.setData({
       currentDeviceIndex: index,
-      currentDevice: device,
-      batteryWidth: device.battery
+      currentDevice: device
     })
   },
 
@@ -773,21 +781,25 @@ Page({
     if (!current) {
       return
     }
-    const battery = info && typeof info.battery === 'number'
-      ? clampBattery(info.battery)
-      : current.battery
-    const updated = Object.assign({}, current, {
-      deviceId,
-      connected: true,
-      battery,
-      batteryIcon: batteryUtil.getBatteryIcon(battery)
+    // info 为 null = 复用了已有活动会话、本次没读设备信息（见 active-device.connectBoundDevice
+    // 的 verifyReuse，首页不传即 false）。此时**不动电量**：沿用缓存里的值和它原本的时间戳，
+    // 由 TTL 自行判定过不过期。旧代码在这里把 current.battery（很可能是兜底的 30）重新当成
+    // 本次读到的值写回缓存，假值就是这样扩散到设备列表页的。
+    const updated = Object.assign(
+      {},
+      current,
+      { deviceId, connected: true },
+      info ? batteryUtil.stampBattery(info.battery) : null
+    )
+    Object.assign(updated, {
+      batteryText: batteryUtil.batteryText(updated),
+      batteryIcon: batteryUtil.batteryIconOf(updated)
     })
     list[index] = updated
     this.setData({
       deviceList: list,
       currentDevice: updated,
-      currentDeviceIndex: index,
-      batteryWidth: updated.battery
+      currentDeviceIndex: index
     })
     // 合并到选中设备：以 selectedDevice 为底(带 deviceNo/序列号)，叠加最新连接态与 deviceId
     app.setSelectedDevice(Object.assign({}, app.globalData.selectedDevice || {}, updated, {
