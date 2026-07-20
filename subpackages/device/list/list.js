@@ -286,10 +286,9 @@ Page({
       if (device.deviceId) {
         deviceBle.disconnect(device.deviceId)
       }
+      // 与连接路径同样走整组重算：连接态只认真实会话，不再逐行手写 true/false
       this.setData({
-        devices: this.data.devices.map(item => item.id === id ? Object.assign({}, item, {
-          connected: false
-        }) : item)
+        devices: activeDevice.reconcileConnectionFlags(this.data.devices)
       })
       // 断开成功不再弹提示（按钮/卡片已切「未连接」态即为反馈）；仅失败时提示。
       return
@@ -353,12 +352,18 @@ Page({
     // 这样切到别的页面再回来、或自动重连时，都能据 selectedDevice.deviceId 认出这条活动会话。
     app.setSelectedDevice(updated)
 
+    // 整张列表按真实会话重算连接态，而不是只刷被点的这一行：单连接下连 B 会先释放 A 的会话
+    // （device-ble.disconnectOthers），只改 B 那行的话 A 会一直挂着「已连接」和「投屏/断开」按钮。
     this.setData({
-      devices: this.data.devices.map(item => item.id === device.id ? Object.assign({}, updated, {
-        memoryPercent: memoryPercent(updated),
-        batteryIcon: batteryUtil.batteryIconOf(updated),
-        batteryText: batteryUtil.batteryText(updated)
-      }) : item)
+      devices: activeDevice
+        .reconcileConnectionFlags(
+          this.data.devices.map(item => item.id === device.id ? updated : item)
+        )
+        .map(item => Object.assign({}, item, {
+          memoryPercent: memoryPercent(item),
+          batteryIcon: batteryUtil.batteryIconOf(item),
+          batteryText: batteryUtil.batteryText(item)
+        }))
     })
     return updated
   },

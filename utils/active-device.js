@@ -55,16 +55,109 @@ function findConnectedDeviceId(device) {
   const hit = deviceBle.getActiveConnections().find(conn =>
     // 先按型号/尺寸过一道闸：会话广播 screenType 与设备记录尺寸对不上（不同型号）直接跳过，防串台
     sameScreen(device, conn.screenType) &&
-    (conn.serials || []).some(serial =>
-      serials.some(mine => serialsMatch(serial, mine))
-    )
+    sessionMatchesSerials(conn.serials, serials)
   )
   return hit ? hit.deviceId : ''
+}
+
+// 这条活动会话与这条设备记录是否指同一台：把「会话登记的序列号」与「设备记录的序列号」两两比对，
+// 按可靠度分三级裁决（而非旧的「任意一对 serialsMatch 命中即算」）：
+//   ① 有一对完全相等 -> 是（最可靠，直接放行）
+//   ② 否则只要有一对「长度相同却不相等」-> 否，一票否决
+//   ③ 都没有 -> 退回 serialsMatch 的锚定子串匹配（4 字节广播 vs 6 字节固件/后端）
+// ②是防串台的关键：会话上同时登记着广播 4 字节和固件 0x01 读到的 6 字节（attachSessionSerial 两处调用），
+// 旧的 .some() 只要任意一对命中就算数——同批次相框广播前 4 字节常相同，于是「6 字节明明对不上」
+// 却被「4 字节前缀偶合」救回来，B 的会话被认成 A 的连接。表现有二：A 那行跟着显示「已连接」，
+// 更危险的是投屏/一键清空会把指令发到 B。同长度比较是权威的，一旦它说不是，就不许再降级挽回。
+function sessionMatchesSerials(sessionSerials, deviceSerials) {
+  // 两侧都归一化（幂等）：长度比较是本函数的裁决依据，带分隔符的原始串会让长度失真
+  const left = (sessionSerials || []).map(normalizeSerial).filter(Boolean)
+  const right = (deviceSerials || []).map(normalizeSerial).filter(Boolean)
+  if (!left.length || !right.length) {
+    return false
+  }
+  let exact = false
+  let sameLengthConflict = false
+  let anchored = false
+  // 先全量比完再裁决，避免受两侧数组顺序影响（设备记录的 deviceNo/productDeviceId 可能一条 4 字节一条 6 字节）
+  left.forEach(a => {
+    right.forEach(b => {
+      if (a === b) {
+        exact = true
+      } else if (a.length === b.length) {
+        sameLengthConflict = true
+      } else if (serialsMatch(a, b)) {
+        anchored = true
+      }
+    })
+  })
+  if (exact) {
+    return true
+  }
+  return sameLengthConflict ? false : anchored
 }
 
 // 是否已有可用连接：deviceId 直连命中，或序列号交叉匹配到活动会话
 function isDeviceConnected(device) {
   return !!findConnectedDeviceId(device)
+}
+
+// 按当下真实 BLE 会话，把一组设备记录的连接态整体重算一遍：命中的回填本次会话有效 deviceId，
+// 其余一律落回「未连接」。返回新数组（不改原对象），调用方直接 setData。
+//
+// 为什么必须整组重算、而不是只改被点的那一台：单连接下 ensureConnection 在建新连接前会先释放旧会话
+// （device-ble.disconnectOthers），但旧设备**那一行的 connected 没有任何人去改**——
+// 于是「连了 B，A 还显示已连接」，且 A 那行照旧给出「投屏/断开」按钮，点下去操作的是已经不存在的会话。
+// 单连接的不变式是「最多只有一台已连接」，这里就是把它落到 UI 上的唯一入口。
+// App 侧对应 state.dart 的 reconcileConnectionFlags 与「连接成功后 item.connected = identical(item, device)」。
+// 每条会话只认领一行：逐行独立判断还不够。会话未必登记得到 6 字节固件序列号
+// （ensureDeviceConnected 的自动重连路径只走 scanMatchConnect，不读 0x01，会话上只有广播 4 字节），
+// 此时两台同批次设备（前 4 字节相同）会双双锚定命中同一条会话 —— 又回到「A、B 都显示已连接」。
+// 所以按匹配强度打分取最强的那一行，其余即便也"像"，也一律判未连接。
+function reconcileConnectionFlags(devices) {
+  const list = devices || []
+  const conns = deviceBle.getActiveConnections()
+  const claims = {} // 会话 deviceId -> 目前得分最高的那一行
+  list.forEach((device, index) => {
+    const liveId = findConnectedDeviceId(device)
+    if (!liveId) {
+      return
+    }
+    const score = connectionMatchScore(device, conns.find(conn => conn.deviceId === liveId))
+    const prev = claims[liveId]
+    if (!prev || score > prev.score) {
+      claims[liveId] = { index, score }
+    }
+  })
+  const winners = {} // 行下标 -> 该行认领到的会话 deviceId
+  Object.keys(claims).forEach(liveId => {
+    winners[claims[liveId].index] = liveId
+  })
+  return list.map((device, index) => {
+    const liveId = winners[index] || ''
+    return Object.assign({}, device, {
+      deviceId: liveId || device.deviceId,
+      bleDeviceId: liveId || device.bleDeviceId,
+      connected: !!liveId
+    })
+  })
+}
+
+// 这一行与这条会话的匹配强度：deviceId 直连(3) > 序列号精确相等(2) > 锚定子串(1)。
+// 只用于「多行同时命中同一条会话」时择一，不参与「是否匹配」的判定（那是 findConnectedDeviceId 的事）。
+function connectionMatchScore(device, conn) {
+  const directId = device.deviceId || device.bleDeviceId
+  if (conn && directId && directId === conn.deviceId) {
+    return 3
+  }
+  const serials = [device.deviceNo, device.productDeviceId]
+    .map(normalizeSerial)
+    .filter(Boolean)
+  const sessionSerials = ((conn && conn.serials) || []).map(normalizeSerial).filter(Boolean)
+  if (sessionSerials.some(a => serials.some(b => a === b))) {
+    return 2
+  }
+  return 1
 }
 
 // 硬件序列号归一化：去分隔符 + 大写，兼容后端与蓝牙广播两侧可能的格式差异
@@ -357,6 +450,7 @@ module.exports = {
   getActiveDevice,
   isDeviceConnected,
   findConnectedDeviceId,
+  reconcileConnectionFlags,
   serialsMatch,
   sameScreen,
   matchScannedDevice,

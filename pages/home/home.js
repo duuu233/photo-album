@@ -796,9 +796,18 @@ Page({
       batteryIcon: batteryUtil.batteryIconOf(updated)
     })
     list[index] = updated
+    // 整个轮播列表按真实会话重算连接态，而不是只刷当前这一张卡：单连接下连 B 会先释放 A 的会话
+    // （device-ble.disconnectOthers），只改当前卡的话，轮播滑回 A 时它仍显示「已连接」。
+    // 电量文案/图标依赖 connected（未连接一律 '--'），所以必须在重算之后再算一遍。
+    const reconciled = activeDevice.reconcileConnectionFlags(list).map(item =>
+      Object.assign({}, item, {
+        batteryText: batteryUtil.batteryText(item),
+        batteryIcon: batteryUtil.batteryIconOf(item)
+      })
+    )
     this.setData({
-      deviceList: list,
-      currentDevice: updated,
+      deviceList: reconciled,
+      currentDevice: reconciled[index] || updated,
       currentDeviceIndex: index
     })
     // 合并到选中设备：以 selectedDevice 为底(带 deviceNo/序列号)，叠加最新连接态与 deviceId

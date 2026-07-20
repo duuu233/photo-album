@@ -677,6 +677,8 @@ Page({
       // 图传结束：把连接间隔从图传极速档(7.5/15ms)回落到省电的空闲档(100ms)。best-effort、不 await 收尾。
       // 若最后一张刚触发了异步刷屏(0x24)，等它跑完再回落——刷屏期间设备对新指令回忙(0x0B)，挤在一起会白白失败；
       // 没有在途刷屏(失败/中断路径)则立即回落。applyIdleConnectionInterval 内部已吞错、未连接会自行跳过。
+      // ⚠️ 空闲省电档总开关(device-ble.IDLE_CONN_INTERVAL_ENABLED)当前为 false → 这里实际空转，
+      // 传完后链路会一直停在图传极速档上。等刷屏的时序保留着，开关打开即恢复原行为。
       const resetIdleInterval = () =>
         deviceBle.applyIdleConnectionInterval(deviceId).catch(() => {})
       if (lastRefreshPromise) {

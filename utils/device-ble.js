@@ -457,8 +457,9 @@ async function establishConnection(deviceId) {
       ready: true
     }
     sessions[deviceId] = session
-    // 连接建立后立即把 BLE 连接间隔设为省电的空闲档(100ms)：图传时才临时切到极速档、传完再回落到这里，
+    // 连接建立后把 BLE 连接间隔设为省电的空闲档(100ms)：图传时才临时切到极速档、传完再回落到这里，
     // 保证平时保活挂着的连接不长期跑在费电的极速间隔上。best-effort（内部吞错、2s 短超时），失败不阻断连接。
+    // ⚠️ 总开关 IDLE_CONN_INTERVAL_ENABLED 当前为 false → 这里实际是空转，链路停在系统默认间隔上。
     await applyIdleConnectionInterval(deviceId)
     return session
   } catch (error) {
@@ -549,6 +550,32 @@ const IDLE_CONN_INTERVAL_MS = 100
 // 设置空闲连接间隔用的应答超时(ms)：0x13 是 v1.4 才有的指令，老固件可能根本不回。收紧到 2s（默认 6s），
 // 别让「连接后设省电间隔」在老固件上把每次连接都白白拖慢 6s（对齐 Flutter 端 0x05/0x13 的 2s 超时）。
 const IDLE_CONN_INTERVAL_SET_TIMEOUT = 2000
+
+// 空闲省电连接间隔的总开关（2026-07-20：先关闭）。
+// 关闭后 applyIdleConnectionInterval 直接空转：连接建立后、图传结束后都**不再**下发 0x13 回落到 100ms，
+// 链路停在上一次设置的间隔上（首连=手机/系统默认，图传后=极速档 7.5/15ms）。
+//
+// 为什么做成开关而不是直接删掉：省电逻辑本身是对的，但它是一道**加在每条链路上的全局约束**——
+// 连接后多一次 0x13 往返（老固件不回时还要空等满 2s），图传收尾还必须排在末张 0x24 刷屏之后才能发
+// （刷屏期设备回忙 0x0B，见下方函数注释）。排查连接慢/图传异常时这些都是干扰项，留开关才能一键对照。
+// 确认无副作用后再决定去留，别直接删——重写一遍这套时序的成本远高于留一个常量。
+const IDLE_CONN_INTERVAL_ENABLED = false
+// 存储覆盖键：调试时 wx.setStorageSync('idleConnIntervalEnabled', true) 即可临时开启，不必改代码重编译
+//（与 transferConnIntervalMs / transferPaceMs 同一套「存储值优先于默认值」的机制）。
+const IDLE_CONN_INTERVAL_STORAGE_KEY = 'idleConnIntervalEnabled'
+
+// 空闲省电连接间隔当前是否启用：存储里显式存了布尔值就以它为准，否则用上面的默认开关。
+function idleConnIntervalEnabled() {
+  try {
+    const stored = wx.getStorageSync(IDLE_CONN_INTERVAL_STORAGE_KEY)
+    if (stored === true || stored === false) {
+      return stored
+    }
+  } catch (error) {
+    // 读存储失败按默认值走，不影响连接
+  }
+  return IDLE_CONN_INTERVAL_ENABLED
+}
 
 // 按运行平台取图传连接间隔默认值。只有明确是安卓才用 7.5ms；iOS/未知平台（探测失败、
 // 桌面端等）一律 15ms 保守取值——15ms 各平台都接受（最多慢一点），反之 iOS 请求 7.5ms
@@ -949,11 +976,17 @@ async function optimizeConnectionIntervalForTransfer(deviceId, ms) {
 
 // 把 BLE 连接间隔回落到空闲省电档（IDLE_CONN_INTERVAL_MS=100ms）：连接建立后、以及每次图传结束后调用，
 // 让链路只在真正传图时跑极速档(7.5/15ms)，其余时间用省电的长间隔。best-effort、绝不抛：
+//   ⓪ 总开关关闭（当前默认）直接空转——两个调用点都经过这里，关一处即全局失效；
 //   ① 未连接直接跳过——不为了设间隔反而触发一次重连（图传失败后设备可能已断开）；
 //   ② 旧固件不支持 0x13 / 设备拒绝时吞掉错误，用 2s 短超时防老固件不回时把调用方拖住。
 // 注意：图传最后一张的异步刷屏(0x24)期间设备会对新指令回忙(0x0B)，调用方应等刷屏跑完再调本函数，
 // 否则这次回落会撞上 0x0B 白白失败（见 result.js 收尾里对 lastRefreshPromise 的链式处理）。
 async function applyIdleConnectionInterval(deviceId) {
+  // 开关在函数内而不是各调用点：establishConnection 与 result.js 收尾两处都收敛到这里，
+  // 挡在这一层就不会有人绕过去，调用方也不必各自判断（保持 best-effort 语义不变，照旧返回 null）。
+  if (!idleConnIntervalEnabled()) {
+    return null
+  }
   if (!isConnected(deviceId)) {
     return null
   }

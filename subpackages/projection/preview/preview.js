@@ -78,6 +78,29 @@ Page({
     }
   },
 
+  onReady() {
+    // 首次进入自动「点一次旋转」：与用户手动点底部「旋转」完全等价——进入统一编辑态并把图片转 90°。
+    // 裁剪框、导出链路一律不动（框仍锁设备比例，导出仍是设备物理分辨率 680×960）。
+    //
+    // 放 onReady 而不是 onLoad：enterEdit 要用 boundingClientRect 量舞台尺寸，onLoad 时节点尚未渲染，量不到。
+    // onReady 每个页面实例只跑一次，所以只有「首次加载」会自动转；之后切图会退出编辑态（onSwiperChange），
+    // 不会再自动转，用户想继续转就自己点按钮。
+    this.autoRotateOnce()
+  },
+
+  // 进入页面时模拟一次「旋转」点击。静默执行：没有可编辑的图 / 量不到舞台 / 读不到图片信息时，
+  // 都不弹提示、不进编辑态，页面停在普通预览态即可——这是自动行为，不该冒出用户根本没触发过的报错。
+  autoRotateOnce() {
+    if (!this.data.images.length) {
+      return
+    }
+    this.enterEdit({ silent: true }).then(ok => {
+      if (ok) {
+        this.rotate90()
+      }
+    })
+  },
+
   // 统一刷新图片相关状态：当前预览图与张数（设备空间是否够由结果页按真实容量/掩码判断）
   updateImageState(images, device, activeIndex) {
     const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1)) // 防止下标越界
@@ -167,12 +190,16 @@ Page({
   // 进入统一编辑态：量出舞台尺寸 + 图片真实尺寸，摆好「固定裁剪框(设备比例) + 铺满该框的图片」。
   // 之后用户单指平移 / 双指缩放旋转 / 点旋转按钮 90°，图片在框下自由变换，框不动，框内即最终成像。
   // 返回 Promise<boolean>（true=已进入编辑态），供「旋转」按钮进入后再转 90°。
-  enterEdit() {
+  // options.silent：失败时不弹提示（进入页面自动转 90° 时用，见 autoRotateOnce）。
+  enterEdit(options) {
+    const silent = !!(options && options.silent)
     return new Promise((resolve) => {
       const image = this.data.images[this.data.activeIndex]
       const src = image && (image.tempFilePath || image.url)
       if (!src) {
-        toast.warn({ title: '暂无可编辑的图片', icon: 'none' })
+        if (!silent) {
+          toast.warn({ title: '暂无可编辑的图片', icon: 'none' })
+        }
         resolve(false)
         return
       }
@@ -186,7 +213,9 @@ Page({
       query.exec((res) => {
         const rect = res && res[0]
         if (!rect || !rect.width) {
-          toast.warn({ title: '初始化编辑失败', icon: 'none' })
+          if (!silent) {
+            toast.warn({ title: '初始化编辑失败', icon: 'none' })
+          }
           resolve(false)
           return
         }
@@ -254,7 +283,9 @@ Page({
             resolve(true)
           },
           fail: () => {
-            toast.warn({ title: '读取图片失败', icon: 'none' })
+            if (!silent) {
+              toast.warn({ title: '读取图片失败', icon: 'none' })
+            }
             resolve(false)
           }
         })
