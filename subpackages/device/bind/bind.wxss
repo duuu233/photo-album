@@ -152,10 +152,9 @@
   color: #ff5a1e;
 }
 
-.nearby-device.selected .nearby-icon {
-  background: rgba(255, 100, 33, 0.14);
-}
-
+/* 换成首页的 home-icon02 后，橙色底色块要去掉（含选中态的加深底色）：
+   这张图四角透明、自带圆角底衬，外面再套一层色块会在四角露出色晕。
+   与 list.wxss / detail.wxss 换图时的处理一致。选中态仍有橙色描边+橙色设备名+右侧对勾，识别度足够。 */
 .nearby-icon {
   display: flex;
   align-items: center;
@@ -164,14 +163,12 @@
   width: 88rpx;
   height: 88rpx;
   margin-right: 26rpx;
-  color: #ff6421;
-  background: rgba(255, 100, 33, 0.08);
-  border-radius: 22rpx;
 }
 
+/* 与容器同尺寸：home-icon02 是带细节的插画，塞在 56rpx 的内框里会糊 */
 .nearby-icon__img {
-  width: 56rpx;
-  height: 56rpx;
+  width: 88rpx;
+  height: 88rpx;
 }
 
 .nearby-copy {
@@ -192,8 +189,12 @@
 .nearby-sub {
   display: block;
   margin-top: 8rpx;
+  overflow: hidden;
   color: #8b9098;
   font-size: 22rpx;
+  /* 截断兜底：设备ID 那行在广播解析失败时会退化成 iOS 的 36 位 UUID，不截断会把整行撑破 */
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 右侧单选指示：选中显示对勾图标，未选显示空心圆 */

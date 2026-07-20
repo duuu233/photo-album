@@ -19,6 +19,11 @@ const WEAK_SIGNAL_RSSI = -70
 // 弱信号等待上限(ms)：期间来一帧达标的就立刻连；等满了也照常连，绝不因信号弱阻断用户。
 // 1.5s 是「值得等一等」与「用户觉得卡住了」的折中——广播间隔通常 100~500ms，够收十几帧。
 const WEAK_SIGNAL_WAIT_MS = 1500
+// 「扫描 → 连接」整轮的重试次数（2026-07-20 第二轮，治残留的 connect time out）。
+// 与 device-ble 内层重试分工：内层只解决「同一 deviceId 上的瞬时失败」，本层解决
+// 「deviceId 已失效 / 设备不再广播」——后者换多少次内层重试都是 connect time out，必须重扫。
+// 2 轮：最坏 ≈「扫描 + 5s + 0.4s + 8s」×2 ≈ 30s，与上一轮的 26s 同量级，但覆盖的失败类型多一类。
+const SCAN_CONNECT_ROUNDS = 2
 
 // 弹窗引导去首页切换设备 / 绑定新设备
 function promptSwitchDevice(content) {
@@ -291,6 +296,46 @@ async function scanMatchConnect(device, match, onConnectStart) {
     throw new Error('请先授权定位后再连接')
   }
   await bluetooth.openAdapter()
+
+  let lastConnectError = null
+  for (let round = 0; round < SCAN_CONNECT_ROUNDS; round++) {
+    let target
+    try {
+      target = await scanForTarget(device, match)
+    } catch (scanError) {
+      // 重扫轮扫不到了：上一轮的连接错误更贴近真相（设备多半是被我们那次失败的连接占住了），
+      // 报「未搜索到该设备」会把用户引到「设备是不是没开机」的错误方向去。
+      throw lastConnectError || scanError
+    }
+    if (typeof onConnectStart === 'function') {
+      onConnectStart()
+    }
+    // 等硬件扫描真正停下来再发起连接：扫描与连接抢射频，弱信号下是连接失败的主因之一。
+    // 其他订阅者还在扫时内部直接返回（不掐断别人），此时保持原有行为。
+    await bluetooth.whenScanStopped()
+    try {
+      // 把扫描广播里的 Device_ID + 屏幕类型登记到会话，后续页面据此交叉匹配认出这条连接，并按型号/尺寸校验防串台
+      await deviceBle.ensureConnection(target.deviceId, {
+        deviceNo: target.deviceNo,
+        screenType: target.screenType
+      })
+      return target
+    } catch (error) {
+      lastConnectError = error
+      if (round === SCAN_CONNECT_ROUNDS - 1) {
+        throw error
+      }
+      // 还有轮次：重新扫描再连。这一层专治内层重试无能为力的那类失败——
+      // deviceId 是「本次扫描会话」的临时值，设备重启/安卓随机地址轮换后就失效了，
+      // 拿着失效的 deviceId 连多少次都是 connect time out。重扫既能拿到新鲜 deviceId，
+      // 又顺带确认设备是否还在广播（不在广播就走上面的 scanError 分支如实报错）。
+    }
+  }
+  throw lastConnectError || new Error('连接失败')
+}
+
+// 扫描一轮并返回匹配到的目标（含本次会话有效 deviceId）。扫不到抛「未搜索到该设备」。
+async function scanForTarget(device, match) {
   // until：扫到目标设备(match 命中)就立刻停扫返回，不苦等满窗口——正式连接不再比调试台直连慢一截
   //
   // 12 秒（原 6 秒）：相框被 GATT 占着时不广播，断开后要好几秒才恢复广播。单连接落地后
@@ -327,17 +372,6 @@ async function scanMatchConnect(device, match, onConnectStart) {
   if (!target) {
     throw new Error('未搜索到该设备，请确认设备已开机并在附近')
   }
-  if (typeof onConnectStart === 'function') {
-    onConnectStart()
-  }
-  // 等硬件扫描真正停下来再发起连接：扫描与连接抢射频，弱信号下是连接失败的主因之一。
-  // 其他订阅者还在扫时内部直接返回（不掐断别人），此时保持原有行为。
-  await bluetooth.whenScanStopped()
-  // 把扫描广播里的 Device_ID + 屏幕类型登记到会话，后续页面据此交叉匹配认出这条连接，并按型号/尺寸校验防串台
-  await deviceBle.ensureConnection(target.deviceId, {
-    deviceNo: target.deviceNo,
-    screenType: target.screenType
-  })
   return target
 }
 
@@ -434,8 +468,20 @@ function showConnectError(error) {
   if (error && error.code === 'PERMISSION_DENIED') {
     bluetooth.showPermissionGuide()
   } else {
-    toast.warn({ title: (error && error.message) || '连接失败', icon: 'none' })
+    toast.warn({ title: friendlyConnectMessage((error && error.message) || ''), icon: 'none' })
   }
+}
+
+// 连接超时对用户毫无信息量：「设备-createBLEConnection:fail connect time out」既看不懂也不知道该做什么，
+// 而它恰恰是弱信号下最常见的失败。换成可操作的说法，并保留「设备-」来源前缀（见 toast 前缀约定）。
+// 只替换这一类；其余原因（未搜索到/权限/蓝牙未开…）照旧如实展示，不要笼统化。
+// 注意：只改展示，不动 error 本身——console 里仍是原始报错，排查时看得到真实原因。
+function friendlyConnectMessage(message) {
+  const text = String(message || '')
+  if (/connect\s*time\s*out|createBLEConnection/i.test(text)) {
+    return '设备-连接超时，请靠近设备后重试'
+  }
+  return text || '连接失败'
 }
 
 // 操作前确保已连接（未连接自动重连）。成功返回有效 deviceId；失败按标准 UI 提示并返回 ''（调用方据此 return）。

@@ -305,20 +305,28 @@ async function discoverCharacteristics(
 // 建立底层 BLE 连接，带自动重试。安卓首连常偶发 10003(connection fail)/10012(操作超时)，
 // 重试通常即可成功；若底层报「已连接」则直接当成功返回。多次失败才抛出供上层提示。
 //
-// 重试预算（2026-07-20 为弱信号调整）：原为「2 次 × 10s 超时 + 固定 400ms 间隔」。
-// BLE 连接的实际形状是「要么两三秒内建起来，要么连接请求在空中就丢了」——干等 10s 基本救不回来，
-// 却把总预算烧掉一半，弱信号(「正常」档 -67~-78dBm)下等于只有两次机会。
-// 改为「4 次 × 6s 超时 + 递增退避 300/600/1200ms」：最坏墙钟 6*4+2.1≈26s，与原来的 ~20s 同量级，
-// 但尝试次数翻倍。退避递增是因为连不上往往是瞬时干扰，隔久一点再试比密集重试更容易撞上好时机。
-const CONNECT_ATTEMPTS = 4
-const CONNECT_TIMEOUT_MS = 6000
-const CONNECT_BACKOFF_MS = [300, 600, 1200]
+// 连接重试预算（2026-07-20 第二轮，治残留的 connect time out）。
+//
+// 这是**内层**重试：只负责「同一个 deviceId 上的瞬时失败」（蓝牙栈抖动、CONNECT_IND 丢包）。
+// 「deviceId 本身已失效 / 设备不再广播」那一类失败换多少次都没用，由**外层**的重扫兜底
+// （active-device.scanMatchConnect 的 SCAN_CONNECT_ROUNDS，失败后重新扫描拿新鲜 deviceId 再连）。
+// 分层之后内层不必堆次数，故从上一轮的「4 次 × 6s」收到「2 次」，把预算让给外层重扫。
+//
+// 超时逐次拉长而不是固定值：首次 5s 快速试错（多数失败是瞬时的，早失败早重试更划算），
+// 末次 8s 耐心等——弱信号下 CONNECT_IND 可能要经过好几个广播事件才被设备收到，一刀切的短超时会把
+// 「本来能连上、只是慢」误杀成失败。
+const CONNECT_ATTEMPTS = 2
+const CONNECT_TIMEOUTS = [5000, 8000]
+const CONNECT_BACKOFF_MS = [400]
 
 async function createConnectionWithRetry(deviceId, attempts = CONNECT_ATTEMPTS) {
   let lastError = null
   for (let i = 0; i < attempts; i++) {
     try {
-      await wxp(wx.createBLEConnection, { deviceId, timeout: CONNECT_TIMEOUT_MS })
+      await wxp(wx.createBLEConnection, {
+        deviceId,
+        timeout: CONNECT_TIMEOUTS[Math.min(i, CONNECT_TIMEOUTS.length - 1)]
+      })
       return
     } catch (error) {
       const msg = ((error && error.message) || '').toLowerCase()

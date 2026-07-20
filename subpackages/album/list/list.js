@@ -198,8 +198,8 @@ Page({
 
     this.setData({
       filters,
+      // totalCount 不在这里算：它要跟着「当前设备」走，由 applyFilter 统一维护（见其注释）
       currentFilter,
-      totalCount: photos.length,
       selectedMap: {},
       selectedCount: 0,
       showDeleteConfirm: false,
@@ -216,6 +216,11 @@ Page({
     this.setData({
       currentFilter: filter,
       filteredPhotos,
+      // 左上角「共 N 张」取**当前设备**的张数，不是全部设备的合计。
+      // 这里是唯一维护点：首次加载与每次切换设备都经过 applyFilter，算一处即处处对。
+      // 原来在 loadPhotos 里写死 photos.length（全部设备合计），切设备时也不会变——
+      // 用户看到的是「筛到了 3 张，却写着共 12 张」。
+      totalCount: filteredPhotos.length,
       showFilterMenu: false,
       selectedMap: {},
       selectedCount: 0

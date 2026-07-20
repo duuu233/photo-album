@@ -395,19 +395,27 @@ async function negotiateMtu(deviceId) {
   return mtu || 185
 }
 
-// 重试预算与 device-ble.createConnectionWithRetry 保持一致（2026-07-20 为弱信号一并调整）：
-// 4 次 × 6s 超时 + 递增退避 300/600/1200ms，取代原「2 次 × 10s + 固定 400ms」。
-// 理由见 device-ble 同名函数的注释。两处是各自独立的会话池、代码各一份，改一处必须同步改另一处，
-// 否则「普通连接连得上、进 OTA 却连不上」这种只在弱信号下现形的差异极难排查。
-const CONNECT_ATTEMPTS = 4
-const CONNECT_TIMEOUT_MS = 6000
-const CONNECT_BACKOFF_MS = [300, 600, 1200]
+// 连接重试预算。⚠️ **与 device-ble 的同名常量有意不同，不是漂移，别「顺手对齐」**：
+//
+// device-ble 那边是分层的——内层只留 2 次，因为它上面还有一层 active-device.scanMatchConnect 的
+// 「失败后重扫拿新鲜 deviceId 再连」（SCAN_CONNECT_ROUNDS），deviceId 失效那类失败由外层兜。
+// **OTA 这条链路没有那个外层**（ensureOtaConnection 直接拿现成 deviceId 连，不走扫描主链），
+// 所以只能靠内层多试几次来补偿，故次数取 3 而非 2。
+//
+// 超时逐次拉长的理由与 device-ble 一致：首次快速试错、末次耐心等，别把「本来能连上、只是慢」误杀。
+// 若哪天 OTA 也接上重扫层，就该把这里收回到与 device-ble 相同的 2 次。
+const CONNECT_ATTEMPTS = 3
+const CONNECT_TIMEOUTS = [5000, 8000, 10000]
+const CONNECT_BACKOFF_MS = [400, 800]
 
 async function createConnectionWithRetry(deviceId, attempts = CONNECT_ATTEMPTS) {
   let lastError = null
   for (let i = 0; i < attempts; i++) {
     try {
-      await wxp(wx.createBLEConnection, { deviceId, timeout: CONNECT_TIMEOUT_MS })
+      await wxp(wx.createBLEConnection, {
+        deviceId,
+        timeout: CONNECT_TIMEOUTS[Math.min(i, CONNECT_TIMEOUTS.length - 1)]
+      })
       return
     } catch (error) {
       const msg = ((error && error.message) || '').toLowerCase()

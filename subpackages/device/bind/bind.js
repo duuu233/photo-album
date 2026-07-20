@@ -8,6 +8,21 @@ const system = require('../../../utils/system')
 
 const app = getApp()
 
+// 搜索列表里展示的「设备ID」：取广播里的 Device_ID（bluetooth.normalizeDevice 的 deviceNo），
+// 去掉分隔符并大写，得到 8 位十六进制（如 1A2B3C4D）——同型号设备默认名相同（默认名=产品广播名），
+// 这是绑定前唯一能把两台区分开的稳定标识。
+// 兜底：广播厂商数据解析不出来时 deviceNo 会退化成蓝牙 deviceId（安卓 MAC / iOS 36 位 UUID），
+// 那种值又长又对用户无意义，只取末 8 位保持可读且仍能区分（WXSS 另有 ellipsis 兜底）。
+function displayDeviceCode(device) {
+  const raw = String((device && device.deviceNo) || '')
+    .replace(/[:\-\s]/g, '')
+    .toUpperCase()
+  if (!raw) {
+    return ''
+  }
+  return raw.length > 8 ? raw.slice(-8) : raw
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -127,7 +142,9 @@ Page({
     if (seq !== this.scanSeq) {
       return // 本次扫描已取消，丢弃增量结果
     }
-    const devices = list || []
+    const devices = (list || []).map(item =>
+      Object.assign({}, item, { deviceCode: displayDeviceCode(item) })
+    )
     this.setData({
       devices,
       selectedId:
