@@ -298,9 +298,9 @@ Page({
   },
 
   // 扫描匹配并连接这台设备（「连接」按钮与「投屏」按钮共用）：
-  // 微信 BLE deviceId 是「本次扫描会话」临时分配的，后端只存了序列号，没存它。
-  // 所以列表页连接必须先重扫拿到当下有效的 deviceId，再连——直连存下来的 deviceId 必失败。
-  // 成功返回带有效 deviceId/实时信息的设备对象并刷新列表 UI；失败提示后返回 null。
+  // 主链在 active-device.connectBoundDevice：先认活动会话复用 → 命中本机直连缓存则短超时直连旧 deviceId
+  //（2026-07-21，跳过扫描）→ 否则完整扫描拿当下有效 deviceId 再连。直连失败一律无损回落扫描，
+  // 所以「直连不中也不会连不上」，只是慢一点。成功返回带有效 deviceId/实时信息的设备对象并刷新列表 UI；失败提示后返回 null。
   async connectDevice(device) {
     try {
       // 扫描+匹配+连接主链已收敛到 active-device.connectBoundDevice（首页/列表/详情共用一份，改一处全生效）。

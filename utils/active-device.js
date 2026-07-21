@@ -10,6 +10,7 @@ const bluetooth = require('./bluetooth')
 const permission = require('./permission')
 const toast = require('./toast')
 const protocol = require('./frame-protocol')
+const connCache = require('./device-conn-cache')
 
 // 连接前的信号闸（2026-07-20，治「信号正常档经常连不上」）：
 // 扫描命中目标时若 RSSI 弱于此值，不立刻发起连接，先等一个短窗口看有没有更强的一帧。
@@ -24,6 +25,12 @@ const WEAK_SIGNAL_WAIT_MS = 1500
 // 「deviceId 已失效 / 设备不再广播」——后者换多少次内层重试都是 connect time out，必须重扫。
 // 2 轮：最坏 ≈「扫描 + 5s + 0.4s + 8s」×2 ≈ 30s，与上一轮的 26s 同量级，但覆盖的失败类型多一类。
 const SCAN_CONNECT_ROUNDS = 2
+
+// 直连快路径的短超时（2026-07-21，治「复连必先扫描、慢」）：命中本机缓存(后端稳定ID→上次微信deviceId)
+// 就赌一把直连旧 deviceId，赌不中(设备重启/换机/离线/安卓地址轮换)在此时限内快速失败、回落完整扫描。
+// 取 3s：一次 createBLEConnection 正常 1~2s 内就建起，超过多半是连不上；短到「赌不中也不明显拖慢」、
+// 长到「本来能连、只是慢一点的别误杀」。回落无损（最坏白花这 3s，仍能连上），故偏保守。
+const DIRECT_CONNECT_TIMEOUT_MS = 3000
 
 // 弹窗引导去首页切换设备 / 绑定新设备
 function promptSwitchDevice(content) {
@@ -283,6 +290,73 @@ function syncActiveDeviceId(device, deviceId) {
   }
 }
 
+// 直连缓存键：后端唯一且固定的设备ID（normalizeDevice 落在 productDeviceId，兜底 deviceNo）。
+// 用它当键而非 BLE deviceId——BLE deviceId 每次扫描会变，后端设备ID 一台一号、永不变。
+function directConnectKey(device) {
+  return (device && (device.productDeviceId || device.deviceNo)) || ''
+}
+
+// 短超时探测直连：命中缓存就直接连旧 deviceId，不走扫描。resolve(true)=连接已建立；
+// resolve(false)=超时/连不上（已顺手 close 释放半连接，避免占着单连接设备让紧随的回落扫描「未搜索到」）。
+// 只探测「够不够得着」，永不 reject——快路径的失败一律静默回落，不该把异常抛给上层。
+function probeDirectConnect(deviceId, timeout) {
+  return new Promise(resolve => {
+    if (!deviceId || !wx.createBLEConnection) {
+      resolve(false)
+      return
+    }
+    wx.createBLEConnection({
+      deviceId,
+      timeout,
+      success() {
+        resolve(true)
+      },
+      fail() {
+        if (wx.closeBLEConnection) {
+          wx.closeBLEConnection({ deviceId, complete() { resolve(false) } })
+        } else {
+          resolve(false)
+        }
+      }
+    })
+  })
+}
+
+// 冷连接前的乐观直连快路径（2026-07-21）：命中本机缓存就短超时直连旧 deviceId，成功即跳过「定位 + 扫描」整段。
+// 赌不中（设备重启/换机/离线/安卓地址轮换）则静默回落到完整扫描，最坏只白花 DIRECT_CONNECT_TIMEOUT_MS。
+// 不动 device-ble 底层：探测用自己的短超时 createBLEConnection；连上后交给 ensureConnection 复用这条已开连接
+// （其内层 createBLEConnection 见「已连接」直接当成功，照常发现服务/特征、开通知、登记会话）。
+// 返回连上的有效 deviceId；未命中/失败返回 ''（调用方据此回落到扫描）。全程不抛错——快路径绝不阻断连接。
+async function tryDirectConnect(device, onConnectStart) {
+  const cachedId = connCache.get(directConnectKey(device))
+  if (!cachedId) {
+    return ''
+  }
+  try {
+    await bluetooth.openAdapter()
+    const reachable = await probeDirectConnect(cachedId, DIRECT_CONNECT_TIMEOUT_MS)
+    if (!reachable) {
+      return ''
+    }
+    // 探测已连上，切「连接中」文案再补齐服务/特征（探测阶段沿用调用方原文案，回落扫描时才不至于文案错乱）
+    if (typeof onConnectStart === 'function') {
+      onConnectStart()
+    }
+    await deviceBle.ensureConnection(cachedId, {
+      deviceNo: device.deviceNo || device.productDeviceId
+    })
+    return cachedId
+  } catch (error) {
+    // 连上了但补服务/特征失败、或 openAdapter 抛错等：清掉可能残留的半连接，回落完整扫描（别占着设备）
+    try {
+      deviceBle.disconnect(cachedId)
+    } catch (ignored) {
+      // 无可断开的连接，忽略
+    }
+    return ''
+  }
+}
+
 // 完整扫描并连接一台已绑定设备的主链（定位 → openAdapter → 扫描 → 匹配 → ensureConnection）。
 // home/设备列表/设备详情的「连接蓝牙」按钮与操作前自动重连(ensureDeviceConnected)全共用这一份，
 // 改一处即全生效（此前四处各抄一遍，改一处漏三处）。返回连上的 target（含本次会话有效 deviceId 与广播 deviceNo）。
@@ -291,6 +365,13 @@ function syncActiveDeviceId(device, deviceId) {
 // onConnectStart：可选。扫到目标、正式 ensureConnection 前回调一次，供调用方把 loading 从「搜索中」切到「连接中」。
 // 本函数不弹/不关 loading（由各调用方按自己的场景管理）。
 async function scanMatchConnect(device, match, onConnectStart) {
+  // 快路径：命中本机直连缓存就短超时直连旧 deviceId，成功即跳过定位+扫描（2026-07-21）。
+  // 失败无损回落到下面的完整扫描——快路径不抛错，不改变原有失败语义。
+  const cachedDeviceId = await tryDirectConnect(device, onConnectStart)
+  if (cachedDeviceId) {
+    return { deviceId: cachedDeviceId, deviceNo: device.deviceNo || device.productDeviceId }
+  }
+
   const location = await permission.getCurrentLocation()
   if (!location) {
     throw new Error('请先授权定位后再连接')
@@ -319,6 +400,8 @@ async function scanMatchConnect(device, match, onConnectStart) {
         deviceNo: target.deviceNo,
         screenType: target.screenType
       })
+      // 记住本次有效 deviceId（按后端稳定设备ID 归键），下次复连可直连、跳过扫描
+      connCache.put(directConnectKey(device), target.deviceId)
       return target
     } catch (error) {
       lastConnectError = error
