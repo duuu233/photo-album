@@ -3,6 +3,26 @@
 > 🛠 **维护约定**：每次修改本文件涉及的问题/功能，务必在下方「操作日志」补一条（日期 + 改了什么 + 关联文件/commit），**最新在上**——别让文档与代码脱节。
 
 ## 操作日志（最新在上）
+- **2026-07-22**：**正常投屏的设备帧改由第三方 seekink 抖动接口生成，不再下载后端转码的 .bin**
+  （仅小程序，Flutter 待同步）。result.js `acquireFrame` 正常链路改为两路网络并行：
+  - **设备帧**：预览处理后的设备分辨率图 → `compressForUpload` 统一压缩（已是设备尺寸则原样通过）→
+    `utils/dithering.js requestFrameBin`（`POST http://cloud.seekink.cn:8091/prod-api/api/v1/label/imageDitheringBinDownload`，
+    form-data `color=BWRYGB`/`imageDitheringModes=2`/`type`(0=5.8寸 EF6-589、1=3.7寸 EF6-370，按分辨率判型)/`file`；
+    请求头 `Authorization`(⚠️写死联调 token，正式鉴权前必须替换)+`AcceptLanguage=en`；
+    手拼 multipart + `wx.request(responseType:'arraybuffer')` 收二进制，网络类失败退避重试 3 次）；
+  - **投屏记录**：`setUserProductUpload` 改传**原图**（进预览页前未操作过的图，`_origSrc` 回溯，
+    同一套 `compressForUpload` 统一压缩）只为建记录拿 `taskId/upirId` + 后端存图（图库/记录页展示），
+    返回的 `.bin url` 不再下载（`convertOnServer`/正常链路的 `downloadFrameBin` 已移除/仅剩 imgBle 用）。
+  - 图传成功后 `editUserProductImgRecord` 置成功、失败回滚 0x12、0x24 只刷最后一张、A3 预取/F1
+    首张并行/「帧字节数=宽×高÷2」铁闸**全部保持不变**；帧失败时记录可能已按未成功(0)建好，与旧
+    链路「转码成功后图传失败」同态。
+  - 预览页 07-22 当天的「抖动Bin」调试按钮已下线（逻辑即本条的前身）。
+  - ⚠️ **风险/待确认**：① seekink bin 的六色索引映射/扫描顺序未真机验证，花屏/串色先核对调色板；
+    ② 后端仍按「原图」转码存 `imgBle` → **再次投屏直传 imgBle 的内容将与本次实际投屏不一致**
+    （旧链路二者同源），需后端/产品定夺（后端不再出帧？或 imgBle 改存抖动接口结果？）；
+    ③ http + 未加白名单域名，联调需关域名校验，上线前要加白名单或走 https。
+  - 关联：`subpackages/projection/result/result.js`、`utils/dithering.js`、`subpackages/projection/preview/preview.{js,wxml,wxss}`、
+    `docs/接口清单.md`、`docs/2026-07-22-照片预览需求调整.md`。
 - **2026-07-17**：§5.3 加「实况提示」——本文是目标设计，**线上后端实际按上传图像素出帧、并未按设备尺寸缩放**；后端落地本节前，端上须把上传图预缩到设备物理分辨率（`preview.js` 导出已实现）。见 memory `projection-upload-must-be-device-resolution`。
 
 ## 1. 背景

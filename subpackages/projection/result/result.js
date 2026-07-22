@@ -1,27 +1,31 @@
 // 投屏结果页：进入时（status=progress）真实连接设备并走 BLE 图传，进度条与张数为真实进度；
-// 传完按真实结果切到「成功 / 失败」。已改为「后端转换 + BLE 图传」链路（图片处理放到服务器，画质更稳）：
-//   连接 → 读真实设备信息(0x01) → 逐张：
-//     原图传后端转换(setUserProductUpload，得 .bin 下载地址 + taskId + upirId)
-//     → 下载 .bin 帧数据 → 图传到设备(0x20/0x21/0x22)
-//     → 设备成功才编辑投屏记录(editUserProductImgRecord 置 deviceUploadState=1) → 刷新显示(0x24)。
+// 传完按真实结果切到「成功 / 失败」。正常投屏链路（2026-07-22 起设备帧改由 seekink 抖动接口生成，
+// 不再下载后端转码的 .bin，见 utils/dithering.js 与 docs/server-image-processing-ble-transfer.md）：
+//   连接 → 读真实设备信息(0x01) → 逐张（两路网络并行，见 acquireFrame）：
+//     ① 设备帧：预览处理后的设备分辨率图 → 统一压缩(compressForUpload) → 抖动接口 → 六色4bpp帧
+//     ② 投屏记录：原图（进预览页前未操作过的图，_origSrc）→ 同一套统一压缩 →
+//        setUserProductUpload 建记录拿 taskId/upirId（接口返回的 .bin url 不再下载使用）
+//   → ① 的帧图传到设备(0x20/0x21/0x22)
+//   → 设备成功才编辑投屏记录(editUserProductImgRecord 置 deviceUploadState=1，逻辑不变) → 刷新显示(0x24)。
 // 再次/重新投屏（投屏记录页进入，images 带 imgBle）：一律直接下载记录里的 imgBle 帧数据图传，
 //     不调后端上传/转码接口(setUserProductUpload)、也不调 editUserProductImgRecord；
 //     设备图传成功(1)/失败(0)都调 addUserProductImgRecord 新增一条投屏记录（见 addRetryRecord）。
 const system = require('../../../utils/system')
 const api = require('../../../utils/api')
 const deviceBle = require('../../../utils/device-ble')
+const dithering = require('../../../utils/dithering')
 const protocol = require('../../../utils/frame-protocol')
 const toast = require('../../../utils/toast')
 const media = require('../../../utils/media')
 const activeDevice = require('../../../utils/active-device')
 
-// 上传前缩到设备尺寸（性能优化 2026-07-13；2026-07-14 曾放宽到 ~1MB；2026-07-16 改为直接缩到设备物理分辨率）。
-// 只影响「上传+后端转码」耗时（真机曾达 5.7s），**不影响图传耗时**——发给设备的六色帧恒为 宽×高÷2
+// 统一的上传前压缩质量（性能优化 2026-07-13；2026-07-16 改为直接缩到设备物理分辨率；
+// 2026-07-22 起抖动接口上传与原图建记录上传两路共用同一套 compressForUpload）。
+// 只影响「上传」耗时（真机曾达 5.7s），**不影响图传耗时**——发给设备的六色帧恒为 宽×高÷2
 //（3.7寸=172800字节），与源图大小无关。
-// preview 已按设备比例 aspectFill 裁过，这里只把长边缩到「设备长边」（480×720 → 720），不改比例；
-// 后端拿到就在目标分辨率上直接量化成六色，不再吃高清原图。已不大于设备尺寸的图原样上传、不再降质。质量 90。
+// 长边缩到「设备长边」（480×720 → 720）、只缩分辨率不改比例；已不大于设备尺寸的图原样上传、不再降质。质量 90。
 // 任一步失败（老基础库没有 compressImage / 取不到尺寸 / 压缩报错）都回退原图上传，绝不阻断投屏。
-// ⚠️ 少了过采样余量，后端抖动(dither)细节可能略糙——本次为验证效果，先真机对比画质再决定是否保留。
+// ⚠️ 少了过采样余量，抖动(dither)细节可能略糙——先真机对比画质再决定是否保留。
 const UPLOAD_COMPRESS_QUALITY = 90
 
 const STATUS_TEXT = {
@@ -326,8 +330,8 @@ Page({
     // 刷屏期间设备对新指令回忙(0x0B)，两者挤在一起会让回落白白失败。失败/中断路径无刷屏则保持 null。
     let lastRefreshPromise = null
     try {
-      // A3 预取流水线：设备帧的「后端转码 + 下载」是纯网络，与「BLE 图传」互不占用资源。投第 i 张
-      // (走蓝牙)的同时提前并行拉取第 i+1 张的设备帧；只预取下一张(最多 1 张在后台)，中断时浪费最小。
+      // A3 预取流水线：设备帧的「抖动接口出帧」与「记录上传」是纯网络，与「BLE 图传」互不占用资源。
+      // 投第 i 张(走蓝牙)的同时提前并行拉取第 i+1 张的设备帧；只预取下一张(最多 1 张在后台)，中断时浪费最小。
       // 预取失败不在此处抛，包成 {error} 留到主循环 await 时再抛，走原有失败处理 / 失败记账。
       // sizeInfo 显式传入：首张早启动时用设备记录尺寸，其余用 0x01 读到的真实尺寸。
       const framePrefetch = []
@@ -340,9 +344,9 @@ Page({
           .catch(error => ({ error }))
       }
 
-      // F1 首张网络准备与「连接 → 0x01」并行（性能优化）：转码目标尺寸只依赖设备记录里
+      // F1 首张网络准备与「连接 → 0x01」并行（性能优化）：出帧目标尺寸/抖动 type 只依赖设备记录里
       // 后端按物理型号下发的 width/height（再次投屏 imgBle 直传则完全不需要尺寸），不必等 0x01。
-      // 记录尺寸可用时立刻启动第一张的转码+下载，把冷连接 1~3s 的等待与网络准备重叠；
+      // 记录尺寸可用时立刻启动第一张的「抖动出帧+记录上传」，把冷连接 1~3s 的等待与网络准备重叠；
       // 0x01 返回后校验尺寸，不一致（记录过期/异常）则作废预取按真实尺寸重取，
       // 主循环的「帧字节数 = 宽×高÷2」校验仍是最后闸门，错帧绝不会发往设备。
       const guessedSize =
@@ -400,7 +404,7 @@ Page({
         `[投屏] 设备空间：容量 ${info.capacity}，已存 ${usedIndexes.length}，剩余 ${free}，待投 ${total}`
       )
 
-      // 2) 逐张：原图传后端转换得 .bin → 下载帧数据 → 选空闲槽位 → 图传 → 设备成功才写投屏记录 → 刷新显示。
+      // 2) 逐张：抖动接口出帧 + 原图上传建记录（并行）→ 选空闲槽位 → 图传 → 设备成功才写投屏记录 → 刷新显示。
       // F1 校验：首张若已用设备记录尺寸早启动预取，此处对照 0x01 真实尺寸——不一致则作废重取
       //（后台在跑的旧转码结果直接丢弃）。imgBle 直传（firstDirect）不依赖尺寸，无需作废。
       if (
@@ -689,7 +693,7 @@ Page({
     }
   },
 
-  // 取本张要发给设备的六色 4bpp 帧 + 后端记录 id（原图传后端转换 → 下载 .bin）。
+  // 取本张要发给设备的六色 4bpp 帧 + 后端记录 id（2026-07-22 起帧由抖动接口生成，记录另路上传原图）。
   // 纯网络、无 UI 副作用：可被主循环「预取下一张」提前并行调用（见 runRealProjection 的预取流水线），
   // 页面文案/进度统一由主循环控制，避免预取抢占当前正在投屏那张的界面。i/total 仅用于日志。
   async acquireFrame(image, device, info, i, total) {
@@ -713,21 +717,23 @@ Page({
       }
     }
 
-    // 正常投屏：先「转换照片」(传后端按设备尺寸转换) 得到可下载的 .bin 地址 + taskId(更新设备上传状态用)
-    // + upirId(投屏记录id)，再下载 .bin 得到六色 4bpp 帧（客户端不做任何图像转换）。
-    const converted = await this.convertOnServer(
-      image,
-      device,
-      info
-    )
-    const downloaded = await this.downloadFrameBin(converted.url)
-    const prepared = await this.prepareTransfer(device, downloaded.frameData)
+    // 正常投屏（2026-07-22 起）：两路网络并行，任一失败本张失败——
+    //   · 设备帧：预览处理后的设备分辨率图 → 统一压缩 → 抖动接口出六色 4bpp 帧
+    //     （不再下载后端转码的 .bin，客户端仍不做任何图像转换）；
+    //   · 投屏记录：原图（进预览页前未操作过的图）→ 同一套统一压缩 → setUserProductUpload
+    //     建记录拿 taskId(更新设备上传状态用) + upirId(投屏记录id)。
+    // 注意：帧失败时记录可能已按「未成功(0)」建好，与旧链路「转码成功后图传失败」同态，无需回滚。
+    const [record, dithered] = await Promise.all([
+      this.uploadOriginalForRecord(image, device, info),
+      this.fetchDitheringFrame(image, info)
+    ])
+    const prepared = await this.prepareTransfer(device, dithered.frameData)
     return {
-      frameData: downloaded.frameData,
-      taskId: converted.taskId,
-      upirId: converted.upirId,
+      frameData: dithered.frameData,
+      taskId: record.taskId,
+      upirId: record.upirId,
       prepared: prepared.value,
-      timings: Object.assign({}, converted.timings, downloaded.timings, prepared.timings, {
+      timings: Object.assign({}, record.timings, dithered.timings, prepared.timings, {
         acquireMs: Date.now() - acquireStartedAt
       })
     }
@@ -748,32 +754,46 @@ Page({
     }
   },
 
-  // 本张照片传后端转换：上传原图 → 后端按设备宽高(targetWidth×targetHeight)转换成设备帧并存 OSS，
-  // 返回 { url(.bin 下载地址)、taskId、upirId }。初始按「未成功(0)」建记录，设备图传成功后再 editUserProductImgRecord 置 1。
-  // 失败会抛出，让本张投屏判为失败并跳到失败场景。
-  async convertOnServer(image, device, info) {
+  // 解析「原图」的本地路径（进预览页前未操作过的图）：预览页烘焙/裁切前把源备份在 _origSrc
+  //（远程地址先落地再上传）；从未处理过的图（处理失败回退等）没有 _origSrc，就是图片本身。
+  resolveOriginalLocalPath(image) {
+    const orig = (image && image._origSrc) || ''
+    if (orig && !/^https?:\/\//i.test(orig)) {
+      return Promise.resolve(orig)
+    }
+    if (orig) {
+      return this.downloadFileWithRetry(orig, '原图下载失败')
+    }
+    return this.resolveLocalFilePath(image)
+  },
+
+  // 本张的投屏记录上传（2026-07-22 起改传原图）：把「原图」统一压缩后传 setUserProductUpload，
+  // 按「未成功(0)」建投屏记录，返回 { taskId、upirId }；设备图传成功后再 editUserProductImgRecord
+  // 置 1（逻辑不变）。接口仍会转码并返回 .bin url，但已不再下载使用——设备帧改由抖动接口生成
+  //（见 fetchDitheringFrame），这里只负责建记录与后端存图（图库/记录页展示的就是这张原图）。
+  // 失败会抛出，让本张投屏判为失败（记录建不起来，设备成功了也没法记账）。
+  async uploadOriginalForRecord(image, device, info) {
     const userProductId = device && (device.userProductId || device.id)
     const sourceResolveStartedAt = Date.now()
-    const filePath = await this.resolveLocalFilePath(image)
+    const filePath = await this.resolveOriginalLocalPath(image)
     const sourceResolveMs = Date.now() - sourceResolveStartedAt
     if (!filePath) {
-      throw new Error('图片文件不可用，无法转换')
+      throw new Error('图片文件不可用，无法上传')
     }
 
     // 压缩恒开（api.setUserProductUpload 固定传 isCompress=1 + compressSize=1024KB，后端把它存的图压到 1MB 上下）。
-    // 注意 isCompress/compressSize 只约束后端存的图，管不到上传字节数——上传体积由预览页导出的临时文件
-    // 决定（见 preview.js EXPORT_FILE_TYPE：已从微信默认的 png 改为 jpg，源图体积降一个数量级），
-    // 再经下面 compressForUpload 缩到设备物理分辨率（长边=设备长边）。
-    // sourceBytes 就是用来盯这个的：uploadConvertMs 一旦变长，先看它是不是又变大了。
+    // 注意 isCompress/compressSize 只约束后端存的图，管不到上传字节数——上传字节数由下面
+    // compressForUpload 统一压缩（长边缩到设备长边）兜住；原图可能是高清大图，正靠它挡住 5s+ 的上传。
+    // sourceBytes 就是用来盯这个的：uploadRecordMs 一旦变长，先看它是不是又变大了。
     const sourceBytes = await this.readFileSize(filePath)
     const shrunk = await this.compressForUpload(filePath, info, sourceBytes)
     console.log(
-      `[投屏] 上传原图转换：userProductId=${userProductId} target=${info.width}x${info.height} ` +
+      `[投屏] 上传原图建记录：userProductId=${userProductId} target=${info.width}x${info.height} ` +
         `源图=${(sourceBytes / 1024).toFixed(0)}KB ` +
         `上传=${(shrunk.bytes / 1024).toFixed(0)}KB${shrunk.compressed ? `(已压缩 ${shrunk.compressMs}ms)` : '(未压缩)'} ` +
         `file=${shrunk.filePath}`
     )
-    const uploadConvertStartedAt = Date.now()
+    const uploadRecordStartedAt = Date.now()
     const res = await api.setUserProductUpload({
       filePath: shrunk.filePath,
       userProductId,
@@ -783,17 +803,15 @@ Page({
       loading: false, // 结果页用 setData desc 自管进度，关掉全局 loading 遮罩
       showError: false // 失败统一走本页失败场景，不额外弹 toast
     })
-    const uploadConvertMs = Date.now() - uploadConvertStartedAt
+    const uploadRecordMs = Date.now() - uploadRecordStartedAt
 
     // 单文件上传返回的就是该对象；保险起见也兼容数组返回
     const item = Array.isArray(res) ? res[0] : res
-    console.log('[投屏] 转换接口返回：', item)
-    const url = item && (item.url || item.fileUrl || item.path)
-    if (!url) {
-      throw new Error('服务器未返回转换结果')
+    console.log('[投屏] 上传接口返回：', item)
+    if (!item || (item.taskId === undefined && item.upirId === undefined)) {
+      throw new Error('服务器未返回投屏记录')
     }
     return {
-      url,
       taskId: item.taskId,
       upirId: item.upirId,
       timings: {
@@ -801,15 +819,41 @@ Page({
         sourceBytes,
         uploadBytes: shrunk.bytes,
         compressMs: shrunk.compressMs,
-        uploadConvertMs
+        uploadRecordMs
       }
     }
   },
 
-  // 上传前缩到设备尺寸：把要传给后端的图缩到设备物理分辨率（长边=设备长边），后端就在目标分辨率上
-  // 直接量化成六色，不再吃高清原图。preview 已按设备比例裁过，这里只缩分辨率不改比例。
+  // 本张的设备帧（2026-07-22 起）：预览处理后的图（已是设备分辨率）→ 与记录上传同一套统一压缩
+  //（compressForUpload 对「已不大于设备尺寸」的图原样通过，不会二次降质/改尺寸）→ 抖动接口出
+  // 六色 4bpp 帧。字节数是否 = 宽×高÷2 由主循环铁闸校验，错帧绝不会发往设备。
+  async fetchDitheringFrame(image, info) {
+    const filePath = await this.resolveLocalFilePath(image)
+    if (!filePath) {
+      throw new Error('图片文件不可用，无法转换')
+    }
+    const sourceBytes = await this.readFileSize(filePath)
+    const shrunk = await this.compressForUpload(filePath, info, sourceBytes)
+    const ditherStartedAt = Date.now()
+    const frameData = await dithering.requestFrameBin({
+      filePath: shrunk.filePath,
+      type: dithering.typeForDevice(info)
+    })
+    return {
+      frameData,
+      timings: {
+        ditherUploadBytes: shrunk.bytes,
+        ditherCompressMs: shrunk.compressMs,
+        ditherMs: Date.now() - ditherStartedAt
+      }
+    }
+  },
+
+  // 统一的上传前压缩（2026-07-22 起两路上传共用）：把要上传的图长边缩到「设备长边」、只缩分辨率
+  // 不改比例。两处调用：① fetchDitheringFrame 的处理图（已是设备分辨率 → 原样通过，不二次降质）；
+  // ② uploadOriginalForRecord 的原图（高清大图靠它挡住 5s+ 的上传耗时）。
   // 返回 { filePath, bytes, compressMs, compressed }；任何失败都原样返回原文件，投屏不受影响。
-  // 注意这只省「上传+转码」的字节数，设备帧字节数(宽×高÷2)与源图无关，图传耗时一秒都不会变。
+  // 注意这只省「上传」的字节数，设备帧字节数(宽×高÷2)与源图无关，图传耗时一秒都不会变。
   async compressForUpload(filePath, info, sourceBytes) {
     const original = { filePath, bytes: sourceBytes, compressMs: 0, compressed: false }
     if (!wx.compressImage || !(Number(info.width) > 0) || !(Number(info.height) > 0)) {
@@ -856,7 +900,7 @@ Page({
     }
   },
 
-  // 读上传源文件的字节数，纯性能观测用（uploadConvertMs 是否被大文件拖慢，一眼可见）。
+  // 读上传源文件的字节数，纯性能观测用（uploadRecordMs/ditherMs 是否被大文件拖慢，一眼可见）。
   // 取不到就当 0，绝不阻断投屏。
   readFileSize(filePath) {
     return new Promise(resolve => {

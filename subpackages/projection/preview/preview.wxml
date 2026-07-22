@@ -52,10 +52,6 @@
       <image class="tool-icon" src="/assets/images/preview-icon03.png" mode="aspectFit"></image>
       <text>原图</text>
     </view>
-    <!-- 临时联调（2026-07-22）：把当前图传给 seekink 抖动 bin 接口并打印返回，后续处理待定 -->
-    <view class="tool tool--text" hover-class="none" bindtap="fetchDitheringBin">
-      <text>抖动Bin</text>
-    </view>
   </view>
 
   <!-- 上一张/下一张（2026-07-22：替代左右滑动切图），多图才显示；切图保留各自的编辑状态 -->
