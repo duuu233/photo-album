@@ -927,6 +927,16 @@ Page({
     return /^https?:\/\//i.test(path) ? this._downloadToLocal(path) : path
   },
 
+  // 抖动接口的 type 参数：0=5.8寸大设备(EF6-589 680×960)、1=3.7寸小设备(EF6-370 480×720)。
+  // 按设备分辨率判型，与出图用的 getDeviceCropSize 同源——保证 type 与实际上传的图片尺寸一致
+  //（横向取景只是宽高对调，仍按设备本身判型）。设备记录缺尺寸时 getDeviceCropSize 回落的默认值
+  // 恰是 480×720，会判成小设备，与按同尺寸裁出的上传图自洽。
+  _ditheringTypeForDevice() {
+    const size = this.getDeviceCropSize()
+    const small = protocol.SCREEN_TYPES[0x01] // 3.7寸 EF6-370
+    return size.width === small.width && size.height === small.height ? '1' : '0'
+  },
+
   // 调抖动接口：图片文件 multipart 上传 → 收回二进制 bin（Uint8Array）。
   // 返回内容全部打印到控制台；接口回的是 JSON/文本（业务报错）时抛错不往设备发。
   async _requestDitheringBin(filePath) {
@@ -937,12 +947,15 @@ Page({
         fail: () => reject(new Error('图片读取失败'))
       })
     })
+    const ditheringType = this._ditheringTypeForDevice()
+    console.log('[抖动bin] 请求参数: color=BWRYGB imageDitheringModes=2 type=', ditheringType)
     const boundary = `----wxmp${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
     const body = buildMultipartBody(
       boundary,
       [
         { name: 'color', value: 'BWRYGB' },
-        { name: 'imageDitheringModes', value: '2' }
+        { name: 'imageDitheringModes', value: '2' },
+        { name: 'type', value: ditheringType }
       ],
       { name: 'file', filename: 'image.jpg', contentType: 'image/jpeg', data: fileBytes }
     )
