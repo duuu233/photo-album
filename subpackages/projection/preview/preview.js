@@ -1,6 +1,7 @@
 const system = require('../../../utils/system')
 const toast = require('../../../utils/toast')
 const deviceBle = require('../../../utils/device-ble')
+const protocol = require('../../../utils/frame-protocol')
 
 // 设备屏幕分辨率（width×height）：列表/详情接口都会返回，取景框据此锁定宽高比（如 500x500 → 1:1）。
 // 接口暂未返回该字段，这里先给默认值便于联调测试（如需 1:1 改成 { width: 500, height: 500 }）。
@@ -39,15 +40,86 @@ const ORIENT_PORTRAIT = 'portrait'
 const ORIENT_LANDSCAPE = 'landscape'
 const DEFAULT_ORIENTATION = ORIENT_PORTRAIT
 
-// —— 临时联调（2026-07-22）：seekink 抖动 bin 下载接口 ——
-// 点工具栏「抖动Bin」把当前预览图（本地临时文件；远程图先 downloadFile 落地）multipart 上传，
-// 打印返回内容供分析，返回的 bin 如何用后续再定。注意：
-//   · 域名是 http 且未加入小程序合法域名白名单，只能在开发者工具勾选「不校验合法域名」
-//     或真机开调试模式下联调；
-//   · Authorization 为写死的联调 token，接入正式流程前必须移除。
+// —— 临时联调（2026-07-22）：seekink 抖动 bin 接口 → 直传设备 ——
+// 点工具栏「抖动Bin」：把当前预览图出成设备分辨率文件（复用投屏的烘焙/中心裁切链路）→
+// multipart POST 给抖动接口拿回**二进制 bin（响应体即文件流）** → 校验字节数（须= 设备宽×高÷2
+// 的六色 4bpp 帧）→ 走现有 BLE 图传（deviceBle.uploadImage）写入空闲槽位并 0x24 刷屏显示。
+// 实现要点/注意：
+//   · 响应是二进制 → 不能用 wx.uploadFile（它的 res.data 恒为字符串会把 bin 打烂）；
+//     改为手工拼 multipart 体 + wx.request(responseType:'arraybuffer')；
+//   · 请求头按对方要求带 AcceptLanguage=en（原话键名无中划线，另补一份标准 Accept-Language 兜底）；
+//   · 域名是 http 且未加小程序合法域名白名单：开发者工具勾「不校验合法域名」/真机开调试模式；
+//   · Authorization 为写死的联调 token，接入正式流程前必须移除；
+//   · ⚠️ bin 的像素格式（六色索引映射/扫描顺序）是否与设备一致未验证——字节数对得上只保证
+//     「尺寸对」，真机若显示花屏/串色，需对照 v1.5 协议核对 seekink 的调色板顺序。
 const DITHERING_API = 'http://cloud.seekink.cn:8091/prod-api/api/v1/label/imageDitheringBinDownload'
 const DITHERING_AUTH =
   'Bearer eyJhbGciOiJIUzUxMiJ9.eyJsb2dpbl91c2VyX2tleSI6IjkwMGJjOTZhLWU4MjktNGNkMi1hYmU1LWNhNDY0NDJhYzc2MCJ9.UgsZD93o2WvqGcov_U0FRx2S4NCBJKNF4Rl5Ekkh2KRvdHcKjQLJcQMx7OncNHNKPhuHvgRgmaKORsu6pqym2g'
+
+// multipart 骨架文本转字节：boundary/字段名/文件名全是 ASCII，直接取低 8 位即可（勿放中文）
+function asciiBytes(str) {
+  const out = new Uint8Array(str.length)
+  for (let i = 0; i < str.length; i++) {
+    out[i] = str.charCodeAt(i) & 0xff
+  }
+  return out
+}
+
+// 手工拼 multipart/form-data 请求体（wx.request 才能收 arraybuffer 响应，但它不会帮拼表单）：
+// fields=[{name,value}] 文本字段 + file={name,filename,contentType,data:Uint8Array} 文件字段
+function buildMultipartBody(boundary, fields, file) {
+  const CRLF = '\r\n'
+  const chunks = []
+  fields.forEach((f) => {
+    chunks.push(
+      asciiBytes(`--${boundary}${CRLF}Content-Disposition: form-data; name="${f.name}"${CRLF}${CRLF}${f.value}${CRLF}`)
+    )
+  })
+  chunks.push(
+    asciiBytes(
+      `--${boundary}${CRLF}Content-Disposition: form-data; name="${file.name}"; filename="${file.filename}"${CRLF}` +
+        `Content-Type: ${file.contentType}${CRLF}${CRLF}`
+    )
+  )
+  chunks.push(file.data)
+  chunks.push(asciiBytes(`${CRLF}--${boundary}--${CRLF}`))
+  let total = 0
+  chunks.forEach((c) => {
+    total += c.length
+  })
+  const body = new Uint8Array(total)
+  let offset = 0
+  chunks.forEach((c) => {
+    body.set(c, offset)
+    offset += c.length
+  })
+  return body
+}
+
+// UTF-8 字节 → 字符串（小程序低版本基础库没有 TextDecoder）：仅用于把接口的 JSON 错误体打进日志
+function utf8BytesToString(bytes) {
+  let out = ''
+  for (let i = 0; i < bytes.length; ) {
+    const b = bytes[i]
+    if (b < 0x80) {
+      out += String.fromCharCode(b)
+      i += 1
+    } else if (b < 0xe0) {
+      out += String.fromCharCode(((b & 0x1f) << 6) | (bytes[i + 1] & 0x3f))
+      i += 2
+    } else if (b < 0xf0) {
+      out += String.fromCharCode(((b & 0x0f) << 12) | ((bytes[i + 1] & 0x3f) << 6) | (bytes[i + 2] & 0x3f))
+      i += 3
+    } else {
+      const cp =
+        ((b & 0x07) << 18) | ((bytes[i + 1] & 0x3f) << 12) | ((bytes[i + 2] & 0x3f) << 6) | (bytes[i + 3] & 0x3f)
+      const u = cp - 0x10000
+      out += String.fromCharCode(0xd800 + (u >> 10), 0xdc00 + (u & 0x3ff))
+      i += 4
+    }
+  }
+  return out
+}
 
 // 在画布上铺一层白底（jpg 无 alpha 通道，不铺底的话透明像素会被压成黑色）
 function fillWhite(ctx, width, height) {
@@ -812,22 +884,11 @@ Page({
     })
   },
 
-  // 取当前预览图的本地文件路径：本地临时文件直接用；远程 url（再次投屏/云端图）先下载落地。
-  // wx.uploadFile 只接受本地路径，remote url 直接传会失败。
-  _getActiveLocalPath() {
+  // 远程 url → 本地临时文件（wx.getFileSystemManager 只能读本地路径）
+  _downloadToLocal(url) {
     return new Promise((resolve, reject) => {
-      const image = this.data.activeImage
-      const src = image && (image.tempFilePath || image.url)
-      if (!src) {
-        reject(new Error('当前没有可用图片'))
-        return
-      }
-      if (!/^https?:\/\//i.test(src)) {
-        resolve(src)
-        return
-      }
       wx.downloadFile({
-        url: src,
+        url,
         success: (res) => {
           if (res.statusCode === 200 && res.tempFilePath) {
             resolve(res.tempFilePath)
@@ -840,46 +901,180 @@ Page({
     })
   },
 
-  // 临时联调（2026-07-22）：把当前图 multipart 上传到抖动 bin 接口并打印返回（见文件头 DITHERING_API 说明）
+  // 把当前预览图出成「设备分辨率」的本地文件（抖动接口按上传图像素出帧，帧字节数要正好=设备
+  // 宽×高÷2，与后端转码同一条铁律，见 memory projection-upload-must-be-device-resolution）。
+  // 分支逻辑对齐 prepareProjectionImages 的单张处理：真编辑过→烘焙；已是设备分辨率(cropW)→原样；
+  // 其余→中心裁切。只产出临时文件，不写回 images/_states，不影响正常投屏链路。
+  async _prepareActiveDeviceResFile() {
+    const { images, activeIndex } = this.data
+    const image = images[activeIndex]
+    const src = image && (image.tempFilePath || image.url)
+    if (!src) {
+      throw new Error('当前没有可用图片')
+    }
+    const state = this._edit && this._edit.src === src ? this._edit : this._states[activeIndex]
+    const edited = state && state.src === src && !isPristineEdit(state)
+    let out = image
+    if (edited) {
+      out = await this.bakeEditedImage(image, state)
+    } else if (!image.cropW) {
+      out = await this.coverCropOne(image)
+    }
+    const path = out.tempFilePath || out.url
+    if (!path) {
+      throw new Error('图片文件不可用')
+    }
+    return /^https?:\/\//i.test(path) ? this._downloadToLocal(path) : path
+  },
+
+  // 调抖动接口：图片文件 multipart 上传 → 收回二进制 bin（Uint8Array）。
+  // 返回内容全部打印到控制台；接口回的是 JSON/文本（业务报错）时抛错不往设备发。
+  async _requestDitheringBin(filePath) {
+    const fileBytes = await new Promise((resolve, reject) => {
+      wx.getFileSystemManager().readFile({
+        filePath,
+        success: (r) => resolve(new Uint8Array(r.data)),
+        fail: () => reject(new Error('图片读取失败'))
+      })
+    })
+    const boundary = `----wxmp${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+    const body = buildMultipartBody(
+      boundary,
+      [
+        { name: 'color', value: 'BWRYGB' },
+        { name: 'imageDitheringModes', value: '2' }
+      ],
+      { name: 'file', filename: 'image.jpg', contentType: 'image/jpeg', data: fileBytes }
+    )
+    const res = await new Promise((resolve, reject) => {
+      wx.request({
+        url: DITHERING_API,
+        method: 'POST',
+        header: {
+          'content-type': `multipart/form-data; boundary=${boundary}`,
+          Authorization: DITHERING_AUTH,
+          AcceptLanguage: 'en', // 对方给的键名（无中划线），原样带上
+          'Accept-Language': 'en' // 标准头兜底：后端若走通用 i18n 解析读的是它
+        },
+        data: body.buffer,
+        responseType: 'arraybuffer',
+        timeout: 20000, // 与 request.js 上传超时约定一致
+        success: resolve,
+        fail: (err) => reject(new Error(`接口-抖动bin转换失败：${(err && err.errMsg) || '网络异常'}`))
+      })
+    })
+    const bytes = res.data instanceof ArrayBuffer ? new Uint8Array(res.data) : new Uint8Array(0)
+    console.log('[抖动bin] statusCode:', res.statusCode)
+    console.log('[抖动bin] header:', res.header)
+    console.log('[抖动bin] body 字节数:', bytes.length, '头16=', protocol.bytesToHex(bytes.subarray(0, 16)))
+    // 业务报错通常回小体积 JSON（content-type 标 json/text，或首字符 { / [）：解码打印并抛错
+    const contentType = String((res.header && (res.header['Content-Type'] || res.header['content-type'])) || '')
+    const looksText =
+      /json|text/i.test(contentType) ||
+      (bytes.length > 0 && bytes.length < 4096 && (bytes[0] === 0x7b || bytes[0] === 0x5b))
+    if (looksText) {
+      const text = utf8BytesToString(bytes)
+      console.log('[抖动bin] body(文本):', text)
+      throw new Error(`接口-抖动bin转换失败：${text.slice(0, 60) || `HTTP ${res.statusCode}`}`)
+    }
+    if (res.statusCode !== 200 || !bytes.length) {
+      throw new Error(`接口-抖动bin转换失败：HTTP ${res.statusCode}`)
+    }
+    return bytes
+  },
+
+  // 把 bin 帧发给设备：连接 → 0x01 读屏幕信息 → 字节数校验（宽×高÷2 铁闸，错帧绝不发）→
+  // 选空闲槽位 → 0x20/0x21/0x22 图传 → 0x24 刷屏显示（异步不 await，应答要等墨水屏刷完 ~4s）。
+  // 复用 result.js runRealProjection 的骨架，去掉了后端记账/批量/预取。返回写入的槽位 index。
+  async _sendFrameToDevice(frameData) {
+    const device = this.data.device
+    const deviceId = device && device.deviceId
+    if (!deviceId) {
+      throw new Error('设备未连接，请重新绑定后再投屏')
+    }
+    wx.showLoading({ title: '连接设备中', mask: true })
+    await deviceBle.ensureConnection(deviceId)
+    const info = await deviceBle.readTransferInfo(deviceId)
+    console.log('[抖动bin] 设备信息:', {
+      screenType: info.screenType,
+      width: info.width,
+      height: info.height,
+      capacity: info.capacity,
+      imgCount: info.imgCount
+    })
+    if (info.screenType === 0x03) {
+      throw new Error('该型号暂不支持图传')
+    }
+    if (!info.width || !info.height) {
+      throw new Error('设备未连接，请检查手机或设备连接后继续')
+    }
+    const expected = Math.ceil((info.width * info.height) / 2)
+    if (frameData.length !== expected) {
+      throw new Error(
+        `接口-抖动bin尺寸不符：收到 ${frameData.length} 字节，设备 ${info.width}×${info.height} 需六色4bpp ${expected} 字节`
+      )
+    }
+    const index = protocol.firstFreeIndex(info.imgMask, info.capacity)
+    if (index < 0) {
+      throw new Error('设备内存已满，请清理后继续。')
+    }
+    // 连接间隔切图传极速档（best-effort，与正常投屏一致；失败只是传得慢，不阻断）
+    try {
+      await deviceBle.optimizeConnectionIntervalForTransfer(deviceId)
+    } catch (e) {
+      console.warn('[抖动bin] 连接间隔优化失败(忽略):', e)
+    }
+    wx.showLoading({ title: '传输中 0%', mask: true })
+    let lastAt = 0
+    let lastPercent = -1
+    try {
+      await deviceBle.uploadImage(deviceId, {
+        screenType: info.screenType,
+        index,
+        width: info.width,
+        height: info.height,
+        data: frameData,
+        onProgress: (done, totalPackets) => {
+          const percent = totalPackets ? Math.min(100, Math.floor((done / totalPackets) * 100)) : 0
+          const now = Date.now()
+          if (percent !== 100 && (percent === lastPercent || now - lastAt < 200)) {
+            return
+          }
+          lastAt = now
+          lastPercent = percent
+          wx.showLoading({ title: `传输中 ${percent}%`, mask: true })
+        }
+      })
+    } catch (error) {
+      // 图传失败回滚删掉半写入的槽位（与 result.js 一致），回滚失败不覆盖原始错误
+      await deviceBle.deleteImage(deviceId, [index]).catch(() => {})
+      throw error
+    }
+    deviceBle.refreshScreen(deviceId, index).catch((err) => console.warn('[抖动bin] 刷屏失败(异步):', err))
+    return index
+  },
+
+  // 临时联调（2026-07-22）：出设备分辨率图 → 抖动接口拿 bin → BLE 图传上设备（见文件头 DITHERING_API 说明）
   async fetchDitheringBin() {
     if (this._ditherBusy) {
       return
     }
     this._ditherBusy = true
-    wx.showLoading({ title: '请求中', mask: true })
     try {
-      const filePath = await this._getActiveLocalPath()
-      const res = await new Promise((resolve, reject) => {
-        wx.uploadFile({
-          url: DITHERING_API,
-          filePath,
-          name: 'file',
-          formData: {
-            color: 'BWRYGB',
-            imageDitheringModes: '2'
-          },
-          header: { Authorization: DITHERING_AUTH },
-          timeout: 20000, // 与 request.js 上传超时约定一致
-          success: resolve,
-          fail: (err) => reject(new Error((err && err.errMsg) || '请求失败'))
-        })
-      })
-      // 打印返回内容供分析。res.data 恒为字符串：若返回的是二进制 bin，这里的打印会是乱码/不完整，
-      // 届时后续流程需换 wx.request(responseType:'arraybuffer') 方案（uploadFile 拿不到二进制响应体）。
-      console.log('[抖动bin] statusCode:', res.statusCode)
-      console.log('[抖动bin] header:', res.header)
-      console.log('[抖动bin] data 长度:', res.data ? res.data.length : 0)
-      try {
-        console.log('[抖动bin] data(JSON):', JSON.parse(res.data))
-      } catch (e) {
-        console.log('[抖动bin] data(原文):', res.data)
-      }
-      toast.show('接口已返回，内容见控制台')
-    } catch (error) {
-      console.warn('[抖动bin] 调用失败', error)
-      toast.warn({ title: `接口-抖动bin下载失败：${(error && error.message) || ''}` })
-    } finally {
+      wx.showLoading({ title: '处理图片中', mask: true })
+      const filePath = await this._prepareActiveDeviceResFile()
+      wx.showLoading({ title: '转换中', mask: true })
+      const frameData = await this._requestDitheringBin(filePath)
+      const index = await this._sendFrameToDevice(frameData)
       wx.hideLoading()
+      console.log(`[抖动bin] 完成：已写入设备槽位 ${index}，刷屏进行中`)
+      toast.show(`已传到设备槽位 ${index}，屏幕刷新中`)
+    } catch (error) {
+      wx.hideLoading()
+      console.warn('[抖动bin] 流程失败', error)
+      // 设备/蓝牙错误已带「设备-」前缀，接口错误上面拼了「接口-」，其余本地错误由 warn 补「小程序-」
+      toast.warn({ title: (error && error.message) || '抖动bin流程失败' })
+    } finally {
       this._ditherBusy = false
     }
   },
