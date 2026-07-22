@@ -26,27 +26,18 @@ const MAX_ZOOM_FACTOR = 8
 // 取景方向（2026-07-22 需求调整，替代原 VIEW_SWAPPED 总开关）：由图片下方的「竖向/横向」
 // 分段控制器按张选择。两种方向改变的都只是「可视区域（取景框）」，图片本身不动；
 // 点「开始投屏」才把框内所见烘焙成上传图（见 prepareProjectionImages / bakeEditedImage）。
-//   · 竖向 portrait —— 取景框 = 设备物理比例（竖向），导出直接画进设备分辨率画布，不旋转；
+//   · 竖向 portrait —— 取景框 = 设备物理比例（竖向），导出画进设备分辨率画布；
 //   · 横向 landscape —— 取景框 = 设备宽高对调后的横向比例（相框躺着摆），
-//     导出时整幅转 EXPORT_ROTATE_DEG 画进竖向画布。
+//     导出画进对调分辨率（横向）画布。
+// 两种方向都**不做任何旋转**：框内所见即导出文件（2026-07-22 用户拍板去掉横向导出的 270°
+// 旋转链路，改为把可视区域裁剪图原样上传，横向图的方向适配交给接口侧处理）。
+// ⚠️ 历史教训（07-20，见 docs/2026-07-22-照片预览需求调整.md 操作日志）：后端曾按「上传图
+// 像素」直接量化出帧且忽略 targetWidth/Height，横向尺寸(如 960×680)帧字节数与竖向相同、
+// 后端不报错，但设备按竖向行宽解析会整幅花屏且无任何报错。若真机复现花屏，先查接口侧
+// 是否已适配横向图；旧「导出竖 + 270°」方案可从 git / docs 07-20 日志找回。
 const ORIENT_PORTRAIT = 'portrait'
 const ORIENT_LANDSCAPE = 'landscape'
 const DEFAULT_ORIENTATION = ORIENT_PORTRAIT
-
-// 横向导出时整幅构图的旋转量（度，顺时针）：
-//   90°  —— 把横向取景转进竖向画布所必需的量；
-//   +180° —— 2026-07-20 真机校正：只转 90° 时画面在设备上是倒的，故再补半圈。
-// 合计 270°。这个值是**唯一真源**，预览的反向转正由它推出（见 PREVIEW_COUNTER_ROTATE_DEG），
-// 改这里两边自动同步——绝不要在两处各写各的角度，否则「设备上正了、手机预览里倒了」这类问题会反复出现。
-//
-// ⚠️ 横向取景的导出绝不能直接输出横向尺寸（如 960×680）：像素总数与竖向相同、帧字节数(宽×高÷2)
-// 也相同，所以**后端不会报错**——但设备按 680px 一行解析，拿到 960px 一行的数据会整幅错位/斜切，
-// 表现为花屏且无任何报错，极难排查。务必保持「取景横、导出竖 + 旋转」这个组合。
-const EXPORT_ROTATE_DEG = 270
-const EXPORT_ROTATE_RAD = (EXPORT_ROTATE_DEG * Math.PI) / 180
-// 预览把横向成图反向转正的角度：与导出角互为相反数，保证「手机上看到的」永远是用户构图时的样子。
-// 用户所见 = 构图 + 导出角 + 本角 ≡ 构图。CSS 接受负角/超过 360°，无需归一化。
-const PREVIEW_COUNTER_ROTATE_DEG = -EXPORT_ROTATE_DEG
 
 // 在画布上铺一层白底（jpg 无 alpha 通道，不铺底的话透明像素会被压成黑色）
 function fillWhite(ctx, width, height) {
@@ -194,8 +185,7 @@ Page({
   },
 
   // 指定取景方向下的可视区域宽高：竖向 = 设备物理分辨率；横向 = 宽高对调。
-  // 只用于「用户看到的框」——取景框比例、烘焙后 photo-wrap 展示尺寸。
-  // 导出画布尺寸始终取 getDeviceCropSize()（设备物理分辨率，竖向），两者别混。
+  // 取景框比例、烘焙导出画布尺寸、photo-wrap 展示尺寸都以它为准（2026-07-22 起导出=所见，无旋转）。
   getViewSize(orientation, device) {
     const dev = this.getDeviceCropSize(device)
     return orientation === ORIENT_LANDSCAPE
@@ -227,22 +217,6 @@ Page({
       return ''
     }
     return `width:${size.dispW.toFixed(2)}rpx;height:${size.dispH.toFixed(2)}rpx;`
-  },
-
-  // 已按设备缓冲区转过 EXPORT_ROTATE_DEG 的横向成图（导出结果），在预览里要**反向转回来**展示，
-  // 否则用户看到的是躺倒/颠倒的照片——文件本身是竖向（如 680×960）、内容是横的，直接铺进横向
-  // photo-wrap 会又转又裁。做法：图片元素用「对调后的尺寸」(竖向 dispH×dispW)，绕中心反向旋转，
-  // 转完正好铺满横向的 wrap。photo-wrap 已是 position:relative + overflow:hidden（见 wxss）。
-  computeRotatedImgStyle(viewW, viewH) {
-    const size = this.computeWrapSize(viewW, viewH)
-    if (!size) {
-      return ''
-    }
-    return (
-      `position:absolute;left:50%;top:50%;` +
-      `width:${size.dispH.toFixed(2)}rpx;height:${size.dispW.toFixed(2)}rpx;` +
-      `transform:translate(-50%,-50%) rotate(${PREVIEW_COUNTER_ROTATE_DEG}deg);`
-    )
   },
 
   // 量取编辑舞台（.preview-stage）的 px 尺寸：页面布局固定，只量一次后缓存（切图/换向都不变）
@@ -579,7 +553,6 @@ Page({
         updated.cropW = 0
         updated.cropH = 0
         updated.wrapStyle = ''
-        updated.imgStyle = ''
         next[activeIndex] = updated
         delete this._states[activeIndex]
         this._edit = null
@@ -596,7 +569,7 @@ Page({
     })
   },
 
-  // 共用离屏画布导出：把 src 载入后交给 draw(ctx, img) 绘制，导出为设备分辨率的 jpg 临时文件。
+  // 共用离屏画布导出：把 src 载入后交给 draw(ctx, img) 绘制，导出为 outW×outH 的 jpg 临时文件。
   // 画布不可用/图片加载失败/导出失败都 reject，由调用方决定回退策略。串行使用（勿并发抢画布）。
   _exportCanvas(outW, outH, src, draw) {
     return new Promise((resolve, reject) => {
@@ -629,29 +602,24 @@ Page({
     })
   },
 
-  // 把一组编辑状态（取景框内所见：方向+平移+旋转+缩放）一次画布合成，烘焙为设备物理分辨率的新图。
-  // canvas 尺寸=设备物理分辨率（竖向）：后端按上传图像素量化六色帧（帧字节数=宽×高÷2），
-  // 上传图必须正好是设备尺寸，这是硬约束。
-  //   · 竖向：画布坐标系直接对应取景框，放大系数 k = outW / frameW；
-  //   · 横向：先把整幅构图转 EXPORT_ROTATE_DEG 再画（见常量注释），k 按「取景框宽 → 画布高」算。
+  // 把一组编辑状态（取景框内所见：方向+平移+旋转+缩放）一次画布合成，烘焙为「可视区域分辨率」新图。
+  // canvas 尺寸 = 取景方向的可视区域（竖向=设备物理分辨率，横向=宽高对调），所见即所得、
+  // 不做任何旋转（2026-07-22 去掉 270° 链路，见文件头说明）；放大系数 k = outW / frameW
+  //（取景框宽 → 画布宽，两者比例恒相同）。横向图的方向适配交给接口侧。
   // 失败 resolve 原图（不阻断投屏），console.warn 留痕。
   bakeEditedImage(image, g) {
-    const dev = this.getDeviceCropSize()
-    const outW = dev.width
-    const outH = dev.height
-    const landscape = g.orientation === ORIENT_LANDSCAPE
-    const k = landscape ? outH / g.frameW : outW / g.frameW
+    const view = this.getViewSize(g.orientation)
+    const outW = view.width
+    const outH = view.height
+    const k = outW / g.frameW
     // 原图 px → canvas px：baseScale(显示/原图) × zoom × k
     const s = g.baseScale * g.zoom * k
     const rad = (g.angle * Math.PI) / 180
     return this._exportCanvas(outW, outH, g.src, (ctx, img) => {
       ctx.save()
-      // 先落到画布中心（横向再把整幅构图转 270°）：此后坐标系就等价于取景框，
+      // 先落到画布中心：此后坐标系就等价于取景框，
       // 图片相对取景框中心的平移(tx,ty)、用户自己的旋转(rad)、缩放(s) 都能原样套用。
       ctx.translate(outW / 2, outH / 2)
-      if (landscape) {
-        ctx.rotate(EXPORT_ROTATE_RAD)
-      }
       ctx.translate(g.tx * k, g.ty * k)
       ctx.rotate(rad)
       ctx.scale(s, s)
@@ -664,16 +632,11 @@ Page({
         updated._origSrc = updated.tempFilePath || updated.url || ''
       }
       updated.tempFilePath = tempFilePath
-      // cropW/cropH 记的是**文件真实像素**（设备物理分辨率，竖向），别改成可视区域尺寸——
-      // 结果页按 cropW>0 走转换链路。展示按取景方向铺；横向成图是转过 270° 的竖向文件，
-      // 要再给图片元素一个反向旋转把它摆正（见 computeRotatedImgStyle）。
-      const view = this.getViewSize(g.orientation)
+      // cropW/cropH 记的是**文件真实像素**（=可视区域分辨率），结果页按 cropW>0 走转换链路。
+      // 成图即所见（无旋转），photo-wrap 按同一宽高等比铺满即可。
       updated.cropW = outW
       updated.cropH = outH
-      updated.wrapStyle = this.computeWrapStyle(view.width, view.height)
-      updated.imgStyle = landscape
-        ? this.computeRotatedImgStyle(view.width, view.height)
-        : ''
+      updated.wrapStyle = this.computeWrapStyle(outW, outH)
       return updated
     }).catch((err) => {
       console.warn('[预览] 编辑烘焙失败，该图回退原图投屏', err)
@@ -734,11 +697,10 @@ Page({
               updated._origSrc = updated.tempFilePath || updated.url || ''
             }
             updated.tempFilePath = tempFilePath
-            // cropW/cropH = 文件真实像素（设备物理分辨率，竖向）；竖向成图无需反向转正
+            // cropW/cropH = 文件真实像素（设备物理分辨率，竖向）
             updated.cropW = size.width
             updated.cropH = size.height
             updated.wrapStyle = this.computeWrapStyle(size.width, size.height)
-            updated.imgStyle = ''
             resolve(updated)
           }).catch(() => resolve(image))
         },
@@ -749,7 +711,7 @@ Page({
 
   // 投屏前统一出图（串行，共用单个离屏 #cropCanvas，避免并发抢画布）：
   //   ① 有编辑状态且真的动过（缩放/平移/旋转/切了横向）→ 按「取景框内所见」烘焙成
-  //      设备分辨率新图（即「点开始投屏自动保存当前效果」，页面没有保存按钮）；
+  //      可视区域分辨率新图（竖=设备分辨率、横=对调；即「点开始投屏自动保存当前效果」）；
   //   ② 什么都没动的图（isPristineEdit）与从没看过的图，等价于未编辑：
   //      · 已烘焙过（cropW>0）或再次投屏直传帧（imgBle）→ 原样保留。
   //        绝不能给 imgBle 的图生成 tempFilePath 打破「imgBle 且无 tempFilePath 直传设备帧」；

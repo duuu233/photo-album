@@ -25,11 +25,10 @@
       <view wx:if="{{editHint}}" class="edit-hint">单指拖动 · 双指缩放/旋转 · 右上角转90°</view>
     </view>
 
-    <!-- 编辑层没起来（无图/读图失败等）的 fallback 普通预览。
-         imgStyle：横向成图已按设备缓冲区转过 270°，这里反向转正展示（见 computeRotatedImgStyle） -->
+    <!-- 编辑层没起来（无图/读图失败等）的 fallback 普通预览。烘焙成图即所见（无旋转），直接铺 -->
     <view wx:else class="photo-wrap" style="{{activeImage.wrapStyle || deviceWrapStyle}}">
       <image wx:if="{{activeImage && (activeImage.tempFilePath || activeImage.url)}}" class="photo-img"
-             style="{{activeImage.imgStyle || ''}}" src="{{activeImage.tempFilePath || activeImage.url}}" mode="aspectFill"></image>
+             src="{{activeImage.tempFilePath || activeImage.url}}" mode="aspectFill"></image>
       <view wx:elif="{{imageCount}}" class="photo-img photo-placeholder">图片占位</view>
       <view wx:else class="photo-img photo-placeholder">暂无待投屏照片</view>
     </view>

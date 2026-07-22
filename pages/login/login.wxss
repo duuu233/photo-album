@@ -185,10 +185,12 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 42rpx;
-  height: 42rpx;
-  /* 扩大点击热区到约 86rpx（图标视觉仍 42rpx）：padding 撑热区、负 margin 抵消布局占位，
-     右侧 22-10=12rpx 与原 margin-right 间距一致。42rpx≈21px 的热区在登录首步很难点中 */
+  /* 点击热区 86rpx = 42rpx 图标 + 两侧各 22rpx padding（全局 border-box，见 app.wxss），
+     负 margin 抵消布局占位，右侧 22-10=12rpx 与原 margin-right 间距一致。
+     ⚠️ width/height 不能写 42rpx：border-box 下 padding 会把内容区压成 0，
+     图标被 flex 收缩到 0 宽直接不可见（2026-07-22 已踩坑） */
+  width: 86rpx;
+  height: 86rpx;
   padding: 22rpx;
   margin: -22rpx -10rpx -22rpx -22rpx;
 }
