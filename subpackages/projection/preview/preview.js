@@ -39,6 +39,16 @@ const ORIENT_PORTRAIT = 'portrait'
 const ORIENT_LANDSCAPE = 'landscape'
 const DEFAULT_ORIENTATION = ORIENT_PORTRAIT
 
+// —— 临时联调（2026-07-22）：seekink 抖动 bin 下载接口 ——
+// 点工具栏「抖动Bin」把当前预览图（本地临时文件；远程图先 downloadFile 落地）multipart 上传，
+// 打印返回内容供分析，返回的 bin 如何用后续再定。注意：
+//   · 域名是 http 且未加入小程序合法域名白名单，只能在开发者工具勾选「不校验合法域名」
+//     或真机开调试模式下联调；
+//   · Authorization 为写死的联调 token，接入正式流程前必须移除。
+const DITHERING_API = 'http://cloud.seekink.cn:8091/prod-api/api/v1/label/imageDitheringBinDownload'
+const DITHERING_AUTH =
+  'Bearer eyJhbGciOiJIUzUxMiJ9.eyJsb2dpbl91c2VyX2tleSI6IjkwMGJjOTZhLWU4MjktNGNkMi1hYmU1LWNhNDY0NDJhYzc2MCJ9.UgsZD93o2WvqGcov_U0FRx2S4NCBJKNF4Rl5Ekkh2KRvdHcKjQLJcQMx7OncNHNKPhuHvgRgmaKORsu6pqym2g'
+
 // 在画布上铺一层白底（jpg 无 alpha 通道，不铺底的话透明像素会被压成黑色）
 function fillWhite(ctx, width, height) {
   ctx.fillStyle = '#ffffff'
@@ -800,6 +810,78 @@ Page({
         this.setData({ projecting: false })
       }
     })
+  },
+
+  // 取当前预览图的本地文件路径：本地临时文件直接用；远程 url（再次投屏/云端图）先下载落地。
+  // wx.uploadFile 只接受本地路径，remote url 直接传会失败。
+  _getActiveLocalPath() {
+    return new Promise((resolve, reject) => {
+      const image = this.data.activeImage
+      const src = image && (image.tempFilePath || image.url)
+      if (!src) {
+        reject(new Error('当前没有可用图片'))
+        return
+      }
+      if (!/^https?:\/\//i.test(src)) {
+        resolve(src)
+        return
+      }
+      wx.downloadFile({
+        url: src,
+        success: (res) => {
+          if (res.statusCode === 200 && res.tempFilePath) {
+            resolve(res.tempFilePath)
+          } else {
+            reject(new Error(`原图下载失败（${res.statusCode}）`))
+          }
+        },
+        fail: (err) => reject(new Error((err && err.errMsg) || '原图下载失败'))
+      })
+    })
+  },
+
+  // 临时联调（2026-07-22）：把当前图 multipart 上传到抖动 bin 接口并打印返回（见文件头 DITHERING_API 说明）
+  async fetchDitheringBin() {
+    if (this._ditherBusy) {
+      return
+    }
+    this._ditherBusy = true
+    wx.showLoading({ title: '请求中', mask: true })
+    try {
+      const filePath = await this._getActiveLocalPath()
+      const res = await new Promise((resolve, reject) => {
+        wx.uploadFile({
+          url: DITHERING_API,
+          filePath,
+          name: 'file',
+          formData: {
+            color: 'BWRYGB',
+            imageDitheringModes: '2'
+          },
+          header: { Authorization: DITHERING_AUTH },
+          timeout: 20000, // 与 request.js 上传超时约定一致
+          success: resolve,
+          fail: (err) => reject(new Error((err && err.errMsg) || '请求失败'))
+        })
+      })
+      // 打印返回内容供分析。res.data 恒为字符串：若返回的是二进制 bin，这里的打印会是乱码/不完整，
+      // 届时后续流程需换 wx.request(responseType:'arraybuffer') 方案（uploadFile 拿不到二进制响应体）。
+      console.log('[抖动bin] statusCode:', res.statusCode)
+      console.log('[抖动bin] header:', res.header)
+      console.log('[抖动bin] data 长度:', res.data ? res.data.length : 0)
+      try {
+        console.log('[抖动bin] data(JSON):', JSON.parse(res.data))
+      } catch (e) {
+        console.log('[抖动bin] data(原文):', res.data)
+      }
+      toast.show('接口已返回，内容见控制台')
+    } catch (error) {
+      console.warn('[抖动bin] 调用失败', error)
+      toast.warn({ title: `接口-抖动bin下载失败：${(error && error.message) || ''}` })
+    } finally {
+      wx.hideLoading()
+      this._ditherBusy = false
+    }
   },
 
   goBack() {

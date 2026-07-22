@@ -189,6 +189,11 @@
   height: 44rpx;
 }
 
+/* 无图标的纯文字工具项（临时联调「抖动Bin」）：文字垂直居中对齐到带图标的项 */
+.tool--text {
+  justify-content: center;
+}
+
 /* 上一张/下一张（替代左右滑动切图） */
 .nav-row {
   position: relative;
