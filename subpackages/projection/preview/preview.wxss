@@ -15,45 +15,25 @@
   text-align: center;
 }
 
-/* 保存按钮：放在计数行内，靠右并与图片右边缘对齐 */
-.preview-save {
-  position: absolute;
-  top: 0;
-  right: 0;
-  height: 48rpx;
-  padding-left: 24rpx;
-  color: #ff5f1f;
-  font-size: 30rpx;
-  font-weight: 600;
-  line-height: 48rpx;
-}
-
 .counter-current {
   color: #ff5f1f;
 }
 
+/* 编辑舞台：高度改这里务必同步 preview.js 的 STAGE_H_RPX；fallback 的 photo-wrap 靠 flex 居中 */
 .preview-stage {
   position: relative;
   z-index: 1;
-  margin: 28rpx 46rpx 0;
-}
-
-.preview-swiper {
-  width: 100%;
-  height: 760rpx;
-}
-
-/* 裁剪后 photo-wrap 会按裁剪比例缩小，这里让它在 swiper-item 内居中 */
-.preview-swiper swiper-item {
   display: flex;
   align-items: center;
   justify-content: center;
+  height: 680rpx;
+  margin: 28rpx 46rpx 0;
 }
 
 .photo-wrap {
   position: relative;
   width: 100%;
-  height: 760rpx;
+  height: 100%;
   overflow: hidden;
   background: #e6ecf4;
   border-radius: 40rpx;
@@ -64,8 +44,7 @@
   height: 100%;
 }
 
-.photo-placeholder,
-.empty-photo {
+.photo-placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -73,7 +52,7 @@
   font-size: 28rpx;
 }
 
-/* 统一编辑层：盖在 swiper 之上，图片在固定裁剪框下自由 平移/缩放/旋转 */
+/* 常驻编辑层：铺满舞台，图片在固定取景框下自由 平移/缩放/旋转 */
 .edit-layer {
   position: absolute;
   inset: 0;
@@ -90,14 +69,14 @@
   will-change: transform;
 }
 
-/* 裁剪框外的遮罩：用超大 box-shadow 把框以外区域压暗（不拦截触摸，手势要落到图片上） */
+/* 取景框外的遮罩：用超大 box-shadow 把框以外区域压暗（不拦截触摸，手势要落到图片上） */
 .edit-shade {
   position: absolute;
   box-shadow: 0 0 0 2000px rgba(17, 21, 28, 0.55);
   pointer-events: none;
 }
 
-/* 固定裁剪框：只做视觉参考，不拦截触摸 */
+/* 固定取景框：只做视觉参考，不拦截触摸 */
 .edit-frame {
   position: absolute;
   box-sizing: border-box;
@@ -105,33 +84,23 @@
   pointer-events: none;
 }
 
-/* 旋转交互切换（对比用）：编辑层之上的小胶囊，居中在舞台顶部 */
-.rotate-mode-switch {
+/* 图右上角悬浮的顺时针转90°按钮：left/top 由 JS 按取景框右上角下发（px），再往左平移自身宽度 */
+.rotate-fab {
   position: absolute;
-  top: 20rpx;
-  left: 50%;
-  z-index: 6;
+  z-index: 7;
   display: flex;
-  padding: 4rpx;
-  transform: translateX(-50%);
-  background: rgba(17, 21, 28, 0.55);
-  border-radius: 999rpx;
-}
-
-.rms-item {
-  padding: 10rpx 26rpx;
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 24rpx;
-  line-height: 1;
-  border-radius: 999rpx;
-}
-
-.rms-item.is-on {
+  align-items: center;
+  padding: 12rpx 24rpx;
   color: #ffffff;
-  background: linear-gradient(90deg, #ff8338, #ff621f);
+  font-size: 26rpx;
+  line-height: 1;
+  background: rgba(17, 21, 28, 0.6);
+  border: 1rpx solid rgba(255, 255, 255, 0.3);
+  border-radius: 999rpx;
+  transform: translateX(-100%);
 }
 
-/* 编辑手势提示：首次进入显示，触摸后隐藏 */
+/* 编辑手势提示：整个页面实例只出一次，触摸后隐藏 */
 .edit-hint {
   position: absolute;
   left: 50%;
@@ -181,7 +150,7 @@
   height: 1px;
 }
 
-/* 裁剪框四角装饰（仅视觉，不可拖拽；裁剪靠移动图片实现） */
+/* 取景框四角装饰（仅视觉，不可拖拽；构图靠移动图片实现） */
 .edit-corner {
   position: absolute;
   width: 40rpx;
@@ -218,7 +187,7 @@
   border-top: 0;
 }
 
-/* 离屏导出画布：移到屏幕外，仅用于裁剪导出 */
+/* 离屏导出画布：移到屏幕外，仅用于投屏前出图 */
 .crop-canvas {
   position: fixed;
   left: -9999rpx;
@@ -227,13 +196,58 @@
   height: 10rpx;
 }
 
+/* 竖向/横向 分段控制器：仿 el-segmented——灰底容器 + 白色滑块滑到选中项 */
+.orient-seg {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  margin: 24rpx 46rpx 0;
+  padding: 6rpx;
+  background: rgba(42, 43, 43, 0.08);
+  border-radius: 999rpx;
+}
+
+/* 滑块：宽 = (容器宽 - 两侧 padding)/2，正好盖住一个选项；切换时水平滑过去 */
+.orient-seg__thumb {
+  position: absolute;
+  top: 6rpx;
+  bottom: 6rpx;
+  left: 6rpx;
+  width: calc(50% - 6rpx);
+  background: #ffffff;
+  border-radius: 999rpx;
+  box-shadow: 0 4rpx 12rpx rgba(121, 145, 178, 0.25);
+  transition: transform 0.25s ease;
+}
+
+.orient-seg__thumb.to-right {
+  transform: translateX(100%);
+}
+
+.orient-seg__item {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  padding: 18rpx 0;
+  color: #777e88;
+  font-size: 28rpx;
+  line-height: 1;
+  text-align: center;
+  transition: color 0.25s ease;
+}
+
+.orient-seg__item.is-on {
+  color: #ff5f1f;
+  font-weight: 600;
+}
+
 .tool-bar {
   position: relative;
   z-index: 1;
   display: flex;
   justify-content: space-around;
-  margin: 28rpx 46rpx 0;
-  padding: 28rpx 0;
+  margin: 24rpx 46rpx 0;
+  padding: 20rpx 0;
 
   background: rgba(255, 255, 255, 0.4);
   border: 2rpx solid rgba(255, 255, 255, 0.86);
@@ -250,59 +264,48 @@
   font-size: 24rpx;
 }
 
-.tool.is-active {
-  color: #ff5f1f;
-}
-
 .tool-icon {
   position: relative;
   width: 44rpx;
   height: 44rpx;
 }
+
+/* 上一张/下一张（替代左右滑动切图） */
+.nav-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 24rpx;
+  margin: 24rpx 46rpx 0;
+}
+
+.nav-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  color: #2a2b2b;
+  font-size: 28rpx;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.4);
+  border: 2rpx solid rgba(255, 255, 255, 0.86);
+  border-radius: 999rpx;
+  box-shadow: 0 24rpx 54rpx rgba(121, 145, 178, 0.13);
+}
+
+/* 已到第一张/最后一张：置灰（JS 侧同样短路，不响应点击） */
+.nav-btn.is-disabled {
+  color: #b7bdc6;
+  opacity: 0.6;
+}
+
 .preview-imageCount {
   color: rgba(42, 43, 43, 0.8);
   border-radius: 62px;
   background: rgba(42, 43, 43, 0.08);
   display: inline-block;
   padding: 4rpx 30rpx;
-}
-/* 压缩图片开关行：与工具栏同样式的玻璃卡片，放在投屏按钮上方 */
-.compress-row {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 24rpx 46rpx 0;
-  padding: 22rpx 30rpx;
-
-  background: rgba(255, 255, 255, 0.4);
-  border: 2rpx solid rgba(255, 255, 255, 0.86);
-  border-radius: 40rpx;
-  box-shadow: 0 24rpx 54rpx rgba(121, 145, 178, 0.13);
-}
-
-.compress-info {
-  display: flex;
-  flex-direction: column;
-  gap: 6rpx;
-  margin-right: 20rpx;
-}
-
-.compress-label {
-  color: #2a2b2b;
-  font-size: 28rpx;
-  font-weight: 600;
-}
-
-.compress-tip {
-  color: #777e88;
-  font-size: 22rpx;
-}
-
-.compress-switch {
-  transform: scale(0.8);
-  transform-origin: right center;
 }
 
 .preview-submit {
@@ -321,7 +324,7 @@
   font-weight: 700;
 }
 
-/* 编辑态：投屏按钮置灰不可点 */
+/* 投屏中：按钮置灰防连点 */
 .preview-submit.is-disabled {
   background: #c8ccd2;
   box-shadow: none;

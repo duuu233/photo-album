@@ -6,24 +6,12 @@
   <page-nav title="照片预览"></page-nav>
 
   <view class="preview-counter" wx:if="{{imageCount}}">
-  <view class="preview-imageCount">   {{activeIndex + 1}}/{{imageCount}}  </view>
-  
-    <view class="preview-save" wx:if="{{editing}}" hover-class="none" bindtap="savePhoto">保存</view>
+    <view class="preview-imageCount">   {{activeIndex + 1}}/{{imageCount}}  </view>
   </view>
 
   <view class="preview-stage">
-    <swiper wx:if="{{images.length}}" class="preview-swiper" current="{{activeIndex}}" bindchange="onSwiperChange">
-      <swiper-item wx:for="{{images}}" wx:key="index">
-        <view class="photo-wrap" style="{{item.wrapStyle || deviceWrapStyle}}">
-          <!-- imgStyle：成图已按设备缓冲区转过 90°，这里反向转回来展示，否则看到的是躺倒的照片（见 computeRotatedImgStyle） -->
-          <image wx:if="{{item.tempFilePath || item.url}}" class="photo-img" style="{{item.imgStyle || ''}}" src="{{item.tempFilePath || item.url}}" mode="aspectFill"></image>
-          <view wx:else class="photo-img photo-placeholder">图片占位</view>
-        </view>
-      </swiper-item>
-    </swiper>
-    <view wx:else class="photo-wrap empty-photo">暂无待投屏照片</view>
-
-    <!-- 统一编辑层：盖在 swiper 之上。裁剪框固定（锁设备比例），图片在框下自由 平移/缩放/旋转，框内即最终成像。 -->
+    <!-- 常驻编辑层（2026-07-22）：取景框固定（按 竖向/横向 锁比例），图片在框下自由
+         单指平移 / 双指缩放+旋转，框内即最终成像；没有保存按钮，点「开始投屏」自动按框内所见烘焙上传。 -->
     <view wx:if="{{editing}}" class="edit-layer"
           catchtouchstart="onEditTouchStart"
           catchtouchmove="onEditTouchMove"
@@ -42,34 +30,48 @@
         <view class="edit-corner corner-bl"></view>
         <view class="edit-corner corner-br"></view>
       </view>
-      <view wx:if="{{editHint}}" class="edit-hint">{{editHintText}}</view>
+      <view wx:if="{{editHint}}" class="edit-hint">单指拖动 · 双指缩放/旋转 · 右上角转90°</view>
     </view>
 
-    <!-- 旋转交互切换（对比用）：放在编辑层之上、作为其兄弟节点，独立接管点击，不触发图片手势 -->
-    <view wx:if="{{editing}}" class="rotate-mode-switch">
-      <view class="rms-item {{rotateMode === 'drag' ? 'is-on' : ''}}" data-mode="drag" catchtap="setRotateMode">长按旋转</view>
-      <view class="rms-item {{rotateMode === 'pinch' ? 'is-on' : ''}}" data-mode="pinch" catchtap="setRotateMode">双指旋转</view>
+    <!-- 编辑层没起来（无图/读图失败等）的 fallback 普通预览。
+         imgStyle：横向成图已按设备缓冲区转过 270°，这里反向转正展示（见 computeRotatedImgStyle） -->
+    <view wx:else class="photo-wrap" style="{{activeImage.wrapStyle || deviceWrapStyle}}">
+      <image wx:if="{{activeImage && (activeImage.tempFilePath || activeImage.url)}}" class="photo-img"
+             style="{{activeImage.imgStyle || ''}}" src="{{activeImage.tempFilePath || activeImage.url}}" mode="aspectFill"></image>
+      <view wx:elif="{{imageCount}}" class="photo-img photo-placeholder">图片占位</view>
+      <view wx:else class="photo-img photo-placeholder">暂无待投屏照片</view>
     </view>
+
+    <!-- 图右上角悬浮：顺时针转90°（跟随取景框右上角定位，样式里再往左平移自身宽度） -->
+    <view wx:if="{{editing && frame}}" class="rotate-fab"
+          style="left:{{frame.left + frame.width - 12}}px; top:{{frame.top + 12}}px;"
+          catchtap="rotate90">↻ 90°</view>
   </view>
 
-  <view class="tool-bar">
-    <view class="tool {{activeTool === 'crop' ? 'is-active' : ''}}" hover-class="none" data-tool="crop" bindtap="selectTool">
-      <image class="tool-icon" src="{{activeTool === 'crop' ? '/assets/images/preview-icon01-selected.png' : '/assets/images/preview-icon01.png'}}" mode="aspectFit"></image>
-      <text>裁剪</text>
-    </view>
-    <view class="tool {{activeTool === 'rotate' ? 'is-active' : ''}}" hover-class="none" data-tool="rotate" bindtap="selectTool">
-      <image class="tool-icon" src="{{activeTool === 'rotate' ? '/assets/images/preview-icon02-selected.png' : '/assets/images/preview-icon02.png'}}" mode="aspectFit"></image>
-      <text>旋转</text>
-    </view>
-    <view class="tool {{activeTool === 'origin' ? 'is-active' : ''}}" hover-class="none" data-tool="origin" bindtap="selectTool">
-      <image class="tool-icon" src="{{activeTool === 'origin' ? '/assets/images/preview-icon03-selected.png' : '/assets/images/preview-icon03.png'}}" mode="aspectFit"></image>
+  <!-- 竖向/横向 分段控制器（交互仿 element-plus 的 el-segmented：白色滑块滑到选中项）。
+       只改可视区域（取景框比例），图片本身不动；横向超出可视区的部分单指拖动调整。 -->
+  <view class="orient-seg" wx:if="{{imageCount}}">
+    <view class="orient-seg__thumb {{orientation === 'landscape' ? 'to-right' : ''}}"></view>
+    <view class="orient-seg__item {{orientation === 'portrait' ? 'is-on' : ''}}" hover-class="none" data-orient="portrait" bindtap="setOrientation">竖向</view>
+    <view class="orient-seg__item {{orientation === 'landscape' ? 'is-on' : ''}}" hover-class="none" data-orient="landscape" bindtap="setOrientation">横向</view>
+  </view>
+
+  <view class="tool-bar" wx:if="{{imageCount}}">
+    <view class="tool" hover-class="none" bindtap="restoreOrigin">
+      <image class="tool-icon" src="/assets/images/preview-icon03.png" mode="aspectFit"></image>
       <text>原图</text>
     </view>
   </view>
 
-  <view class="preview-submit {{editing || projecting ? 'is-disabled' : ''}}" hover-class="none" bindtap="confirmProjection">{{projecting ? '投屏中' : '开始投屏'}}</view>
+  <!-- 上一张/下一张（2026-07-22：替代左右滑动切图），多图才显示；切图保留各自的编辑状态 -->
+  <view class="nav-row" wx:if="{{imageCount > 1}}">
+    <view class="nav-btn {{activeIndex <= 0 ? 'is-disabled' : ''}}" hover-class="none" bindtap="prevImage">上一张</view>
+    <view class="nav-btn {{activeIndex >= imageCount - 1 ? 'is-disabled' : ''}}" hover-class="none" bindtap="nextImage">下一张</view>
+  </view>
 
-  <!-- 离屏导出用画布（定位到屏幕外不可见）：裁剪时把选区绘制到这里再导出临时文件 -->
+  <view class="preview-submit {{projecting ? 'is-disabled' : ''}}" hover-class="none" bindtap="confirmProjection">{{projecting ? '投屏中' : '开始投屏'}}</view>
+
+  <!-- 离屏导出用画布（定位到屏幕外不可见）：投屏前把「取景框内所见」绘制到这里再导出临时文件 -->
   <canvas type="2d" id="cropCanvas" class="crop-canvas"></canvas>
 
   <global-toast id="globalToast"></global-toast>
