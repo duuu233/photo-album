@@ -10,25 +10,17 @@
   </view>
 
   <view class="preview-stage">
-    <!-- 常驻编辑层（2026-07-22）：取景框固定（按 竖向/横向 锁比例），图片在框下自由
-         单指平移 / 双指缩放+旋转，框内即最终成像；没有保存按钮，点「开始投屏」自动按框内所见烘焙上传。 -->
+    <!-- 常驻编辑层（2026-07-22）：可视区域固定（按 竖向/横向 锁比例），图片在其下自由
+         单指平移 / 双指缩放+旋转，区内即最终成像；没有保存按钮，点「开始投屏」自动按区内所见烘焙上传。
+         2026-07-22 优化：不再画裁剪框/九宫格/框外遮罩，可视区外的内容由 .edit-clip 的 overflow:hidden 直接裁掉。 -->
     <view wx:if="{{editing}}" class="edit-layer"
           catchtouchstart="onEditTouchStart"
           catchtouchmove="onEditTouchMove"
           catchtouchend="onEditTouchEnd"
           catchtouchcancel="onEditTouchEnd">
-      <image class="edit-image" src="{{editSrc}}" mode="scaleToFill"
-             style="left:{{editImgLeft}}px; top:{{editImgTop}}px; width:{{editBaseW}}px; height:{{editBaseH}}px; transform:{{editTransform}};"></image>
-      <view class="edit-shade" style="left:{{frame.left}}px; top:{{frame.top}}px; width:{{frame.width}}px; height:{{frame.height}}px;"></view>
-      <view class="edit-frame" style="left:{{frame.left}}px; top:{{frame.top}}px; width:{{frame.width}}px; height:{{frame.height}}px;">
-        <view class="crop-third crop-third--v1"></view>
-        <view class="crop-third crop-third--v2"></view>
-        <view class="crop-third crop-third--h1"></view>
-        <view class="crop-third crop-third--h2"></view>
-        <view class="edit-corner corner-tl"></view>
-        <view class="edit-corner corner-tr"></view>
-        <view class="edit-corner corner-bl"></view>
-        <view class="edit-corner corner-br"></view>
+      <view class="edit-clip" style="left:{{frame.left}}px; top:{{frame.top}}px; width:{{frame.width}}px; height:{{frame.height}}px;">
+        <image class="edit-image" src="{{editSrc}}" mode="scaleToFill"
+               style="left:{{editImgLeft}}px; top:{{editImgTop}}px; width:{{editBaseW}}px; height:{{editBaseH}}px; transform:{{editTransform}};"></image>
       </view>
       <view wx:if="{{editHint}}" class="edit-hint">单指拖动 · 双指缩放/旋转 · 右上角转90°</view>
     </view>

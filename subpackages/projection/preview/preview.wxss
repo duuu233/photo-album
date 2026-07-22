@@ -52,13 +52,19 @@
   font-size: 28rpx;
 }
 
-/* 常驻编辑层：铺满舞台，图片在固定取景框下自由 平移/缩放/旋转 */
+/* 常驻编辑层：铺满舞台的透明触摸面（手势在整个舞台内都可操作），图片在固定可视区域下自由 平移/缩放/旋转 */
 .edit-layer {
   position: absolute;
   inset: 0;
   z-index: 5;
+}
+
+/* 可视区域容器（2026-07-22 优化，取代 裁剪框+九宫格+框外遮罩）：位置/尺寸由 JS 按 frame 下发，
+   区外内容直接 overflow:hidden 裁掉，观感与 photo-wrap 圆角卡片一致（框内即最终成像） */
+.edit-clip {
+  position: absolute;
   overflow: hidden;
-  background: #11151c;
+  background: #e6ecf4;
   border-radius: 40rpx;
 }
 
@@ -67,21 +73,6 @@
   position: absolute;
   transform-origin: center center;
   will-change: transform;
-}
-
-/* 取景框外的遮罩：用超大 box-shadow 把框以外区域压暗（不拦截触摸，手势要落到图片上） */
-.edit-shade {
-  position: absolute;
-  box-shadow: 0 0 0 2000px rgba(17, 21, 28, 0.55);
-  pointer-events: none;
-}
-
-/* 固定取景框：只做视觉参考，不拦截触摸 */
-.edit-frame {
-  position: absolute;
-  box-sizing: border-box;
-  border: 2rpx solid rgba(255, 255, 255, 0.95);
-  pointer-events: none;
 }
 
 /* 图右上角悬浮的顺时针转90°按钮：left/top 由 JS 按取景框右上角下发（px），再往左平移自身宽度 */
@@ -113,78 +104,6 @@
   border-radius: 999rpx;
   white-space: nowrap;
   pointer-events: none;
-}
-
-/* 三等分参考线 */
-.crop-third {
-  position: absolute;
-  background: rgba(255, 255, 255, 0.35);
-  pointer-events: none;
-}
-
-.crop-third--v1 {
-  top: 0;
-  bottom: 0;
-  left: 33.33%;
-  width: 1px;
-}
-
-.crop-third--v2 {
-  top: 0;
-  bottom: 0;
-  left: 66.66%;
-  width: 1px;
-}
-
-.crop-third--h1 {
-  left: 0;
-  right: 0;
-  top: 33.33%;
-  height: 1px;
-}
-
-.crop-third--h2 {
-  left: 0;
-  right: 0;
-  top: 66.66%;
-  height: 1px;
-}
-
-/* 取景框四角装饰（仅视觉，不可拖拽；构图靠移动图片实现） */
-.edit-corner {
-  position: absolute;
-  width: 40rpx;
-  height: 40rpx;
-  border: 6rpx solid #ffffff;
-  z-index: 2;
-}
-
-.corner-tl {
-  top: -3rpx;
-  left: -3rpx;
-  border-right: 0;
-  border-bottom: 0;
-}
-
-.corner-tr {
-  top: -3rpx;
-  right: -3rpx;
-  border-left: 0;
-  border-bottom: 0;
-}
-
-.corner-bl {
-  bottom: -3rpx;
-  left: -3rpx;
-  border-right: 0;
-  border-top: 0;
-}
-
-.corner-br {
-  bottom: -3rpx;
-  right: -3rpx;
-  border-left: 0;
-  border-top: 0;
 }
 
 /* 离屏导出画布：移到屏幕外，仅用于投屏前出图 */

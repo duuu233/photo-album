@@ -88,10 +88,11 @@ Page({
     editSrc: '', // 正在编辑的图片源
     editBaseW: 0, // 图片「铺满取景框(cover)」时的显示宽(px)，作为 zoom=1 基准
     editBaseH: 0, // 同上，高
-    editImgLeft: 0, // 图片元素左上角 X(px，相对编辑层)：使其中心落在取景框中心
+    editImgLeft: 0, // 图片元素左上角 X(px，相对可视区容器 .edit-clip)：使其中心落在可视区中心
     editImgTop: 0, // 同上，Y
     editTransform: '', // translate/rotate/scale 组合串——仅此字段随手势高频 setData
-    frame: null, // 固定取景框 {left,top,width,height}(px)，锁定当前方向比例、居中不动
+    frame: null, // 可视区域 {left,top,width,height}(px，相对编辑层)，锁定当前方向比例、居中不动；
+    // 定位 .edit-clip（区外内容被它 overflow:hidden 裁掉）与右上角转90°按钮
     editHint: true, // 手势提示：整个页面实例只出一次，触摸后隐藏
 
     deviceWrapStyle: '' // 编辑层没起来时 fallback 展示用：按设备（竖向）比例铺
@@ -263,8 +264,8 @@ Page({
     })
   },
 
-  // 舞台内「指定方向可视区域比例」的最大居中矩形 = 固定取景框。
-  // 九宫格/遮罩/四角都是 .edit-frame 的子元素，跟着 frame 走，无需另改。
+  // 舞台内「指定方向可视区域比例」的最大居中矩形 = 固定可视区域。
+  // 区外内容由 .edit-clip 的 overflow:hidden 直接裁掉（2026-07-22 优化：不再画裁剪框/九宫格/遮罩）。
   _frameFor(stage, orientation) {
     const view = this.getViewSize(orientation)
     const ratio = view.width / view.height
@@ -352,8 +353,8 @@ Page({
               editSrc: src,
               editBaseW: baseW,
               editBaseH: baseH,
-              editImgLeft: frame.left + frame.width / 2 - baseW / 2,
-              editImgTop: frame.top + frame.height / 2 - baseH / 2,
+              editImgLeft: frame.width / 2 - baseW / 2,
+              editImgTop: frame.height / 2 - baseH / 2,
               frame,
               editHint: !this._hintShown
             })
@@ -401,8 +402,8 @@ Page({
       frame,
       editBaseW: g.baseW,
       editBaseH: g.baseH,
-      editImgLeft: frame.left + frame.width / 2 - g.baseW / 2,
-      editImgTop: frame.top + frame.height / 2 - g.baseH / 2
+      editImgLeft: frame.width / 2 - g.baseW / 2,
+      editImgTop: frame.height / 2 - g.baseH / 2
     })
     this._applyEdit(keepZoom, g.tx, g.ty, g.angle)
   },
