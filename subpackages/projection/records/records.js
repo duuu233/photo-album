@@ -83,8 +83,10 @@ Page({
     this.loadRecords(filter)
   },
 
-  // 再次/重新投屏：用记录里的服务器图片地址重新走一遍正常投屏链路。
-  // 就算当前没连接设备，也先扫描+连接设备，连上后再跳投屏预览页，由结果页从服务器拉取文件并 BLE 图传。
+  // 再次/重新投屏（2026-07-23 起与正常投屏完全同链路）：用记录里的服务器图片地址进预览页，
+  // 之后与用户手选图片流程一致——点「开始投屏」时由结果页走 seekink 抖动接口出帧 + 图传 + 建记录。
+  // 旧「imgBle(.bin) 直传」链路已删除：后端不再生成/返回 .bin，记录里没有可直传的设备帧了。
+  // 就算当前没连接设备，也先扫描+连接设备，连上后再跳投屏预览页。
   // 在途锁：前置要跑 1-2 个网络请求+扫描连接，弱网下点了没反应会诱发连点，
   // 并发两条「查设备→连接→跳转」会双跳转报错（home.js 记录过同类 routeDone 崩点）。
   async retryProjection(e) {
@@ -112,13 +114,6 @@ Page({
     const imageUrl = record.thumbUrl || record.img || record.url
     if (!imageUrl) {
       toast.warn({ title: '该记录没有可投屏的图片', icon: 'none' })
-      return
-    }
-
-    // 产品要求：再次/重新投屏一律直接用记录里的设备帧 .bin(imgBle) 图传，
-    // 不再走后端上传/转码接口；没有 imgBle 的记录无法直接投屏，明确提示
-    if (!record.imgBle) {
-      toast.warn({ title: '该记录缺少设备帧文件，无法再次投屏', icon: 'none' })
       return
     }
 
@@ -171,21 +166,14 @@ Page({
       `[再次投屏] 预览图源：${originalUrl ? '图库原图' : '记录img(未匹配到图库原图)'} ${originalUrl || imageUrl}`
     )
 
-    // 复用正常投屏链路：把该图片(服务器地址)与设备写入 Storage，跳投屏预览页。
-    // 记录里已有后端转换好的设备帧地址 imgBle：带上它与 upirId/userProductId，
-    // 结果页直接下载 imgBle 帧数据 BLE 图传（不调后端上传/转码、不调 editUserProductImgRecord），
-    // 设备图传成功/失败后都调 addUserProductImgRecord 新增一条投屏记录。
+    // 复用正常投屏链路：把该图片(服务器地址)与设备写入 Storage，跳投屏预览页——
+    // payload 形态与首页手选图片完全一致（只有 url），结果页会照常「抖动接口出帧 +
+    // setUserProductUpload 建新记录 + editUserProductImgRecord 记账」，本次投屏即一条新记录。
     wx.setStorageSync('pendingProjection', {
       device,
       images: [
         {
-          url: originalUrl || imageUrl,
-          imgBle: record.imgBle,
-          upirId: record.upirId,
-          // 记账必填字段：记录缺 userProductId 时兜底用当前设备的用户产品ID
-          userProductId:
-            record.userProductId ||
-            (device && (device.userProductId || device.id))
+          url: originalUrl || imageUrl
         }
       ]
     })

@@ -3,6 +3,22 @@
 > 🛠 **维护约定**：每次修改本文件涉及的问题/功能，务必在下方「操作日志」补一条（日期 + 改了什么 + 关联文件/commit），**最新在上**——别让文档与代码脱节。
 
 ## 操作日志（最新在上）
+- **2026-07-23（二）**：**再次/重新投屏并入正常链路，imgBle(.bin) 直传整链路删除**（后端已不再
+  生成/返回 .bin，07-22 风险②就此定夺关闭）。投屏管理页点「再次/重新投屏」→ 连设备 → 只带
+  记录图片地址（优先图库原图）进预览页 → 与手选图片流程无差别：出帧走抖动接口、记录走
+  setUserProductUpload+editUserProductImgRecord，每次再投都产生一条新投屏记录。删除清单：
+  records.js imgBle 门槛/透传、result.js `isRetry`/`_retryImageInFlight`/`addRetryRecord`/
+  `downloadFrameBin`/首张预取 `firstDirect`、preview.js `cropW||imgBle` 保留判定（改只看 cropW）。
+  关联：`records.js`、`result.js`、`preview.js`、`utils/api.js`（addUserProductImgRecord 已无调用方，
+  方法保留）、`docs/接口清单.md`。仅小程序，Flutter 待同步。
+- **2026-07-23**：**抖动接口鉴权由写死联调 token 改为接口动态获取**：新增
+  `GET /Client/Basic/getXTYUserToken`（api.js），`utils/dithering.js` 删除 `DITHERING_AUTH` 常量，
+  请求头改 `Authorization: Bearer+空格+动态token`。策略：`ensureAuthToken` 会话级内存缓存
+  （一次会话只取一次、所有投屏复用，杀进程失效重取；在途请求去重）+ 预览页 onLoad 调
+  `prefetchAuthToken` 前置预热（构图期间取好，出帧零等待）+ 收到 401/业务 token 类报错时清缓存
+  刷新重试一次（长会话过期自愈，只刷一次防打转）。07-22 遗留的「⚠️token 写死待换」就此关闭。
+  ⚠️getXTYUserToken 返回字段形态为假设待联调。关联：`utils/api.js`、`utils/dithering.js`、
+  `subpackages/projection/preview/preview.js`、`docs/接口清单.md`。仅小程序，Flutter 待同步。
 - **2026-07-22**：**正常投屏的设备帧改由第三方 seekink 抖动接口生成，不再下载后端转码的 .bin**
   （仅小程序，Flutter 待同步）。result.js `acquireFrame` 正常链路改为两路网络并行：
   - **设备帧**：预览处理后的设备分辨率图 → `compressForUpload` 统一压缩（已是设备尺寸则原样通过）→

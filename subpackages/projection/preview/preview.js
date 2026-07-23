@@ -1,6 +1,7 @@
 const system = require('../../../utils/system')
 const toast = require('../../../utils/toast')
 const deviceBle = require('../../../utils/device-ble')
+const dithering = require('../../../utils/dithering')
 
 // 设备屏幕分辨率（width×height）：列表/详情接口都会返回，取景框据此锁定宽高比（如 500x500 → 1:1）。
 // 接口暂未返回该字段，这里先给默认值便于联调测试（如需 1:1 改成 { width: 500, height: 500 }）。
@@ -58,8 +59,7 @@ function fillWhite(ctx, width, height) {
 }
 
 // 判断一组编辑状态是否「什么都没动」：方向仍是默认竖向、没缩放、没平移、旋转角为整圈。
-// 这类图与未编辑图完全等价，投屏时走 coverCropOne（中心裁切）即可，不必过画布再烘焙一遍——
-// 也顺带保住了「再次投屏 imgBle 直传」的判定（见 prepareProjectionImages）。
+// 这类图与未编辑图完全等价，投屏时走 coverCropOne（中心裁切）即可，不必过画布再烘焙一遍。
 function isPristineEdit(state) {
   if (!state || state.orientation !== DEFAULT_ORIENTATION) {
     return false
@@ -126,6 +126,10 @@ Page({
     if (device && device.deviceId) {
       deviceBle.ensureConnection(device.deviceId).catch(() => {})
     }
+
+    // 同理预热 seekink 抖动接口 token（getXTYUserToken，会话级缓存整程复用）：
+    // 已有缓存时是空操作；失败静默，投屏出帧时会自动重取
+    dithering.prefetchAuthToken()
   },
 
   onReady() {
@@ -570,8 +574,7 @@ Page({
         const updated = Object.assign({}, next[activeIndex])
         // 之前烘焙过：把图片源还原回最初的原图。
         // 原图本是远程地址（再次投屏/云端图，编辑前没有本地文件）时要清空 tempFilePath 回落到 url：
-        // 若把 https 地址塞进 tempFilePath，结果页会把它当本地文件上传（必失败），
-        // 且再次投屏「imgBle 且无 tempFilePath 则直传设备帧」的判定也会失效。
+        // 若把 https 地址塞进 tempFilePath，结果页会把它当本地文件上传（必失败）。
         if (updated._origSrc) {
           updated.tempFilePath = /^https?:\/\//i.test(updated._origSrc)
             ? ''
@@ -753,10 +756,9 @@ Page({
   //   ① 有编辑状态且真的动过（缩放/平移/旋转/切了横向）→ 按「取景框内所见」烘焙成
   //      可视区域分辨率新图（竖=设备分辨率、横=对调；即「点开始投屏自动保存当前效果」）；
   //   ② 什么都没动的图（isPristineEdit）与从没看过的图，等价于未编辑：
-  //      · 已烘焙过（cropW>0）或再次投屏直传帧（imgBle）→ 原样保留。
-  //        绝不能给 imgBle 的图生成 tempFilePath 打破「imgBle 且无 tempFilePath 直传设备帧」；
-  //        用户真编辑过的 imgBle 图走 ①，产生 tempFilePath/cropW 改走转换链路，这是有意为之。
+  //      · 已烘焙过（cropW>0）→ 原样保留；
   //      · 其余 → coverCropOne 按设备（竖向）比例中心裁切，与预览所见一致。
+  //（2026-07-23：再次投屏的图与手选图已无差别——旧「imgBle 直传帧原样保留」判定随 .bin 链路一并删除）
   // 任一张失败回退原图，不阻断投屏。
   async prepareProjectionImages() {
     const { images, activeIndex } = this.data
@@ -769,7 +771,7 @@ Page({
       const edited = state && state.src === src && !isPristineEdit(state)
       if (edited) {
         result.push(await this.bakeEditedImage(image, state))
-      } else if (image && (image.cropW || image.imgBle)) {
+      } else if (image && image.cropW) {
         result.push(image)
       } else {
         result.push(await this.coverCropOne(image))

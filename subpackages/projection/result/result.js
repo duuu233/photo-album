@@ -7,9 +7,9 @@
 //        setUserProductUpload 建记录拿 taskId/upirId（接口返回的 .bin url 不再下载使用）
 //   → ① 的帧图传到设备(0x20/0x21/0x22)
 //   → 设备成功才编辑投屏记录(editUserProductImgRecord 置 deviceUploadState=1，逻辑不变) → 刷新显示(0x24)。
-// 再次/重新投屏（投屏记录页进入，images 带 imgBle）：一律直接下载记录里的 imgBle 帧数据图传，
-//     不调后端上传/转码接口(setUserProductUpload)、也不调 editUserProductImgRecord；
-//     设备图传成功(1)/失败(0)都调 addUserProductImgRecord 新增一条投屏记录（见 addRetryRecord）。
+// 再次/重新投屏（投屏记录页进入）：2026-07-23 起与正常投屏完全同链路——记录页只把后端图片地址
+//     写进 pendingProjection（与首页手选图片同形态），出帧/图传/建记录/记账全走上面的正常链路。
+//     旧「imgBle(.bin) 直传 + addUserProductImgRecord 补记」机制已删除（后端不再生成 .bin）。
 const system = require('../../../utils/system')
 const api = require('../../../utils/api')
 const deviceBle = require('../../../utils/device-ble')
@@ -134,7 +134,6 @@ Page({
     this.setData(system.getLayoutMetrics())
     this._aborted = false
     this._activeDeviceId = ''
-    this._retryImageInFlight = null // 正在图传的再次投屏图：失败时外层 catch 据此补记失败记录
 
     const status = options.status || 'progress'
     if (status === 'progress') {
@@ -345,7 +344,7 @@ Page({
       }
 
       // F1 首张网络准备与「连接 → 0x01」并行（性能优化）：出帧目标尺寸/抖动 type 只依赖设备记录里
-      // 后端按物理型号下发的 width/height（再次投屏 imgBle 直传则完全不需要尺寸），不必等 0x01。
+      // 后端按物理型号下发的 width/height，不必等 0x01。
       // 记录尺寸可用时立刻启动第一张的「抖动出帧+记录上传」，把冷连接 1~3s 的等待与网络准备重叠；
       // 0x01 返回后校验尺寸，不一致（记录过期/异常）则作废预取按真实尺寸重取，
       // 主循环的「帧字节数 = 宽×高÷2」校验仍是最后闸门，错帧绝不会发往设备。
@@ -353,8 +352,7 @@ Page({
         Number(device.width) > 0 && Number(device.height) > 0
           ? { width: Number(device.width), height: Number(device.height) }
           : null
-      const firstDirect = !!(images[0].imgBle && !images[0].tempFilePath)
-      if (firstDirect || guessedSize) {
+      if (guessedSize) {
         performance.firstPrefetchEarly = true
         startPrefetch(0, guessedSize)
       }
@@ -406,10 +404,9 @@ Page({
 
       // 2) 逐张：抖动接口出帧 + 原图上传建记录（并行）→ 选空闲槽位 → 图传 → 设备成功才写投屏记录 → 刷新显示。
       // F1 校验：首张若已用设备记录尺寸早启动预取，此处对照 0x01 真实尺寸——不一致则作废重取
-      //（后台在跑的旧转码结果直接丢弃）。imgBle 直传（firstDirect）不依赖尺寸，无需作废。
+      //（后台在跑的旧转码结果直接丢弃）。
       if (
         framePrefetch[0] &&
-        !firstDirect &&
         guessedSize &&
         (guessedSize.width !== info.width || guessedSize.height !== info.height)
       ) {
@@ -449,13 +446,8 @@ Page({
           throw new Error('UPLOAD_ABORTED')
         }
         const image = images[i]
-        // 再次/重新投屏的图（记录页带入 imgBle 且未在预览页重新编辑过）：
-        // 本张不论最终成功失败都要 addUserProductImgRecord 记账，失败记账由外层 catch 统一补
-        const isRetry = !!(image.imgBle && !image.tempFilePath)
-        this._retryImageInFlight = isRetry ? image : null
         const imagePerformance = {
           imageNumber: i + 1,
-          retryProjection: isRetry,
           acquireWaitMs: 0,
           recordMs: 0
         }
@@ -559,39 +551,27 @@ Page({
           throw error
         }
 
-        // 设备图传成功 → 写后端投屏记录。尽力而为：记账失败只记日志，不回滚设备、
-        // 不把整单判失败，避免设备已传成功却被误删/误判失败。两条链路：
-        //   · 再次/重新投屏(imgBle 直传)：addUserProductImgRecord 新增一条成功记录；
-        //   · 正常投屏(后端转码时已按失败态建记录)：editUserProductImgRecord 按 taskId 置成功。
-        // 两条链路都要带上本张实际写入设备的槽位索引 index(imgIndex)：图库删除/刷新屏幕靠它
-        // 定位相框上的物理位置，不上报的话这张图在图库里就成了「不知道在哪」的记录。
+        // 设备图传成功 → 写后端投屏记录（editUserProductImgRecord 按 taskId 置成功）。
+        // 尽力而为：记账失败只记日志，不回滚设备、不把整单判失败，避免设备已传成功却被误删/误判失败。
+        // 记账放入并行队列，不挡住下一张 BLE。必须带上本张实际写入设备的槽位索引 index(imgIndex)：
+        // 图库删除/刷新屏幕靠它定位相框上的物理位置，不上报的话这张图在图库里就成了「不知道在哪」的记录。
         // ⚠️ index 可能为 0（相框第一个位置），是合法值，勿按假值过滤。见 docs/图片索引-imgIndex方案.md。
-        if (isRetry) {
-          // 设备已成功，本张不再可能补记失败；记账放入并行队列，不挡住下一张 BLE。
-          this._retryImageInFlight = null
-          this.queueRecordTask(
-            `第 ${i + 1}/${total} 张再次投屏记录写入失败`,
-            () => this.addRetryRecord(image, 1, index),
-            imagePerformance
-          )
-        } else {
-          this.queueRecordTask(
-            `第 ${i + 1}/${total} 张投屏记录写入失败`,
-            async () => {
-              await api.editUserProductImgRecord({
-                upirId,
-                taskId,
-                deviceUploadState: 1,
-                imgIndex: index,
-                showError: false
-              })
-              console.log(
-                `[投屏] 第 ${i + 1}/${total} 张 投屏记录已置成功：taskId=${taskId} imgIndex=${index}`
-              )
-            },
-            imagePerformance
-          )
-        }
+        this.queueRecordTask(
+          `第 ${i + 1}/${total} 张投屏记录写入失败`,
+          async () => {
+            await api.editUserProductImgRecord({
+              upirId,
+              taskId,
+              deviceUploadState: 1,
+              imgIndex: index,
+              showError: false
+            })
+            console.log(
+              `[投屏] 第 ${i + 1}/${total} 张 投屏记录已置成功：taskId=${taskId} imgIndex=${index}`
+            )
+          },
+          imagePerformance
+        )
 
         // 该槽位记为已用，供下一张选空闲槽位
         usedIndexes = usedIndexes.concat(index)
@@ -637,17 +617,6 @@ Page({
       performance.outcome = 'success'
       this.finishProjection(device, { uploaded, failCount: 0, total, message: '' })
     } catch (error) {
-      // 再次/重新投屏：传固件失败也要新增一条失败记录(deviceUploadState=0)；成功记账已在循环内完成
-      if (this._retryImageInFlight) {
-        const failedImagePerformance = performance.images[performance.images.length - 1]
-        const failedImage = this._retryImageInFlight
-        this._retryImageInFlight = null
-        this.queueRecordTask(
-          '再次投屏失败记录写入失败',
-          () => this.addRetryRecord(failedImage, 0),
-          failedImagePerformance
-        )
-      }
       performance.phases.recordDrainMs = await this.drainRecordTasks()
       const aborted =
         this._aborted || (error && error.message === 'UPLOAD_ABORTED')
@@ -698,26 +667,9 @@ Page({
   // 页面文案/进度统一由主循环控制，避免预取抢占当前正在投屏那张的界面。i/total 仅用于日志。
   async acquireFrame(image, device, info, i, total) {
     const acquireStartedAt = Date.now()
-    // 再次投屏（投屏记录页带入 imgBle）：记录里已有后端转换好的设备帧文件，直接下载 imgBle
-    // 走 BLE 图传，不再调后端上传/转码接口(setUserProductUpload)。
-    // 若用户在预览页重新裁剪/旋转过（产生 tempFilePath），旧帧已对不上编辑结果，仍走后端转换链路。
-    if (image.imgBle && !image.tempFilePath) {
-      console.log(`[投屏] 第 ${i + 1}/${total} 张 再次投屏：直接下载 imgBle=${image.imgBle}`)
-      // 产品要求：再次/重新投屏一律直接用记录里的设备帧 .bin(imgBle)，
-      // 不回退后端上传/转码；下载失败即本张失败（runRealProjection 外层 catch 会补记失败记录）
-      const downloaded = await this.downloadFrameBin(image.imgBle)
-      const prepared = await this.prepareTransfer(device, downloaded.frameData)
-      return {
-        frameData: downloaded.frameData,
-        upirId: image.upirId,
-        prepared: prepared.value,
-        timings: Object.assign({}, downloaded.timings, prepared.timings, {
-          acquireMs: Date.now() - acquireStartedAt
-        })
-      }
-    }
-
-    // 正常投屏（2026-07-22 起）：两路网络并行，任一失败本张失败——
+    // （2026-07-23 起再次/重新投屏也走本链路：记录页带后端图片地址进预览，与手选图片无差别；
+    //   旧「imgBle .bin 直传」分支已删除——后端不再生成 .bin。）
+    // 两路网络并行，任一失败本张失败——
     //   · 设备帧：预览处理后的设备分辨率图 → 统一压缩 → 抖动接口出六色 4bpp 帧
     //     （不再下载后端转码的 .bin，客户端仍不做任何图像转换）；
     //   · 投屏记录：原图（进预览页前未操作过的图）→ 同一套统一压缩 → setUserProductUpload
@@ -916,28 +868,6 @@ Page({
     })
   },
 
-  // 再次/重新投屏的记账：设备图传成功(1)/失败(0)后都调 addUserProductImgRecord 新增一条投屏记录。
-  // 必填字段按后端约定：userProductId / img / imgBle / deviceUploadState；upirId 等其他字段有就带上。
-  // 尽力而为：记账失败只记日志，不影响投屏结果展示（设备侧状态已成事实）。
-  // imgIndex=本张实际写入设备的槽位索引，仅图传成功(deviceUploadState=1)时传；
-  // 失败的补记不传（图没落到设备上，且回滚已把该槽位删掉，给了索引反而会指向别人的图）。
-  async addRetryRecord(image, deviceUploadState, imgIndex) {
-    await api.addUserProductImgRecord({
-      upirId: image.upirId,
-      userProductId: image.userProductId,
-      img: image.url,
-      imgBle: image.imgBle,
-      deviceUploadState,
-      imgIndex: deviceUploadState === 1 ? imgIndex : undefined,
-      showError: false
-    })
-    console.log(
-      `[投屏] 再次投屏已记账：deviceUploadState=${deviceUploadState} imgIndex=${
-        deviceUploadState === 1 ? imgIndex : '(未传)'
-      }`
-    )
-  },
-
   // downloadFile 通用封装：单次尝试带超时，弱网下「downloadFile:fail timeout」/网络抖动自动退避重试。
   // 一次 timeout 就把整单判失败太脆（投屏常在户外弱网下进行）；这里对超时/连接类失败重试几次，
   // 仍失败才抛出，错误信息沿用最后一次。HTTP 状态码错误（如 404/403）属确定性失败，不重试直接抛出。
@@ -985,29 +915,6 @@ Page({
       return this.downloadFileWithRetry(remoteUrl, '原图下载失败')
     }
     return Promise.resolve(remoteUrl || '')
-  },
-
-  // 下载后端按设备分辨率转换好的六色 4bpp 帧(.bin)，读成 Uint8Array 直接喂给 BLE 图传。
-  // 注意：生产环境需把 OSS 域名加入小程序「downloadFile 合法域名」白名单（开发期 urlCheck=false 不校验）。
-  async downloadFrameBin(url) {
-    const downloadStartedAt = Date.now()
-    const tempFilePath = await this.downloadFileWithRetry(url, '转换结果下载失败')
-    const frameDownloadMs = Date.now() - downloadStartedAt
-    const readStartedAt = Date.now()
-    const frameData = await new Promise((resolve, reject) => {
-      wx.getFileSystemManager().readFile({
-        filePath: tempFilePath,
-        success: r => resolve(new Uint8Array(r.data)),
-        fail: () => reject(new Error('转换结果读取失败'))
-      })
-    })
-    return {
-      frameData,
-      timings: {
-        frameDownloadMs,
-        frameReadMs: Date.now() - readStartedAt
-      }
-    }
   },
 
   // 单张投屏失败时的设备侧回滚：删掉本次刚传到设备的这张图（CMD 0x12），让设备与后端回到一致状态。

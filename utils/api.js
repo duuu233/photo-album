@@ -368,6 +368,18 @@ module.exports = {
     })
   },
 
+  // 获取 seekink 抖动接口（XTY）的访问 token（2026-07-23 替代 dithering.js 写死的联调 token）。
+  // 用法：Authorization: Bearer+空格+token。取回后的会话级缓存/预览页预热/401 刷新都在
+  // utils/dithering.js（ensureAuthToken），业务方不要直接调本方法。
+  // ⚠️ 返回形态（data 直接是 token 串，还是包在 token/xtyToken 等字段里）为假设，待后端联调确认，
+  // 兼容解析见 dithering.js normalizeAuthToken。
+  getXTYUserToken() {
+    return http.get('/Client/Basic/getXTYUserToken', {}, {
+      mock: false,
+      showError: false // 预热失败要静默；投屏时失败由结果页统一走失败场景提示
+    })
+  },
+
   // 基础文件上传（与设备业务无关，如头像等通用文件），form-data 字段名 fileParam
   setFileUpload(options = {}) {
     const filePaths = normalizeFilePaths(
@@ -581,10 +593,10 @@ module.exports = {
     )
   },
 
-  // 添加投屏记录：再次投屏（记录页用 imgBle 直传设备，不再走后端转码上传）设备图传成功后调用，
-  // 新增一条投屏记录。body 只传业务字段，按当前有的值赋值（taskId 再次投屏链路没有，传 undefined 会被序列化丢弃）；
-  // imgIndex 同 editUserProductImgRecord：再次/重新投屏也会占用一个新槽位，必须一并上报，
-  // 否则这条新记录在图库里没有索引、删不掉（见 docs/图片索引-imgIndex方案.md）。图传失败的补记不传。
+  // 添加投屏记录。⚠️ 2026-07-23 起小程序已无调用方：再次/重新投屏改走正常链路
+  //（setUserProductUpload 建记录 + editUserProductImgRecord 记账），旧「imgBle 直传后补记」
+  // 场景随 .bin 链路删除。方法保留（后端接口仍在，Flutter 侧同步前还在用）。
+  // body 只传业务字段（undefined 会被序列化丢弃）；imgIndex 语义同 editUserProductImgRecord。
   // device/language/terminal/userToken 由 request.js 经 header/query 注入。
   addUserProductImgRecord(data = {}) {
     return http.post(

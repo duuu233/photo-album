@@ -5,14 +5,64 @@
 //     只能手工拼 multipart 请求体 + wx.request(responseType:'arraybuffer')；
 //   · 请求头按对方要求带 AcceptLanguage=en（原话键名无中划线，另补标准 Accept-Language 兜底）；
 //   · 域名是 http 且未加小程序合法域名白名单：开发者工具勾「不校验合法域名」/真机开调试模式；
-//   · ⚠️ Authorization 为写死的联调 token，接入正式鉴权前必须替换；
+//   · Authorization = Bearer+空格+token，token 由 /Client/Basic/getXTYUserToken 动态获取
+//     （2026-07-23 替代写死的联调 token）：会话级内存缓存一次取用整程复用，预览页 onLoad 预热
+//     （prefetchAuthToken），接口回 401/token 类报错时清缓存自动刷新重试一次（长会话过期自愈）；
 //   · ⚠️ bin 的像素格式（六色索引映射/扫描顺序）是否与设备一致未真机验证——调用方必须继续用
 //     「字节数 = 宽×高÷2」铁闸校验；真机若花屏/串色，对照 v1.5 协议核对 seekink 的调色板顺序。
 const protocol = require('./frame-protocol')
+const api = require('./api')
 
 const DITHERING_API = 'http://cloud.seekink.cn:8091/prod-api/api/v1/label/imageDitheringBinDownload'
-const DITHERING_AUTH =
-  'Bearer eyJhbGciOiJIUzUxMiJ9.eyJsb2dpbl91c2VyX2tleSI6IjkwMGJjOTZhLWU4MjktNGNkMi1hYmU1LWNhNDY0NDJhYzc2MCJ9.UgsZD93o2WvqGcov_U0FRx2S4NCBJKNF4Rl5Ekkh2KRvdHcKjQLJcQMx7OncNHNKPhuHvgRgmaKORsu6pqym2g'
+
+// —— seekink token（/Client/Basic/getXTYUserToken）——
+// 会话级内存缓存：小程序本次启动内所有投屏复用同一个 token，不落 Storage（有效期未知，
+// 杀进程自然失效重取最稳）；过期由 requestFrameBin 的 401 刷新兜底，无需预判有效期。
+let authTokenCache = ''
+let authTokenInFlight = null // 取 token 的在途请求：预热与投屏并发要 token 时只发一次
+
+// 兼容后端可能的返回形态：data 直接是 token 串，或对象包字段（⚠️字段名为假设，待联调确认）；
+// 若返回已带 Bearer 前缀则剥掉，统一由本模块拼「Bearer+空格+token」
+function normalizeAuthToken(data) {
+  const raw =
+    typeof data === 'string'
+      ? data
+      : (data &&
+          (data.token || data.xtyToken || data.userToken || data.accessToken || data.access_token)) ||
+        ''
+  return String(raw).replace(/^Bearer\s+/i, '').trim()
+}
+
+function ensureAuthToken() {
+  if (authTokenCache) {
+    return Promise.resolve(authTokenCache)
+  }
+  if (!authTokenInFlight) {
+    authTokenInFlight = api
+      .getXTYUserToken()
+      .then((data) => {
+        authTokenInFlight = null
+        const token = normalizeAuthToken(data)
+        if (!token) {
+          throw new Error('接口-抖动token获取失败：返回为空')
+        }
+        authTokenCache = token
+        console.log('[抖动bin] token 已就绪（会话级缓存）')
+        return token
+      })
+      .catch((error) => {
+        authTokenInFlight = null
+        throw error
+      })
+  }
+  return authTokenInFlight
+}
+
+// 预热：进投屏预览页时前置调用（与预热设备连接同理），用户构图期间先把 token 取回缓存，
+// 点「开始投屏」后出帧请求零等待。失败静默——真正投屏时 ensureAuthToken 会再取并正常报错。
+function prefetchAuthToken() {
+  ensureAuthToken().catch(() => {})
+}
 
 // 与 request.js 上传超时约定一致；网络类失败退避重试（接口是纯转换、无服务端记账副作用，重试安全）
 const REQUEST_TIMEOUT_MS = 20000
@@ -108,14 +158,14 @@ function readFileBytes(filePath) {
   })
 }
 
-function requestOnce(body, boundary) {
+function requestOnce(body, boundary, token) {
   return new Promise((resolve, reject) => {
     wx.request({
       url: DITHERING_API,
       method: 'POST',
       header: {
         'content-type': `multipart/form-data; boundary=${boundary}`,
-        Authorization: DITHERING_AUTH,
+        Authorization: `Bearer ${token}`,
         AcceptLanguage: 'en', // 对方给的键名（无中划线），原样带上
         'Accept-Language': 'en' // 标准头兜底：后端若走通用 i18n 解析读的是它
       },
@@ -144,10 +194,12 @@ async function requestFrameBin({ filePath, type }) {
     { name: 'file', filename: 'image.jpg', contentType: 'image/jpeg', data: fileBytes }
   )
 
+  let authRetried = false // 鉴权刷新只做一次：接口侧真拒绝（如账号无权限）时不能打转
   const run = async (left) => {
+    const token = await ensureAuthToken()
     let res
     try {
-      res = await requestOnce(body, boundary)
+      res = await requestOnce(body, boundary, token)
     } catch (error) {
       // wx.request fail = 没拿到响应（超时/断网/域名拦截），弱网下退避重试
       if (left > 1 && /timeout|connect|网络|ERR_/i.test(error.message || '')) {
@@ -167,8 +219,20 @@ async function requestFrameBin({ filePath, type }) {
     const looksText =
       /json|text/i.test(contentType) ||
       (bytes.length > 0 && bytes.length < 4096 && (bytes[0] === 0x7b || bytes[0] === 0x5b))
+    const text = looksText ? utf8BytesToString(bytes) : ''
+    // 鉴权失败（HTTP 401，或业务 JSON 报 token/授权类错误）：会话缓存的 token 可能已过期，
+    // 清缓存重取一次再发本请求（不消耗网络重试次数）
+    if (
+      !authRetried &&
+      (res.statusCode === 401 ||
+        (looksText && /401|token|unauthorized|授权|过期|expired/i.test(text)))
+    ) {
+      authRetried = true
+      authTokenCache = ''
+      console.warn('[抖动bin] 鉴权失败，刷新 token 重试一次：', text || `HTTP ${res.statusCode}`)
+      return run(left)
+    }
     if (looksText) {
-      const text = utf8BytesToString(bytes)
       console.warn('[抖动bin] 返回文本(业务报错):', text)
       throw new Error(`接口-抖动bin转换失败：${text.slice(0, 60) || `HTTP ${res.statusCode}`}`)
     }
@@ -182,5 +246,6 @@ async function requestFrameBin({ filePath, type }) {
 
 module.exports = {
   typeForDevice,
-  requestFrameBin
+  requestFrameBin,
+  prefetchAuthToken
 }
