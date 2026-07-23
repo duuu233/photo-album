@@ -65,7 +65,6 @@
   position: absolute;
   overflow: hidden;
   background: #e6ecf4;
-  border-radius: 40rpx;
 }
 
 /* 被变换的图片：transform 由手势实时下发，绕中心 平移/旋转/缩放 */
