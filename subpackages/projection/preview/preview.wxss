@@ -15,11 +15,16 @@
   text-align: center;
 }
 
-.counter-current {
-  color: #ff5f1f;
+.preview-imageCount {
+  color: rgba(42, 43, 43, 0.8);
+  border-radius: 62px;
+  background: rgba(42, 43, 43, 0.08);
+  display: inline-block;
+  padding: 4rpx 30rpx;
 }
 
-/* 编辑舞台：高度改这里务必同步 preview.js 的 STAGE_H_RPX；fallback 的 photo-wrap 靠 flex 居中 */
+/* 编辑舞台：高度改这里务必同步 preview.js 的 STAGE_H_RPX。
+   2026-07-24：上下留白加大（margin 48rpx/24rpx），并恢复 swiper 轮播承载多图。 */
 .preview-stage {
   position: relative;
   z-index: 1;
@@ -27,7 +32,19 @@
   align-items: center;
   justify-content: center;
   height: 680rpx;
-  margin: 28rpx 46rpx 0;
+  margin: 48rpx 46rpx 24rpx;
+}
+
+/* 多图轮播 swiper：铺满舞台；每个 item 内居中放 photo-wrap */
+.preview-swiper {
+  width: 100%;
+  height: 100%;
+}
+
+.preview-swiper swiper-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .photo-wrap {
@@ -44,7 +61,8 @@
   height: 100%;
 }
 
-.photo-placeholder {
+.photo-placeholder,
+.empty-photo {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -52,21 +70,35 @@
   font-size: 28rpx;
 }
 
-/* 常驻编辑层：铺满舞台的透明触摸面（手势在整个舞台内都可操作），图片在固定可视区域下自由 平移/缩放/旋转 */
+/* 常驻编辑层：铺满舞台的透明触摸面，catch 全部手势（滑动切图 / 长按拖拽 / 双指缩放旋转都在 JS 分流） */
 .edit-layer {
   position: absolute;
   inset: 0;
   z-index: 5;
 }
 
-/* 可视区域容器（2026-07-22 优化，取代 裁剪框+九宫格+框外遮罩）：位置/尺寸由 JS 按 frame 下发，
-   区外内容直接 overflow:hidden 裁掉，观感与 photo-wrap 圆角卡片一致（框内即最终成像） */
+/* 可视区域容器：位置/尺寸由 JS 按 frame 下发，区外内容 overflow:hidden 裁掉，圆角与卡片一致（框内即最终成像） */
 .edit-clip {
   position: absolute;
   overflow: hidden;
   background: #e6ecf4;
-  /* 2026-07-24：应用户要求改回原来的圆角（与 photo-wrap 卡片一致） */
   border-radius: 40rpx;
+}
+
+/* 长按 2s 触发拖拽时的「拿起」反馈：轻微放大再回弹（配合 wx.vibrateShort 震动），仿苹果相册长按取图 */
+.edit-clip.is-pickup {
+  animation: clipPickup 0.34s ease;
+}
+
+@keyframes clipPickup {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* 拖拽进行中：加一点浮起阴影，强调「已拿起、可拖动」 */
+.edit-clip.is-dragging {
+  box-shadow: 0 18rpx 48rpx rgba(17, 21, 28, 0.28);
 }
 
 /* 被变换的图片：transform 由手势实时下发，绕中心 平移/旋转/缩放 */
@@ -87,7 +119,6 @@
   color: #ffffff;
   font-size: 26rpx;
   line-height: 1;
-  /* 图标与文字不换行、整体居中（2026-07-24：修「↻」与「90°」被拆成两行） */
   white-space: nowrap;
   background: rgba(17, 21, 28, 0.6);
   border: 1rpx solid rgba(255, 255, 255, 0.3);
@@ -95,142 +126,69 @@
   transform: translateX(-100%);
 }
 
-/* 编辑手势提示：整个页面实例只出一次，触摸后隐藏 */
-.edit-hint {
-  position: absolute;
-  left: 50%;
-  bottom: 24rpx;
-  transform: translateX(-50%);
-  padding: 10rpx 24rpx;
-  color: #ffffff;
-  font-size: 22rpx;
-  background: rgba(0, 0, 0, 0.45);
-  border-radius: 999rpx;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-/* 离屏导出画布：移到屏幕外，仅用于投屏前出图 */
-.crop-canvas {
-  position: fixed;
-  left: -9999rpx;
-  top: 0;
-  width: 10rpx;
-  height: 10rpx;
-}
-
-/* 竖向/横向 分段控制器 与「原图」按钮同排（2026-07-24：原图从单独一行并入此排，放在其后面） */
-.orient-row {
+/* 轮播小圆点（仿首页设备列表 .carousel-dots，尺寸略小） */
+.carousel-dots {
   position: relative;
   z-index: 1;
   display: flex;
+  align-self: center;
+  gap: 16rpx;
+  margin-top: 4rpx;
+}
+
+.dot {
+  width: 24rpx;
+  height: 6rpx;
+  background: #d7dce3;
+  border-radius: 999rpx;
+}
+
+.dot.active {
+  background: #ff5f1f;
+}
+
+/* 工具栏（2026-07-24 还原原样式）：竖向/横向/原图 三图标并列，选中态橙色 */
+.tool-bar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-around;
+  margin: 28rpx 46rpx 0;
+  padding: 28rpx 0;
+  background: rgba(255, 255, 255, 0.4);
+  border: 2rpx solid rgba(255, 255, 255, 0.86);
+  border-radius: 40rpx;
+  box-shadow: 0 24rpx 54rpx rgba(121, 145, 178, 0.13);
+}
+
+.tool {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 24rpx;
-  margin: 24rpx 46rpx 0;
-}
-
-/* 竖向/横向 分段控制器：仿 el-segmented——灰底容器 + 白色滑块滑到选中项 */
-.orient-seg {
-  position: relative;
-  z-index: 1;
-  flex: 1;
-  display: flex;
-  padding: 6rpx;
-  background: rgba(42, 43, 43, 0.08);
-  border-radius: 999rpx;
-}
-
-/* 滑块：宽 = (容器宽 - 两侧 padding)/2，正好盖住一个选项；切换时水平滑过去 */
-.orient-seg__thumb {
-  position: absolute;
-  top: 6rpx;
-  bottom: 6rpx;
-  left: 6rpx;
-  width: calc(50% - 6rpx);
-  background: #ffffff;
-  border-radius: 999rpx;
-  box-shadow: 0 4rpx 12rpx rgba(121, 145, 178, 0.25);
-  transition: transform 0.25s ease;
-}
-
-.orient-seg__thumb.to-right {
-  transform: translateX(100%);
-}
-
-.orient-seg__item {
-  position: relative;
-  z-index: 1;
-  flex: 1;
-  padding: 18rpx 0;
+  gap: 14rpx;
   color: #777e88;
-  font-size: 28rpx;
-  line-height: 1;
-  text-align: center;
-  transition: color 0.25s ease;
+  font-size: 24rpx;
 }
 
-.orient-seg__item.is-on {
+.tool.is-active {
   color: #ff5f1f;
-  font-weight: 600;
 }
 
-/* 「原图」按钮：与分段控制器同排，居于其右侧的玻璃感药丸按钮（图标 + 文字横排、不换行） */
-.orient-origin {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-  padding: 18rpx 30rpx;
-  color: #777e88;
-  font-size: 26rpx;
-  line-height: 1;
-  white-space: nowrap;
-  background: rgba(255, 255, 255, 0.4);
-  border: 2rpx solid rgba(255, 255, 255, 0.86);
-  border-radius: 999rpx;
-  box-shadow: 0 24rpx 54rpx rgba(121, 145, 178, 0.13);
+.tool-icon {
+  position: relative;
+  width: 44rpx;
+  height: 44rpx;
 }
 
-.orient-origin__icon {
-  width: 34rpx;
-  height: 34rpx;
-}
-
-/* 上一张/下一张（替代左右滑动切图） */
-.nav-row {
+/* 手势说明（2026-07-24 新增，放竖/横/原下方） */
+.gesture-tip {
   position: relative;
   z-index: 1;
-  display: flex;
-  gap: 24rpx;
-  margin: 24rpx 46rpx 0;
-}
-
-.nav-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 88rpx;
-  color: #2a2b2b;
-  font-size: 28rpx;
-  font-weight: 600;
-  background: rgba(255, 255, 255, 0.4);
-  border: 2rpx solid rgba(255, 255, 255, 0.86);
-  border-radius: 999rpx;
-  box-shadow: 0 24rpx 54rpx rgba(121, 145, 178, 0.13);
-}
-
-/* 已到第一张/最后一张：置灰（JS 侧同样短路，不响应点击） */
-.nav-btn.is-disabled {
-  color: #b7bdc6;
-  opacity: 0.6;
-}
-
-.preview-imageCount {
-  color: rgba(42, 43, 43, 0.8);
-  border-radius: 62px;
-  background: rgba(42, 43, 43, 0.08);
-  display: inline-block;
-  padding: 4rpx 30rpx;
+  margin: 20rpx 46rpx 0;
+  color: #8b9098;
+  font-size: 24rpx;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .preview-submit {
@@ -253,4 +211,13 @@
 .preview-submit.is-disabled {
   background: #c8ccd2;
   box-shadow: none;
+}
+
+/* 离屏导出画布：移到屏幕外，仅用于投屏前出图 */
+.crop-canvas {
+  position: fixed;
+  left: -9999rpx;
+  top: 0;
+  width: 10rpx;
+  height: 10rpx;
 }

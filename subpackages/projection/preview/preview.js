@@ -25,6 +25,14 @@ const EXPORT_QUALITY = 0.92
 // 编辑态里图片相对「铺满取景框(cover)」还能再放大的上限倍数（防止无限放大成马赛克）
 const MAX_ZOOM_FACTOR = 8
 
+// 长按拖拽（2026-07-24，仿苹果相册长按取图）：单指按住 LONG_PRESS_MS 毫秒且几乎不动 →
+// 进入拖拽态（伴随图片放大回弹 + 震动反馈），此后单指移动才平移图片，松手即结束。
+const LONG_PRESS_MS = 2000
+// 长按判定的位移容差(px)：按住期间移动超过它，即认定用户在「左右滑动切图」，取消长按计时。
+const MOVE_CANCEL_PX = 12
+// 左右滑动切图的提交阈值(px)：单指横向滑动累计超过它，松手切到上一张/下一张。
+const SWIPE_COMMIT_PX = 50
+
 // 取景方向（2026-07-22 需求调整，替代原 VIEW_SWAPPED 总开关）：由图片下方的「竖向/横向」
 // 分段控制器按张选择。两种方向改变的都只是「可视区域（取景框）」，图片本身不动，
 // **页面展示交互两方向完全一致**；点「开始投屏」才把框内所见烘焙成上传图
@@ -87,7 +95,10 @@ Page({
     // 常驻编辑态（2026-07-22）：进入页面/切换图片即自动对当前图开启编辑——单指平移、
     // 双指缩放+旋转、右上角按钮转90°。没有「保存」按钮，点「开始投屏」自动按框内所见烘焙上传。
     editing: false,
-    orientation: DEFAULT_ORIENTATION, // 当前图的取景方向（竖向/横向分段控制器）
+    orientation: DEFAULT_ORIENTATION, // 当前图的取景方向（竖向/横向工具按钮，高亮对应图标）
+    dragging: false, // 长按已进入拖拽态（.edit-clip 加浮起阴影）
+    sliding: false, // 切图滑动过场中：隐藏编辑层、露出 swiper 做轮播动画
+    editPickup: false, // 拖拽起手的一次性「放大回弹」动画标记（340ms 后自动清）
     editSrc: '', // 正在编辑的图片源
     editBaseW: 0, // 图片「铺满取景框(cover)」时的显示宽(px)，作为 zoom=1 基准
     editBaseH: 0, // 同上，高
@@ -96,7 +107,6 @@ Page({
     editTransform: '', // translate/rotate/scale 组合串——仅此字段随手势高频 setData
     frame: null, // 可视区域 {left,top,width,height}(px，相对编辑层)，锁定当前方向比例、居中不动；
     // 定位 .edit-clip（区外内容被它 overflow:hidden 裁掉）与右上角转90°按钮
-    editHint: true, // 手势提示：整个页面实例只出一次，触摸后隐藏
 
     deviceWrapStyle: '' // 编辑层没起来时 fallback 展示用：按设备（竖向）比例铺
   },
@@ -107,10 +117,19 @@ Page({
     // 真正落文件统一等到点「开始投屏」（prepareProjectionImages）。
     this._states = {}
     this._edit = null // 当前图编辑数值真值（手势里不读 setData 后的异步 data）
-    this._gesture = null
     this._editSeq = 0 // enterEdit 防串台序号：异步量尺寸/读图期间用户又切了图，旧流程作废
     this._stageRect = null // 舞台 px 尺寸缓存（布局固定，只量一次）
-    this._hintShown = false
+
+    // 触摸手势状态机（2026-07-24）：'none' | 'idle'(单指按住等长按) | 'swipe'(左右切图)
+    // | 'drag'(长按后拖拽) | 'pinch'(双指缩放旋转)
+    this._mode = 'none'
+    this._touch = null // 单指起手点 {startX,startY}
+    this._pinch = null // 双指基准
+    this._dragAnchor = null // 拖拽起手点 + 基准变换
+    this._swipeDx = 0 // 本次单指横向累计位移（松手判定切图方向）
+    this._lpTimer = null // 长按计时器
+    this._pickupTimer = null // 「放大回弹」动画清除计时器
+    this._slideTimer = null // 切图滑动过场结束后重建编辑层的计时器
 
     // 待投屏的设备与图片由上个页面通过 Storage 传入（见首页/相册的 openPreview）
     const pending = wx.getStorageSync('pendingProjection') || {}
@@ -153,30 +172,35 @@ Page({
     })
   },
 
-  // 上一张/下一张（2026-07-22：替代左右滑动切图）。切图前先把当前图的编辑状态存进 _states
-  //（只记变换+方向，不落文件），切回来时原样恢复。
-  prevImage() {
-    this.switchImage(this.data.activeIndex - 1)
-  },
-
-  nextImage() {
-    this.switchImage(this.data.activeIndex + 1)
-  },
-
+  // 切换到某张图（2026-07-24：由 .edit-layer 的左右滑动手势触发，替代翻页按钮）。
+  // 切图前先把当前图的编辑状态存进 _states（只记变换+方向，不落文件），切回来时原样恢复。
+  // 过场：隐藏编辑层 + 更新 activeIndex → swiper 自动滑动做轮播动画，动画结束再重建编辑层。
   switchImage(index) {
     const { images, activeIndex } = this.data
     if (index < 0 || index >= images.length || index === activeIndex) {
       return
     }
     this._saveEditState()
-    // 编辑层等 enterEdit 量好新图再刷新：期间旧画面保留（不闪 fallback），_edit 置空使手势自动失效
-    this._edit = null
-    this._gesture = null
+    this._edit = null // 置空使手势自动失效
+    this._mode = 'none'
+    this._clearLongPress()
     this.setData({
       activeIndex: index,
-      activeImage: images[index] || null
+      activeImage: images[index] || null,
+      editing: false, // 过场期间隐藏编辑层，露出 swiper 滑动
+      sliding: true,
+      dragging: false,
+      editPickup: false
     })
-    this.enterEdit()
+    if (this._slideTimer) {
+      clearTimeout(this._slideTimer)
+    }
+    // 略大于 swiper duration(300ms)，等滑动动画走完再对新图重建编辑层
+    this._slideTimer = setTimeout(() => {
+      this._slideTimer = null
+      this.setData({ sliding: false })
+      this.enterEdit()
+    }, 320)
   },
 
   // 把当前图的编辑数值快照进 _states（整个 _edit 存下来：烘焙要用 frame/baseScale 等几何量）
@@ -352,7 +376,8 @@ Page({
               ty: state ? state.ty : 0,
               angle: state ? state.angle : 0
             }
-            this._gesture = null
+            this._mode = 'none'
+            this._clearLongPress()
             this.setData({
               editing: true,
               orientation,
@@ -362,7 +387,8 @@ Page({
               editImgLeft: frame.width / 2 - baseW / 2,
               editImgTop: frame.height / 2 - baseH / 2,
               frame,
-              editHint: !this._hintShown
+              dragging: false,
+              editPickup: false
             })
             this._applyEdit(this._edit.zoom, this._edit.tx, this._edit.ty, this._edit.angle)
             resolve(true)
@@ -402,7 +428,8 @@ Page({
     g.baseScale = newBaseScale
     g.baseW = g.natW * newBaseScale
     g.baseH = g.natH * newBaseScale
-    this._gesture = null
+    this._mode = 'none'
+    this._clearLongPress()
     this.setData({
       orientation: orient,
       frame,
@@ -468,52 +495,86 @@ Page({
     })
   },
 
-  // 记录一次手势的初始基准（单指=平移，双指=缩放+旋转+随中点平移）。切换手指数时用它重新起手。
-  _startGesture(touches) {
+  // —— 触摸手势（2026-07-24 重构，一层 catch 全部触摸再分流）——
+  //  单指：默认判为「左右滑动切图」；若按住几乎不动满 LONG_PRESS_MS → 进入拖拽态后单指平移图片。
+  //  双指：随时进入缩放 + 旋转（不需长按），与切图/拖拽互不影响（需求 6）。
+
+  _clearLongPress() {
+    if (this._lpTimer) {
+      clearTimeout(this._lpTimer)
+      this._lpTimer = null
+    }
+  },
+
+  // 记录双指基准（缩放 + 旋转 + 随中点平移）
+  _beginPinch(touches) {
     const g = this._edit
-    if (!g) {
+    const a = touches[0]
+    const b = touches[1]
+    this._mode = 'pinch'
+    this._pinch = {
+      dist: Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY) || 1,
+      ang: Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX),
+      midX: (a.clientX + b.clientX) / 2,
+      midY: (a.clientY + b.clientY) / 2,
+      base: { zoom: g.zoom, tx: g.tx, ty: g.ty, angle: g.angle }
+    }
+  },
+
+  // 长按满 2s：进入拖拽态，给「拿起」反馈（图片放大回弹 + 震动，仿苹果相册）
+  _armDrag() {
+    this._lpTimer = null
+    if (this._mode !== 'idle' || !this._edit) {
       return
     }
-    const base = { zoom: g.zoom, tx: g.tx, ty: g.ty, angle: g.angle }
-    if (touches.length >= 2) {
-      const a = touches[0]
-      const b = touches[1]
-      this._gesture = {
-        mode: 'pinch',
-        dist: Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY) || 1,
-        ang: Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX),
-        midX: (a.clientX + b.clientX) / 2,
-        midY: (a.clientY + b.clientY) / 2,
-        base
-      }
-    } else {
-      const t = touches[0]
-      this._gesture = { mode: 'pan', x: t.clientX, y: t.clientY, base }
+    const g = this._edit
+    this._mode = 'drag'
+    this._dragAnchor = {
+      x: this._touch.startX,
+      y: this._touch.startY,
+      base: { zoom: g.zoom, tx: g.tx, ty: g.ty, angle: g.angle }
     }
+    if (wx.vibrateShort) {
+      wx.vibrateShort({ type: 'medium' })
+    }
+    this.setData({ dragging: true, editPickup: true })
+    if (this._pickupTimer) {
+      clearTimeout(this._pickupTimer)
+    }
+    this._pickupTimer = setTimeout(() => {
+      this._pickupTimer = null
+      this.setData({ editPickup: false })
+    }, 340)
   },
 
   onEditTouchStart(e) {
     if (!this._edit) {
       return
     }
-    if (this.data.editHint) {
-      this._hintShown = true // 手势提示整个页面实例只出一次，切图不再重复弹
-      this.setData({ editHint: false })
+    const touches = e.touches
+    if (touches.length >= 2) {
+      this._clearLongPress()
+      this._beginPinch(touches)
+      return
     }
-    this._startGesture(e.touches)
+    const t = touches[0]
+    this._mode = 'idle'
+    this._touch = { startX: t.clientX, startY: t.clientY }
+    this._swipeDx = 0
+    this._clearLongPress()
+    this._lpTimer = setTimeout(() => this._armDrag(), LONG_PRESS_MS)
   },
 
-  // 手势移动：双指 → 缩放+旋转+随中点平移；单指 → 平移（横向取景时超出可视区的部分就靠它拖动调整）。
-  // 变换即时夹取，框内永不露白边。
   onEditTouchMove(e) {
-    const g = this._gesture
-    if (!g || !this._edit) {
+    if (!this._edit) {
       return
     }
     const touches = e.touches
+    // 双指：随时进入 / 保持缩放 + 旋转
     if (touches.length >= 2) {
-      if (g.mode !== 'pinch') {
-        this._startGesture(touches) // 单指途中落下第二指：改记双指基准
+      if (this._mode !== 'pinch') {
+        this._clearLongPress()
+        this._beginPinch(touches) // 单指途中落下第二指：改记双指基准
         return
       }
       const a = touches[0]
@@ -522,30 +583,106 @@ Page({
       const ang = Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX)
       const midX = (a.clientX + b.clientX) / 2
       const midY = (a.clientY + b.clientY) / 2
+      const p = this._pinch
       this._applyEdit(
-        g.base.zoom * (dist / g.dist),
-        g.base.tx + (midX - g.midX),
-        g.base.ty + (midY - g.midY),
-        g.base.angle + ((ang - g.ang) * 180) / Math.PI
+        p.base.zoom * (dist / p.dist),
+        p.base.tx + (midX - p.midX),
+        p.base.ty + (midY - p.midY),
+        p.base.angle + ((ang - p.ang) * 180) / Math.PI
       )
       return
     }
 
     const t = touches[0]
-    if (g.mode !== 'pan') {
-      this._startGesture(touches) // 双指抬起一指后继续拖：改记单指基准
+    // 双指抬起一指后仍在移动（touchmove 先于 touchend 到）：以剩余指改记拖拽基准，延续编辑，
+    // 同时避免读到未初始化的 _touch（本次触摸以双指起手时 _touch 为空）
+    if (this._mode === 'pinch' || !this._touch) {
+      const g = this._edit
+      this._mode = 'drag'
+      this._dragAnchor = {
+        x: t.clientX,
+        y: t.clientY,
+        base: { zoom: g.zoom, tx: g.tx, ty: g.ty, angle: g.angle }
+      }
       return
     }
-    this._applyEdit(g.base.zoom, g.base.tx + (t.clientX - g.x), g.base.ty + (t.clientY - g.y), g.base.angle)
+    const dx = t.clientX - this._touch.startX
+    const dy = t.clientY - this._touch.startY
+
+    if (this._mode === 'idle') {
+      // 长按还没满就移动了 → 认定为「左右滑动切图」，取消长按计时
+      if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
+        this._clearLongPress()
+        this._mode = 'swipe'
+      } else {
+        return // 仍在原地按住，继续等长按
+      }
+    }
+
+    if (this._mode === 'drag') {
+      const a = this._dragAnchor
+      this._applyEdit(
+        a.base.zoom,
+        a.base.tx + (t.clientX - a.x),
+        a.base.ty + (t.clientY - a.y),
+        a.base.angle
+      )
+      return
+    }
+
+    if (this._mode === 'swipe') {
+      this._swipeDx = dx // 只记录，松手时按方向切图（swiper 负责滑动过场动画）
+    }
   },
 
   onEditTouchEnd(e) {
-    // 还有手指没抬起（如双指松了一指）：以剩余手指重新起手，保证继续拖动跟手
-    if (e.touches && e.touches.length >= 1) {
-      this._startGesture(e.touches)
-    } else {
-      this._gesture = null
+    this._clearLongPress()
+    const touches = e.touches
+    // 还有手指没抬（双指松掉一指）：以剩余单指继续拖拽（已在主动编辑中，不再要求长按）
+    if (touches && touches.length >= 1 && this._edit) {
+      const g = this._edit
+      const t = touches[0]
+      this._mode = 'drag'
+      this._dragAnchor = {
+        x: t.clientX,
+        y: t.clientY,
+        base: { zoom: g.zoom, tx: g.tx, ty: g.ty, angle: g.angle }
+      }
+      return
     }
+    const mode = this._mode
+    this._mode = 'none'
+    this._pinch = null
+    if (this.data.dragging) {
+      this.setData({ dragging: false })
+    }
+    if (mode === 'swipe') {
+      this._commitSwipe(this._swipeDx || 0)
+    }
+    this._swipeDx = 0
+  },
+
+  // 兜底：正常编辑态由 .edit-layer 独占触摸，swiper 不会因用户触摸而 change（切图都走 _commitSwipe）。
+  // 仅当编辑层没起来（读图失败等 fallback）用户直接滑了原生 swiper 时，同步 activeIndex 并重建编辑层。
+  // 只认 source==='touch'，避开我们自己改 current 触发的程序化 change，防止递归。
+  onSwiperChange(e) {
+    if (!e.detail || e.detail.source !== 'touch') {
+      return
+    }
+    const idx = e.detail.current
+    if (typeof idx !== 'number' || idx === this.data.activeIndex) {
+      return
+    }
+    this.switchImage(idx)
+  },
+
+  // 松手时按横向滑动量切到上/下一张（swiper 做滑动过场）；向右滑 → 上一张，向左滑 → 下一张
+  _commitSwipe(dx) {
+    if (this.data.imageCount <= 1 || Math.abs(dx) < SWIPE_COMMIT_PX) {
+      return
+    }
+    const dir = dx > 0 ? -1 : 1
+    this.switchImage(this.data.activeIndex + dir)
   },
 
   // 图右上角悬浮按钮：在当前角度基础上顺时针 +90°。
@@ -588,11 +725,14 @@ Page({
         next[activeIndex] = updated
         delete this._states[activeIndex]
         this._edit = null
-        this._gesture = null
+        this._mode = 'none'
+        this._clearLongPress()
         this.setData({
           images: next,
           activeImage: updated,
           orientation: DEFAULT_ORIENTATION,
+          dragging: false,
+          editPickup: false,
           editing: false
         })
         this.persistPending(next)
@@ -842,6 +982,19 @@ Page({
         this.setData({ projecting: false })
       }
     })
+  },
+
+  // 离开页面：清掉所有计时器，避免回调在已销毁页面上 setData
+  onUnload() {
+    this._clearLongPress()
+    if (this._pickupTimer) {
+      clearTimeout(this._pickupTimer)
+      this._pickupTimer = null
+    }
+    if (this._slideTimer) {
+      clearTimeout(this._slideTimer)
+      this._slideTimer = null
+    }
   },
 
   goBack() {
