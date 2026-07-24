@@ -17,6 +17,10 @@
       "pages": ["list/list"]
     },
     {
+      "root": "subpackages/ai",
+      "pages": ["chat/chat", "sessions/sessions"]
+    },
+    {
       "root": "subpackages/projection",
       "pages": ["preview/preview", "records/records", "result/result"]
     },
@@ -36,7 +40,7 @@
   "preloadRule": {
     "pages/home/home": {
       "network": "all",
-      "packages": ["subpackages/projection", "subpackages/device"]
+      "packages": ["subpackages/projection", "subpackages/device", "subpackages/ai"]
     }
   },
   "window": {

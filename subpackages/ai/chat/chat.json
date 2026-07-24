@@ -1,0 +1,7 @@
+{
+  "navigationStyle": "custom",
+  "disableScroll": true,
+  "usingComponents": {
+    "page-nav": "/components/page-nav/page-nav"
+  }
+}

@@ -1,0 +1,40 @@
+<view class="sessions-root" style="--safe-bottom: {{safeBottom}}px;">
+  <page-nav title="会话记录" right-text="清空" bind:righttap="clearAll"></page-nav>
+
+  <view class="keep-tip">会话记录仅保留最近 7 天</view>
+
+  <view wx:if="{{loading}}" class="page-loading">
+    <view class="page-loading__spinner"></view>
+    <view class="page-loading__text">加载中…</view>
+  </view>
+
+  <view wx:elif="{{!sessions.length}}" class="empty-card">
+    <view class="icon-block icon-block--xl icon-block--purple">✨</view>
+    <view class="empty-text">还没有会话记录</view>
+    <view class="empty-desc">点击下方「新建对话」开始和星宝聊天</view>
+  </view>
+
+  <view wx:else class="session-list">
+    <view
+      wx:for="{{sessions}}"
+      wx:key="sessionId"
+      class="session-item {{item.sessionId === currentId ? 'session-item--current' : ''}}"
+      data-index="{{index}}"
+      bindtap="onSessionTap"
+      bindlongpress="onSessionLongPress"
+    >
+      <view class="icon-block icon-block--purple">✨</view>
+      <view class="session-copy">
+        <view class="session-title">{{item.title}}</view>
+        <view class="session-meta">{{item.timeText}} · {{item.msgCount}} 条消息</view>
+      </view>
+      <view wx:if="{{item.sessionId === currentId}}" class="current-tag">当前</view>
+    </view>
+    <view wx:if="{{hasMore}}" class="list-more">上拉加载更多</view>
+    <view wx:else class="list-more">长按会话可删除</view>
+  </view>
+
+  <view class="new-btn" bindtap="createNew">＋ 新建对话</view>
+
+  <global-toast id="globalToast"></global-toast>
+</view>

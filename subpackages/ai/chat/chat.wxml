@@ -1,0 +1,190 @@
+<view class="ai-root" style="--safe-bottom: {{safeBottom}}px;">
+  <page-nav title="{{sessionTitle}}"></page-nav>
+
+  <!-- 标题栏下方工具行：左「会话历史」入口 / 右 Token 余额 + 新对话（需求：历史图标在左上角、Token 在标题栏下方） -->
+  <view class="ai-toolbar">
+    <view class="toolbar-btn" hover-class="none" bindtap="goSessions">
+      <view class="icon-block icon-block--orange">≡</view>
+      <text>会话</text>
+    </view>
+    <view class="toolbar-right">
+      <view class="token-pill">
+        <view class="icon-block icon-block--mini icon-block--gold">T</view>
+        <text>Token {{tokenBalance}}</text>
+      </view>
+      <view class="toolbar-btn" hover-class="none" bindtap="startNewSession">
+        <view class="icon-block icon-block--blue">＋</view>
+        <text>新对话</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 聊天区 -->
+  <scroll-view class="chat-scroll" scroll-y scroll-into-view="{{scrollInto}}" scroll-with-animation enable-passive>
+    <view wx:if="{{historyLoading}}" class="page-loading chat-loading">
+      <view class="page-loading__spinner"></view>
+      <view class="page-loading__text">加载中…</view>
+    </view>
+
+    <!-- 默认状态：星宝招呼语居中（需求原文案） -->
+    <view wx:if="{{!historyLoading && !messages.length}}" class="welcome">
+      <view class="welcome-avatar icon-block icon-block--xl icon-block--purple">✨</view>
+      <view class="welcome-text">你好！我是星宝✨，你的AI创作伙伴。有什么我可以帮你的吗？</view>
+      <view class="welcome-tip">试试：输入「画一只卡通猫」，或点 ＋ 一键生图</view>
+    </view>
+
+    <block wx:for="{{messages}}" wx:key="id">
+      <view id="msg-{{item.id}}" class="msg-row {{item.role === 'user' ? 'msg-row--user' : 'msg-row--ai'}}">
+        <view wx:if="{{item.role !== 'user'}}" class="msg-avatar icon-block icon-block--purple">✨</view>
+
+        <!-- 文本气泡：loading 三点动画 → 打字机填充；长按弹操作菜单 -->
+        <view
+          wx:if="{{item.kind === 'text'}}"
+          class="bubble {{item.role === 'user' ? 'bubble--user' : 'bubble--ai'}}"
+          bindlongpress="onBubbleLongPress"
+          data-id="{{item.id}}"
+        >
+          <view wx:if="{{item.loading}}" class="dots">
+            <view class="dot"></view>
+            <view class="dot"></view>
+            <view class="dot"></view>
+          </view>
+          <text wx:else user-select>{{item.content}}<text wx:if="{{item.typing}}" class="caret">▍</text></text>
+        </view>
+
+        <!-- 图片气泡：点击预览，长按 下载/投屏/删除 -->
+        <view
+          wx:else
+          class="bubble bubble--image"
+          bindlongpress="onBubbleLongPress"
+          bindtap="onImageTap"
+          data-id="{{item.id}}"
+          data-url="{{item.url}}"
+        >
+          <image class="bubble-image" src="{{item.url}}" mode="widthFix" lazy-load></image>
+        </view>
+      </view>
+    </block>
+
+    <view id="bottom-anchor" class="bottom-anchor"></view>
+  </scroll-view>
+
+  <!-- 生成中的「停止」浮标（终止 AI 回复，文档 §5.3.4） -->
+  <view wx:if="{{sending}}" class="stop-pill" bindtap="onStopTap">
+    <view class="stop-square"></view>
+    <text>停止生成</text>
+  </view>
+
+  <!-- 封禁横幅：22002/22003 后禁用输入 -->
+  <view wx:if="{{banned}}" class="banned-bar">账号已被限制，暂时无法使用 AI 对话</view>
+
+  <!-- 底部输入区 -->
+  <view class="input-area">
+    <view class="input-bar">
+      <view class="round-btn" hover-class="none" bindtap="toggleVoice">
+        <view class="icon-block icon-block--grey">{{voiceMode ? '⌨' : '🎤'}}</view>
+      </view>
+
+      <input
+        wx:if="{{!voiceMode}}"
+        class="chat-input"
+        value="{{inputValue}}"
+        placeholder="{{banned ? '账号已被限制' : '和星宝说点什么…'}}"
+        disabled="{{banned}}"
+        confirm-type="send"
+        bindinput="onInput"
+        bindconfirm="onSendTap"
+      />
+      <view
+        wx:else
+        class="voice-hold {{recording ? 'voice-hold--recording' : ''}}"
+        bindtouchstart="onVoiceStart"
+        bindtouchend="onVoiceEnd"
+        bindtouchcancel="onVoiceEnd"
+      >{{recording ? '松开发送' : '按住 说话'}}</view>
+
+      <view class="round-btn" hover-class="none" bindtap="toggleTools">
+        <view class="icon-block icon-block--grey">＋</view>
+      </view>
+      <view class="send-btn {{inputValue && !sending && !banned ? 'send-btn--active' : ''}}" hover-class="none" bindtap="onSendTap">发送</view>
+    </view>
+
+    <!-- ＋ 工具面板：相册 / 拍照 / 一键生图 / 图片比例 -->
+    <view wx:if="{{showTools}}" class="tools-panel">
+      <view class="tools-grid">
+        <view class="tool-item" hover-class="none" bindtap="chooseAlbum">
+          <view class="icon-block icon-block--green">图</view>
+          <text>相册</text>
+        </view>
+        <view class="tool-item" hover-class="none" bindtap="chooseCamera">
+          <view class="icon-block icon-block--blue">拍</view>
+          <text>拍照</text>
+        </view>
+        <view class="tool-item" hover-class="none" bindtap="openStylePicker">
+          <view class="icon-block icon-block--orange">生</view>
+          <text>一键生图</text>
+        </view>
+      </view>
+      <view class="ratio-row">
+        <text class="ratio-label">图片比例</text>
+        <view
+          wx:for="{{orientationOptions}}"
+          wx:key="key"
+          class="ratio-chip {{orientation === item.key ? 'ratio-chip--active' : ''}}"
+          data-key="{{item.key}}"
+          bindtap="onOrientationTap"
+        >{{item.label}}</view>
+      </view>
+    </view>
+    <view class="input-safe"></view>
+  </view>
+
+  <!-- 一键生图风格弹层：漫画/风景/肖像/动漫 -->
+  <view wx:if="{{showStylePicker}}" class="sheet-mask" bindtap="closeStylePicker">
+    <view class="sheet" catchtap="noop">
+      <view class="sheet-title">选择生图模式</view>
+      <view class="style-grid">
+        <view
+          wx:for="{{styleOptions}}"
+          wx:key="key"
+          class="style-item"
+          data-key="{{item.key}}"
+          bindtap="onStyleTap"
+        >
+          <view class="icon-block icon-block--xl icon-block--{{index % 2 ? 'blue' : 'orange'}}">{{item.label[0]}}</view>
+          <text>{{item.label}}</text>
+        </view>
+      </view>
+      <view class="sheet-cancel" bindtap="closeStylePicker">取消</view>
+    </view>
+  </view>
+
+  <!-- 投屏设备选择弹窗（未连接时）：已绑定设备列表，选择后自动连接进投屏 -->
+  <view wx:if="{{devicePicker.show}}" class="sheet-mask" bindtap="closeDevicePicker">
+    <view class="sheet" catchtap="noop">
+      <view class="sheet-title">选择投屏设备</view>
+      <view wx:if="{{devicePicker.loading}}" class="page-loading sheet-loading">
+        <view class="page-loading__spinner"></view>
+        <view class="page-loading__text">加载中…</view>
+      </view>
+      <scroll-view wx:else scroll-y class="device-list">
+        <view
+          wx:for="{{devicePicker.devices}}"
+          wx:key="id"
+          class="device-item"
+          data-index="{{index}}"
+          bindtap="onDevicePickerSelect"
+        >
+          <view class="icon-block icon-block--blue">屏</view>
+          <view class="device-copy">
+            <view class="device-name">{{item.name || item.productName || '智能相框'}}</view>
+            <view class="device-desc">{{item.connected ? '已连接' : '未连接，选择后自动连接'}}</view>
+          </view>
+        </view>
+      </scroll-view>
+      <view class="sheet-cancel" bindtap="closeDevicePicker">取消</view>
+    </view>
+  </view>
+
+  <global-toast id="globalToast"></global-toast>
+</view>

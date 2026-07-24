@@ -4,6 +4,11 @@
     <image class="tab-icon" src="{{active === 'home' ? '/assets/images/tabbar-home02.svg' : '/assets/images/tabbar-home01.svg'}}" mode="aspectFit"></image>
     <view>首页</view>
   </view>
+  <!-- 中间 AI 入口（新版需求：Tab 栏中间新增独立 ICON）。UI 未出图，先用渐变色块占位 -->
+  <view class="tab-item tab-item--ai" hover-class="none" bindtap="goAi">
+    <view class="ai-fab">AI</view>
+    <view class="ai-label">AI生图</view>
+  </view>
   <view class="tab-item {{active === 'mine' ? 'active' : ''}}" hover-class="none" bindtap="switchToMine">
     <image class="tab-icon" src="{{active === 'mine' ? '/assets/images/tabbar-mine02.svg' : '/assets/images/tabbar-mine01.svg'}}" mode="aspectFit"></image>
     <view>我的</view>

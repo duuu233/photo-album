@@ -1,0 +1,467 @@
+/* AI 对话页。UI 未出图：所有图标先用 icon-block 色块占位，换图时把 icon-block 替换为 <image> 即可 */
+.ai-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f2f5fc;
+  box-sizing: border-box;
+}
+
+/* ==================== 色块占位图标 ==================== */
+.icon-block {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.icon-block--orange {
+  background: linear-gradient(135deg, #ff8a3c, #eb5f1b);
+}
+
+.icon-block--blue {
+  background: linear-gradient(135deg, #5b8cff, #3a66e0);
+}
+
+.icon-block--green {
+  background: linear-gradient(135deg, #4cd07d, #2aa85c);
+}
+
+.icon-block--purple {
+  background: linear-gradient(135deg, #a06bff, #7a3cf0);
+}
+
+.icon-block--grey {
+  background: #e4e9f2;
+  color: #55606e;
+}
+
+.icon-block--gold {
+  background: linear-gradient(135deg, #ffd35c, #f0a11b);
+}
+
+.icon-block--mini {
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 8rpx;
+  font-size: 20rpx;
+}
+
+.icon-block--xl {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 28rpx;
+  font-size: 44rpx;
+}
+
+/* ==================== 工具行 ==================== */
+.ai-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12rpx 32rpx;
+}
+
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  font-size: 26rpx;
+  color: #3d4350;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+}
+
+.token-pill {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  background: #ffffff;
+  border-radius: 999rpx;
+  padding: 8rpx 20rpx;
+  font-size: 24rpx;
+  color: #55606e;
+  box-shadow: 0 4rpx 16rpx rgba(31, 41, 61, 0.06);
+}
+
+/* ==================== 聊天区 ==================== */
+.chat-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 0 32rpx;
+  box-sizing: border-box;
+}
+
+.chat-loading {
+  padding-top: 200rpx;
+}
+
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24rpx;
+  padding: 160rpx 40rpx 0;
+  text-align: center;
+}
+
+.welcome-text {
+  font-size: 32rpx;
+  color: #1f2733;
+  line-height: 1.6;
+  font-weight: 500;
+}
+
+.welcome-tip {
+  font-size: 24rpx;
+  color: #8b9098;
+}
+
+.msg-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+  margin: 24rpx 0;
+}
+
+.msg-row--user {
+  flex-direction: row-reverse;
+}
+
+.msg-avatar {
+  margin-top: 4rpx;
+}
+
+.bubble {
+  max-width: 520rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 24rpx;
+  font-size: 28rpx;
+  line-height: 1.55;
+  word-break: break-all;
+}
+
+.bubble--ai {
+  background: #ffffff;
+  color: #1f2733;
+  border-top-left-radius: 8rpx;
+  box-shadow: 0 4rpx 16rpx rgba(31, 41, 61, 0.05);
+}
+
+.bubble--user {
+  background: linear-gradient(135deg, #ff8a3c, #eb5f1b);
+  color: #ffffff;
+  border-top-right-radius: 8rpx;
+}
+
+.bubble--image {
+  padding: 8rpx;
+  background: #ffffff;
+  box-shadow: 0 4rpx 16rpx rgba(31, 41, 61, 0.05);
+}
+
+.bubble-image {
+  width: 400rpx;
+  border-radius: 18rpx;
+  display: block;
+}
+
+.caret {
+  color: #eb5f1b;
+  animation: blink 0.8s infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* AI 回复 loading：三点闪烁 */
+.dots {
+  display: flex;
+  gap: 10rpx;
+  padding: 8rpx 4rpx;
+}
+
+.dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #b4bcc9;
+  animation: dot-bounce 1.2s infinite;
+}
+
+.dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dot-bounce {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-6rpx);
+  }
+}
+
+.bottom-anchor {
+  height: 24rpx;
+}
+
+/* ==================== 停止生成 / 封禁 ==================== */
+.stop-pill {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(220rpx + var(--safe-bottom));
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  background: #ffffff;
+  border-radius: 999rpx;
+  padding: 14rpx 32rpx;
+  font-size: 26rpx;
+  color: #3d4350;
+  box-shadow: 0 8rpx 24rpx rgba(31, 41, 61, 0.12);
+  z-index: 10;
+}
+
+.stop-square {
+  width: 20rpx;
+  height: 20rpx;
+  border-radius: 4rpx;
+  background: #eb5f1b;
+}
+
+.banned-bar {
+  background: #fdecec;
+  color: #d64541;
+  font-size: 24rpx;
+  text-align: center;
+  padding: 12rpx 32rpx;
+}
+
+/* ==================== 输入区 ==================== */
+.input-area {
+  background: #ffffff;
+  border-top-left-radius: 24rpx;
+  border-top-right-radius: 24rpx;
+  box-shadow: 0 -6rpx 24rpx rgba(31, 41, 61, 0.06);
+}
+
+.input-bar {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 20rpx 24rpx;
+}
+
+.round-btn {
+  flex-shrink: 0;
+}
+
+.round-btn .icon-block {
+  border-radius: 50%;
+}
+
+.chat-input {
+  flex: 1;
+  min-width: 0;
+  height: 72rpx;
+  background: #f2f5fc;
+  border-radius: 999rpx;
+  padding: 0 28rpx;
+  font-size: 28rpx;
+}
+
+.voice-hold {
+  flex: 1;
+  min-width: 0;
+  height: 72rpx;
+  line-height: 72rpx;
+  text-align: center;
+  background: #f2f5fc;
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  color: #3d4350;
+}
+
+.voice-hold--recording {
+  background: linear-gradient(135deg, #ff8a3c, #eb5f1b);
+  color: #ffffff;
+}
+
+.send-btn {
+  flex-shrink: 0;
+  height: 72rpx;
+  line-height: 72rpx;
+  padding: 0 32rpx;
+  border-radius: 999rpx;
+  background: #e4e9f2;
+  color: #9aa3b0;
+  font-size: 28rpx;
+}
+
+.send-btn--active {
+  background: linear-gradient(135deg, #ff8a3c, #eb5f1b);
+  color: #ffffff;
+}
+
+.tools-panel {
+  border-top: 1rpx solid #f0f2f7;
+  padding: 24rpx 32rpx 8rpx;
+}
+
+.tools-grid {
+  display: flex;
+  gap: 56rpx;
+}
+
+.tool-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12rpx;
+  font-size: 24rpx;
+  color: #55606e;
+}
+
+.tool-item .icon-block {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 24rpx;
+  font-size: 36rpx;
+}
+
+.ratio-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 24rpx 0 16rpx;
+}
+
+.ratio-label {
+  font-size: 24rpx;
+  color: #8b9098;
+  margin-right: 8rpx;
+}
+
+.ratio-chip {
+  padding: 10rpx 28rpx;
+  border-radius: 999rpx;
+  background: #f2f5fc;
+  font-size: 24rpx;
+  color: #55606e;
+}
+
+.ratio-chip--active {
+  background: rgba(235, 95, 27, 0.1);
+  color: #eb5f1b;
+  font-weight: 500;
+}
+
+.input-safe {
+  height: calc(12rpx + var(--safe-bottom));
+}
+
+/* ==================== 底部弹层（风格选择 / 设备选择） ==================== */
+.sheet-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 20, 30, 0.45);
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+}
+
+.sheet {
+  width: 100%;
+  background: #ffffff;
+  border-top-left-radius: 32rpx;
+  border-top-right-radius: 32rpx;
+  padding: 32rpx 32rpx calc(24rpx + var(--safe-bottom));
+  box-sizing: border-box;
+}
+
+.sheet-title {
+  text-align: center;
+  font-size: 30rpx;
+  font-weight: 500;
+  color: #1f2733;
+  margin-bottom: 32rpx;
+}
+
+.sheet-loading {
+  padding: 40rpx 0;
+}
+
+.style-grid {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 24rpx;
+}
+
+.style-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16rpx;
+  font-size: 26rpx;
+  color: #3d4350;
+}
+
+.device-list {
+  max-height: 480rpx;
+}
+
+.device-item {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 24rpx 8rpx;
+  border-bottom: 1rpx solid #f0f2f7;
+}
+
+.device-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.device-name {
+  font-size: 28rpx;
+  color: #1f2733;
+}
+
+.device-desc {
+  font-size: 22rpx;
+  color: #8b9098;
+  margin-top: 4rpx;
+}
+
+.sheet-cancel {
+  margin-top: 16rpx;
+  text-align: center;
+  padding: 20rpx 0;
+  border-radius: 999rpx;
+  background: #f2f5fc;
+  color: #55606e;
+  font-size: 28rpx;
+}
