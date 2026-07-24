@@ -3,6 +3,13 @@
 > 🛠 **维护约定**：每次修改本文件涉及的问题/功能，务必在下方「操作日志」补一条（日期 + 改了什么 + 关联文件/commit），**最新在上**——别让文档与代码脱节。
 
 ## 操作日志（最新在上）
+- **2026-07-24**：**抖动接口 401（token 过期）自愈刷新改为强制重新登录**。`getXTYUserToken` 新增入参
+  `isNewLogin`（默认 `0`=复用后端已有会话）。抖动接口回 401（`{"msg":"…认证失败，无法访问系统资源","code":401}`）
+  或业务 token 类报错时，`utils/dithering.js` 的 `ensureAuthToken(forceNewLogin=true)` 清缓存后带
+  **`isNewLogin=1`** 重取一次 token 再重发出帧请求——避免后端把刚过期的同一会话原样返回、重试仍 401 打转。
+  刷新只做一次（`authRetried`），不消耗网络退避重试次数；常规首取/预热仍 `isNewLogin=0`。关联：
+  `utils/api.js`（`getXTYUserToken(isNewLogin=0)`）、`utils/dithering.js`（`ensureAuthToken`/`requestFrameBin.run(left,forceNewLogin)`）。
+  仅小程序，Flutter 待同步。
 - **2026-07-23（二）**：**再次/重新投屏并入正常链路，imgBle(.bin) 直传整链路删除**（后端已不再
   生成/返回 .bin，07-22 风险②就此定夺关闭）。投屏管理页点「再次/重新投屏」→ 连设备 → 只带
   记录图片地址（优先图库原图）进预览页 → 与手选图片流程无差别：出帧走抖动接口、记录走

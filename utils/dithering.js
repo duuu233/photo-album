@@ -7,7 +7,9 @@
 //   · 域名是 http 且未加小程序合法域名白名单：开发者工具勾「不校验合法域名」/真机开调试模式；
 //   · Authorization = Bearer+空格+token，token 由 /Client/Basic/getXTYUserToken 动态获取
 //     （2026-07-23 替代写死的联调 token）：会话级内存缓存一次取用整程复用，预览页 onLoad 预热
-//     （prefetchAuthToken），接口回 401/token 类报错时清缓存自动刷新重试一次（长会话过期自愈）；
+//     （prefetchAuthToken）；接口回 401/token 类报错时清缓存自动刷新重试一次，且刷新时给
+//     /getXTYUserToken 带 isNewLogin=1 强制后端重新登录取新 token（2026-07-24；否则后端可能把
+//     刚过期的同一会话原样返回，重试仍 401），常规首取/预热用 isNewLogin=0；
 //   · ⚠️ bin 的像素格式（六色索引映射/扫描顺序）是否与设备一致未真机验证——调用方必须继续用
 //     「字节数 = 宽×高÷2」铁闸校验；真机若花屏/串色，对照 v1.5 协议核对 seekink 的调色板顺序。
 const protocol = require('./frame-protocol')
@@ -33,13 +35,16 @@ function normalizeAuthToken(data) {
   return String(raw).replace(/^Bearer\s+/i, '').trim()
 }
 
-function ensureAuthToken() {
-  if (authTokenCache) {
+// forceNewLogin：401 自愈刷新时传 true → 给后端带 isNewLogin=1 强制重新登录取新 token
+// （否则后端可能把刚过期的同一会话原样返回，重试仍 401）。常规首取/预热传默认 false。
+function ensureAuthToken(forceNewLogin = false) {
+  if (!forceNewLogin && authTokenCache) {
     return Promise.resolve(authTokenCache)
   }
-  if (!authTokenInFlight) {
+  // 强制刷新时不复用可能属于旧会话的在途请求，另起一发确保 isNewLogin=1 生效
+  if (!authTokenInFlight || forceNewLogin) {
     authTokenInFlight = api
-      .getXTYUserToken()
+      .getXTYUserToken(forceNewLogin ? 1 : 0)
       .then((data) => {
         authTokenInFlight = null
         const token = normalizeAuthToken(data)
@@ -195,8 +200,8 @@ async function requestFrameBin({ filePath, type }) {
   )
 
   let authRetried = false // 鉴权刷新只做一次：接口侧真拒绝（如账号无权限）时不能打转
-  const run = async (left) => {
-    const token = await ensureAuthToken()
+  const run = async (left, forceNewLogin = false) => {
+    const token = await ensureAuthToken(forceNewLogin)
     let res
     try {
       res = await requestOnce(body, boundary, token)
@@ -229,8 +234,8 @@ async function requestFrameBin({ filePath, type }) {
     ) {
       authRetried = true
       authTokenCache = ''
-      console.warn('[抖动bin] 鉴权失败，刷新 token 重试一次：', text || `HTTP ${res.statusCode}`)
-      return run(left)
+      console.warn('[抖动bin] 鉴权失败，带 isNewLogin=1 强制重登刷新 token 重试一次：', text || `HTTP ${res.statusCode}`)
+      return run(left, true) // 强制重新登录取新 token（isNewLogin=1）后重发本请求，不消耗网络重试次数
     }
     if (looksText) {
       console.warn('[抖动bin] 返回文本(业务报错):', text)

@@ -371,10 +371,12 @@ module.exports = {
   // 获取 seekink 抖动接口（XTY）的访问 token（2026-07-23 替代 dithering.js 写死的联调 token）。
   // 用法：Authorization: Bearer+空格+token。取回后的会话级缓存/预览页预热/401 刷新都在
   // utils/dithering.js（ensureAuthToken），业务方不要直接调本方法。
+  // isNewLogin（2026-07-24）：0=复用后端已有会话（默认，常规首取/预热）；1=强制重新登录取新
+  // token，仅在抖动接口回 401（token 过期）自愈刷新时传，避免后端把过期会话原样返回导致死循环。
   // ⚠️ 返回形态（data 直接是 token 串，还是包在 token/xtyToken 等字段里）为假设，待后端联调确认，
   // 兼容解析见 dithering.js normalizeAuthToken。
-  getXTYUserToken() {
-    return http.get('/Client/Basic/getXTYUserToken', {}, {
+  getXTYUserToken(isNewLogin = 0) {
+    return http.get('/Client/Basic/getXTYUserToken', { isNewLogin }, {
       mock: false,
       showError: false // 预热失败要静默；投屏时失败由结果页统一走失败场景提示
     })
