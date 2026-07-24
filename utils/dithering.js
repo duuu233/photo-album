@@ -4,7 +4,9 @@
 //   · 响应体即文件流 → 不能用 wx.uploadFile（它的 res.data 恒为字符串会把 bin 打烂）；
 //     只能手工拼 multipart 请求体 + wx.request(responseType:'arraybuffer')；
 //   · 请求头按对方要求带 AcceptLanguage=en（原话键名无中划线，另补标准 Accept-Language 兜底）；
-//   · 域名是 http 且未加小程序合法域名白名单：开发者工具勾「不校验合法域名」/真机开调试模式；
+//   · 域名已升 https（2026-07-24 由 http://cloud.seekink.cn:8091 迁到 https://cloud.seekink.cn:8443）：
+//     须在小程序管理后台把 https://cloud.seekink.cn:8443 加进 request 合法域名白名单；未加时
+//     开发者工具勾「不校验合法域名」/真机开调试模式；
 //   · Authorization = Bearer+空格+token，token 由 /Client/Basic/getXTYUserToken 动态获取
 //     （2026-07-23 替代写死的联调 token）：会话级内存缓存一次取用整程复用，预览页 onLoad 预热
 //     （prefetchAuthToken）；接口回 401/token 类报错时清缓存自动刷新重试一次，且刷新时给
@@ -15,7 +17,7 @@
 const protocol = require('./frame-protocol')
 const api = require('./api')
 
-const DITHERING_API = 'http://cloud.seekink.cn:8091/prod-api/api/v1/label/imageDitheringBinDownload'
+const DITHERING_API = 'https://cloud.seekink.cn:8443/prod-api/api/v1/label/imageDitheringBinDownload'
 
 // —— seekink token（/Client/Basic/getXTYUserToken）——
 // 会话级内存缓存：小程序本次启动内所有投屏复用同一个 token，不落 Storage（有效期未知，

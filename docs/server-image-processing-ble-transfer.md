@@ -3,6 +3,12 @@
 > 🛠 **维护约定**：每次修改本文件涉及的问题/功能，务必在下方「操作日志」补一条（日期 + 改了什么 + 关联文件/commit），**最新在上**——别让文档与代码脱节。
 
 ## 操作日志（最新在上）
+- **2026-07-24（二）**：**seekink 抖动接口域名升 https**。由 `http://cloud.seekink.cn:8091` 迁到
+  `https://cloud.seekink.cn:8443`（对方启用 SSL）。仅换 host+scheme+端口，路径/参数/请求头/鉴权不变。
+  关联：小程序 `utils/dithering.js`（`DITHERING_API`）、Flutter `lib/src/network/dithering_api.dart`（`_endpoint`）、
+  本文件及 `docs/接口清单.md`、`docs/2026-07-22-照片预览需求调整.md` URL 引用。
+  ⚠️ 小程序需在管理后台把 `https://cloud.seekink.cn:8443` 加进 **request 合法域名**白名单（https 才可加白）；
+  真机走白名单、开发者工具可继续勾「不校验合法域名」。小程序 + Flutter 均已改。
 - **2026-07-24**：**抖动接口 401（token 过期）自愈刷新改为强制重新登录**。`getXTYUserToken` 新增入参
   `isNewLogin`（默认 `0`=复用后端已有会话）。抖动接口回 401（`{"msg":"…认证失败，无法访问系统资源","code":401}`）
   或业务 token 类报错时，`utils/dithering.js` 的 `ensureAuthToken(forceNewLogin=true)` 清缓存后带
@@ -29,7 +35,7 @@
 - **2026-07-22**：**正常投屏的设备帧改由第三方 seekink 抖动接口生成，不再下载后端转码的 .bin**
   （仅小程序，Flutter 待同步）。result.js `acquireFrame` 正常链路改为两路网络并行：
   - **设备帧**：预览处理后的设备分辨率图 → `compressForUpload` 统一压缩（已是设备尺寸则原样通过）→
-    `utils/dithering.js requestFrameBin`（`POST http://cloud.seekink.cn:8091/prod-api/api/v1/label/imageDitheringBinDownload`，
+    `utils/dithering.js requestFrameBin`（`POST https://cloud.seekink.cn:8443/prod-api/api/v1/label/imageDitheringBinDownload`，
     form-data `color=BWRYGB`/`imageDitheringModes=2`/`type`(0=5.8寸 EF6-589、1=3.7寸 EF6-370，按分辨率判型)/`file`；
     请求头 `Authorization`(⚠️写死联调 token，正式鉴权前必须替换)+`AcceptLanguage=en`；
     手拼 multipart + `wx.request(responseType:'arraybuffer')` 收二进制，网络类失败退避重试 3 次）；
