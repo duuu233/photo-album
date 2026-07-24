@@ -80,6 +80,18 @@
 
   <!-- 底部输入区 -->
   <view class="input-area">
+    <!-- 待发送图片缩略图（v1.0.3 图文多模态 §5.1.4）：停在输入框内，每张可删、最多 4 张；
+         纯图片不可发，须配文字。上传中显示遮罩转圈，回填 URL 后可发送。 -->
+    <scroll-view wx:if="{{pendingImages.length}}" class="pending-strip" scroll-x>
+      <view wx:for="{{pendingImages}}" wx:key="id" class="pending-thumb">
+        <image class="pending-thumb__img" src="{{item.url || item.tempFilePath}}" mode="aspectFill"></image>
+        <view wx:if="{{item.uploading}}" class="pending-thumb__mask">
+          <view class="pending-thumb__spin"></view>
+        </view>
+        <view class="pending-thumb__del" catchtap="removePendingImage" data-index="{{index}}">✕</view>
+      </view>
+    </scroll-view>
+
     <view class="input-bar">
       <view class="round-btn" hover-class="none" bindtap="toggleVoice">
         <view class="icon-block icon-block--grey">{{voiceMode ? '⌨' : '🎤'}}</view>
@@ -89,7 +101,7 @@
         wx:if="{{!voiceMode}}"
         class="chat-input"
         value="{{inputValue}}"
-        placeholder="{{banned ? '账号已被限制' : '和星宝说点什么…'}}"
+        placeholder="{{banned ? '账号已被限制' : (pendingImages.length ? '描述你想对图片做什么…' : '和星宝说点什么…')}}"
         disabled="{{banned}}"
         confirm-type="send"
         bindinput="onInput"

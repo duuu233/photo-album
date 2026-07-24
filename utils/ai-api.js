@@ -1,4 +1,4 @@
-// BoltStar AI（星宝）第三方接口层。文档：assets/ai/BoltStar-API-Doc-v2-1.0.2.md
+// BoltStar AI（星宝）第三方接口层。文档：assets/ai/BoltStar-API-Doc-v2-1.0.3.md
 //
 // 与 utils/request.js 分开的原因：AI 服务是独立的第三方（阿里云 FC），Base URL、响应结构
 // （success/code/data/params/detail）、错误码体系都与 BoltFox 后端不同，公共参数（token/language 头）
@@ -140,9 +140,11 @@ module.exports = {
     })
   },
 
-  // POST /chat（非流式）— 对话/生图。resolve { text, images }。
+  // POST /chat（非流式）— 对话/生图/图文多模态。resolve { text, images }。
   // params: { sessionId, message, imgOrientation(必传: vertical/horizontal/square),
-  //           imgStyle(可选: cartoon/landscape/portrait/anime 触发一键生图), newSession, temperature }
+  //           imgStyle(可选: cartoon/landscape/portrait/anime 触发一键生图), newSession, temperature,
+  //           imageUrls(可选: 图片 URL 数组，最多 4 张；文档 v1.0.3 §二「图片支持」——
+  //             1 张+生图关键词=图生图美化 / 多张+关键词=友好拒绝 / 其余=AI 分析讨论，均由服务端分流) }
   // 返回的 promise 带 .abort()，页面「停止生成」时调用。
   chat(params) {
     const data = {
@@ -153,6 +155,11 @@ module.exports = {
     }
     if (params.imgStyle) {
       data.img_style = params.imgStyle
+    }
+    // 图文多模态：带上用户上传的图片 URL（服务端按张数+关键词决定图生图/讨论/拒绝）。
+    // 超 4 张服务端回 20012，前端已在选图时拦截，这里不再截断。
+    if (Array.isArray(params.imageUrls) && params.imageUrls.length) {
+      data.image_urls = params.imageUrls
     }
     if (params.newSession) {
       data.new_session = true

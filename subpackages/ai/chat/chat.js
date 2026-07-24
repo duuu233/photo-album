@@ -1,6 +1,11 @@
 // AI 对话（星宝）主界面 —— 需求见 assets/ai/支付&ai&官方图库.docx「一、AI对话模块」，
-// 接口见 assets/ai/BoltStar-API-Doc-v2-1.0.2.md（小程序只能走非流式 + 客户端打字机）。
+// 接口见 assets/ai/BoltStar-API-Doc-v2-1.0.3.md（小程序只能走非流式 + 客户端打字机）。
 // UI 未出图，图标一律用色块占位（icon-block），后续换图只动 wxml/wxss。
+//
+// v1.0.3 图文多模态（§二「图片支持」/§5.1.4）：图片选好后以缩略图停在输入框内（每张可删、最多 4 张），
+// 必须**配文字**一起发送（纯图片不可发）；发送即带 image_urls 走 POST /chat，服务端按
+// 张数+生图关键词自行分流（1 张+关键词=图生图美化 / 多张+关键词=友好拒绝 / 其余=分析讨论）。
+// 旧「选图后下一条输入 → /image/enhance」的单图链路随之下线（enhanceImage 接口仍保留作独立入口）。
 const aiApi = require('../../../utils/ai-api')
 const aiI18n = require('../../../utils/ai-i18n')
 const api = require('../../../utils/api')
@@ -15,6 +20,9 @@ const TOKEN_STORAGE_KEY = 'aiTokenBalanceDemo'
 const TOKEN_DEFAULT = 100
 
 const TYPE_INTERVAL_MS = 30 // 打字机 30ms/字（文档 §6.4）
+
+// 图文多模态一次最多带 4 张图（文档 v1.0.3 §二 image_urls 上限；超出服务端回 20012）
+const MAX_IMAGES = 4
 
 // 一键生图风格（需求文案：漫画/风景/肖像/动漫；API 值：cartoon/landscape/portrait/anime）
 const STYLE_OPTIONS = [
@@ -51,6 +59,10 @@ Page({
     historyLoading: false,
 
     inputValue: '',
+    // 待发送图片（v1.0.3 图文多模态）：{ id, url, tempFilePath, uploading }，缩略图停在输入框内，
+    // 每张可删、最多 MAX_IMAGES 张；发送时随文字一起以 image_urls 提交（纯图片不可发）。
+    pendingImages: [],
+    maxImages: MAX_IMAGES,
     sending: false, // 等待 AI 回复中（含打字机渲染期），期间禁止再次发送
     banned: false, // 22002/22003 封禁后禁用输入（文档 §八）
 
@@ -72,9 +84,9 @@ Page({
   onLoad(options) {
     this.setData(Object.assign({ tokenBalance: readTokenBalance() }, system.getLayoutMetrics()))
     this._uid = 0 // 本地消息自增 id
+    this._pid = 0 // 待发送图片自增 id
     this._typeTimer = null
     this._chatReq = null // 进行中的 chat/enhance 请求，供「停止生成」abort
-    this._pendingEnhanceUrl = '' // 相册/拍照已上传待美化的图片 URL（下一条输入作为美化指令）
     this._pendingProjectImage = '' // 设备弹窗确认前暂存的待投屏图片 URL
     this.initRecorder()
 
@@ -125,10 +137,10 @@ Page({
     wx.removeStorageSync('aiOpenSession')
     this.stopGenerate(true)
     if (pending.newSession) {
-      this.setData({ messages: [], sessionTitle: '新对话', sessionId: '', banned: false })
+      this.setData({ messages: [], sessionTitle: '新对话', sessionId: '', banned: false, pendingImages: [], inputValue: '' })
       this.createSession()
     } else if (pending.sessionId && pending.sessionId !== this.data.sessionId) {
-      this.setData({ messages: [], banned: false })
+      this.setData({ messages: [], banned: false, pendingImages: [], inputValue: '' })
       this.openSession(pending.sessionId, pending.title)
     }
   },
@@ -192,7 +204,7 @@ Page({
       return
     }
     this.stopGenerate(true)
-    this.setData({ messages: [], sessionTitle: '新对话', sessionId: '', banned: false })
+    this.setData({ messages: [], sessionTitle: '新对话', sessionId: '', banned: false, pendingImages: [], inputValue: '' })
     this.createSession()
   },
 
@@ -203,21 +215,33 @@ Page({
   },
 
   onSendTap() {
-    const text = String(this.data.inputValue || '').trim()
-    if (!text) {
-      toast.show({ title: aiI18n.t('error.20005'), icon: 'none' })
+    if (this.data.sending || this.data.banned) {
       return
     }
-    this.setData({ inputValue: '' })
-    if (this._pendingEnhanceUrl) {
-      this.sendEnhance(text)
-    } else {
-      this.sendChat(text)
+    const text = String(this.data.inputValue || '').trim()
+    const images = this.data.pendingImages
+    // 纯图片不可发（v1.0.3 §5.1.4 状态机）：必须配文字一起发送
+    if (!text) {
+      toast.show({
+        title: images.length ? '请输入文字后再发送（图片不能单独发送）' : aiI18n.t('error.20005'),
+        icon: 'none'
+      })
+      return
     }
+    // 还有图片在上传：等 OSS URL 就绪再发，否则 image_urls 会缺图
+    if (images.some(img => img.uploading)) {
+      toast.show({ title: '图片上传中，请稍候…', icon: 'none' })
+      return
+    }
+    const imageUrls = images.map(img => img.url).filter(Boolean)
+    this.setData({ inputValue: '', pendingImages: [] })
+    this.sendChat(text, undefined, imageUrls)
   },
 
-  // 发送对话/一键生图。styleKey 仅一键生图传（cartoon/landscape/portrait/anime）
-  async sendChat(message, styleKey) {
+  // 发送对话 / 一键生图 / 图文多模态。styleKey 仅一键生图传（cartoon/landscape/portrait/anime）；
+  // imageUrls 为随文字一起发送的图片 URL（≤4，v1.0.3）。先把用户消息（图片气泡+文字气泡）上屏，
+  // 再交给 _dispatchChat 发请求——这样 30xxx 重试只重发请求、不重复堆用户气泡。
+  async sendChat(message, styleKey, imageUrls) {
     if (this.data.sending || this.data.banned) {
       return
     }
@@ -231,14 +255,23 @@ Page({
       }
     }
 
-    const userMsg = { id: ++this._uid, role: 'user', kind: 'text', content: message }
-    const holder = { id: ++this._uid, role: 'assistant', kind: 'text', content: '', loading: true }
+    const urls = Array.isArray(imageUrls) ? imageUrls.filter(Boolean) : []
+    // 用户消息：先按张追加图片气泡（用户上传的原图 URL），再追加文字气泡
+    const userMsgs = urls.map(url => ({ id: ++this._uid, role: 'user', kind: 'image', url, content: url }))
+    userMsgs.push({ id: ++this._uid, role: 'user', kind: 'text', content: message })
     this.setData({
-      messages: this.data.messages.concat([userMsg, holder]),
-      sending: true,
+      messages: this.data.messages.concat(userMsgs),
       // 首条消息后标题自动变为首条内容（与后端 session.title 行为一致，本地同步免重拉）
       sessionTitle: this.data.sessionTitle === '新对话' ? message : this.data.sessionTitle
     })
+    this.scrollToBottom()
+    this._dispatchChat(message, styleKey, urls)
+  },
+
+  // 发一次 /chat 请求并渲染回复（可被「重试」重复调用，不再追加用户气泡）
+  async _dispatchChat(message, styleKey, urls) {
+    const holder = { id: ++this._uid, role: 'assistant', kind: 'text', content: '', loading: true }
+    this.setData({ messages: this.data.messages.concat([holder]), sending: true })
     this.scrollToBottom()
 
     try {
@@ -246,7 +279,8 @@ Page({
         sessionId: this.data.sessionId,
         message,
         imgOrientation: this.data.orientation,
-        imgStyle: styleKey
+        imgStyle: styleKey,
+        imageUrls: urls
       })
       const reply = await this._chatReq
       this._chatReq = null
@@ -260,43 +294,7 @@ Page({
         return // 用户主动停止，静默
       }
       aiI18n.handleAiError(error, {
-        onRetry: () => this.sendChat(message, styleKey),
-        onBanned: () => this.setData({ banned: true })
-      })
-    }
-  },
-
-  // 相册/拍照选图后的美化：上一步已把图传到 OSS 拿到 URL，本条输入作为美化指令
-  async sendEnhance(prompt) {
-    if (this.data.sending || this.data.banned) {
-      return
-    }
-    if (!this.guardToken()) {
-      return
-    }
-    const imageUrl = this._pendingEnhanceUrl
-
-    const userMsg = { id: ++this._uid, role: 'user', kind: 'text', content: prompt }
-    const holder = { id: ++this._uid, role: 'assistant', kind: 'text', content: '', loading: true }
-    this.setData({ messages: this.data.messages.concat([userMsg, holder]), sending: true })
-    this.scrollToBottom()
-
-    try {
-      this._chatReq = aiApi.enhanceImage(imageUrl, prompt)
-      const image = await this._chatReq
-      this._chatReq = null
-      this._pendingEnhanceUrl = ''
-      this.spendToken()
-      this.renderReply(holder.id, '', image ? [image] : [])
-    } catch (error) {
-      this._chatReq = null
-      this.removeMessageById(holder.id)
-      this.setData({ sending: false })
-      if (error && error.code === 'ABORTED') {
-        return
-      }
-      aiI18n.handleAiError(error, {
-        onRetry: () => this.sendEnhance(prompt),
+        onRetry: () => this._dispatchChat(message, styleKey, urls),
         onBanned: () => this.setData({ banned: true })
       })
     }
@@ -445,35 +443,70 @@ Page({
     this.pickImage('camera')
   },
 
-  // 选图 → 上传 OSS 拿 URL → 以图片气泡上屏并进入「待美化」状态（文档 §5.1.4/5.1.5：
-  // 相册/拍照 → 前端上传 OSS → URL 传给 AI，配合 /image/enhance 图生图）
+  // 选图（相册可多选）→ 立即上传 OSS → 以缩略图停在输入框内（v1.0.3 §5.1.4）。
+  // 不马上调接口，等用户输入文字点发送时随 image_urls 一起提交；最多 MAX_IMAGES 张。
   async pickImage(source) {
     this.setData({ showTools: false })
-    let picked
+    if (this.data.banned) {
+      return
+    }
+    const remain = MAX_IMAGES - this.data.pendingImages.length
+    if (remain <= 0) {
+      toast.show({ title: `一次最多选择 ${MAX_IMAGES} 张图片`, icon: 'none' })
+      return
+    }
+    let files
     try {
-      const images = source === 'camera' ? await media.chooseFromCamera() : await media.chooseFromAlbum()
-      picked = images && images[0]
+      files = source === 'camera' ? await media.chooseFromCamera() : await media.chooseFromAlbum(remain)
     } catch (error) {
       return // 用户取消选图
     }
-    if (!picked) {
+    files = (files || []).filter(Boolean)
+    if (!files.length) {
       return
     }
+    // 客户端拦截超限（部分机型相册不严格限制张数），只取前 remain 张
+    if (files.length > remain) {
+      files = files.slice(0, remain)
+      toast.show({ title: `一次最多选择 ${MAX_IMAGES} 张图片`, icon: 'none' })
+    }
+    // 先各插一张 uploading 缩略图占位，再逐张上传回填 URL（单张失败只移除该张）
+    const items = files.map(file => ({ id: ++this._pid, tempFilePath: file.tempFilePath, url: '', uploading: true }))
+    this.setData({ pendingImages: this.data.pendingImages.concat(items) })
+    items.forEach(item => this.uploadPending(item))
+  },
 
+  // 单张上传到 OSS，成功回填 url、清 uploading；失败/无地址移除该缩略图
+  async uploadPending(item) {
     try {
-      const uploaded = await api.setFileUpload({ filePaths: [picked.tempFilePath] })
+      const uploaded = await api.setFileUpload({ filePaths: [item.tempFilePath] })
       const url = this.extractUrl(uploaded)
+      const index = this.data.pendingImages.findIndex(p => p.id === item.id)
+      if (index < 0) {
+        return // 上传期间用户已删掉这张
+      }
       if (!url) {
+        this.setData({ pendingImages: this.data.pendingImages.filter(p => p.id !== item.id) })
         toast.warn({ title: '图片上传未返回地址', icon: 'none' })
         return
       }
-      this._pendingEnhanceUrl = url
-      const imageMsg = { id: ++this._uid, role: 'user', kind: 'image', url, content: url }
-      this.setData({ messages: this.data.messages.concat([imageMsg]) })
-      this.scrollToBottom()
-      toast.show({ title: '图片已就绪，输入美化指令后发送（如：加一对翅膀）', icon: 'none' })
+      this.setData({
+        [`pendingImages[${index}].url`]: url,
+        [`pendingImages[${index}].uploading`]: false
+      })
     } catch (error) {
-      // setFileUpload 走 request.js，失败提示已带「接口-」前缀，这里不重复弹
+      // setFileUpload 走 request.js，失败提示已带「接口-」前缀，这里只移除占位
+      this.setData({ pendingImages: this.data.pendingImages.filter(p => p.id !== item.id) })
+    }
+  },
+
+  // 删除输入框内的某张待发送图片
+  removePendingImage(event) {
+    const index = event.currentTarget.dataset.index
+    const list = this.data.pendingImages.slice()
+    if (index >= 0 && index < list.length) {
+      list.splice(index, 1)
+      this.setData({ pendingImages: list })
     }
   },
 

@@ -54,8 +54,8 @@ module.exports = {
     return chooseMedia(['camera'], 1)
   },
 
-  // 从相册选择：一次最多 5 张（投屏批量上限）
-  chooseFromAlbum() {
-    return chooseMedia(['album'], 5)
+  // 从相册选择：默认一次最多 5 张（投屏批量上限）；AI 图文多模态传 4（BoltStar image_urls 上限）
+  chooseFromAlbum(count = 5) {
+    return chooseMedia(['album'], count > 0 ? count : 1)
   }
 }

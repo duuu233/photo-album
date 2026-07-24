@@ -1,6 +1,6 @@
 // BoltStar AI 模块多语种错误文案 + 统一错误分发。
 // 文案来源：assets/ai/BoltStar-i18n-Errors.json（后端只回 code，不回面向用户的文案，
-// 文案由前端按当前语种管理，见 assets/ai/BoltStar-API-Doc-v2-1.0.2.md §6.7）。
+// 文案由前端按当前语种管理，见 assets/ai/BoltStar-API-Doc-v2-1.0.3.md §6.7）。
 // 语种取 utils/language.getSelectedLanguage()（用户显式选过用用户的，否则跟随系统），
 // 与后端接口的 language 码同一数据源，保证 AI 提示语种与全局一致。
 //
@@ -25,6 +25,7 @@ const TEXTS = {
     'error.20009': '参数值超出范围',
     'error.20010': '请提供图片',
     'error.20011': '缺少消息标识',
+    'error.20012': '一次最多处理 4 张图片',
     'error.22001': '内容不符合规范，请修改后重试',
     'error.22002': '账号已被临时限制，{hours} 小时后恢复',
     'error.22003': '账号已被永久限制',
@@ -48,6 +49,7 @@ const TEXTS = {
     'error.20009': '參數值超出範圍',
     'error.20010': '請提供圖片',
     'error.20011': '缺少訊息標識',
+    'error.20012': '一次最多處理 4 張圖片',
     'error.22001': '內容不符合規範，請修改後重試',
     'error.22002': '帳號已被暫時限制，{hours} 小時後恢復',
     'error.22003': '帳號已被永久限制',
@@ -71,6 +73,7 @@ const TEXTS = {
     'error.20009': 'Parameter out of range',
     'error.20010': 'Please provide an image',
     'error.20011': 'Missing message ID',
+    'error.20012': 'You can process up to 4 images at a time',
     'error.22001': 'Content does not comply with guidelines. Please modify and try again.',
     'error.22002': 'Account temporarily restricted. Recovery in {hours} hours.',
     'error.22003': 'Account permanently restricted.',
@@ -94,6 +97,7 @@ const TEXTS = {
     'error.20009': 'パラメータが範囲外です',
     'error.20010': '画像を提供してください',
     'error.20011': 'メッセージIDがありません',
+    'error.20012': '一度に処理できる画像は最大4枚です',
     'error.22001': '内容がガイドラインに違反しています。修正して再試行してください',
     'error.22002': 'アカウントが一時的に制限されています。{hours}時間後に復旧します',
     'error.22003': 'アカウントが永久的に制限されました',
