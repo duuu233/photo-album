@@ -40,17 +40,17 @@
           catchtap="rotate90">↻ 90°</view>
   </view>
 
-  <!-- 竖向/横向 分段控制器（交互仿 element-plus 的 el-segmented：白色滑块滑到选中项）。
-       只改可视区域（取景框比例），图片本身不动；横向超出可视区的部分单指拖动调整。 -->
-  <view class="orient-seg" wx:if="{{imageCount}}">
-    <view class="orient-seg__thumb {{orientation === 'landscape' ? 'to-right' : ''}}"></view>
-    <view class="orient-seg__item {{orientation === 'portrait' ? 'is-on' : ''}}" hover-class="none" data-orient="portrait" bindtap="setOrientation">竖向</view>
-    <view class="orient-seg__item {{orientation === 'landscape' ? 'is-on' : ''}}" hover-class="none" data-orient="landscape" bindtap="setOrientation">横向</view>
-  </view>
-
-  <view class="tool-bar" wx:if="{{imageCount}}">
-    <view class="tool" hover-class="none" bindtap="restoreOrigin">
-      <image class="tool-icon" src="/assets/images/preview-icon03.png" mode="aspectFit"></image>
+  <!-- 竖向/横向 分段控制器（交互仿 element-plus 的 el-segmented：白色滑块滑到选中项）+ 「原图」同排。
+       分段器只改可视区域（取景框比例），图片本身不动；横向超出可视区的部分单指拖动调整。
+       2026-07-24：原图不再单独占一行，并入本排放在 竖向/横向 后面。 -->
+  <view class="orient-row" wx:if="{{imageCount}}">
+    <view class="orient-seg">
+      <view class="orient-seg__thumb {{orientation === 'landscape' ? 'to-right' : ''}}"></view>
+      <view class="orient-seg__item {{orientation === 'portrait' ? 'is-on' : ''}}" hover-class="none" data-orient="portrait" bindtap="setOrientation">竖向</view>
+      <view class="orient-seg__item {{orientation === 'landscape' ? 'is-on' : ''}}" hover-class="none" data-orient="landscape" bindtap="setOrientation">横向</view>
+    </view>
+    <view class="orient-origin" hover-class="none" bindtap="restoreOrigin">
+      <image class="orient-origin__icon" src="/assets/images/preview-icon03.png" mode="aspectFit"></image>
       <text>原图</text>
     </view>
   </view>

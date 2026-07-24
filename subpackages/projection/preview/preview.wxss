@@ -65,6 +65,8 @@
   position: absolute;
   overflow: hidden;
   background: #e6ecf4;
+  /* 2026-07-24：应用户要求改回原来的圆角（与 photo-wrap 卡片一致） */
+  border-radius: 40rpx;
 }
 
 /* 被变换的图片：transform 由手势实时下发，绕中心 平移/旋转/缩放 */
@@ -80,10 +82,13 @@
   z-index: 7;
   display: flex;
   align-items: center;
+  justify-content: center;
   padding: 12rpx 24rpx;
   color: #ffffff;
   font-size: 26rpx;
   line-height: 1;
+  /* 图标与文字不换行、整体居中（2026-07-24：修「↻」与「90°」被拆成两行） */
+  white-space: nowrap;
   background: rgba(17, 21, 28, 0.6);
   border: 1rpx solid rgba(255, 255, 255, 0.3);
   border-radius: 999rpx;
@@ -114,12 +119,22 @@
   height: 10rpx;
 }
 
+/* 竖向/横向 分段控制器 与「原图」按钮同排（2026-07-24：原图从单独一行并入此排，放在其后面） */
+.orient-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  margin: 24rpx 46rpx 0;
+}
+
 /* 竖向/横向 分段控制器：仿 el-segmented——灰底容器 + 白色滑块滑到选中项 */
 .orient-seg {
   position: relative;
   z-index: 1;
+  flex: 1;
   display: flex;
-  margin: 24rpx 46rpx 0;
   padding: 6rpx;
   background: rgba(42, 43, 43, 0.08);
   border-radius: 999rpx;
@@ -159,33 +174,25 @@
   font-weight: 600;
 }
 
-.tool-bar {
-  position: relative;
-  z-index: 1;
+/* 「原图」按钮：与分段控制器同排，居于其右侧的玻璃感药丸按钮（图标 + 文字横排、不换行） */
+.orient-origin {
   display: flex;
-  justify-content: space-around;
-  margin: 24rpx 46rpx 0;
-  padding: 20rpx 0;
-
+  align-items: center;
+  gap: 10rpx;
+  padding: 18rpx 30rpx;
+  color: #777e88;
+  font-size: 26rpx;
+  line-height: 1;
+  white-space: nowrap;
   background: rgba(255, 255, 255, 0.4);
   border: 2rpx solid rgba(255, 255, 255, 0.86);
-  border-radius: 40rpx;
+  border-radius: 999rpx;
   box-shadow: 0 24rpx 54rpx rgba(121, 145, 178, 0.13);
 }
 
-.tool {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14rpx;
-  color: #777e88;
-  font-size: 24rpx;
-}
-
-.tool-icon {
-  position: relative;
-  width: 44rpx;
-  height: 44rpx;
+.orient-origin__icon {
+  width: 34rpx;
+  height: 34rpx;
 }
 
 /* 上一张/下一张（替代左右滑动切图） */
