@@ -670,3 +670,23 @@ button {
 .log-err .log-text {
   color: #ff7b7b; /* 失败：红 */
 }
+
+/* AI生图入口暗门：入口整体屏蔽期间的临时通道。做得不显眼——半透明、居中稀疏字距，
+   不像正式功能；输对口令(8866)后才在下方显露「进入 AI生图」按钮。后续正式开放可整块删除。 */
+.ai-gate-card {
+  opacity: 0.5;
+}
+
+.ai-gate-row {
+  margin-top: 0;
+}
+
+.ai-gate-input {
+  margin-right: 0;
+  text-align: center;
+  letter-spacing: 8rpx;
+}
+
+.ai-gate-btn {
+  margin-top: 20rpx;
+}

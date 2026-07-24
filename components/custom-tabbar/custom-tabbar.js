@@ -14,6 +14,12 @@ Component({
     }
   },
 
+  data: {
+    // AI生图入口开关：当前需求为「暂时屏蔽入口，后续再开放」。false 时隐藏中间 AI 按钮
+    // （wx:else 空占位保住三栏布局），后续开放时置 true 即恢复。屏蔽期可走调试台底部暗门临时进入。
+    aiEntryEnabled: false
+  },
+
   methods: {
     switchToHome() {
       if (this.data.active === 'home') {
