@@ -3,6 +3,14 @@
 > 🛠 **维护约定**：每次修改本文件涉及的问题/功能，务必在下方「操作日志」补一条（日期 + 改了什么 + 关联文件/commit），**最新在上**——别让文档与代码脱节。
 
 ## 操作日志（最新在上）
+- **2026-07-24（三）**：**调试台新增「第三方 Token」卡片**（联调排查用）。硬件联调调试台
+  （`subpackages/device/debug`）加一处直接调 `GET /Client/Basic/getXTYUserToken` 取 seekink 抖动接口
+  鉴权 token 的入口，取回后常驻展示（可长按选中/点「复制」写剪贴板），失败原因也常驻展示。两颗按钮：
+  「获取 Token」(`isNewLogin=0`) 与「强制重新登录取 Token」(`isNewLogin=1`)，对应线上首取与 401 自愈刷新
+  两条路径，便于单独验证「token 能不能取到、长什么样」。纯网络请求、不依赖蓝牙连接；返回归一化逻辑
+  与 `dithering.js normalizeAuthToken` 一致（那份未导出，调试台内复制一份）。关联：`debug.js`
+  （`cmdFetchAuthToken`/`copyAuthToken`/`normalizeAuthToken`）、`debug.wxml`/`debug.wxss`、
+  `utils/api.js`（`getXTYUserToken`）。仅小程序。
 - **2026-07-24（二）**：**seekink 抖动接口域名升 https**。由 `http://cloud.seekink.cn:8091` 迁到
   `https://cloud.seekink.cn:8443`（对方启用 SSL）。仅换 host+scheme+端口，路径/参数/请求头/鉴权不变。
   关联：小程序 `utils/dithering.js`（`DITHERING_API`）、Flutter `lib/src/network/dithering_api.dart`（`_endpoint`）、

@@ -15,6 +15,25 @@ const deviceBle = require('../../../utils/device-ble')
 const protocol = require('../../../utils/frame-protocol')
 const imageCodec = require('../../../utils/image-codec')
 const system = require('../../../utils/system')
+const api = require('../../../utils/api')
+
+// 第三方（seekink 抖动出帧接口）鉴权 token 的返回归一化：与 dithering.js normalizeAuthToken 保持一致
+// （那份未导出，调试台单独复制一份）。接口返回形态未定——可能直接是 token 串，也可能包在
+// token/xtyToken/userToken/accessToken/access_token 字段里；若带 Bearer 前缀则剥掉，只留纯 token 串
+// （正式出帧时由 dithering.js 统一拼「Bearer 空格 token」）。
+function normalizeAuthToken(data) {
+  const raw =
+    typeof data === 'string'
+      ? data
+      : (data &&
+          (data.token ||
+            data.xtyToken ||
+            data.userToken ||
+            data.accessToken ||
+            data.access_token)) ||
+        ''
+  return String(raw).replace(/^Bearer\s+/i, '').trim()
+}
 
 // 调试页专用校准档：nibble 为协议编码值（不可改）；rgb 仅参与「原图像素 → 六色」最近色匹配。
 // 只在当前硬件调试页试用，不影响 utils/image-codec.js 和其它正式上传入口。
@@ -388,6 +407,11 @@ Page({
     // 自定义六色：套餐只是「一键回填」的预设，真正参与量化/同步的是下面这份可逐项编辑的 RGB。
     customColors: paletteToCustomColors(DEFAULT_DEBUG_PROFILE.palette),
 
+    // 第三方 Token（seekink 抖动出帧接口鉴权，/Client/Basic/getXTYUserToken）
+    authToken: '', // 获取到的 token 串，展示并可复制
+    authTokenError: '', // 获取失败原因，常驻显示便于排查
+    fetchingToken: false, // 正在请求 token，避免并发点击
+
     // 状态
     busy: false, // 有指令正在等应答，避免并发
     uploading: false,
@@ -478,6 +502,63 @@ Page({
 
   clearLogs() {
     this.setData({ logs: [] })
+  },
+
+  // ── 第三方 Token ────────────────────────────────────────
+  // 调用 /Client/Basic/getXTYUserToken 取 seekink 抖动出帧接口的鉴权 token 并展示（可复制）。
+  // 与正式投屏出帧（dithering.js requestFrameBin → ensureAuthToken）用的是同一接口、同一归一化逻辑，
+  // 方便在这里单独验证「token 能不能取到、长什么样」。纯网络请求，不依赖蓝牙连接。
+  // data-force="1" 时带 isNewLogin=1，强制后端重新登录取新 token（对应线上 401 自愈刷新那条路径）。
+  async cmdFetchAuthToken(e) {
+    if (this.data.fetchingToken) {
+      return
+    }
+    const forceNewLogin =
+      e && e.currentTarget && e.currentTarget.dataset.force === '1'
+    this.setData({ fetchingToken: true, authTokenError: '' })
+    this.appendLog({
+      type: 'act',
+      text: `点击：获取第三方Token（isNewLogin=${forceNewLogin ? 1 : 0}）`
+    })
+    try {
+      const data = await api.getXTYUserToken(forceNewLogin ? 1 : 0)
+      const token = normalizeAuthToken(data)
+      if (!token) {
+        throw new Error('接口返回为空（未解析到 token 字段）')
+      }
+      this.setData({ authToken: token })
+      this.appendLog({
+        type: 'ok',
+        text: `已获取第三方Token（${token.length} 字符）：${token}`
+      })
+      toast.show({ title: '已获取 Token', icon: 'none' })
+    } catch (error) {
+      const msg = (error && error.message) || '获取失败'
+      this.setData({ authTokenError: `获取第三方Token失败：${msg}` })
+      this.appendLog({ type: 'err', text: `获取第三方Token失败：${msg}` })
+      toast.warn({ title: msg, icon: 'none' })
+    } finally {
+      this.setData({ fetchingToken: false })
+    }
+  },
+
+  // 复制当前展示的第三方 token 到剪贴板。wx.setClipboardData 成功后系统自带「已复制」提示，
+  // 这里不再叠加 toast，只补一条控制台日志便于对照。
+  copyAuthToken() {
+    const token = this.data.authToken
+    if (!token) {
+      toast.warn({ title: '暂无可复制的 Token', icon: 'none' })
+      return
+    }
+    wx.setClipboardData({
+      data: token,
+      success: () => {
+        this.appendLog({ type: 'act', text: '已复制第三方Token到剪贴板' })
+      },
+      fail: () => {
+        toast.warn({ title: '复制失败', icon: 'none' })
+      }
+    })
   },
 
   // device-ble 上报的每一帧原始字节。图传数据包(0x21)与其应答(0x23)数量巨大，不逐条刷屏，用进度条体现。

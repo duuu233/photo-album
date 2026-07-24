@@ -547,6 +547,35 @@ button {
   background: rgba(231, 76, 60, 0.1);
 }
 
+/* 第三方 Token 展示框 */
+.token-box {
+  margin-top: 16rpx;
+  padding: 18rpx 22rpx;
+  background: #f2f5fc;
+  border-radius: 14rpx;
+}
+
+.token-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10rpx;
+}
+
+.token-label {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #5b6675;
+}
+
+.token-value {
+  display: block;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #26303e;
+  word-break: break-all;
+}
+
 /* 扫描结果 */
 .scan-item {
   display: flex;

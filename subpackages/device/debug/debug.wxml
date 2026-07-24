@@ -263,6 +263,27 @@
       </view>
     </view>
 
+    <!-- 第三方 Token（seekink 抖动出帧接口鉴权）：调用 /Client/Basic/getXTYUserToken 取 token 并展示，可复制。
+         与正式投屏出帧同源，纯网络请求，不依赖蓝牙连接。 -->
+    <view class="card">
+      <view class="card-title sec-title">第三方 Token</view>
+      <view class="row-tip">调用 <text class="row-tip-strong">/Client/Basic/getXTYUserToken</text> 取 seekink 抖动出帧接口的鉴权 token（正式出帧时拼「Bearer 空格 token」）。不依赖蓝牙连接。「强制重新登录」会带 isNewLogin=1 让后端重新登录取新 token（对应线上 401 自愈刷新路径）。</view>
+      <view class="btn-grid">
+        <button class="btn btn-primary" loading="{{fetchingToken}}" disabled="{{fetchingToken}}" data-force="0" bindtap="cmdFetchAuthToken">获取 Token</button>
+        <button class="btn btn-soft" disabled="{{fetchingToken}}" data-force="1" bindtap="cmdFetchAuthToken">强制重新登录取 Token</button>
+      </view>
+      <view wx:if="{{authToken}}" class="token-box">
+        <view class="token-head">
+          <text class="token-label">当前 Token（{{authToken.length}} 字符）</text>
+          <view class="ghost-btn" bindtap="copyAuthToken">复制</view>
+        </view>
+        <text class="token-value" user-select selectable>{{authToken}}</text>
+      </view>
+      <view wx:if="{{authTokenError}}" class="upload-status upload-status--err">
+        <text class="upload-status__text" user-select selectable>{{authTokenError}}</text>
+      </view>
+    </view>
+
     <!-- 收发日志控制台 -->
     <view class="card">
       <view class="card-head">
