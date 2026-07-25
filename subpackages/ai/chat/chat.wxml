@@ -97,23 +97,35 @@
         <view class="icon-block icon-block--grey">{{voiceMode ? '⌨' : '🎤'}}</view>
       </view>
 
-      <input
+      <!-- 长按输入框区域直接唤起语音（需求「支持长按输入框区域或专属语音按钮」）。
+           手势绑在外层 view 且用 bind（不是 catch）：短按照常穿透给 <input> 聚焦打字，
+           按住超过 INPUT_HOLD_MS 且几乎没动才起录音，之后的移动/松手复用「按住说话」那套。 -->
+      <view
         wx:if="{{!voiceMode}}"
-        class="chat-input"
-        value="{{inputValue}}"
-        placeholder="{{banned ? '账号已被限制' : (pendingImages.length ? '描述你想对图片做什么…' : '和星宝说点什么…')}}"
-        disabled="{{banned}}"
-        confirm-type="send"
-        bindinput="onInput"
-        bindconfirm="onSendTap"
-      />
+        class="input-wrap"
+        bindtouchstart="onInputTouchStart"
+        bindtouchmove="onInputTouchMove"
+        bindtouchend="onInputTouchEnd"
+        bindtouchcancel="onInputTouchEnd"
+      >
+        <input
+          class="chat-input"
+          value="{{inputValue}}"
+          placeholder="{{banned ? '账号已被限制' : (pendingImages.length ? '描述你想对图片做什么…' : '和星宝说点什么…')}}"
+          disabled="{{banned}}"
+          confirm-type="send"
+          bindinput="onInput"
+          bindconfirm="onSendTap"
+        />
+      </view>
       <view
         wx:else
         class="voice-hold {{recording ? 'voice-hold--recording' : ''}}"
         bindtouchstart="onVoiceStart"
+        bindtouchmove="onVoiceMove"
         bindtouchend="onVoiceEnd"
         bindtouchcancel="onVoiceEnd"
-      >{{recording ? '松开发送' : '按住 说话'}}</view>
+      >{{recording ? (voiceCancel ? '松开取消' : '松开发送') : '按住 说话'}}</view>
 
       <view class="round-btn" hover-class="none" bindtap="toggleTools">
         <view class="icon-block icon-block--grey">＋</view>
@@ -149,6 +161,27 @@
       </view>
     </view>
     <view class="input-safe"></view>
+  </view>
+
+  <!-- 录音浮层（仿微信）：居中显示，上滑到取消区整块转红。
+       voiceText 是 WechatSI 的**中间识别结果**，边说边出，用户能确认「确实听到了」；
+       插件没开通(speechReady=false)时只能录音转不了字，这里如实说明，别让人以为是自己没说清。 -->
+  <view wx:if="{{recording}}" class="voice-overlay">
+    <view class="voice-panel {{voiceCancel ? 'voice-panel--cancel' : ''}}">
+      <view class="voice-wave">
+        <view class="voice-wave__bar"></view>
+        <view class="voice-wave__bar"></view>
+        <view class="voice-wave__bar"></view>
+        <view class="voice-wave__bar"></view>
+        <view class="voice-wave__bar"></view>
+      </view>
+      <view wx:if="{{voiceText}}" class="voice-heard">{{voiceText}}</view>
+      <view wx:elif="{{!speechReady}}" class="voice-heard voice-heard--warn">未开通语音转文字插件</view>
+      <view wx:else class="voice-heard voice-heard--dim">正在聆听…</view>
+    </view>
+    <view class="voice-hint {{voiceCancel ? 'voice-hint--cancel' : ''}}">
+      {{voiceCancel ? '松开手指，取消发送' : '上滑取消 · 松开发送'}}
+    </view>
   </view>
 
   <!-- 一键生图风格弹层：漫画/风景/肖像/动漫 -->

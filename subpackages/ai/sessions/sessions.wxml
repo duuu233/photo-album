@@ -1,5 +1,5 @@
 <view class="sessions-root" style="--safe-bottom: {{safeBottom}}px;">
-  <page-nav title="会话记录" right-text="清空" bind:righttap="clearAll"></page-nav>
+  <page-nav title="会话记录"></page-nav>
 
   <view class="keep-tip">会话记录仅保留最近 7 天</view>
 
@@ -26,7 +26,9 @@
       <view class="icon-block icon-block--purple">✨</view>
       <view class="session-copy">
         <view class="session-title">{{item.title}}</view>
-        <view class="session-meta">{{item.timeText}} · {{item.msgCount}} 条消息</view>
+        <!-- 条数未知（接口 msg_count=0 且 /chat/history 兜底也没补到）就只显示时间：
+             与其摆一个明知是错的「0 条消息」，不如不显示。补到了会自动出现。 -->
+        <view class="session-meta">{{item.msgCount ? item.timeText + ' · ' + item.msgCount + ' 条消息' : item.timeText}}</view>
       </view>
       <view wx:if="{{item.sessionId === currentId}}" class="current-tag">当前</view>
     </view>

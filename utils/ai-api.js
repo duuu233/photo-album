@@ -134,14 +134,10 @@ module.exports = {
     })
   },
 
-  // DELETE /chat/history/clear — 清空会话消息（会话本身保留）
-  clearHistory(sessionId) {
-    return aiRequest({
-      url: '/chat/history/clear',
-      method: 'DELETE',
-      data: { user_id: getAiUserId(), session_id: sessionId }
-    })
-  },
+  // ⚠️ 2026-07-25 起本模块不再提供任何「清空」能力：会话级「清空全部」已下线，
+  //    消息级 `clearHistory()`（`DELETE /chat/history/clear`）也一并删除（原本全项目无调用）。
+  //    清理一律走逐条删：会话用 deleteSession、消息用 deleteMessage。别再加回来，理由见
+  //    docs/2026-07-24-AI模块开发进度.md。
 
   // POST /chat（非流式）— 对话/生图/图文多模态。resolve { text, images }。
   // params: { sessionId, message, imgOrientation(必传: vertical/horizontal/square),
