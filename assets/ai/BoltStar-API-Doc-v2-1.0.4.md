@@ -13,9 +13,12 @@
 - [四、调用方式 B：JSON 非流式](#四调用方式-b-json-非流式)
 - [五、前端功能方案](#五前端功能方案)
 - [六、前端渲染 & 对接](#六前端渲染--对接)
-- [七、参数速查表](#七参数速查表)
-- [八、错误码参考](#八错误码参考)
-- [九、已知问题 & 注意事项](#九已知问题--注意事项)
+- [七、Skill 系统](#七skill-系统)
+- [八、链式编辑](#八链式编辑)
+- [九、被动学习（用户画像）](#九被动学习用户画像)
+- [十、参数速查表](#十参数速查表)
+- [十一、错误码参考](#十一错误码参考)
+- [十二、已知问题 & 注意事项](#十二已知问题--注意事项)
 
 ---
 
@@ -64,7 +67,7 @@
 | 字段 | 类型 | 何时出现 | 说明 |
 |------|------|----------|------|
 | `success` | bool | 始终 | 是否成功 |
-| `code` | int | 始终 | 5 位错误码，成功=10000，失败见[错误码参考](#八错误码参考) |
+| `code` | int | 始终 | 5 位错误码，成功=10000，失败见[错误码参考](#十一错误码参考) |
 | `data` | object | 成功时 | 业务数据 |
 | `params` | object | 失败时(可选) | 动态参数，填充前端 i18n 模板占位符，如 `{"hours":23}` |
 | `detail` | string | 失败时(可选) | 开发者排障信息，**前端默认不展示**，仅 debug 模式使用 |
@@ -118,7 +121,7 @@
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `session.session_id` | string | 会话唯一 ID |
-| `session.title` | string | 标题，首条消息后自动更新为用户第一条消息内容 |
+| `session.title` | string | 会话标题，首条用户消息前 20 字自动填充，默认'新对话' |
 | `session.msg_count` | int | 当前消息数 |
 | `session.created_at` | string | 创建时间（ISO 8601 UTC） |
 | `session.updated_at` | string | 最后更新时间 |
@@ -261,6 +264,8 @@ GET /chat/history?user_id=user_123&session_id=e9b7255a&page=1&page_size=20
 }
 ```
 
+> **注意**：「你好，我是星宝✨」为前端静态展示，API 不返回此消息。若历史记录中出现该内容，由前端本地插入。
+
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `data.data[].id` | string | 消息唯一 ID |
@@ -345,6 +350,8 @@ GET /chat/history?user_id=user_123&session_id=e9b7255a&page=1&page_size=20
 
 基于原图进行 AI 编辑美化（图生图），保持主体特征，按自然语言指令修改。
 
+> 💡 此接口为独立的美化入口。此外，`POST /chat` 也可以通过传入 `image_urls`（1 张图）并在 `message` 中包含图生图关键词（如"根据这张""暖色调"等）触发美化，详见[图片支持](#图片支持)。
+
 #### 请求
 
 ```json
@@ -403,12 +410,13 @@ GET /chat/history?user_id=user_123&session_id=e9b7255a&page=1&page_size=20
     "user_id": "user_123",
     "session_id": "e9b7255a",
     "message": "画一只卡通猫",
-    "new_session": true,
     "temperature": 0.8,
     "img_orientation": "vertical",
     "img_style": "cartoon"
 }
 ```
+
+> **已废弃**: `new_session` 参数已废弃，由后端自动判断会话状态，前端无需传入。
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
@@ -416,9 +424,9 @@ GET /chat/history?user_id=user_123&session_id=e9b7255a&page=1&page_size=20
 | `session_id` | string | ✅ | — | 会话 ID |
 | `message` | string | ✅ | — | 用户输入的文本 |
 | `img_orientation` | string | ✅ | — | 必传。图片尺寸方向：`horizontal`(1472×1104) / `square`(1328×1328) / `vertical`(1104×1472) |
-| `new_session` | bool | ❌ | false | `true`=星宝自我介绍 |
 | `temperature` | float | ❌ | 0.8 | 回复随机性：0.3=严谨、0.8=日常、1.5=创意 |
 | `img_style` | string | ❌ | 无 | 传了即触发生图并加风格前缀：`cartoon`(卡通) / `landscape`(风景) / `portrait`(人像) / `anime`(动漫)。**一键生图时 message 仍需传值**，建议文案 `"生成图片"` 或 `"一键生图"` |
+| `image_urls` | array[string] | ❌ | 无 | 用户上传的图片 URL 列表，最多 4 张。1 张+生图关键词触发图生图，多张+关键词友好拒绝 |
 
 #### 生图触发规则
 
@@ -428,6 +436,22 @@ GET /chat/history?user_id=user_123&session_id=e9b7255a&page=1&page_size=20
 2. 关键词命中（中文/英文/日文）：`画`、`generate`、`描い` 等 → 直接生图
 3. AI 自行判断：其他语言用户（德语、法语等）请求生图时，AI 在回复末尾附加 `[IMG_YES]` 标记，**服务端通过缓冲机制自动过滤，前端无需处理**
 4. 都不满足 → 纯文字对话
+
+#### 图片支持
+
+`POST /chat` 支持 `image_urls` 参数传入图片，实现多模态对话：
+
+| 场景 | image_urls | message | 行为 |
+|------|-----------|---------|------|
+| 纯文本 | 无/空 | 必填 | 原有逻辑（聊天/文生图） |
+| 仅图片 | 有 | 空 | 返回 `20005 MISSING_MESSAGE` |
+| 单图+讨论 | 1 张 | "这张怎么样" | AI 分析讨论 |
+| 单图+生图 | 1 张 | "根据这张暖色调" | 图生图（含生图关键词触发） |
+| 多图+生图 | 2~4 张 | "根据这张调整" | 友好拒绝"一次只能处理一张" |
+| 多图+讨论 | 2~4 张 | "有什么区别" | AI 多图对比讨论 |
+| 超限 | 5+ 张 | 任意 | `20012 INVALID_IMAGE_COUNT` |
+
+图生图关键词（`message` 中包含即触发）：`根据这张` `按这个` `照这个` `参照这张` `参考这张` `把这张` `这张图` `基于这张` `based on this` `from this image` `according to this` `この画像` `この写真` `これをもとに`
 
 #### SSE 响应流（正常）
 
@@ -456,7 +480,7 @@ data: {"type":"error","code":30001,"detail":"Bailian returned 500: ..."}
 data: {"type":"error","code":30003,"detail":"Image generated but upload failed"}
 ```
 
-SSE 中 `type: "error"` 时，`code` 与 JSON 接口错误码完全一致（见[错误码参考](#八错误码参考)）。
+SSE 中 `type: "error"` 时，`code` 与 JSON 接口错误码完全一致（见[错误码参考](#十一错误码参考)）。
 
 #### 流式特点
 
@@ -498,7 +522,6 @@ SSE 数据已包含中文等多字节字符（emoji、中文、日文等），**
     "user_id": "user_123",
     "session_id": "e9b7255a",
     "message": "画一只卡通猫",
-    "new_session": true,
     "temperature": 0.8,
     "img_orientation": "vertical",
     "img_style": "cartoon"
@@ -507,12 +530,14 @@ SSE 数据已包含中文等多字节字符（emoji、中文、日文等），**
 
 #### 成功响应 (`code=10000`)
 
+> **注意**：「你好，我是星宝✨」为前端静态展示，API 不返回此消息。
+
 ```json
 {
     "success": true,
     "code": 10000,
     "data": {
-        "text": "你好，我是星宝~ 这只卡通猫为你准备好啦！",
+        "text": "这只卡通猫为你准备好啦！",
         "images": [
             "http://inkstar.oss-ap-southeast-1.aliyuncs.com/chat-images/test/1784800000_abc123.png"
         ]
@@ -536,6 +561,7 @@ SSE 数据已包含中文等多字节字符（emoji、中文、日文等），**
 | 20007 | img_orientation 无效 | — | 仅 horizontal/square/vertical |
 | 20008 | img_style 无效 | — | 仅 cartoon/landscape/portrait/anime |
 | 20009 | temperature 无效 | — | 需在 0~2 之间 |
+| 20012 | image_urls 超过 4 张 | — | 最多 4 张图片 |
 | 22001 | 内容违规 | — | — |
 | 22002 | 临时封禁 | `{"hours":23}` | 累计违规 3-8 次 |
 | 22003 | 永久封禁 | — | 累计违规 9 次 |
@@ -601,9 +627,50 @@ curl -X POST https://boltstaat-agent-fwdomalzks.ap-southeast-1.fcapp.run/chat \
 
 依赖：`speech_to_text: ^6.0.0`
 
-#### 5.1.4 选择手机照片
+#### 5.1.4 选择图片 + 文本发送
 
-调相册 → 选择照片 → 前端上传至 OSS → 拿到 URL → 传给 AI
+**交互规则**：图片必须和文本一起发送，不允许纯图片提交。参考 ima.copilot 输入框交互。**最多选择 4 张图片**，超过 4 张时前端提示「一次最多选择 4 张图片」。
+
+**流程**：
+
+```
+[输入框]                    [操作]
+┌──────────────────────────────┐
+│  📎 选择图片                 │  1. 用户点击相册/拍照
+│  ┌─────┐ ┌─────┐           │
+│  │     │ │     │ ✕ ← 可删除  │  2. 图片缩略图出现在输入框内
+│  │图片1│ │图片2│           │     每张带 ✕ 按钮，点击删除
+│  └─────┘ └─────┘           │     最多 4 张，达到上限后隐藏添加按钮
+│  描述你想要的修改效果         │  3. placeholder 提示输入文本
+│                        ➤    │  4. 发送按钮置灰（仅图片无文本时不可点击）
+└──────────────────────────────┘
+```
+
+**状态机**：
+
+| 状态 | 输入框中有 | 发送按钮 | 行为 |
+|------|-----------|---------|------|
+| 空 | 无图片 无文本 | 置灰/隐藏 | 不可发送 |
+| 仅文本 | 无图片 有文本 | 可用 | `POST /chat` |
+| 仅图片 | 有图片 无文本 | **置灰** | 不可发送 |
+| 图片+文本（1张） | 1张图片 有文本 | 可用 | 含生图关键词 → `POST /chat`（图生图）；否则 → `POST /chat`（分析讨论） |
+| 图片+文本（2~4张） | 2~4张图片 有文本 | 可用 | 含生图关键词 → `POST /chat`（友好拒绝）；否则 → `POST /chat`（多图对比讨论） |
+| 图片超限 | 5+张图片 | — | 前端拦截，提示「一次最多选择 4 张图片」 |
+
+**API 调用**：
+
+```
+POST /image/enhance
+{
+  "user_id": "...",
+  "image_url": "<OSS URL>",
+  "prompt": "用户输入的文本（必填）"
+}
+```
+
+> ⚠️ prompt 为**必填**字段，不传返回 `20005 MISSING_MESSAGE`。
+
+**图片上传**：选择后立即上传至 OSS 并获取 URL，但先不调 API——等用户输入文本后点击发送时一并提交。
 
 #### 5.1.5 拍照
 
@@ -619,6 +686,8 @@ curl -X POST https://boltstaat-agent-fwdomalzks.ap-southeast-1.fcapp.run/chat \
 | 会话列表 | `GET /session/list` | 历史对话列表页，按时间倒序 |
 | 加载历史 | `GET /chat/history` | 用户点进某个会话后，拉取全部消息渲染 |
 | 删除会话 | `DELETE /session` | 滑动删除或长按删除 |
+
+> **会话上限**：每个用户最多创建 20 个会话，超限时 `POST /session/new` 返回 `20013 MAX_SESSIONS_REACHED`。
 
 ---
 
@@ -679,7 +748,9 @@ controller.abort(); // 用户点击停止
 
 #### 5.4.2 图片美化
 
-用户选图 + 输入美化指令 → `POST /image/enhance`
+用户选图 → 输入美化指令（如"暖色调""虚化背景"）→ 发送按钮可用 → `POST /image/enhance`
+
+> prompt 必填，图片不能单独发送——与 5.1.4 交互规则一致。
 
 #### 5.4.3 长按图片
 
@@ -963,9 +1034,14 @@ function handleError(code, params, detail) {
 ```
 App 启动 → POST /session/new → 拿到 session_id
     ↓
-用户输入（键盘/语音/图片） → POST /chat → 
+用户输入（键盘/语音/图片[1~4张]） → POST /chat → 
     方式 A：SSE 逐字渲染 + 展示 images
     方式 B：打字机渲染 text + 展示 images
+    ↓
+    ├─ 单图+生图关键词 → 图生图（美化）
+    ├─ 单图+讨论 → AI 分析讨论
+    ├─ 多图+讨论 → AI 多图对比
+    └─ 多图+生图关键词 → 友好拒绝
     ↓
 用户长按图片 → 下载或投屏
     ↓
@@ -980,6 +1056,57 @@ App 启动 → POST /session/new → 拿到 session_id
 
 ---
 
+## 七、Skill 系统
+
+### 7.1 概述
+
+Skill 系统是 StarBao 的结构化上下文引擎，通过**渐进式披露（Progressive Disclosure）**机制在 AI 对话中按需注入专业知识、约束规则和工作流程，提升对话质量和专业度。
+
+- **16 个预置 Skill**，覆盖图片生成、美化、摄影、人像、风景、动漫、Logo设计、创意写作、故事、翻译、编程、社交媒体、配色、UI/UX、产品电商、通用问答
+- **4 语触发**：中文、英文、日文、繁体中文关键词+正则+上下文链自动匹配
+- **合并注入**：多 Skill 命中时，主 Skill 主导决策，辅 Skill 补充约束
+- **用户偏好记忆**：支持"记住xxx""忘记偏好"命令，OSS 持久化跨会话共享
+
+### 7.2 Skill 列表
+
+| Skill ID | 名称 | 触发示例 |
+|----------|------|----------|
+| image_generation | AI图片生成 | "画一只猫""generate an image" |
+| image_editing | 图片美化 | "暖色调""虚化背景" |
+| photography | 摄影指导 | "如何拍夜景""光圈设置" |
+| portrait | 人像设计 | "证件照""角色设计" |
+| landscape | 风景场景 | "山水画""日落海滩" |
+| anime | 动漫二次元 | "动漫风""赛璐璐" |
+| logo_design | Logo设计 | "设计一个logo""品牌标志" |
+| creative_writing | 创意写作 | "广告文案""slogan" |
+| storytelling | 故事创作 | "写一个故事""世界观" |
+| translation | 多语言翻译 | "翻译成日语""translate" |
+| coding | 编程技术 | "写函数""debug" |
+| social_media | 社交媒体 | "小红书文案""抖音" |
+| color_expert | 色彩配色 | "莫兰迪色系""配色" |
+| ui_ux | UI/UX设计 | "界面设计""按钮样式" |
+| product_photo | 产品电商图 | "白底图""电商主图" |
+| general | 通用问答 | 兜底 |
+
+### 7.3 偏好命令
+
+| 命令 | 示例 | 效果 |
+|------|------|------|
+| 记住偏好 | "记住 我喜欢暖色调" | 持久化到 OSS，后续对话自动注入 |
+| 忘记偏好 | "忘记偏好" | 清除所有偏好 |
+
+### 6.4 架构
+
+```
+用户消息 → TriggerMatcher → SkillResolver → PromptBuilder → AI
+              ↓                   ↓
+         关键词/正则/上下文链    方案B合并(主+辅)
+              ↓
+         用户偏好(OSS) + 会话状态(OSS)
+```
+
+---
+
 ## 七、参数速查表
 
 ### /chat 全部参数（流式 + 非流式通用）
@@ -988,11 +1115,13 @@ App 启动 → POST /session/new → 拿到 session_id
 |------|------|------|--------|------|
 | `user_id` | string | ✅ | — | — |
 | `session_id` | string | ✅ | — | — |
-| `message` | string | ✅ | — | — |
+| `message` | string | ✅ | — | 用户输入的文本内容 |
 | `img_orientation` | string | ✅ | — | `horizontal`(1472×1104) / `square`(1328×1328) / `vertical`(1104×1472)。**前端必传** |
-| `new_session` | bool | ❌ | false | `true`=星宝自我介绍 |
 | `temperature` | float | ❌ | 0.8 | 0.3 严谨 / 0.8 日常 / 1.5 创意 |
-| `img_style` | string | ❌ | 无 | 传了触发一键生图：`cartoon`(卡通)/`landscape`(风景)/`portrait`(人像)/`anime`(动漫)。**message 仍必填**，建议拼接风格名如 `"生成图片-卡通"` |
+| `img_style` | string | ❌ | 无 | 传了触发一键生图并加风格前缀：`cartoon`(卡通)/`landscape`(风景)/`portrait`(人像)/`anime`(动漫)。**message 仍必填**，建议拼接风格名如 `"生成图片-卡通"` |
+| `image_urls` | array[string] | ❌ | 无 | 用户上传的图片 URL 列表，最多 4 张。1 张+生图关键词触发图生图，多张+关键词友好拒绝 |
+
+> **已废弃**: `new_session` 参数已废弃，由后端自动判断会话状态，前端无需传入。
 
 ### 生图触发规则
 
@@ -1036,6 +1165,8 @@ App 启动 → POST /session/new → 拿到 session_id
 | 20009 | `INVALID_TEMPERATURE` | temperature 超出 0~2 范围 | — | 前端滑块/输入框加范围限制 |
 | 20010 | `MISSING_IMAGE_URL` | /image/enhance 缺 image_url | — | Toast「请提供图片」 |
 | 20011 | `MISSING_MESSAGE_ID` | 删除消息缺 message_id | — | Toast，检查消息数据 |
+| 20012 | `INVALID_IMAGE_COUNT` | image_urls 超过 4 张 | — | Toast「一次最多处理 4 张图片」 |
+| 20013 | `MAX_SESSIONS_REACHED` | 会话数量已达上限（20个） | — | Toast 提示，引导用户清理旧会话 |
 
 ### 21xxx — 认证 / 授权
 
@@ -1103,8 +1234,7 @@ App 启动 → POST /session/new → 拿到 session_id
 
 ### 其他注意事项
 
-- 文本和图片均经过**阿里云内容安全审核**（国内站 `green.cn-shanghai.aliyuncs.com`），违规直接拦截
-  - 百炼国际站 `dashscope-intl` 不支持 `X-DashScope-DataInspection` 安全护栏，故改用阿里云内容安全服务替代
+- 文本和图片均经过**阿里云内容安全审核**（国内站 `green.cn-shanghai.aliyuncs.com`），违规�cope-DataInspection` 安全护栏，故改用阿里云内容安全服务替代
 - 每个会话最多 **500 条**消息，超量自动清理最早记录
 - 每次对话携带最近 **20 条**历史给 AI 作为上下文
 
