@@ -11,12 +11,16 @@
 
   <view class="preview-stage">
     <!-- 多图轮播（2026-07-24 恢复 swiper）：左右滑动切换图片，下方小圆点指示当前索引。
-         触摸交由上层 .edit-layer 的手势分流驱动（swiper 只负责切图时的滑动过场）。 -->
-    <swiper wx:if="{{imageCount}}" class="preview-swiper" current="{{activeIndex}}" duration="300" bindchange="onSwiperChange">
+         触摸交由上层 .edit-layer 的手势分流驱动（swiper 只负责切图时的滑动过场）。
+         2026-07-25 两处修正：
+         ① 编辑层起来时整条 swiper 隐藏（is-hidden，visibility 而非 wx:if，避免销毁重建导致
+            current 复位/闪烁）——否则横向取景时取景框上下会露出底层那张竖向图（用户反馈①）；
+         ② 图片源优先取 previewSrc（切图前烘焙的「所见即所得」缓存），过场里不再闪回未裁剪原图。 -->
+    <swiper wx:if="{{imageCount}}" class="preview-swiper {{editing && !sliding ? 'is-hidden' : ''}}" current="{{activeIndex}}" duration="300" bindchange="onSwiperChange">
       <swiper-item wx:for="{{images}}" wx:key="index">
         <view class="photo-wrap" style="{{item.wrapStyle || deviceWrapStyle}}">
-          <image wx:if="{{item.tempFilePath || item.url}}" class="photo-img"
-                 style="{{item.imgStyle || ''}}" src="{{item.tempFilePath || item.url}}" mode="aspectFill"></image>
+          <image wx:if="{{item.previewSrc || item.tempFilePath || item.url}}" class="photo-img"
+                 style="{{item.imgStyle || ''}}" src="{{item.previewSrc || item.tempFilePath || item.url}}" mode="aspectFill"></image>
           <view wx:else class="photo-img photo-placeholder">图片占位</view>
         </view>
       </swiper-item>
@@ -68,8 +72,8 @@
     </view>
   </view>
 
-  <!-- 手势说明（2026-07-24 新增，放竖/横/原下方） -->
-  <view class="gesture-tip" wx:if="{{imageCount}}">长按2秒后可拖拽图片、双指可缩放与旋转图片</view>
+  <!-- 手势说明（2026-07-24 新增，放竖/横/原下方；2026-07-25 长按阈值 2s→1s，文案同步） -->
+  <view class="gesture-tip" wx:if="{{imageCount}}">长按1秒后可拖拽图片、双指可缩放与旋转图片</view>
 
   <view class="preview-submit {{projecting ? 'is-disabled' : ''}}" hover-class="none" bindtap="confirmProjection">{{projecting ? '投屏中' : '开始投屏'}}</view>
 

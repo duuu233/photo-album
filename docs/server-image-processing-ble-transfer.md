@@ -10,7 +10,8 @@
   两条路径，便于单独验证「token 能不能取到、长什么样」。纯网络请求、不依赖蓝牙连接；返回归一化逻辑
   与 `dithering.js normalizeAuthToken` 一致（那份未导出，调试台内复制一份）。关联：`debug.js`
   （`cmdFetchAuthToken`/`copyAuthToken`/`normalizeAuthToken`）、`debug.wxml`/`debug.wxss`、
-  `utils/api.js`（`getXTYUserToken`）。仅小程序。
+  `utils/api.js`（`getXTYUserToken`）。**2026-07-25 已同步 Flutter**（`ble_debug_page.dart` 的
+  `_tokenCard`/`_cmdFetchAuthToken`/`_copyAuthToken`/`_normalizeAuthToken`，同页底部另加 AI 入口暗门）。
 - **2026-07-24（二）**：**seekink 抖动接口域名升 https**。由 `http://cloud.seekink.cn:8091` 迁到
   `https://cloud.seekink.cn:8443`（对方启用 SSL）。仅换 host+scheme+端口，路径/参数/请求头/鉴权不变。
   关联：小程序 `utils/dithering.js`（`DITHERING_API`）、Flutter `lib/src/network/dithering_api.dart`（`_endpoint`）、
@@ -31,7 +32,9 @@
   records.js imgBle 门槛/透传、result.js `isRetry`/`_retryImageInFlight`/`addRetryRecord`/
   `downloadFrameBin`/首张预取 `firstDirect`、preview.js `cropW||imgBle` 保留判定（改只看 cropW）。
   关联：`records.js`、`result.js`、`preview.js`、`utils/api.js`（addUserProductImgRecord 已无调用方，
-  方法保留）、`docs/接口清单.md`。仅小程序，Flutter 待同步。
+  方法保留）、`docs/接口清单.md`。**Flutter 侧 07-23 只改了服务层、页面层残留未清（当时无 SDK 未编译，
+  项目实际处于编译不过的状态）；2026-07-25 已补齐**：`cast_management_figma_page` 的再次投屏门槛改为
+  「有服务器图片地址」、删掉 imgBle 直传回退分支，`cast_preview_page` 的 recast* 参数一并移除。
 - **2026-07-23**：**抖动接口鉴权由写死联调 token 改为接口动态获取**：新增
   `GET /Client/Basic/getXTYUserToken`（api.js），`utils/dithering.js` 删除 `DITHERING_AUTH` 常量，
   请求头改 `Authorization: Bearer+空格+动态token`。策略：`ensureAuthToken` 会话级内存缓存
@@ -39,7 +42,8 @@
   `prefetchAuthToken` 前置预热（构图期间取好，出帧零等待）+ 收到 401/业务 token 类报错时清缓存
   刷新重试一次（长会话过期自愈，只刷一次防打转）。07-22 遗留的「⚠️token 写死待换」就此关闭。
   ⚠️getXTYUserToken 返回字段形态为假设待联调。关联：`utils/api.js`、`utils/dithering.js`、
-  `subpackages/projection/preview/preview.js`、`docs/接口清单.md`。仅小程序，Flutter 待同步。
+  `subpackages/projection/preview/preview.js`、`docs/接口清单.md`。（Flutter 已于 07-23/07-24 同步，
+  含 401 自愈 isNewLogin 与预览页 token 预热。）
 - **2026-07-22**：**正常投屏的设备帧改由第三方 seekink 抖动接口生成，不再下载后端转码的 .bin**
   （仅小程序，Flutter 待同步）。result.js `acquireFrame` 正常链路改为两路网络并行：
   - **设备帧**：预览处理后的设备分辨率图 → `compressForUpload` 统一压缩（已是设备尺寸则原样通过）→

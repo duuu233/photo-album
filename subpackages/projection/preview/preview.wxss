@@ -41,6 +41,13 @@
   height: 100%;
 }
 
+/* 编辑层起来时把底层轮播整条藏掉（2026-07-25）：横向取景的取景框比竖向矮，
+   不藏的话框上下会露出底层那张竖向比例的图。用 visibility 而不是 wx:if/display，
+   保留布局与已加载的图，切图过场时直接显形，不会重建 swiper（重建会复位 current 并闪一下）。 */
+.preview-swiper.is-hidden {
+  visibility: hidden;
+}
+
 .preview-swiper swiper-item {
   display: flex;
   align-items: center;
@@ -154,18 +161,24 @@
   display: flex;
   justify-content: space-around;
   margin: 28rpx 46rpx 0;
-  padding: 28rpx 0;
+  /* 2026-07-25：竖/横/原的点击区改由 .tool 自身撑（padding），这里收窄到 8rpx，
+     卡片总高与改动前基本持平，但可点范围横向扩到近 1/3 栏宽。 */
+  padding: 8rpx 0;
   background: rgba(255, 255, 255, 0.4);
   border: 2rpx solid rgba(255, 255, 255, 0.86);
   border-radius: 40rpx;
   box-shadow: 0 24rpx 54rpx rgba(121, 145, 178, 0.13);
 }
 
+/* 点击区（2026-07-25 用户反馈②「点击区域放大一点」）：小程序的可点范围就是元素盒子，
+   所以直接给 .tool 加 padding 把盒子撑大（图标/文字视觉位置不变），
+   20rpx 上下 + 56rpx 左右 ≈ 每颗按钮 156rpx 宽 × 128rpx 高，远超之前的图标+文字自身尺寸。 */
 .tool {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 14rpx;
+  padding: 20rpx 56rpx;
   color: #777e88;
   font-size: 24rpx;
 }

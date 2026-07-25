@@ -27,7 +27,8 @@ const MAX_ZOOM_FACTOR = 8
 
 // 长按拖拽（2026-07-24，仿苹果相册长按取图）：单指按住 LONG_PRESS_MS 毫秒且几乎不动 →
 // 进入拖拽态（伴随图片放大回弹 + 震动反馈），此后单指移动才平移图片，松手即结束。
-const LONG_PRESS_MS = 2000
+// 2026-07-25：2s 太久（用户反馈按着像没反应），改 1s；改这里记得同步 wxml 的手势说明文案。
+const LONG_PRESS_MS = 1000
 // 长按判定的位移容差(px)：按住期间移动超过它，即认定用户在「左右滑动切图」，取消长按计时。
 const MOVE_CANCEL_PX = 12
 // 左右滑动切图的提交阈值(px)：单指横向滑动累计超过它，松手切到上一张/下一张。
@@ -127,6 +128,7 @@ Page({
     this._pinch = null // 双指基准
     this._dragAnchor = null // 拖拽起手点 + 基准变换
     this._swipeDx = 0 // 本次单指横向累计位移（松手判定切图方向）
+    this._switching = false // 切图在途锁（切之前可能要先烘焙预览缓存，防连续快滑排队）
     this._lpTimer = null // 长按计时器
     this._pickupTimer = null // 「放大回弹」动画清除计时器
     this._slideTimer = null // 切图滑动过场结束后重建编辑层的计时器
@@ -676,13 +678,33 @@ Page({
     this.switchImage(idx)
   },
 
-  // 松手时按横向滑动量切到上/下一张（swiper 做滑动过场）；向右滑 → 上一张，向左滑 → 下一张
+  // 松手时按横向滑动量切到上/下一张（swiper 做滑动过场）；向右滑 → 上一张，向左滑 → 下一张。
+  // 2026-07-25：切之前先把当前图烘焙进预览缓存（bakePreviewForActive），过场里显示的就是
+  // 用户刚构好的图，不再闪回未裁剪的原图；没编辑过的图不烘焙、直接无缝切。
   _commitSwipe(dx) {
     if (this.data.imageCount <= 1 || Math.abs(dx) < SWIPE_COMMIT_PX) {
       return
     }
     const dir = dx > 0 ? -1 : 1
-    this.switchImage(this.data.activeIndex + dir)
+    const target = this.data.activeIndex + dir
+    if (target < 0 || target >= this.data.images.length) {
+      return
+    }
+    this._switchWithBake(target)
+  },
+
+  // 烘焙（如需要）后再切图。烘焙期间加在途锁，避免连续快滑排队出图。
+  async _switchWithBake(index) {
+    if (this._switching) {
+      return
+    }
+    this._switching = true
+    try {
+      await this.bakePreviewForActive()
+    } finally {
+      this._switching = false
+    }
+    this.switchImage(index)
   },
 
   // 图右上角悬浮按钮：在当前角度基础上顺时针 +90°。
@@ -722,6 +744,9 @@ Page({
         updated.cropH = 0
         updated.wrapStyle = ''
         updated.imgStyle = ''
+        // 连同滑动切图的预览缓存一并作废，否则过场里还会闪出还原前的构图
+        updated.previewSrc = ''
+        updated._bakedKey = ''
         next[activeIndex] = updated
         delete this._states[activeIndex]
         this._edit = null
@@ -781,6 +806,17 @@ Page({
   //   · 横向：先把整幅构图转 EXPORT_ROTATE_DEG 再画（见常量注释），k 按「取景框宽 → 画布高」算。
   // 失败 resolve 原图（不阻断投屏），console.warn 留痕。
   bakeEditedImage(image, g) {
+    return this._bakeToFile(g)
+      .then((tempFilePath) => this._applyBakedFile(image, g, tempFilePath))
+      .catch((err) => {
+        console.warn('[预览] 编辑烘焙失败，该图回退原图投屏', err)
+        return image
+      })
+  },
+
+  // 只出文件：把取景框内所见画进「竖向设备物理分辨率」画布并导出临时文件（几何见 bakeEditedImage 注释）。
+  // 正式投屏出图与「滑动切图前的预览缓存」共用这一份，保证两者像素完全一致。
+  _bakeToFile(g) {
     const dev = this.getDeviceCropSize()
     const outW = dev.width
     const outH = dev.height
@@ -802,28 +838,104 @@ Page({
       ctx.scale(s, s)
       ctx.drawImage(img, -g.natW / 2, -g.natH / 2, g.natW, g.natH)
       ctx.restore()
-    }).then((tempFilePath) => {
-      const updated = Object.assign({}, image)
-      // 首次落文件时备份原图源，供「原图」还原
-      if (!updated._origSrc) {
-        updated._origSrc = updated.tempFilePath || updated.url || ''
-      }
-      updated.tempFilePath = tempFilePath
-      // cropW/cropH 记的是**文件真实像素**（设备物理分辨率，竖向），别改成可视区域尺寸。
-      // 展示按取景方向铺；横向成图是转过 270° 的竖向文件，要再给图片元素一个反向旋转
-      // 把它摆正（见 computeRotatedImgStyle），保证 fallback 展示仍是用户构图的样子。
-      const view = this.getViewSize(g.orientation)
-      updated.cropW = outW
-      updated.cropH = outH
-      updated.wrapStyle = this.computeWrapStyle(view.width, view.height)
-      updated.imgStyle = landscape
-        ? this.computeRotatedImgStyle(view.width, view.height)
-        : ''
-      return updated
-    }).catch((err) => {
-      console.warn('[预览] 编辑烘焙失败，该图回退原图投屏', err)
-      return image
     })
+  },
+
+  // 把烘焙产物落到 image 上（正式投屏用）：换图片源 + 记尺寸 + 算展示样式。
+  _applyBakedFile(image, g, tempFilePath) {
+    const dev = this.getDeviceCropSize()
+    const view = this.getViewSize(g.orientation)
+    const updated = Object.assign({}, image)
+    // 首次落文件时备份原图源，供「原图」还原
+    if (!updated._origSrc) {
+      updated._origSrc = updated.tempFilePath || updated.url || ''
+    }
+    updated.tempFilePath = tempFilePath
+    // cropW/cropH 记的是**文件真实像素**（设备物理分辨率，竖向），别改成可视区域尺寸。
+    // 展示按取景方向铺；横向成图是转过 270° 的竖向文件，要再给图片元素一个反向旋转
+    // 把它摆正（见 computeRotatedImgStyle），保证 fallback 展示仍是用户构图的样子。
+    updated.cropW = dev.width
+    updated.cropH = dev.height
+    updated.wrapStyle = this.computeWrapStyle(view.width, view.height)
+    updated.imgStyle = g.orientation === ORIENT_LANDSCAPE
+      ? this.computeRotatedImgStyle(view.width, view.height)
+      : ''
+    // 预览缓存已并入正式产物，清掉避免再被当缓存复用（此时 tempFilePath 已是烘焙图）
+    updated.previewSrc = ''
+    updated._bakedKey = ''
+    return updated
+  },
+
+  // 一组编辑状态的指纹：变了才需要重新烘焙（滑动切图的预览缓存、投屏出图复用都靠它判定）。
+  _editSignature(g) {
+    return [
+      g.src,
+      g.orientation,
+      g.zoom.toFixed(4),
+      g.tx.toFixed(2),
+      g.ty.toFixed(2),
+      g.angle.toFixed(2),
+      g.frameW.toFixed(2),
+      g.baseScale.toFixed(6)
+    ].join('|')
+  },
+
+  // 切图前把当前图「按取景框内所见」烘焙成预览缓存（previewSrc），让 swiper 过场里显示的
+  // 就是用户刚刚构好的图（2026-07-25 修「左右滑动会闪回未裁剪原图」）。
+  //   · 没编辑/没动过 → 不烘焙（swiper 显示原图，与编辑层所见本就一致），顺手清掉过期缓存；
+  //   · 编辑过且指纹变了 → showLoading 后烘焙一次，结果存 previewSrc（**不动 tempFilePath**，
+  //     原图仍是编辑的基准，切回来能继续拖，也避免横向成图被当原图再转一次）。
+  // 缓存指纹与投屏出图共用，prepareProjectionImages 命中即直接复用，不再重复出图。
+  async bakePreviewForActive() {
+    const index = this.data.activeIndex
+    const g = this._edit
+    const image = this.data.images[index]
+    if (!image) {
+      return
+    }
+    if (!g || isPristineEdit(g)) {
+      // 还原/回到未编辑态：清掉可能残留的旧缓存，切图时露出原图
+      if (image.previewSrc) {
+        this._updateImageAt(index, { previewSrc: '', _bakedKey: '', wrapStyle: '', imgStyle: '' })
+      }
+      return
+    }
+    const key = this._editSignature(g)
+    if (image._bakedKey === key && image.previewSrc) {
+      return // 缓存仍新鲜
+    }
+    wx.showLoading({ title: '处理中', mask: true })
+    try {
+      const filePath = await this._bakeToFile(g)
+      const view = this.getViewSize(g.orientation)
+      this._updateImageAt(index, {
+        previewSrc: filePath,
+        _bakedKey: key,
+        wrapStyle: this.computeWrapStyle(view.width, view.height),
+        imgStyle: g.orientation === ORIENT_LANDSCAPE
+          ? this.computeRotatedImgStyle(view.width, view.height)
+          : ''
+      })
+    } catch (err) {
+      // 烘焙失败不挡切图：过场里退回原图显示（会有一次视觉跳变，但功能不受影响）
+      console.warn('[预览] 切图前预览烘焙失败，过场回退原图', err)
+    } finally {
+      wx.hideLoading()
+    }
+  },
+
+  // 局部更新某张图片并同步回 Storage（保持 images/activeImage 一致）
+  _updateImageAt(index, patch) {
+    const next = this.data.images.slice()
+    if (!next[index]) {
+      return
+    }
+    next[index] = Object.assign({}, next[index], patch)
+    this.setData({
+      images: next,
+      activeImage: index === this.data.activeIndex ? next[index] : this.data.activeImage
+    })
+    this.persistPending(next)
   },
 
   // 把一张「没经用户编辑」的图，按设备（竖向）比例做 aspectFill 中心裁切并导出为新临时文件。
@@ -910,7 +1022,12 @@ Page({
       const state = (i === activeIndex && this._edit) ? this._edit : this._states[i]
       const edited = state && state.src === src && !isPristineEdit(state)
       if (edited) {
-        result.push(await this.bakeEditedImage(image, state))
+        // 滑动切图时已按同一组几何烘焙过、且之后没再动过 → 直接复用那份缓存，不重复出图
+        if (image.previewSrc && image._bakedKey === this._editSignature(state)) {
+          result.push(this._applyBakedFile(image, state, image.previewSrc))
+        } else {
+          result.push(await this.bakeEditedImage(image, state))
+        }
       } else if (image && image.cropW) {
         result.push(image)
       } else {
