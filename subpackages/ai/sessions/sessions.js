@@ -8,6 +8,10 @@ const toast = require('../../../utils/toast')
 
 const PAGE_SIZE = 20
 
+// 每用户会话数上限（API 文档 v1.0.4 §5.2；超限 POST /session/new 回 20013）。
+// 本页已经握着完整列表，先在本地拦一道，省掉一次注定失败的往返，也省得用户跳回聊天页才看到报错。
+const MAX_SESSIONS = 20
+
 // ISO 时间 → 列表友好展示：今天显示 HH:mm，其余显示 MM-DD HH:mm
 function formatTime(iso) {
   const date = new Date(iso)
@@ -146,8 +150,14 @@ Page({
     })
   },
 
-  // 新建会话：回聊天页并重置为默认界面
+  // 新建会话：回聊天页并重置为默认界面。
+  // 已达上限就地提示（用户正好在能删的页面上），不跳回去等接口回 20013。
   createNew() {
+    if (this._all.length >= MAX_SESSIONS) {
+      // 本地拦下的、不是接口回的，按来源前缀约定用 warn() 走「小程序-」
+      toast.warn({ title: aiI18n.textForCode(20013), icon: 'none' })
+      return
+    }
     wx.setStorageSync('aiOpenSession', { newSession: true })
     wx.navigateBack()
   }

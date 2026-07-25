@@ -1,4 +1,4 @@
-// BoltStar AI（星宝）第三方接口层。文档：assets/ai/BoltStar-API-Doc-v2-1.0.3.md
+// BoltStar AI（星宝）第三方接口层。文档：assets/ai/BoltStar-API-Doc-v2-1.0.4.md（当前对接版本）
 //
 // 与 utils/request.js 分开的原因：AI 服务是独立的第三方（阿里云 FC），Base URL、响应结构
 // （success/code/data/params/detail）、错误码体系都与 BoltFox 后端不同，公共参数（token/language 头）
@@ -77,7 +77,10 @@ module.exports = {
   NON_STREAM_BASE_URL,
   getAiUserId,
 
-  // POST /session/new — 新建会话，resolve session 对象 { session_id, title, ... }
+  // POST /session/new — 新建会话，resolve session 对象 { session_id, title, ... }。
+  // title 默认「新对话」，后端在首条用户消息后自动填成该消息前 20 字（v1.0.4 §二）。
+  // ⚠️ 每个用户最多 20 个会话（v1.0.4 §5.2），超限 reject code=20013 MAX_SESSIONS_REACHED，
+  // 由调用方传 onSessionLimit 引导用户去会话列表删旧的（见 ai-i18n.handleAiError）。
   newSession() {
     return aiRequest({
       url: '/session/new',
@@ -142,10 +145,14 @@ module.exports = {
 
   // POST /chat（非流式）— 对话/生图/图文多模态。resolve { text, images }。
   // params: { sessionId, message, imgOrientation(必传: vertical/horizontal/square),
-  //           imgStyle(可选: cartoon/landscape/portrait/anime 触发一键生图), newSession, temperature,
-  //           imageUrls(可选: 图片 URL 数组，最多 4 张；文档 v1.0.3 §二「图片支持」——
+  //           imgStyle(可选: cartoon/landscape/portrait/anime 触发一键生图), temperature,
+  //           imageUrls(可选: 图片 URL 数组，最多 4 张；文档 §二「图片支持」——
   //             1 张+生图关键词=图生图美化 / 多张+关键词=友好拒绝 / 其余=AI 分析讨论，均由服务端分流) }
   // 返回的 promise 带 .abort()，页面「停止生成」时调用。
+  //
+  // ⚠️ v1.0.4 起 `new_session` 参数**已废弃**：会话是不是新的由后端自己判断，前端不再传。
+  // 同时「你好，我是星宝✨」这句自我介绍接口也不再返回了，它是纯前端静态展示
+  //（chat.wxml 的 .welcome 区块，仅在 messages 为空时显示），所以 text 里不会再带招呼语前缀。
   chat(params) {
     const data = {
       user_id: getAiUserId(),
@@ -160,9 +167,6 @@ module.exports = {
     // 超 4 张服务端回 20012，前端已在选图时拦截，这里不再截断。
     if (Array.isArray(params.imageUrls) && params.imageUrls.length) {
       data.image_urls = params.imageUrls
-    }
-    if (params.newSession) {
-      data.new_session = true
     }
     if (params.temperature !== undefined) {
       data.temperature = params.temperature

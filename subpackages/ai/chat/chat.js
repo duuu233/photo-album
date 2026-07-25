@@ -1,5 +1,5 @@
 // AI 对话（星宝）主界面 —— 需求见 assets/ai/支付&ai&官方图库.docx「一、AI对话模块」，
-// 接口见 assets/ai/BoltStar-API-Doc-v2-1.0.3.md（小程序只能走非流式 + 客户端打字机）。
+// 接口见 assets/ai/BoltStar-API-Doc-v2-1.0.4.md（当前对接版本；小程序只能走非流式 + 客户端打字机）。
 // UI 未出图，图标一律用色块占位（icon-block），后续换图只动 wxml/wxss。
 //
 // v1.0.3 图文多模态（§二「图片支持」/§5.1.4）：图片选好后以缩略图停在输入框内（每张可删、最多 4 张），
@@ -23,6 +23,10 @@ const TYPE_INTERVAL_MS = 30 // 打字机 30ms/字（文档 §6.4）
 
 // 图文多模态一次最多带 4 张图（文档 v1.0.3 §二 image_urls 上限；超出服务端回 20012）
 const MAX_IMAGES = 4
+
+// 会话标题截断长度：v1.0.4 §二「首条用户消息前 20 字自动填充，默认'新对话'」。
+// 前端本地同步标题时按同一规则截，避免列表页重拉后标题突然变短。
+const SESSION_TITLE_MAX = 20
 
 // 一键生图风格（需求文案：漫画/风景/肖像/动漫；API 值：cartoon/landscape/portrait/anime）
 const STYLE_OPTIONS = [
@@ -157,7 +161,11 @@ Page({
       this.setData({ sessionId: session.session_id, sessionTitle: session.title || '新对话' })
     } catch (error) {
       // 建会话失败不阻塞界面（招呼语照常显示），发送时会再兜底重建
-      aiI18n.handleAiError(error, { onRetry: () => this.createSession() })
+      aiI18n.handleAiError(error, {
+        onRetry: () => this.createSession(),
+        // 20013 会话数已达上限（20 个，v1.0.4 §5.2）：重试没用，把人送到会话列表页删旧的
+        onSessionLimit: () => this.goSessions()
+      })
     }
   },
 
@@ -261,8 +269,11 @@ Page({
     userMsgs.push({ id: ++this._uid, role: 'user', kind: 'text', content: message })
     this.setData({
       messages: this.data.messages.concat(userMsgs),
-      // 首条消息后标题自动变为首条内容（与后端 session.title 行为一致，本地同步免重拉）
-      sessionTitle: this.data.sessionTitle === '新对话' ? message : this.data.sessionTitle
+      // 首条消息后标题自动变为首条内容（与后端 session.title 行为一致，本地同步免重拉）。
+      // v1.0.4 §二明确后端只取**前 20 字**，这里同样截断，免得列表页重拉后标题突然变短对不上。
+      sessionTitle: this.data.sessionTitle === '新对话'
+        ? message.slice(0, SESSION_TITLE_MAX)
+        : this.data.sessionTitle
     })
     this.scrollToBottom()
     this._dispatchChat(message, styleKey, urls)
