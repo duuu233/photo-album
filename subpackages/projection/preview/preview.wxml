@@ -12,11 +12,14 @@
   <view class="preview-stage">
     <!-- 多图轮播（2026-07-24 恢复 swiper）：左右滑动切换图片，下方小圆点指示当前索引。
          触摸交由上层 .edit-layer 的手势分流驱动（swiper 只负责切图时的滑动过场）。
-         2026-07-25 两处修正：
+         2026-07-25 三处修正：
          ① 编辑层起来时整条 swiper 隐藏（is-hidden，visibility 而非 wx:if，避免销毁重建导致
             current 复位/闪烁）——否则横向取景时取景框上下会露出底层那张竖向图（用户反馈①）；
-         ② 图片源优先取 previewSrc（切图前烘焙的「所见即所得」缓存），过场里不再闪回未裁剪原图。 -->
-    <swiper wx:if="{{imageCount}}" class="preview-swiper {{editing && !sliding ? 'is-hidden' : ''}}" current="{{activeIndex}}" duration="300" bindchange="onSwiperChange">
+         ② 图片源优先取 previewSrc（切图前烘焙的「所见即所得」缓存），过场里不再闪回未裁剪原图；
+         ③ 隐藏时机改为「编辑层图片已解码(editReady)」而不是「编辑层已挂载(editing)」——原先两者
+            同一次 setData 完成，swiper 已经藏了、编辑层的 <image> 还没画出来，中间就露出 .edit-clip
+            的灰底，看着就是「闪一下像重新加载」。现在交接期间底层 swiper 一直顶着。 -->
+    <swiper wx:if="{{imageCount}}" class="preview-swiper {{editing && !sliding && editReady ? 'is-hidden' : ''}}" current="{{activeIndex}}" duration="300" bindchange="onSwiperChange">
       <swiper-item wx:for="{{images}}" wx:key="index">
         <view class="photo-wrap" style="{{item.wrapStyle || deviceWrapStyle}}">
           <image wx:if="{{item.previewSrc || item.tempFilePath || item.url}}" class="photo-img"
@@ -29,10 +32,14 @@
 
     <!-- 常驻编辑层（catch 全部触摸，在 JS 里分流）：
          · 单指快速左右滑 → 切图（swiper 过场）；
-         · 单指长按 2s（伴放大回弹 + 震动，仿苹果相册）→ 进入拖拽，之后单指平移图片；
+         · 单指长按 1s（伴放大回弹 + 震动，仿苹果相册）→ 进入拖拽，之后单指平移图片；
          · 双指 → 缩放 + 旋转（随时可用，不需长按）。
-         切图动画期间(sliding) 隐藏本层，露出 swiper 做轮播过场。 -->
-    <view wx:if="{{editing && !sliding}}" class="edit-layer"
+         2026-07-25 修「来回切图闪一下」：本层**不再用 wx:if 销毁重建**——一销毁，里面的 <image>
+         节点跟着没了，切回来必须重新下载解码，就是用户看到的「像重新加载」。改为整层常驻，
+         切图过场(sliding)/新图还没解码完(!editReady) 时只加 is-hidden（透明 + 不吃触摸），
+         让底层 swiper 顶着画面；等 bindload 到了再显形。 -->
+    <view wx:if="{{imageCount && editSrc}}"
+          class="edit-layer {{editing && !sliding && editReady ? '' : 'is-hidden'}}"
           catchtouchstart="onEditTouchStart"
           catchtouchmove="onEditTouchMove"
           catchtouchend="onEditTouchEnd"
@@ -40,12 +47,13 @@
       <view class="edit-clip {{editPickup ? 'is-pickup' : ''}} {{dragging ? 'is-dragging' : ''}}"
             style="left:{{frame.left}}px; top:{{frame.top}}px; width:{{frame.width}}px; height:{{frame.height}}px;">
         <image class="edit-image" src="{{editSrc}}" mode="scaleToFill"
+               bindload="onEditImageLoad" binderror="onEditImageError"
                style="left:{{editImgLeft}}px; top:{{editImgTop}}px; width:{{editBaseW}}px; height:{{editBaseH}}px; transform:{{editTransform}};"></image>
       </view>
     </view>
 
     <!-- 图右上角悬浮：顺时针转90°（跟随取景框右上角定位，样式里再往左平移自身宽度） -->
-    <view wx:if="{{editing && !sliding && frame}}" class="rotate-fab"
+    <view wx:if="{{editing && !sliding && editReady && frame}}" class="rotate-fab"
           style="left:{{frame.left + frame.width - 12}}px; top:{{frame.top + 12}}px;"
           catchtap="rotate90">↻ 90°</view>
   </view>

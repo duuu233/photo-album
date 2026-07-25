@@ -34,6 +34,13 @@ const MOVE_CANCEL_PX = 12
 // 左右滑动切图的提交阈值(px)：单指横向滑动累计超过它，松手切到上一张/下一张。
 const SWIPE_COMMIT_PX = 50
 
+// 切图后等待编辑层图片解码完成的兜底超时(ms)：正常由 <image> 的 bindload 回调放行，
+// 但「新旧 src 恰好相同」等情况小程序不会再抛 load 事件，没有兜底就会永远停在过场态。
+const EDIT_READY_TIMEOUT_MS = 800
+// 手势/换向停下后多久把当前构图预烘焙进 previewSrc 缓存(ms)。
+// 目的：把「切图那一刻才出图」的 showLoading('处理中') 提前到空闲期做掉，滑动切图就不再被打断。
+const PREBAKE_IDLE_MS = 800
+
 // 取景方向（2026-07-22 需求调整，替代原 VIEW_SWAPPED 总开关）：由图片下方的「竖向/横向」
 // 分段控制器按张选择。两种方向改变的都只是「可视区域（取景框）」，图片本身不动，
 // **页面展示交互两方向完全一致**；点「开始投屏」才把框内所见烘焙成上传图
@@ -96,6 +103,9 @@ Page({
     // 常驻编辑态（2026-07-22）：进入页面/切换图片即自动对当前图开启编辑——单指平移、
     // 双指缩放+旋转、右上角按钮转90°。没有「保存」按钮，点「开始投屏」自动按框内所见烘焙上传。
     editing: false,
+    // 编辑层的图片是否已解码可见（2026-07-25 修「来回切图闪一下」）：切图后编辑层先挂着但透明，
+    // 等 <image> 的 bindload 到了才显形、同时藏掉底层 swiper。二者交接期间始终有一层在画，不再露白。
+    editReady: false,
     orientation: DEFAULT_ORIENTATION, // 当前图的取景方向（竖向/横向工具按钮，高亮对应图标）
     dragging: false, // 长按已进入拖拽态（.edit-clip 加浮起阴影）
     sliding: false, // 切图滑动过场中：隐藏编辑层、露出 swiper 做轮播动画
@@ -120,6 +130,9 @@ Page({
     this._edit = null // 当前图编辑数值真值（手势里不读 setData 后的异步 data）
     this._editSeq = 0 // enterEdit 防串台序号：异步量尺寸/读图期间用户又切了图，旧流程作废
     this._stageRect = null // 舞台 px 尺寸缓存（布局固定，只量一次）
+    // 图片原始宽高缓存（src → {width,height}）：同一张图的像素尺寸不会变，没必要每次切回来都重量。
+    // wx.getImageInfo 对远程 url 会走一次下载，不缓存的话「来回切换」每次都要重新等，正是闪烁的成因之一。
+    this._infoCache = {}
 
     // 触摸手势状态机（2026-07-24）：'none' | 'idle'(单指按住等长按) | 'swipe'(左右切图)
     // | 'drag'(长按后拖拽) | 'pinch'(双指缩放旋转)
@@ -132,6 +145,9 @@ Page({
     this._lpTimer = null // 长按计时器
     this._pickupTimer = null // 「放大回弹」动画清除计时器
     this._slideTimer = null // 切图滑动过场结束后重建编辑层的计时器
+    this._readyTimer = null // editReady 兜底计时器（bindload 迟迟不来时强制放行）
+    this._prebakeTimer = null // 空闲预烘焙计时器（手势停下 PREBAKE_IDLE_MS 后触发）
+    this._bakeChain = null // 烘焙串行链：预烘焙与切图烘焙共用离屏画布，不能并发
 
     // 待投屏的设备与图片由上个页面通过 Storage 传入（见首页/相册的 openPreview）
     const pending = wx.getStorageSync('pendingProjection') || {}
@@ -176,7 +192,9 @@ Page({
 
   // 切换到某张图（2026-07-24：由 .edit-layer 的左右滑动手势触发，替代翻页按钮）。
   // 切图前先把当前图的编辑状态存进 _states（只记变换+方向，不落文件），切回来时原样恢复。
-  // 过场：隐藏编辑层 + 更新 activeIndex → swiper 自动滑动做轮播动画，动画结束再重建编辑层。
+  // 过场：编辑层淡出（editReady=false）+ 更新 activeIndex → swiper 自动滑动做轮播动画，动画结束再对新图布局。
+  // 2026-07-25：这里**不再置 editing=false**——编辑层用 wx:if 销毁重建会连带把 <image> 拆掉，
+  // 切回来必然重新下载解码（用户看到的「闪一下像重新加载」）。改为整层常驻、只切透明度。
   switchImage(index) {
     const { images, activeIndex } = this.data
     if (index < 0 || index >= images.length || index === activeIndex) {
@@ -186,10 +204,11 @@ Page({
     this._edit = null // 置空使手势自动失效
     this._mode = 'none'
     this._clearLongPress()
+    this._clearPrebake()
     this.setData({
       activeIndex: index,
       activeImage: images[index] || null,
-      editing: false, // 过场期间隐藏编辑层，露出 swiper 滑动
+      editReady: false, // 过场期间编辑层透明，露出 swiper 滑动
       sliding: true,
       dragging: false,
       editPickup: false
@@ -315,6 +334,64 @@ Page({
     }
   },
 
+  // 读一张图的原始像素宽高，带进程内缓存（src → {width,height}）。
+  // 同一个 src 的尺寸恒定，缓存后「来回切图」第二次起是同步命中，省掉一次 getImageInfo 往返
+  //（远程 url 更是省掉一次下载），编辑层几乎能与 swiper 过场无缝接上。失败 resolve(null)，调用方回退。
+  _getImageInfo(src) {
+    return new Promise((resolve) => {
+      const cached = this._infoCache[src]
+      if (cached) {
+        resolve(cached)
+        return
+      }
+      wx.getImageInfo({
+        src,
+        success: (info) => {
+          if (info && info.width > 0 && info.height > 0) {
+            this._infoCache[src] = { width: info.width, height: info.height }
+            resolve(this._infoCache[src])
+          } else {
+            resolve(null)
+          }
+        },
+        fail: () => resolve(null)
+      })
+    })
+  },
+
+  // 预读相邻图片的尺寸（并顺带把远程图暖进微信的图片缓存），让第一次滑到它时也不用等。
+  _prefetchNeighbors(index) {
+    const images = this.data.images
+    ;[index - 1, index + 1].forEach((i) => {
+      const image = images[i]
+      // 用 enterEdit 取源的同一套优先级（tempFilePath || url），预读的才是下次真正要量的那张
+      const src = image && (image.tempFilePath || image.url)
+      if (src && !this._infoCache[src]) {
+        this._getImageInfo(src)
+      }
+    })
+  },
+
+  // 编辑层图片解码完成：此刻才让编辑层显形、底层 swiper 隐去（交接期间始终有一层在画，不露白底）。
+  // 失败也照样放行，否则会永远停在过场态（编辑层透明 + swiper 显示原图，等于没进编辑）。
+  _markEditReady() {
+    if (this._readyTimer) {
+      clearTimeout(this._readyTimer)
+      this._readyTimer = null
+    }
+    if (!this.data.editReady) {
+      this.setData({ editReady: true })
+    }
+  },
+
+  onEditImageLoad() {
+    this._markEditReady()
+  },
+
+  onEditImageError() {
+    this._markEditReady()
+  },
+
   // 进入常驻编辑态：量出舞台尺寸 + 图片真实尺寸，摆好「固定取景框(按当前方向锁比例) + 铺满该框的图片」。
   // 之后单指平移 / 双指缩放+旋转 / 右上角按钮转90°，图片在框下自由变换，框不动，框内即最终成像。
   // 页面加载与「上一张/下一张」都会自动调用；同一张图已有编辑状态（_states）则原样恢复。
@@ -325,12 +402,13 @@ Page({
       const image = this.data.images[index]
       const src = image && (image.tempFilePath || image.url)
       if (!src) {
-        this.setData({ editing: false })
+        this.setData({ editing: false, editReady: false })
         resolve(false)
         return
       }
-      // 已在编辑同一张图：直接复用当前变换，不重置
+      // 已在编辑同一张图：直接复用当前变换，不重置（图片节点也不动，自然没有重新解码）
       if (this.data.editing && this._edit && this._edit.src === src) {
+        this._markEditReady()
         resolve(true)
         return
       }
@@ -342,65 +420,75 @@ Page({
       this._measureStage().then((stage) => {
         if (!stage || seq !== this._editSeq) {
           if (!stage) {
-            this.setData({ editing: false })
+            this.setData({ editing: false, editReady: false })
           }
           resolve(false)
           return
         }
-        wx.getImageInfo({
-          src,
-          success: (info) => {
-            if (seq !== this._editSeq) {
-              resolve(false)
-              return
-            }
-            const frame = this._frameFor(stage, orientation)
-            // cover：图片刚好铺满取景框的基准显示尺寸（zoom=1 时的显示 px/原图 px）
-            const baseScale = Math.max(frame.width / info.width, frame.height / info.height)
-            const baseW = info.width * baseScale
-            const baseH = info.height * baseScale
-            this._edit = {
-              src,
-              natW: info.width,
-              natH: info.height,
-              stageW: stage.width,
-              stageH: stage.height,
-              orientation,
-              baseScale,
-              baseW,
-              baseH,
-              frameLeft: frame.left,
-              frameTop: frame.top,
-              frameW: frame.width,
-              frameH: frame.height,
-              zoom: state ? state.zoom : 1,
-              tx: state ? state.tx : 0,
-              ty: state ? state.ty : 0,
-              angle: state ? state.angle : 0
-            }
-            this._mode = 'none'
-            this._clearLongPress()
-            this.setData({
-              editing: true,
-              orientation,
-              editSrc: src,
-              editBaseW: baseW,
-              editBaseH: baseH,
-              editImgLeft: frame.width / 2 - baseW / 2,
-              editImgTop: frame.height / 2 - baseH / 2,
-              frame,
-              dragging: false,
-              editPickup: false
-            })
-            this._applyEdit(this._edit.zoom, this._edit.tx, this._edit.ty, this._edit.angle)
-            resolve(true)
-          },
-          fail: () => {
-            if (seq === this._editSeq) {
-              this.setData({ editing: false })
-            }
+        this._getImageInfo(src).then((info) => {
+          if (seq !== this._editSeq) {
             resolve(false)
+            return
           }
+          if (!info) {
+            this.setData({ editing: false, editReady: false })
+            resolve(false)
+            return
+          }
+          const frame = this._frameFor(stage, orientation)
+          // cover：图片刚好铺满取景框的基准显示尺寸（zoom=1 时的显示 px/原图 px）
+          const baseScale = Math.max(frame.width / info.width, frame.height / info.height)
+          const baseW = info.width * baseScale
+          const baseH = info.height * baseScale
+          this._edit = {
+            src,
+            natW: info.width,
+            natH: info.height,
+            stageW: stage.width,
+            stageH: stage.height,
+            orientation,
+            baseScale,
+            baseW,
+            baseH,
+            frameLeft: frame.left,
+            frameTop: frame.top,
+            frameW: frame.width,
+            frameH: frame.height,
+            zoom: state ? state.zoom : 1,
+            tx: state ? state.tx : 0,
+            ty: state ? state.ty : 0,
+            angle: state ? state.angle : 0
+          }
+          this._mode = 'none'
+          this._clearLongPress()
+          // 图片源没换（如「还原原图」还原成了同一个文件）时不会再抛 bindload，直接放行；
+          // 换了源就先保持编辑层透明，等 bindload/兜底超时到了再显形（见 _markEditReady）。
+          const sameSrc = this.data.editSrc === src
+          this.setData({
+            editing: true,
+            editReady: sameSrc,
+            orientation,
+            editSrc: src,
+            editBaseW: baseW,
+            editBaseH: baseH,
+            editImgLeft: frame.width / 2 - baseW / 2,
+            editImgTop: frame.height / 2 - baseH / 2,
+            frame,
+            dragging: false,
+            editPickup: false
+          })
+          this._applyEdit(this._edit.zoom, this._edit.tx, this._edit.ty, this._edit.angle)
+          if (!sameSrc) {
+            if (this._readyTimer) {
+              clearTimeout(this._readyTimer)
+            }
+            this._readyTimer = setTimeout(() => {
+              this._readyTimer = null
+              this._markEditReady()
+            }, EDIT_READY_TIMEOUT_MS)
+          }
+          this._prefetchNeighbors(index)
+          resolve(true)
         })
       })
     })
@@ -441,6 +529,7 @@ Page({
       editImgTop: frame.height / 2 - g.baseH / 2
     })
     this._applyEdit(keepZoom, g.tx, g.ty, g.angle)
+    this._schedulePrebake()
   },
 
   // 约束一组变换：① zoom 不小于「当前角度下铺满取景框」所需最小值（旋转后也不露白边），且不超过上限；
@@ -564,6 +653,7 @@ Page({
     this._touch = { startX: t.clientX, startY: t.clientY }
     this._swipeDx = 0
     this._clearLongPress()
+    this._clearPrebake() // 手又动了：推迟空闲预烘焙，别在手势中途抢画布
     this._lpTimer = setTimeout(() => this._armDrag(), LONG_PRESS_MS)
   },
 
@@ -660,6 +750,8 @@ Page({
     }
     if (mode === 'swipe') {
       this._commitSwipe(this._swipeDx || 0)
+    } else if (mode === 'drag' || mode === 'pinch') {
+      this._schedulePrebake() // 构图刚改完：空闲期先把预览缓存出好，下次切图就不用等
     }
     this._swipeDx = 0
   },
@@ -715,6 +807,7 @@ Page({
       return
     }
     this._applyEdit(g.zoom, g.tx, g.ty, g.angle + 90)
+    this._schedulePrebake()
   },
 
   // 原图：二次确认后清掉当前图的全部编辑（含之前烘焙过的文件），还原最初的图片并重新进入编辑态
@@ -752,13 +845,15 @@ Page({
         this._edit = null
         this._mode = 'none'
         this._clearLongPress()
+        this._clearPrebake()
         this.setData({
           images: next,
           activeImage: updated,
           orientation: DEFAULT_ORIENTATION,
           dragging: false,
           editPickup: false,
-          editing: false
+          editing: false,
+          editReady: false
         })
         this.persistPending(next)
         this.enterEdit() // 还原后立刻对原图重新开启常驻编辑
@@ -886,7 +981,16 @@ Page({
   //   · 编辑过且指纹变了 → showLoading 后烘焙一次，结果存 previewSrc（**不动 tempFilePath**，
   //     原图仍是编辑的基准，切回来能继续拖，也避免横向成图被当原图再转一次）。
   // 缓存指纹与投屏出图共用，prepareProjectionImages 命中即直接复用，不再重复出图。
-  async bakePreviewForActive() {
+  //
+  // 2026-07-25 再调整：加 options.silent（空闲预烘焙用，不弹 showLoading），并把所有烘焙串到
+  // 一条链上——预烘焙与切图烘焙共用同一个离屏 #cropCanvas，并发会互相改画布尺寸、出图错乱。
+  bakePreviewForActive(options) {
+    const run = () => this._bakePreviewOnce(options || {})
+    this._bakeChain = this._bakeChain ? this._bakeChain.then(run, run) : run()
+    return this._bakeChain
+  },
+
+  async _bakePreviewOnce(options) {
     const index = this.data.activeIndex
     const g = this._edit
     const image = this.data.images[index]
@@ -904,7 +1008,10 @@ Page({
     if (image._bakedKey === key && image.previewSrc) {
       return // 缓存仍新鲜
     }
-    wx.showLoading({ title: '处理中', mask: true })
+    const silent = !!options.silent
+    if (!silent) {
+      wx.showLoading({ title: '处理中', mask: true })
+    }
     try {
       const filePath = await this._bakeToFile(g)
       const view = this.getViewSize(g.orientation)
@@ -920,7 +1027,27 @@ Page({
       // 烘焙失败不挡切图：过场里退回原图显示（会有一次视觉跳变，但功能不受影响）
       console.warn('[预览] 切图前预览烘焙失败，过场回退原图', err)
     } finally {
-      wx.hideLoading()
+      if (!silent) {
+        wx.hideLoading()
+      }
+    }
+  },
+
+  // 手势/换向停下后，空闲期悄悄把当前构图烘焙进 previewSrc 缓存（silent，不弹 showLoading）。
+  // 这样真正滑动切图时 bakePreviewForActive 多半直接命中缓存秒返回，不再有「处理中」蒙层打断，
+  // 「开始投屏」也能复用同一份缓存少出一次图。指纹没变则整个是空操作。
+  _schedulePrebake() {
+    this._clearPrebake()
+    this._prebakeTimer = setTimeout(() => {
+      this._prebakeTimer = null
+      this.bakePreviewForActive({ silent: true })
+    }, PREBAKE_IDLE_MS)
+  },
+
+  _clearPrebake() {
+    if (this._prebakeTimer) {
+      clearTimeout(this._prebakeTimer)
+      this._prebakeTimer = null
     }
   },
 
@@ -1077,6 +1204,12 @@ Page({
     const prepareStartedAt = Date.now()
     let images
     try {
+      // 空闲预烘焙可能正排队/在途：取消未触发的，并等在途那次跑完再出图——
+      // 两边都用同一个离屏 #cropCanvas，并发会互改画布尺寸导致出图错乱。
+      this._clearPrebake()
+      if (this._bakeChain) {
+        await this._bakeChain.catch(() => {})
+      }
       images = await this.prepareProjectionImages()
     } catch (error) {
       images = this.data.images // 出图异常不阻断投屏，退回原图
@@ -1104,6 +1237,7 @@ Page({
   // 离开页面：清掉所有计时器，避免回调在已销毁页面上 setData
   onUnload() {
     this._clearLongPress()
+    this._clearPrebake()
     if (this._pickupTimer) {
       clearTimeout(this._pickupTimer)
       this._pickupTimer = null
@@ -1111,6 +1245,10 @@ Page({
     if (this._slideTimer) {
       clearTimeout(this._slideTimer)
       this._slideTimer = null
+    }
+    if (this._readyTimer) {
+      clearTimeout(this._readyTimer)
+      this._readyTimer = null
     }
   },
 

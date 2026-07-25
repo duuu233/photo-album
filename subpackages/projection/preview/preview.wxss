@@ -84,6 +84,15 @@
   z-index: 5;
 }
 
+/* 切图过场中 / 新图还没解码完：整层透明并让出触摸，底层 swiper 顶着画面（2026-07-25）。
+   用 opacity 而不是 visibility/display——后两者在部分机型上会让 <image> 推迟甚至不发起加载，
+   那样 bindload 永远不来，编辑层就再也显不出来了。opacity:0 仍然参与绘制，加载照常。
+   pointer-events:none 保证透明期间手势落到下面的 swiper 上，不被本层 catch 吞掉。 */
+.edit-layer.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* 可视区域容器：位置/尺寸由 JS 按 frame 下发，区外内容 overflow:hidden 裁掉，圆角与卡片一致（框内即最终成像） */
 .edit-clip {
   position: absolute;
