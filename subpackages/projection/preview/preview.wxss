@@ -163,41 +163,67 @@
   background: #ff5f1f;
 }
 
-/* 工具栏（2026-07-24 还原原样式）：竖向/横向/原图 三图标并列，选中态橙色 */
-.tool-bar {
+/* 分段控制器（2026-07-25 改，仿 element-plus el-segmented）：竖向/横向/原图 三档等宽同框。
+   位置/外框沿用原 .tool-bar（同 margin、同圆角、同投影），只把「三个独立按钮」变成
+   「一条轨道 + 一块会滑动的选中滑块」。轨道底色比页面稍深，白色滑块才浮得出来。 */
+.segmented {
   position: relative;
   z-index: 1;
   display: flex;
-  justify-content: space-around;
   margin: 28rpx 46rpx 0;
-  /* 2026-07-25：竖/横/原的点击区改由 .tool 自身撑（padding），这里收窄到 8rpx，
-     卡片总高与改动前基本持平，但可点范围横向扩到近 1/3 栏宽。 */
-  padding: 8rpx 0;
-  background: rgba(255, 255, 255, 0.4);
+  /* 滑块靠 6rpx 内边距嵌在轨道里；.segmented-thumb 的宽度算式与这个值强耦合，改一处要同步另一处 */
+  padding: 6rpx;
+  background: rgba(226, 233, 243, 0.62);
   border: 2rpx solid rgba(255, 255, 255, 0.86);
   border-radius: 40rpx;
   box-shadow: 0 24rpx 54rpx rgba(121, 145, 178, 0.13);
 }
 
-/* 点击区（2026-07-25 用户反馈②「点击区域放大一点」）：小程序的可点范围就是元素盒子，
-   所以直接给 .tool 加 padding 把盒子撑大（图标/文字视觉位置不变），
-   20rpx 上下 + 56rpx 左右 ≈ 每颗按钮 156rpx 宽 × 128rpx 高，远超之前的图标+文字自身尺寸。 */
-.tool {
+/* 选中滑块：绝对定位盖在轨道上，宽度 = 轨道内宽的 1/3（全局 box-sizing:border-box，
+   绝对定位的百分比按 padding box 算，故内宽 = 100% - 左右各 6rpx）。
+   位置由 wxml 内联 transform: translateX(0 / 100%) 下发——按自身宽度整数倍平移，
+   所以档位数变了也不用改这里。transition 就是 el-segmented「滑过去」的观感来源。 */
+.segmented-thumb {
+  position: absolute;
+  left: 6rpx;
+  top: 6rpx;
+  bottom: 6rpx;
+  width: calc((100% - 12rpx) / 3);
+  background: #ffffff;
+  border-radius: 34rpx;
+  box-shadow: 0 6rpx 16rpx rgba(121, 145, 178, 0.22);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 每档：flex:1 等宽平分轨道（可点范围即元素盒子，等宽后每档约 1/3 栏宽，
+   比 2026-07-25 那版靠 padding 撑出来的点击区还大一点，图标/文字位置视觉不变）。
+   z-index 让内容压在滑块之上，否则白滑块会盖住图标。 */
+.segmented-item {
+  position: relative;
+  z-index: 1;
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 14rpx;
-  padding: 20rpx 56rpx;
+  padding: 20rpx 0;
   color: #777e88;
   font-size: 24rpx;
+  transition: color 0.28s ease;
 }
 
-.tool.is-active {
+.segmented-item.is-active {
   color: #ff5f1f;
 }
 
-.tool-icon {
-  position: relative;
+/* 按下反馈：滑块是跟着选中态走的（原图这档永远没有滑块），所以按压态单独给一层淡底，
+   保证三档手感一致——尤其是「原图」，它点了只弹确认框、滑块不动，没有这层就像没响应。 */
+.segmented-item--hover {
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 34rpx;
+}
+
+.segmented-icon {
   width: 44rpx;
   height: 44rpx;
 }
