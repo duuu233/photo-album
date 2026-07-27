@@ -786,6 +786,16 @@ Page({
     this.setData({ showTools: !this.data.showTools, showStylePicker: false })
   },
 
+  // 点工具栏以外的地方就收起（2026-07-27 需求 2，仿底部弹框点外面关闭）。
+  // 三个入口共用：聊天区 .chat-wrap 的 tap、顶部工具行 .ai-toolbar 的 tap、输入框 bindfocus
+  // （键盘和工具栏不该同时占着底部）。没做成全屏遮罩层是因为遮罩会把拖动也吃掉，聊天记录就滑不动了。
+  // 已经关着就别 setData，免得每次聚焦输入框、每次点聊天区都白跑一次渲染。
+  closeTools() {
+    if (this.data.showTools) {
+      this.setData({ showTools: false })
+    }
+  },
+
   // 🎤 / ⌨ 切换。切走时若还在录音，按取消处理——不然录音会挂在后台，界面却已经换成输入框了。
   toggleVoice() {
     if (this.data.recording) {

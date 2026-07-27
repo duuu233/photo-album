@@ -2,7 +2,7 @@
   <page-nav title="{{sessionTitle}}"></page-nav>
 
   <!-- 标题栏下方工具行：左「会话历史」入口 / 右 Token 余额 + 新对话（需求：历史图标在左上角、Token 在标题栏下方） -->
-  <view class="ai-toolbar">
+  <view class="ai-toolbar" bindtap="closeTools">
     <view class="toolbar-btn" hover-class="none" bindtap="goSessions">
       <view class="icon-block icon-block--orange">≡</view>
       <text>会话</text>
@@ -24,7 +24,11 @@
        · chat-scroll--warming：首屏「已渲染但透明」，等定位到底部再显形（需求 5.1），
          否则用户会看见内容从最老一条一路滚到最新那一下；
        · 加载中的 spinner 挪到 scroll-view **外面**盖着：内容必须一直在渲染树里才滚得动。 -->
-  <view class="chat-wrap">
+  <!-- bindtap="closeTools"：＋ 工具栏展开时，点聊天区任意位置就收起（2026-07-27 需求 2，仿底部弹框点外面关闭）。
+       为什么不做成撑满全屏的透明遮罩层：遮罩会把**拖动**也一起吃掉，工具栏开着时聊天记录就滑不动了、
+       手指划半天没反应；绑 tap 在容器上则只吃点击，滚动照常。气泡里的图自己 catchtap（要看大图），
+       所以点图不会顺手关掉工具栏，这是有意的。 -->
+  <view class="chat-wrap" bindtap="closeTools">
     <scroll-view
       class="chat-scroll {{chatReady ? '' : 'chat-scroll--warming'}}"
       scroll-y
@@ -176,6 +180,7 @@
           disabled="{{banned}}"
           confirm-type="send"
           bindinput="onInput"
+          bindfocus="closeTools"
           bindconfirm="onSendTap"
         />
       </view>

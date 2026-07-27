@@ -119,12 +119,17 @@
   opacity: 0;
 }
 
-/* 隐藏滚动条但保留滚动（2026-07-25 用户要求）。
+/* 隐藏滚动条但保留滚动（2026-07-25 用户要求；2026-07-27 改成不带类名的写法才真正生效）。
    scroll-view 的 show-scrollbar 属性只在 Skyline 渲染器生效，本项目是 WebView 渲染器
    （app.json 未开 skyline），所以只能走 ::-webkit-scrollbar。
-   三个属性都写：display 管主流内核，width/height 兜底某些 Android WebView 只认尺寸。 */
-.chat-scroll::-webkit-scrollbar,
-.pending-strip::-webkit-scrollbar {
+   🔴 为什么原来的 `.chat-scroll::-webkit-scrollbar` 没用：WebView 下 scroll-view 编译成
+      <wx-scroll-view class="chat-scroll"><div class="wx-scroll-view">…</div></wx-scroll-view>，
+      **真正滚动、真正长滚动条的是内层那个 div**，类名挂在外层壳上，所以那条规则打了个空。
+      这里写成不带选择器的形式（等价于 *::-webkit-scrollbar），内层壳一起盖住；
+      wxss 是页面级的，只影响本页，不会波及别的页面。
+   三个属性都写：display 管主流内核，width/height 兜底某些 Android WebView 只认尺寸。
+   ⚠️ 只是隐藏滚动条外观，scroll-y / scroll-top 贴底逻辑一概不动，上下滑照常。 */
+::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;
