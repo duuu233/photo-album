@@ -1,0 +1,604 @@
+diff --git a/lib/src/state.dart b/lib/src/state.dart
+--- a/lib/src/state.dart
++++ b/lib/src/state.dart
+@@ -630,11 +630,10 @@
+           continue;
+         }
+-        // 单连接模型：这台设备确实占着活动会话（序列号交叉匹配）或页面显示已连接时才真正断开。
+-        if (device.connected ||
+-            ble.sessionMatchesSerial(
+-              device.serialNumber,
+-              screenCode: device.screenType.code,
+-            )) {
++        // 只允许目标设备自己占用的会话触发物理断开。缓存的 connected
++        // 可能在切页/刷新期间过期，不能据此断开当前属于另一台设备的会话。
++        if (ble.sessionMatchesSerial(
++          device.serialNumber,
++          screenCode: device.screenType.code,
++        )) {
+           await trace.measure('ble-disconnect', ble.disconnect);
+         } else {
+@@ -672,6 +671,13 @@
+         screenCode: device.screenType.code,
+       );
+ 
++  /// [deviceId] 对应的后端设备记录是否正是当前 BLE 活动会话的物理设备。
++  ///
++  /// 页面和业务动作必须使用这个判断，不能只看 [DeviceItem.connected] 或
++  /// [BleController.connected]；后两者可能是刷新前的缓存，或仅表示连着另一台设备。
++  bool isDeviceActuallyConnected(String deviceId) {
++    final device = _deviceByIdOrNull(deviceId);
++    return device != null && _sessionMatches(device);
++  }
++
+   /// 用真实 BLE 会话对账各设备的「已连接」显示（回前台连接体检后调用，
+@@ -2109,7 +2115,7 @@
+         target = null;
+       }
+       final tasks = <Future<void>>[];
+-      if (target != null && (target.connected || _sessionMatches(target))) {
++      if (target != null && _sessionMatches(target)) {
+         // BLE 释放与后端解绑互不依赖，并行执行，避免两段耗时串行叠加。
+         tasks.add(() async {
+diff --git a/lib/src/device/ble_controller.dart b/lib/src/device/ble_controller.dart
+--- a/lib/src/device/ble_controller.dart
++++ b/lib/src/device/ble_controller.dart
+@@ -622,6 +622,8 @@
+   /// 真实升级要求当前已连接设备（[connected]），否则抛 [OtaException]。
+   Future<OtaResult> upgradeFirmware(
+     OtaFirmwarePackage pkg, {
++    String expectedSerial = '',
++    int expectedScreenCode = 0,
+     void Function(OtaProgress)? onProgress,
+     bool Function()? shouldAbort,
+@@ -639,6 +641,13 @@
+     if (dev == null || !_client.connected) {
+       throw OtaException('设备未连接，请先在详情页连接设备后再升级');
+     }
++    if (expectedSerial.isEmpty ||
++        !sessionMatchesSerial(
++          expectedSerial,
++          screenCode: expectedScreenCode,
++        )) {
++      throw OtaException('当前连接的不是要升级的设备，请返回详情页重新连接');
++    }
+ 
+     final ota = FrameOtaClient(dev)..onMonitor = onMonitor;
+diff --git a/lib/src/features/devices/presentation/devices_page.dart b/lib/src/features/devices/presentation/devices_page.dart
+--- a/lib/src/features/devices/presentation/devices_page.dart
++++ b/lib/src/features/devices/presentation/devices_page.dart
+@@ -102,7 +102,10 @@
+           },
+           onOpenDetail: (deviceId) {
+             state.selectDevice(deviceId);
+-            Navigator.of(context).pushNamed<void>(AppRoutes.figmaDeviceDetails);
++            Navigator.of(context).pushNamed<void>(
++              AppRoutes.figmaDeviceDetails,
++              arguments: deviceId,
++            );
+           },
+@@ -158,13 +161,9 @@
+   Future<void> _startCast(BuildContext context, String deviceId) async {
+     final state = widget.state;
+     state.selectDevice(deviceId);
+-    final device = state.devices.firstWhere(
+-      (d) => d.id == deviceId,
+-      orElse: () => state.selectedDevice,
+-    );
+-    if (!device.connected) {
++    if (!state.isDeviceActuallyConnected(deviceId)) {
+       final connected = await _ensureConnected(context, deviceId);
+       if (!connected || !context.mounted) {
+@@ -188,6 +187,7 @@
+     if (!context.mounted || imagePaths.isEmpty) {
+       return;
+     }
++    final device = state.deviceById(deviceId);
+     await Navigator.of(context).push<void>(
+       AppPageRoute(
+diff --git a/lib/src/features/home/presentation/home_page.dart b/lib/src/features/home/presentation/home_page.dart
+--- a/lib/src/features/home/presentation/home_page.dart
++++ b/lib/src/features/home/presentation/home_page.dart
+@@ -135,8 +135,10 @@
+     if (selected.isNotEmpty) {
+       return selected.first;
+     }
+-    final connected = devices.where((device) => device.connected);
++    final connected = devices.where(
++      (device) => widget.state.isDeviceActuallyConnected(device.id),
++    );
+     return connected.isNotEmpty ? connected.first : devices.first;
+   }
+@@ -386,7 +388,7 @@
+       );
+       return;
+     }
+-    if (!activeDevice.connected) {
++    if (!widget.state.isDeviceActuallyConnected(activeDevice.id)) {
+       // 未连接则自动扫连再投（对齐小程序 ensureActiveDeviceConnection）；连不上提示并中止。
+       final connected = await _ensureConnected(activeDevice.id);
+@@ -417,6 +419,7 @@
+       true,
+     );
+ 
++    final targetDevice = widget.state.deviceById(activeDevice.id);
+     // 与小程序一致：选图后先进入投屏预览，可选择裁剪、旋转或保留原图，确认后再投屏。
+     await Navigator.of(context).push<void>(
+@@ -424,7 +427,7 @@
+        // 选图后先进**投屏预览页**（裁剪/旋转/原图），确认后才开始投屏。
+         builder: (_) => CastPreviewPage(
+           state: widget.state,
+-          device: activeDevice,
++          device: targetDevice,
+           imagePaths: imagePaths,
+         ),
+diff --git a/lib/src/features/ai/presentation/ai_chat_page.dart b/lib/src/features/ai/presentation/ai_chat_page.dart
+--- a/lib/src/features/ai/presentation/ai_chat_page.dart
++++ b/lib/src/features/ai/presentation/ai_chat_page.dart
+@@ -1150,12 +1150,14 @@
+   Future<void> _castImage(String url) async {
+     final selected = widget.state.selectedDevice;
+     DeviceItem? target = selected.isPlaceholder ? null : selected;
+-    if (target == null || !target.connected) {
++    if (target == null ||
++        !widget.state.isDeviceActuallyConnected(target.id)) {
+       target = await _pickDevice();
+       if (target == null || !mounted) {
+         return;
+       }
+-      if (!target.connected) {
++      if (!widget.state.isDeviceActuallyConnected(target.id)) {
+         AppLoadingDialog.show(context, AppL10n.of(context).castConnectingDevice);
+         final feedback = await widget.state.connectDevice(target.id);
+diff --git a/lib/src/features/devices/presentation/device_clear_flow.dart b/lib/src/features/devices/presentation/device_clear_flow.dart
+--- a/lib/src/features/devices/presentation/device_clear_flow.dart
++++ b/lib/src/features/devices/presentation/device_clear_flow.dart
+@@ -30,18 +30,16 @@
+ Future<void> startClearDeviceFlow(
+   BuildContext context,
+   PhotoFrameState state,
++  String deviceId,
+ ) async {
+   if (_clearFlowBusy) {
+     return;
+   }
+-  final deviceId = state.selectedDeviceId;
+   if (deviceId.isEmpty) {
+     return;
+   }
+@@ -41,7 +39,7 @@
+   // 入口先判连接（对齐小程序 detail.js：未连接直接提示，不进两步确认）。
+   // clearDeviceMemory 不自动扫连，不在这里拦的话用户点完两步确认才看到
+   // 「请先连接设备」——白走一遍确认流程。与轮播设置入口同一形态（app_routes）。
+-  if (!state.deviceById(deviceId).connected) {
++  if (!state.isDeviceActuallyConnected(deviceId)) {
+     AppToast.show(context, AppL10n.of(context).devConnectFirst);
+     return;
+diff --git a/lib/src/features/devices/presentation/delete_device_flow.dart b/lib/src/features/devices/presentation/delete_device_flow.dart
+--- a/lib/src/features/devices/presentation/delete_device_flow.dart
++++ b/lib/src/features/devices/presentation/delete_device_flow.dart
+@@ -23,18 +23,17 @@
+ Future<void> startDeleteDeviceFlow(
+   BuildContext context,
+   PhotoFrameState state,
++  String deviceId,
+ ) async {
+   if (_deleteFlowBusy) {
+     return;
+   }
+-  final deviceId = state.selectedDeviceId;
+   if (deviceId.isEmpty) {
+     return;
+   }
+   _deleteFlowBusy = true;
+   try {
+     const deleteIcon = 'assets/images/device-detail-icon06.png';
+-    if (state.deviceById(deviceId).connected) {
++    if (state.isDeviceActuallyConnected(deviceId)) {
+       final proceed = await showAppConfirmDialog(
+diff --git a/lib/src/features/devices/presentation/device_details_page.dart b/lib/src/features/devices/presentation/device_details_page.dart
+--- a/lib/src/features/devices/presentation/device_details_page.dart
++++ b/lib/src/features/devices/presentation/device_details_page.dart
+@@ -20,14 +20,17 @@
+   const DeviceDetailsPage({
+     super.key,
+     required this.state,
++    required this.deviceId,
+     this.onCarouselSettings,
+     this.onClearDevice,
+     this.onDeleteDevice,
+     this.onOtaUpgrade,
+   });
+ 
+   final PhotoFrameState state;
++  final String deviceId;
+@@ -39,6 +42,7 @@
+ class _DeviceDetailsPageState extends State<DeviceDetailsPage> with RouteAware {
+   // 让本 State 内既有的 `state.xxx` 调用继续可用（无需逐处改成 widget.state）。
+   PhotoFrameState get state => widget.state;
++  DeviceItem get device => state.deviceById(widget.deviceId);
+ 
+@@ -46,7 +50,7 @@
+     // 打开即重读一次真机内存/索引（对齐小程序 detail.js onShow→loadDetail→readDeviceInfo，Bug13）。
+     WidgetsBinding.instance.addPostFrameCallback((_) {
+-      state.refreshSelectedDeviceMemory();
++      state.refreshConnectedDeviceInfo(widget.deviceId);
+     });
+@@ -67,7 +71,7 @@
+   @override
+   void didPopNext() {
+-    state.refreshSelectedDeviceMemory();
++    state.refreshConnectedDeviceInfo(widget.deviceId);
+   }
+@@ -78,6 +82,7 @@
+         animation: state,
+         builder: (context, _) => DeviceDetailsBody(
+           state: state,
++          deviceId: widget.deviceId,
+           onEditName: () => _renameDevice(context),
+@@ -96,7 +101,7 @@
+ 
+   /// 摘要卡编辑图标：重命名当前设备（对齐小程序 detail.js `showRenameModal`）。
+   Future<void> _renameDevice(BuildContext context) async {
+-    final device = state.selectedDevice;
++    final device = this.device;
+@@ -144,8 +149,8 @@
+   }
+ 
+   Future<void> _doToggleConnection(BuildContext context) async {
+-    final device = state.selectedDevice;
+-    final wasConnected = device.connected;
++    final device = this.device;
++    final wasConnected = state.isDeviceActuallyConnected(device.id);
+@@ -205,8 +210,8 @@
+ 
+   /// 顶部操作栏「投屏」：未连接自动扫连 → 拍照/相册 → 真实投屏（对齐小程序 detail.js `startProjection`）。
+   Future<void> _startCast(BuildContext context) async {
+-    final device = state.selectedDevice;
+-    if (!device.connected) {
++    final device = this.device;
++    if (!state.isDeviceActuallyConnected(device.id)) {
+       final connected = await _ensureConnected(context, device.id);
+@@ -236,7 +241,11 @@
+     await Navigator.of(context).push<void>(
+       AppPageRoute(
+         // 选图后先进入**投屏预览页**（裁剪/旋转/原图），确认后才开始投屏。
+-        builder: (_) => CastPreviewPage(device: device, imagePaths: imagePaths),
++        builder: (_) => CastPreviewPage(
++          state: state,
++          device: state.deviceById(device.id),
++          imagePaths: imagePaths,
++        ),
+       ),
+@@ -249,6 +258,7 @@
+   const DeviceDetailsBody({
+     super.key,
+     required this.state,
++    required this.deviceId,
+@@ -260,6 +270,7 @@
+ 
+   final PhotoFrameState state;
++  final String deviceId;
+@@ -275,10 +286,12 @@
+   final VoidCallback? onOtaUpgrade;
+ 
+   String _carouselLabel(BuildContext context) {
+-    final device = state.selectedDevice;
++    final device = state.deviceById(deviceId);
+     final l10n = AppL10n.of(context);
+     // 轮播设置是「连接才可信」的实时数据：未连接（含断开设备后）一律 -- 占位，与小程序详情页一致。
+-    if (!device.connected) {
++    if (!state.isDeviceActuallyConnected(device.id)) {
+       return '--';
+@@ -304,7 +317,8 @@
+ 
+   @override
+   Widget build(BuildContext context) {
+-    final device = state.selectedDevice;
++    final device = state.deviceById(deviceId);
++    final connected = state.isDeviceActuallyConnected(device.id);
+     return Column(
+@@ -360,7 +374,7 @@
+                       children: [
+                         Image.asset(
+-                          device.connected
++                          connected
+@@ -371,11 +385,11 @@
+                         const SizedBox(width: 5),
+                         Text(
+-                          device.connected
++                          connected
+@@ -375,14 +389,14 @@
+                           style: TextStyle(
+-                            color: device.connected
++                            color: connected
+@@ -382,7 +396,7 @@
+                           ),
+                         ),
+-                        if (device.connected) ...[
++                        if (connected) ...[
+@@ -459,17 +473,17 @@
+                 if (onConnectToggle != null)
+                   Expanded(
+                     child: _DeviceActionButton(
+-                      iconAsset: device.connected
++                      iconAsset: connected
+@@ -462,17 +476,17 @@
+                           ? 'assets/images/disconnect-icon01.png'
+                           : 'assets/images/bluetooth-connection.png',
+-                      fallbackIcon: device.connected
++                      fallbackIcon: connected
+@@ -466,17 +480,17 @@
+                           ? Icons.link_off_rounded
+                           : Icons.bluetooth_rounded,
+                       iconSize: 16,
+-                      label: device.connected
++                      label: connected
+@@ -469,7 +483,7 @@
+                           ? AppL10n.of(context).devDisconnectShort
+                           : AppL10n.of(context).devConnectShort,
+-                      color: device.connected
++                      color: connected
+@@ -501,7 +515,7 @@
+                 // 设备ID只在已连接时展示（用户定版：未连接一律 -- 占位）。
+                 // 也**不再回退 device.id**——那是后端记录主键 userProductId，
+                 // 不是设备ID，回退显示会让用户以为设备有个「默认ID」。
+-                value: device.connected && device.serialNumber.isNotEmpty
++                value: connected && device.serialNumber.isNotEmpty
+@@ -512,7 +526,7 @@
+                 label: AppL10n.of(context).devDeviceMemory,
+                 // 内存占用是连接才读得到的实时数据（0x01 的 IMG_MASK）：未连接（含断开设备后）一律 --，
+                 // 避免未连接时显示后端不下发而回落的 0/容量，误导用户（对齐小程序断开后内存变 --）。
+-                value: device.connected
++                value: connected
+diff --git a/lib/src/features/devices/presentation/carousel_settings_page.dart b/lib/src/features/devices/presentation/carousel_settings_page.dart
+--- a/lib/src/features/devices/presentation/carousel_settings_page.dart
++++ b/lib/src/features/devices/presentation/carousel_settings_page.dart
+@@ -14,5 +14,10 @@
+ class CarouselSettingsPage extends StatefulWidget {
+-  const CarouselSettingsPage({super.key, required this.state});
++  const CarouselSettingsPage({
++    super.key,
++    required this.state,
++    required this.deviceId,
++  });
+ 
+   final PhotoFrameState state;
++  final String deviceId;
+@@ -36,9 +41,9 @@
+   @override
+   void initState() {
+     super.initState();
+-    final device = widget.state.selectedDevice;
++    final device = widget.state.deviceById(widget.deviceId);
+     // 连接才可信：未连接一律按「未开启」展示（对齐小程序 computeCarouselOn / 连接前不允许开启）。
+-    _enabled = device.connected && device.carouselEnabled;
++    _enabled = widget.state.isDeviceActuallyConnected(device.id) && device.carouselEnabled;
+@@ -58,7 +63,7 @@
+     final ActionFeedback feedback;
+     try {
+       feedback = await widget.state.setDeviceCarousel(
+-        widget.state.selectedDevice.id,
++        widget.deviceId,
+         enabled: enabled,
+diff --git a/lib/src/routes/app_routes.dart b/lib/src/routes/app_routes.dart
+--- a/lib/src/routes/app_routes.dart
++++ b/lib/src/routes/app_routes.dart
+@@ -231,34 +231,51 @@
+         builder = (_) => DevicesPage(state: state);
+         break;
+       case AppRoutes.figmaDeviceDetails:
++        final routeDeviceId = settings.arguments is String
++            ? settings.arguments! as String
++            : state.selectedDeviceId;
+         builder = (context) => DeviceDetailsPage(
+           state: state,
++          deviceId: routeDeviceId,
+           onCarouselSettings: () {
+             // 对齐小程序 detail.js goSlideshow：入口时未连接直接拦截；若进入后链路掉线，
+             // 设置页提交时仍会按 ensureConnectedForAction 自动重连。
+-            if (!state.selectedDevice.connected) {
++            if (!state.isDeviceActuallyConnected(routeDeviceId)) {
+               AppToast.show(context, AppL10n.of(context).devConnectFirst);
+               return;
+             }
+             Navigator.of(
+               context,
+-            ).pushNamed<void>(AppRoutes.figmaCarouselSettings);
++            ).pushNamed<void>(
++              AppRoutes.figmaCarouselSettings,
++              arguments: routeDeviceId,
++            );
+           },
+           // 「一键清空」在**当前页**两步弹窗确认，不再 push 确认页
+           // （与 startDeleteDeviceFlow 同形态，路由表只做分发不内嵌业务编排）。
+-          onClearDevice: () => startClearDeviceFlow(context, state),
++          onClearDevice: () =>
++              startClearDeviceFlow(context, state, routeDeviceId),
+           // 删除设备完整流程抽在 delete_device_flow.dart（与 startOtaFlow 同模式），
+           // 路由表只做页面分发，不再内嵌业务编排。
+-          onDeleteDevice: () => startDeleteDeviceFlow(context, state),
++          onDeleteDevice: () =>
++              startDeleteDeviceFlow(context, state, routeDeviceId),
+           onOtaUpgrade: () {
+             // 对齐小程序 goOtaUpgrade：未连接拦截/自动连 + 二次查版本 + 确认弹窗 + 确认后自动开始。
+-            startOtaFlow(context, state);
++            startOtaFlow(context, state, routeDeviceId);
+           },
+         );
+         break;
+       case AppRoutes.figmaDeviceOta:
+-        builder = (_) => OtaUpgradePage(state: state);
++        final routeDeviceId = settings.arguments is String
++            ? settings.arguments! as String
++            : state.selectedDeviceId;
++        builder = (_) => OtaUpgradePage(
++          state: state,
++          deviceId: routeDeviceId,
++        );
+         break;
+       case AppRoutes.figmaCarouselSettings:
+-        builder = (_) => CarouselSettingsPage(state: state);
++        final routeDeviceId = settings.arguments is String
++            ? settings.arguments! as String
++            : state.selectedDeviceId;
++        builder = (_) => CarouselSettingsPage(
++          state: state,
++          deviceId: routeDeviceId,
++        );
+         break;
+diff --git a/lib/src/features/devices/presentation/ota_upgrade_page.dart b/lib/src/features/devices/presentation/ota_upgrade_page.dart
+--- a/lib/src/features/devices/presentation/ota_upgrade_page.dart
++++ b/lib/src/features/devices/presentation/ota_upgrade_page.dart
+@@ -22,5 +22,11 @@
+ class OtaUpgradePage extends StatefulWidget {
+-  const OtaUpgradePage({super.key, required this.state, this.autoStart = false});
++  const OtaUpgradePage({
++    super.key,
++    required this.state,
++    required this.deviceId,
++    this.autoStart = false,
++  });
+ 
+   final PhotoFrameState state;
++  final String deviceId;
+@@ -36,10 +42,14 @@
+ /// ③ 已最新/无有效包→提示后返回；④ 有新版→弹「检测到新版本 X，是否升级(稍后/立刻更新)」；
+ /// ⑤ 确认「立刻更新」→进 OTA 页并 `autoStart` 自动开始。
+-Future<void> startOtaFlow(BuildContext context, PhotoFrameState state) async {
+-  final device = state.selectedDevice;
++Future<void> startOtaFlow(
++  BuildContext context,
++  PhotoFrameState state,
++  String deviceId,
++) async {
++  final device = state.deviceById(deviceId);
+   // ① 未连接自动扫连（升级需设备在线）。
+-  if (!BleController.instance.connected) {
++  if (!state.isDeviceActuallyConnected(device.id)) {
+@@ -99,7 +109,13 @@
+   // ⑤ 进 OTA 页并自动开始升级。
+   await Navigator.of(context).push<void>(
+     AppPageRoute(
+-      builder: (_) => OtaUpgradePage(state: state, autoStart: true),
++      builder: (_) => OtaUpgradePage(
++        state: state,
++        deviceId: device.id,
++        autoStart: true,
++      ),
+     ),
+   );
+@@ -151,15 +167,10 @@
+     super.dispose();
+   }
+ 
+-  String? get _deviceId {
+-    try {
+-      return widget.state.selectedDevice.id;
+-    } catch (_) {
+-      return null;
+-    }
+-  }
++  String? get _deviceId =>
++      widget.deviceId.isEmpty ? null : widget.deviceId;
+ 
+-  bool get _connected => _ble.connected;
++  bool get _connected =>
++      widget.state.isDeviceActuallyConnected(widget.deviceId);
+@@ -202,9 +213,9 @@
+     if (!mounted) return;
+     final l10n = AppL10n.of(context);
+     DeviceItem device;
+     try {
+-      device = updated ?? widget.state.selectedDevice;
++      device = updated ?? widget.state.deviceById(id);
+     } catch (_) {
+@@ -216,7 +227,9 @@
+     }
+ 
+     // 当前固件版本：优先取已连接设备 BLE 实读版本，其次后端详情版本。
+-    final bleFw = _ble.info?.firmwareVersion ?? '';
++    final bleFw = _connected
++        ? (_ble.info?.firmwareVersion ?? '')
++        : '';
+@@ -341,6 +354,8 @@
+ 
+     try {
+       final result = await _ble.upgradeFirmware(
+         _buildPackage(dryRun: dryRun),
++        expectedSerial: widget.state.deviceById(widget.deviceId).serialNumber,
++        expectedScreenCode: widget.state.deviceById(widget.deviceId).screenType.code,
+         dryRun: dryRun,
+diff --git a/lib/src/features/cast/projection_service.dart b/lib/src/features/cast/projection_service.dart
+--- a/lib/src/features/cast/projection_service.dart
++++ b/lib/src/features/cast/projection_service.dart
+@@ -112,6 +112,8 @@
+   /// 已成功传到设备的张数保留在设备上（本张成功即物理写入）。
+   Future<ProjectionResult> castImages({
+     required Object userProductId,
++    required String expectedSerial,
++    required int expectedScreenCode,
+     required List<String> filePaths,
+@@ -133,7 +135,10 @@
+       originals.add(original.isNotEmpty ? original : path);
+     }
+ 
+-    if (!client.connected) {
++    // `client.connected` 只说明 App 连着某台设备。投屏前必须确认当前会话
++    // 就是页面携带的目标完整 ID，不能把同尺寸、同广播短 ID 的另一台当成目标。
++    if (expectedSerial.trim().isEmpty ||
++        !_ble.sessionMatchesSerial(expectedSerial, screenCode: expectedScreenCode)) {
+       return const ProjectionResult(
+diff --git a/lib/src/features/cast/presentation/casting_progress_page.dart b/lib/src/features/cast/presentation/casting_progress_page.dart
+--- a/lib/src/features/cast/presentation/casting_progress_page.dart
++++ b/lib/src/features/cast/presentation/casting_progress_page.dart
+@@ -130,9 +130,37 @@
++    final target = widget.device;
++    String? connectError;
++    if (target == null || target.serialNumber.trim().isEmpty) {
++      connectError = AppL10n.of(context).castFailureDisconnected;
++    } else if (widget.state != null &&
++        !widget.state!.isDeviceActuallyConnected(target.id)) {
++      handleProgress(
++        CastProgress(
++          percent: 0,
++          current: 0,
++          total: widget.imagePaths.length,
++          title: AppL10n.of(context).castStageTranscoding,
++          message: AppL10n.of(context).castConnectingDevice,
++        ),
++      );
++      final feedback = await widget.state!.connectDevice(target.id);
++      if (!feedback.success) {
++        connectError = feedback.message;
++      }
++    }
++
+-    final result = await service.castImages(
+-      userProductId: widget.userProductId!,
+-      filePaths: widget.imagePaths,
+-      recordFilePaths: widget.originalPaths.isEmpty
+-          ? null
+-          : widget.originalPaths,
+-      shouldAbort: () => _aborted,
+-      onProgress: handleProgress,
+-    );
++    final result = connectError != null
++        ? ProjectionResult(
++            success: false,
++            uploaded: 0,
++            total: widget.imagePaths.length,
++            message: connectError,
++            failureKind: FrameBleErrorKind.connectFailed,
++          )
++        : await service.castImages(
++            userProductId: widget.userProductId!,
++            expectedSerial: target!.serialNumber,
++            expectedScreenCode: target.screenType.code,
++            filePaths: widget.imagePaths,
++            recordFilePaths: widget.originalPaths.isEmpty
++                ? null
++                : widget.originalPaths,
++            shouldAbort: () => _aborted,
++            onProgress: handleProgress,
++          );

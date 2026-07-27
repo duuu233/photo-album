@@ -1,0 +1,14 @@
+diff --git a/lib/src/features/devices/presentation/carousel_settings_page.dart b/lib/src/features/devices/presentation/carousel_settings_page.dart
+--- a/lib/src/features/devices/presentation/carousel_settings_page.dart
++++ b/lib/src/features/devices/presentation/carousel_settings_page.dart
+@@ -14,4 +14,9 @@
+ class CarouselSettingsPage extends StatefulWidget {
+-  const CarouselSettingsPage({super.key, required this.state});
++  const CarouselSettingsPage({
++    super.key,
++    required this.state,
++    required this.deviceId,
++  });
+ 
+   final PhotoFrameState state;
++  final String deviceId;
