@@ -63,22 +63,20 @@
     <view class="dot {{index === activeIndex ? 'active' : ''}}" wx:for="{{images}}" wx:key="index"></view>
   </view>
 
-  <!-- 分段控制器（2026-07-25 改，仿 element-plus el-segmented）：竖向/横向/原图 三档等宽同框，
-       位置沿用原工具栏。选中档由一块白色滑块 .segmented-thumb 标示，切换时**滑过去**而不是直接跳。
-       ⚠️ 「原图」是**动作**不是状态（点了弹二次确认、还原成最初的图），所以它没有滑块位：
-          滑块只在 竖向(0) / 横向(1) 两档间移动，点原图滑块原地不动 —— 有意为之，别当 bug 改。
-          还原后取景方向会重置回竖向，滑块自然回到第 0 档。 -->
+  <!-- 操作栏（2026-07-27 按 assets/ai/照片预览操作栏UI.png 改版）：白色胶囊卡片，
+       竖向/横向/原图 三档等宽，档间细分隔线（has-divider），选中态靠橙色图标+橙字标示，
+       原先仿 el-segmented 的灰轨道+白滑块已删（白底上白滑块不可见）。
+       ⚠️ 「原图」是**动作**不是状态（点了弹二次确认、还原成最初的图），还原后取景方向重置回竖向。 -->
   <view class="segmented" wx:if="{{imageCount}}">
-    <view class="segmented-thumb" style="transform: translateX({{orientation === 'landscape' ? 100 : 0}}%);"></view>
     <view class="segmented-item {{orientation === 'portrait' ? 'is-active' : ''}}" hover-class="segmented-item--hover" hover-stay-time="80" data-orient="portrait" bindtap="setOrientation">
       <image class="segmented-icon" src="{{orientation === 'portrait' ? '/assets/images/preview-icon01-selected.png' : '/assets/images/preview-icon01.png'}}" mode="aspectFit"></image>
       <text>竖向</text>
     </view>
-    <view class="segmented-item {{orientation === 'landscape' ? 'is-active' : ''}}" hover-class="segmented-item--hover" hover-stay-time="80" data-orient="landscape" bindtap="setOrientation">
+    <view class="segmented-item has-divider {{orientation === 'landscape' ? 'is-active' : ''}}" hover-class="segmented-item--hover" hover-stay-time="80" data-orient="landscape" bindtap="setOrientation">
       <image class="segmented-icon" src="{{orientation === 'landscape' ? '/assets/images/preview-icon02-selected.png' : '/assets/images/preview-icon02.png'}}" mode="aspectFit"></image>
       <text>横向</text>
     </view>
-    <view class="segmented-item" hover-class="segmented-item--hover" hover-stay-time="80" bindtap="restoreOrigin">
+    <view class="segmented-item has-divider" hover-class="segmented-item--hover" hover-stay-time="80" bindtap="restoreOrigin">
       <image class="segmented-icon" src="/assets/images/preview-icon03.png" mode="aspectFit"></image>
       <text>原图</text>
     </view>
