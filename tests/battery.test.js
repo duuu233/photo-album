@@ -25,14 +25,20 @@ assert.strictEqual(
   const originalReadBattery = deviceBle.readBattery
   let calls = 0
   try {
+    battery.clearCacheForTest()
     deviceBle.readBattery = () => Promise.resolve(++calls === 1 ? 61 : 62)
     const first = await battery.readLatestBattery('device-a')
     const second = await battery.readLatestBattery('device-a')
     assert.strictEqual(first.battery, 61)
-    assert.strictEqual(second.battery, 62)
-    assert.strictEqual(calls, 2, '顺序展示必须各发一次真实读取，不能复用上次结果')
+    assert.strictEqual(second.battery, 61)
+    assert.strictEqual(calls, 1, '15 秒内顺序展示应复用最近一次有效结果')
+
+    const forced = await battery.readLatestBattery('device-a', { force: true })
+    assert.strictEqual(forced.battery, 62)
+    assert.strictEqual(calls, 2, 'force 应跳过 15 秒 TTL 并真实读取')
 
     calls = 0
+    battery.clearCacheForTest()
     deviceBle.readBattery = () => {
       calls += 1
       return new Promise(resolve => setTimeout(() => resolve(63), 0))
@@ -44,6 +50,10 @@ assert.strictEqual(
     assert.strictEqual(calls, 1, '同一设备的并发请求应只共享在途读取')
     assert.strictEqual(concurrent[0].battery, 63)
     assert.strictEqual(concurrent[1].battery, 63)
+
+    deviceBle.readBattery = () => Promise.reject(new Error('offline'))
+    const stale = await battery.readLatestBattery('device-b', { force: true })
+    assert.strictEqual(stale.battery, 63, '刷新失败应保留最近一次有效电量')
   } finally {
     deviceBle.readBattery = originalReadBattery
   }

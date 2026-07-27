@@ -1,5 +1,6 @@
 const assert = require('assert')
 const activeDevice = require('../utils/active-device')
+const deviceBle = require('../utils/device-ble')
 
 const deviceA = 'E948C21ED428'
 const deviceB = 'E448C21ED428'
@@ -59,5 +60,91 @@ assert.strictEqual(
   ),
   false
 )
+
+// 一侧是后端记录、另一侧是旧 selectedDevice：只有相同的广播短 ID 不足以复制 BLE 句柄。
+assert.strictEqual(
+  activeDevice.devicesMatch(
+    {
+      id: 'record-a',
+      userProductId: 'record-a',
+      productDeviceId: deviceA
+    },
+    {
+      id: 'legacy-selection',
+      productDeviceId: sharedBroadcastId
+    }
+  ),
+  false
+)
+
+// 绑定后尚未回查 userProductId 的临时对象，只要双方完整硬件 ID 相等仍可安全合并。
+assert.strictEqual(
+  activeDevice.devicesMatch(
+    {
+      id: 'record-a',
+      userProductId: 'record-a',
+      productDeviceId: deviceA
+    },
+    {
+      id: 'temporary-bind-result',
+      productDeviceId: deviceA
+    }
+  ),
+  true
+)
+
+// 即便 A 的页面对象误带了 B 的 BLE 句柄，活动会话的完整 ID 也必须阻止 A 认领它。
+const originalIsConnected = deviceBle.isConnected
+const originalGetActiveConnections = deviceBle.getActiveConnections
+try {
+  deviceBle.isConnected = deviceId => deviceId === 'ble-b'
+  deviceBle.getActiveConnections = () => [
+    {
+      deviceId: 'ble-b',
+      serials: [sharedBroadcastId, deviceB]
+    }
+  ]
+
+  assert.strictEqual(
+    activeDevice.findConnectedDeviceId({
+      id: 'record-a',
+      userProductId: 'record-a',
+      productDeviceId: deviceA,
+      deviceId: 'ble-b'
+    }),
+    ''
+  )
+  assert.strictEqual(
+    activeDevice.findConnectedDeviceId({
+      id: 'record-b',
+      userProductId: 'record-b',
+      productDeviceId: deviceB,
+      deviceId: 'ble-b'
+    }),
+    'ble-b'
+  )
+
+  const reconciled = activeDevice.reconcileConnectionFlags([
+    {
+      id: 'record-a',
+      userProductId: 'record-a',
+      productDeviceId: deviceA,
+      deviceId: 'ble-b'
+    },
+    {
+      id: 'record-b',
+      userProductId: 'record-b',
+      productDeviceId: deviceB,
+      deviceId: 'ble-b'
+    }
+  ])
+  assert.strictEqual(reconciled[0].connected, false)
+  assert.strictEqual(reconciled[0].deviceId, '')
+  assert.strictEqual(reconciled[1].connected, true)
+  assert.strictEqual(reconciled[1].deviceId, 'ble-b')
+} finally {
+  deviceBle.isConnected = originalIsConnected
+  deviceBle.getActiveConnections = originalGetActiveConnections
+}
 
 console.log('active-device identity tests passed')

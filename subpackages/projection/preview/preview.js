@@ -1,6 +1,6 @@
 const system = require('../../../utils/system')
 const toast = require('../../../utils/toast')
-const deviceBle = require('../../../utils/device-ble')
+const activeDevice = require('../../../utils/active-device')
 const dithering = require('../../../utils/dithering')
 
 // 设备屏幕分辨率（width×height）：列表/详情接口都会返回，取景框据此锁定宽高比（如 500x500 → 1:1）。
@@ -123,6 +123,7 @@ Page({
   },
 
   onLoad() {
+    this._unloaded = false
     this.setData(system.getLayoutMetrics())
     // 每张图的编辑状态（非破坏性）：index → _edit 快照。切图时存进来，切回时原样恢复，
     // 真正落文件统一等到点「开始投屏」（prepareProjectionImages）。
@@ -157,11 +158,30 @@ Page({
 
     // 压缩图片：产品要求恒为开启，页面已隐藏开关入口，故不再读取 Storage 覆盖（保持 data 默认 true）
 
-    // 预热连接：用户在预览页构图/确认的这几秒里，后台先把设备连上。
-    // 这样点「确认投屏」后，结果页的 ensureConnection 能直接复用已就绪的会话，
-    // 省掉「投屏中」开头那段最耗时的连接等待。失败静默忽略，结果页仍会正常重连。
-    if (device && device.deviceId) {
-      deviceBle.ensureConnection(device.deviceId).catch(() => {})
+    // 预热连接：必须按设备记录的完整身份查找/连接，不能直接复用 Storage 里的 BLE 句柄。
+    // 旧缓存若曾把 B 的句柄写进 A，直接 ensureConnection(handle) 会在预览页悄悄连到 B。
+    // 失败静默忽略，结果页还会走同一套身份校验后重连。
+    if (
+      device &&
+      (device.deviceId ||
+        device.bleDeviceId ||
+        device.deviceNo ||
+        device.productDeviceId)
+    ) {
+      activeDevice
+        .ensureDeviceConnected(device, { showLoading: false })
+        .then(deviceId => {
+          if (this._unloaded) {
+            return
+          }
+          const verified = Object.assign({}, device, {
+            deviceId,
+            bleDeviceId: deviceId,
+            connected: true
+          })
+          this.setData({ device: verified })
+        })
+        .catch(() => {})
     }
 
     // 同理预热 seekink 抖动接口 token（getXTYUserToken，会话级缓存整程复用）：
@@ -1236,6 +1256,7 @@ Page({
 
   // 离开页面：清掉所有计时器，避免回调在已销毁页面上 setData
   onUnload() {
+    this._unloaded = true
     this._clearLongPress()
     this._clearPrebake()
     if (this._pickupTimer) {

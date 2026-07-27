@@ -147,8 +147,11 @@ function reconcileConnectionFlags(devices) {
   return list.map((device, index) => {
     const liveId = winners[index] || ''
     return Object.assign({}, device, {
-      deviceId: liveId || device.deviceId,
-      bleDeviceId: liveId || device.bleDeviceId,
+      // deviceId/bleDeviceId 只表示“当前已核实属于本记录的活动 BLE 会话”。
+      // 未认领到会话时必须清空：旧页面数据可能曾把 B 的句柄写进 A，继续保留会让下游
+      // 仅按 isConnected(handle) 判断的代码绕过设备身份校验。
+      deviceId: liveId,
+      bleDeviceId: liveId,
       connected: !!liveId
     })
   })
@@ -254,10 +257,38 @@ function devicesMatch(left, right) {
   if (left.userProductId && right.userProductId) {
     return String(left.userProductId) === String(right.userProductId)
   }
+  // 一侧来自后端记录、另一侧可能是绑定后尚未回查的临时对象：若临时对象的 id 已经就是
+  // userProductId，仍可精确合并；否则不能只凭相同的广播短 ID 合并。
+  if (
+    left.userProductId &&
+    right.id &&
+    String(left.userProductId) === String(right.id)
+  ) {
+    return true
+  }
+  if (
+    right.userProductId &&
+    left.id &&
+    String(right.userProductId) === String(left.id)
+  ) {
+    return true
+  }
   if (left.id && right.id && String(left.id) === String(right.id)) {
     return true
   }
-  return serialSetsMatch(deviceSerials(left), deviceSerials(right))
+  const leftSerials = deviceSerials(left)
+  const rightSerials = deviceSerials(right)
+  const leftComplete = leftSerials.filter(serial => serial.length >= 12)
+  const rightComplete = rightSerials.filter(serial => serial.length >= 12)
+  if (leftComplete.length && rightComplete.length) {
+    return leftComplete.some(serial => rightComplete.indexOf(serial) > -1)
+  }
+  // 只要有一侧是明确的后端记录，就不允许用 4 字节广播短 ID 猜测另一侧身份。
+  // 同批次同尺寸设备可能共享该短 ID，猜中会把 selectedDevice 的 BLE 句柄复制给多条记录。
+  if (left.userProductId || right.userProductId) {
+    return false
+  }
+  return serialSetsMatch(leftSerials, rightSerials)
 }
 
 // 连接建立后用 0x01 返回的完整 Device_ID 做最终身份确认。设备记录没有稳定 ID 时保留旧设备兼容；
@@ -597,8 +628,10 @@ async function connectBoundDevice(device, options = {}) {
   const existingId = findConnectedDeviceId(device)
   if (existingId) {
     if (!options.verifyReuse) {
-      // 首页虽不做 0x01 活性校验，但电量展示必须真实发送一次 0x04，不再顺带取 15s 缓存。
-      const batteryState = await batteryUtil.readLatestBattery(existingId)
+      // 首页虽不做 0x01 活性校验，电量仍按 15 秒缓存策略平滑刷新。
+      const batteryState = await batteryUtil.readLatestBattery(existingId, {
+        fallback: device
+      })
       return {
         deviceId: existingId,
         info: { battery: batteryState.battery },
@@ -613,8 +646,9 @@ async function connectBoundDevice(device, options = {}) {
       if (!deviceInfoMatches(device, info)) {
         throw identityMismatchError(device, info && info.deviceId)
       }
-      // 设备详情/列表连接成功后的电量也统一取 0x04，避免同一界面混用 0x01 与历史缓存。
-      const batteryState = await batteryUtil.readLatestBattery(existingId)
+      const batteryState = await batteryUtil.readLatestBattery(existingId, {
+        fallback: device
+      })
       info.battery = batteryState.battery
       deviceInfo.put(existingId, info) // 登记最近一次真实结果；后续 read 仍会重新读取，不做 15s 复用
       return { deviceId: existingId, info, reused: true }
@@ -622,7 +656,9 @@ async function connectBoundDevice(device, options = {}) {
       // 「同指令正在等待应答」(CMD_PENDING) 恰恰说明会话活着且正忙（如详情页 onShow 的 0x01 在途）——
       // 按活会话直接复用；误当死会话断开的话，设备恢复广播需要时间，紧接的重扫大概率「未搜索到」。
       if (error && error.code === 'CMD_PENDING') {
-        const batteryState = await batteryUtil.readLatestBattery(existingId)
+        const batteryState = await batteryUtil.readLatestBattery(existingId, {
+          fallback: device
+        })
         return {
           deviceId: existingId,
           info: { battery: batteryState.battery },
@@ -651,7 +687,9 @@ async function connectBoundDevice(device, options = {}) {
     } catch (error) {
       info.firmwareVersion = ''
     }
-    const batteryState = await batteryUtil.readLatestBattery(target.deviceId)
+    const batteryState = await batteryUtil.readLatestBattery(target.deviceId, {
+      fallback: device
+    })
     info.battery = batteryState.battery
     deviceInfo.put(target.deviceId, info) // 登记最近一次真实结果；不参与后续电量展示
     return { deviceId: target.deviceId, info, reused: false }

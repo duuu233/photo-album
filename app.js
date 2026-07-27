@@ -2,20 +2,6 @@ const api = require('./utils/api')
 const system = require('./utils/system')
 const deviceBle = require('./utils/device-ble')
 
-function withoutCachedBattery(device) {
-  if (!device) {
-    return null
-  }
-  const selected = Object.assign({}, device, {
-    battery: null,
-    batteryAt: null
-  })
-  delete selected.batteryText
-  delete selected.batteryIcon
-  delete selected.batteryWidth
-  return selected
-}
-
 // 将回调式的 wx.login 封装为 Promise，便于在 async 流程中 await
 function wxLogin() {
   return new Promise((resolve, reject) => {
@@ -98,12 +84,9 @@ App({
   restoreSession() {
     this.globalData.token = wx.getStorageSync('token') || ''
     this.globalData.userInfo = wx.getStorageSync('userInfo') || null
-    const selected = wx.getStorageSync('selectedDevice') || null
-    // 电量不跨启动恢复：业务页面每次展示都会真实发送 0x04，旧值只会干扰设备端波动排查。
-    this.globalData.selectedDevice = withoutCachedBattery(selected)
-    if (this.globalData.selectedDevice) {
-      wx.setStorageSync('selectedDevice', this.globalData.selectedDevice)
-    }
+    // 选中设备连同最近一次有效电量恢复；页面先展示缓存，15 秒窗口外再后台刷新，
+    // 避免启动/切页时出现「-- → 真值」闪烁。
+    this.globalData.selectedDevice = wx.getStorageSync('selectedDevice') || null
   },
 
   // 走微信登录换取后端 token：wx.login 拿 code → 后端校验返回 token/用户信息
@@ -215,8 +198,7 @@ App({
 
   // 设置/清除当前选中的相框设备，同步写入缓存以便跨页面、跨启动保持选中
   setSelectedDevice(device) {
-    // 只缓存“选中了哪台设备”和连接信息，不缓存电量。电量由各展示入口实时读取 0x04。
-    const selected = withoutCachedBattery(device)
+    const selected = device || null
     this.globalData.selectedDevice = selected
 
     if (selected) {

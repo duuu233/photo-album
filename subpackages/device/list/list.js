@@ -52,8 +52,6 @@ Page({
   // 首屏渲染即 loading=true（见 data），等接口返回再决定展示列表还是空态，避免空态先闪一下；
   // 二次进入（如绑定后返回）已有内容，沿用旧列表直到新数据到位，不再回到 loading。
   async loadDevices() {
-    // 保留列表结构，但 onShow 一开始就撤掉上次读数，接口期间不展示缓存电量。
-    this.clearDisplayedBattery()
     let sourceDevices
     try {
       sourceDevices = await api.getDevices()
@@ -70,22 +68,25 @@ Page({
     // 同一台相框可能被重复绑定出多条记录：按稳定的硬件序列号(Device_ID)去重，只保留一条，
     // 避免「设备页反复出现同一设备」。同序列号优先保留当前选中(正在用/已连接)的那条。
     const uniqueDevices = this.dedupeDevices(sourceDevices, selected)
-    const devices = uniqueDevices.map(item => {
+    const devices = activeDevice.reconcileConnectionFlags(uniqueDevices.map(item => {
       // 选中设备的 BLE deviceId（连接用、后端不存）要回填到对应记录，连接状态才显示得对。
       // 用 id 或序列号匹配：绑定/重连后选中设备与列表项可能不同源，只靠 id 会漏配、错显示成「未连接」。
       // 后端记录主键/完整设备 ID 优先，避免同尺寸设备因广播短 ID 相同而合并状态。
       const isSelected = !!selected && activeDevice.devicesMatch(item, selected)
       const merged = !isSelected
-        ? Object.assign({}, item, { battery: null, batteryAt: null })
+        ? Object.assign({}, item)
         : Object.assign(
             {},
             item,
             {
               deviceId: item.deviceId || selected.deviceId,
               bleDeviceId: item.bleDeviceId || selected.bleDeviceId || selected.deviceId,
-              // 列表每次展示都先清旧值，收尾再对活动会话真实发送一次 0x04。
-              battery: null,
-              batteryAt: null
+              // 列表接口不下发电量，先沿用 selectedDevice 最近一次有效值。
+              battery:
+                batteryUtil.normalizeBattery(item.battery) === null
+                  ? selected.battery
+                  : item.battery,
+              batteryAt: item.batteryAt || selected.batteryAt || null
             }
           )
       // 用 App 当前真实的蓝牙会话状态覆盖后端的 connected：后端并不知道本机的蓝牙连接。
@@ -98,13 +99,13 @@ Page({
         bleDeviceId: liveId || merged.bleDeviceId,
         connected: !!liveId
       })
-    })
+    }))
 
     this.setData({
       // 先算内存百分比，再标记“可删除提示”仅显示在最后一个离线设备上（引导用户清理）
       devices: devices.map(item => Object.assign({}, item, {
         memoryPercent: memoryPercent(item),
-        // 电量文案/图标先置未知，下面 refreshConnectedBattery 的本次 0x04 返回后再更新。
+        // 先展示最近缓存；下面 refreshConnectedBattery 仅在 15 秒过期后读 0x04。
         batteryIcon: batteryUtil.batteryIconOf(item),
         batteryText: batteryUtil.batteryText(item)
       })).map((item, index, list) => Object.assign({}, item, {
@@ -117,17 +118,6 @@ Page({
     await this.refreshConnectedBattery()
   },
 
-  clearDisplayedBattery() {
-    const devices = (this.data.devices || []).map(item => {
-      const cleared = Object.assign({}, item, batteryUtil.stampBattery(null))
-      return Object.assign(cleared, {
-        batteryIcon: batteryUtil.batteryIconOf(cleared),
-        batteryText: batteryUtil.batteryText(cleared)
-      })
-    })
-    this.setData({ devices })
-  },
-
   async refreshConnectedBattery() {
     const target = (this.data.devices || []).find(item => item && item.connected)
     const deviceId = target && activeDevice.findConnectedDeviceId(target)
@@ -136,7 +126,9 @@ Page({
     }
     const token = (this._batteryReadToken || 0) + 1
     this._batteryReadToken = token
-    const batteryState = await batteryUtil.readLatestBattery(deviceId)
+    const batteryState = await batteryUtil.readLatestBattery(deviceId, {
+      fallback: target
+    })
     if (this._batteryReadToken !== token) {
       return
     }
@@ -155,6 +147,18 @@ Page({
       })
     })
     this.setData({ devices })
+    const refreshed = devices.find(item =>
+      item && (item.deviceId === deviceId || activeDevice.devicesMatch(item, target))
+    )
+    if (
+      refreshed &&
+      app.globalData.selectedDevice &&
+      activeDevice.devicesMatch(refreshed, app.globalData.selectedDevice)
+    ) {
+      app.setSelectedDevice(
+        Object.assign({}, app.globalData.selectedDevice, refreshed)
+      )
+    }
   },
 
   // 失败态「重新加载」：先回到 loading 转圈（即时反馈），再走一遍正常加载
@@ -247,12 +251,20 @@ Page({
     if (!device) {
       return
     }
-    const bleId = device.deviceId || device.bleDeviceId
-    if (!(bleId && deviceBle.isConnected(bleId))) {
+    // 不能只判断记录里的 BLE 句柄“是否连着”：旧缓存可能把 B 的句柄写进 A，
+    // isConnected 只能证明 B 在线，不能证明它就是当前点击的 A。必须经完整设备 ID 认领。
+    const liveId = activeDevice.findConnectedDeviceId(device)
+    if (!liveId) {
       device = await this.connectDevice(device)
       if (!device) {
         return // 连接失败，提示已由 connectDevice 弹出
       }
+    } else {
+      device = Object.assign({}, device, {
+        deviceId: liveId,
+        bleDeviceId: liveId,
+        connected: true
+      })
     }
 
     // 设为当前选中设备，预览/结果页据此连接并图传；记住本次投屏的设备供选图后使用
@@ -356,7 +368,7 @@ Page({
   },
 
   // 连接成功后的统一收尾（新连接与复用活动会话共用）：合并设备实时信息 → 设为全局选中设备 → 刷新列表项。
-  // info 的电量已由 connectBoundDevice 统一通过 0x04 实时读取；读取失败为 null，不回退旧值。
+  // info 的电量来自 15 秒缓存或本次 0x04；读取失败时保留设备卡已有有效值。
   applyConnectedDevice(device, deviceId, info) {
     const updated = Object.assign(
       {},
@@ -384,10 +396,11 @@ Page({
                 : device.intervalHours,
               firmwareVersion: info.firmwareVersion || device.firmwareVersion
             },
-            // 连接成功展示的电量来自本次 0x04。
-            batteryUtil.stampBattery(info.battery)
+            batteryUtil.normalizeBattery(info.battery) === null
+              ? null
+              : batteryUtil.stampBattery(info.battery)
           )
-        : batteryUtil.stampBattery(null)
+        : null
     )
 
     // 连接成功即设为当前选中设备：设备是单连接，「正连着的」就是当前在用的。
@@ -491,9 +504,11 @@ Page({
         // 删除的是当前已连接的设备：解绑成功后顺手断开 BLE，释放被占用的单连接。
         // 否则设备会一直被这条会话占着、不再广播，删除后既搜不到也无法重新绑定连接。
         const selected = app.globalData.selectedDevice
-        const bleId = (device && (device.deviceId || device.bleDeviceId)) ||
-          (selected && String(selected.id) === String(id) ? (selected.deviceId || selected.bleDeviceId) : '')
-        if (bleId && deviceBle.isConnected(bleId)) {
+        const bleId = activeDevice.findConnectedDeviceId(device) ||
+          (selected && String(selected.id) === String(id)
+            ? activeDevice.findConnectedDeviceId(selected)
+            : '')
+        if (bleId) {
           deviceBle.disconnect(bleId)
         }
 

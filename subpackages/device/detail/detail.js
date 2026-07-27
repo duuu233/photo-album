@@ -123,10 +123,6 @@ function isBinFirmwareUrl(url) {
   return /\.bin(?:[?#]|$)/i.test(textValue(url))
 }
 
-function getBleDeviceId(device) {
-  return textValue(device && (device.deviceId || device.bleDeviceId))
-}
-
 const OTA_OP = otaBle.OP // v1.5: { START:0xF1, DATA:0xF2, END:0xF3, ACK:0xFC }（OP.RESULT 为 END 别名）
 
 // 把一帧 OTA 收发记录解析成可读中文，配合原始 16 进制一起打印，方便与硬件日志逐帧比对。
@@ -362,11 +358,14 @@ Page({
       device = Object.assign({}, device, {
         deviceId: device.deviceId || selected.deviceId,
         bleDeviceId:
-          device.bleDeviceId || selected.bleDeviceId || selected.deviceId
+          device.bleDeviceId || selected.bleDeviceId || selected.deviceId,
+        battery:
+          batteryUtil.normalizeBattery(device.battery) === null
+            ? selected.battery
+            : device.battery,
+        batteryAt: device.batteryAt || selected.batteryAt || null
       })
     }
-    // 详情每次展示都先清除接口/selectedDevice 旧值，连接态下随后真实发送一次 0x04。
-    device = Object.assign({}, device, { battery: null, batteryAt: null })
 
     // 判连接用「deviceId 直连 + 设备ID×广播ID 序列号交叉匹配」：详情记录从接口重拉后常不带 BLE deviceId，
     // 只按 deviceId 判断会把还连着的设备错显示成「未连接」（假断联）；命中后把当下有效 deviceId 回填给记录，
@@ -380,14 +379,16 @@ Page({
         bleDeviceId: liveId,
         connected: true
       })
-      // 0x01 每次真实读取其它设备信息；电量单独统一走 0x04，排除缓存和命令来源差异。
+      // 0x01 读取其它设备信息；电量先显示缓存，15 秒过期后再读 0x04。
       let info = null
       try {
         info = await deviceInfo.read(liveId)
       } catch (error) {
-        // 其它设备信息读取失败不影响连接态；电量仍会在下面独立读取 0x04。
+        // 其它设备信息读取失败不影响连接态；电量仍按缓存策略处理。
       }
-      const batteryState = await batteryUtil.readLatestBattery(liveId)
+      const batteryState = await batteryUtil.readLatestBattery(liveId, {
+        fallback: device
+      })
       if (info) {
         device = Object.assign(
           {},
@@ -406,13 +407,13 @@ Page({
           },
           batteryState
         )
-        // 回写其它连接/设备信息；app.setSelectedDevice 会主动剔除电量，避免跨页面复用。
-        app.setSelectedDevice(
-          Object.assign({}, app.globalData.selectedDevice || {}, device)
-        )
       } else {
         device = Object.assign({}, device, batteryState)
       }
+      // 无论 0x01 其它信息是否成功，最近一次有效电量都回写 selectedDevice/Storage。
+      app.setSelectedDevice(
+        Object.assign({}, app.globalData.selectedDevice || {}, device)
+      )
     }
     // 把当前间隔小时数映射到选择器下标，缺省落到第 1 项（2 小时）
     const intervalIndex = this.data.intervalOptions.indexOf(
@@ -425,7 +426,7 @@ Page({
         ? String(device.deviceNo).replace(/\D/g, '').slice(-6)
         : ''
     const deviceCode = (device && device.firmwareDeviceId) || digitId || '--'
-    // 电量取值/文案统一走本次 0x04 结果；未连接/读取失败均为未知。
+    // 电量优先走最近缓存，超窗后台刷新；只有从未读到有效值时才显示未知。
     // 轮播设置/固件升级的右侧值只在已连接时展示，未连接一律 -- 占位（点击时提示先连接设备）
     const connected = !!(device && device.connected)
 
@@ -740,7 +741,7 @@ Page({
   },
 
   // 连接成功后的统一收尾（新连接与复用活动会话共用）：合并设备实时信息 → 设为全局选中设备 → 刷新页面 UI。
-  // info 的电量已由 connectBoundDevice 统一通过 0x04 实时读取；失败时为 null，不回退旧值。
+  // info 的电量来自 15 秒缓存或本次 0x04；失败时保留详情已有有效值。
   applyConnectedDevice(device, deviceId, info) {
     if (info) {
       this.cacheBleInfo(deviceId, info) // 登记最近一次真实 0x01；紧随的 loadDetail 仍会重新读取
@@ -773,10 +774,11 @@ Page({
               // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
               firmwareDeviceId: info.deviceId || device.firmwareDeviceId
             },
-            // 连接成功展示的电量来自本次 0x04。
-            batteryUtil.stampBattery(info.battery)
+            batteryUtil.normalizeBattery(info.battery) === null
+              ? null
+              : batteryUtil.stampBattery(info.battery)
           )
-        : batteryUtil.stampBattery(null)
+        : null
     )
     app.setSelectedDevice(updated)
 
@@ -948,8 +950,8 @@ Page({
       return
     }
 
-    const bleDeviceId = getBleDeviceId(device)
-    const connected = !!(bleDeviceId && deviceBle.isConnected(bleDeviceId))
+    const bleDeviceId = activeDevice.findConnectedDeviceId(device)
+    const connected = !!bleDeviceId
     const dryRun = !connected
     const traceId = Date.now().toString(36)
 
@@ -1305,8 +1307,11 @@ Page({
     } catch (error) {
       return
     }
-    const batteryState = await batteryUtil.readLatestBattery(deviceId)
     const prev = this.data.device || {}
+    const batteryState = await batteryUtil.readLatestBattery(deviceId, {
+      force: true,
+      fallback: prev
+    })
     const device = Object.assign(
       {},
       prev,
@@ -1316,7 +1321,7 @@ Page({
       },
       batteryState
     )
-    // 仅回写设备连接/容量等信息；电量不会跨页缓存。
+    // 回写设备连接/容量及最近一次有效电量，供跨页无闪烁展示。
     app.setSelectedDevice(
       Object.assign({}, app.globalData.selectedDevice || {}, device)
     )

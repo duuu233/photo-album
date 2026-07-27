@@ -149,10 +149,10 @@ function normalizeDevice(device) {
     // 屏幕分辨率：投屏预览页裁剪按此 width/height 锁定比例，透传给下游（接口就绪后即生效）
     width: device.width,
     height: device.height,
-    // 首页每次展示都从未知态开始，loadHomeState 收尾会对真实连接发送一次 0x04。
-    // 不从 selectedDevice/接口继承旧电量，避免读取完成前短暂闪出缓存值。
-    battery: null,
-    batteryAt: null
+    // 先沿用最近一次有效电量；15 秒窗口外由 loadHomeState 收尾后台刷新，
+    // 不在刷新前清空，避免「-- → 真值」闪烁。
+    battery: batteryUtil.normalizeBattery(device.battery),
+    batteryAt: device.batteryAt || null
   }
   // connected 已就位，才能算出电量文案/图标（未连接一律未知）
   return Object.assign(normalized, {
@@ -383,8 +383,6 @@ Page({
 
   // 拉取设备列表确定首页处于已绑定还是未绑定场景；失败则兜底为未绑定
   async loadHomeState() {
-    // onShow 一开始就撤掉上次读数，避免接口请求期间仍展示旧电量。
-    this.clearDisplayedBattery()
     // 游客模式：未登录不强制跳登录，直接展示「未绑定」首页；登录留到需要的操作时再触发
     if (!app.globalData.token && !wx.getStorageSync('token')) {
       this.setData({
@@ -421,12 +419,23 @@ Page({
           item,
           {
             deviceId: item.deviceId || cached.deviceId,
-            bleDeviceId: item.bleDeviceId || cached.bleDeviceId || cached.deviceId
+            bleDeviceId: item.bleDeviceId || cached.bleDeviceId || cached.deviceId,
+            battery:
+              batteryUtil.normalizeBattery(item.battery) === null
+                ? cached.battery
+                : item.battery,
+            batteryAt: item.batteryAt || cached.batteryAt || null
           }
         )
       })
 
-      const normalizedList = mergedDevices.map(normalizeDevice).filter(Boolean)
+      // 整组裁决保证一条活动会话最多只归属一张设备卡，并清除未通过完整身份校验的旧 BLE 句柄。
+      const normalizedList = activeDevice.reconcileConnectionFlags(
+        mergedDevices.map(normalizeDevice).filter(Boolean)
+      ).map(item => Object.assign({}, item, {
+        batteryText: batteryUtil.batteryText(item),
+        batteryIcon: batteryUtil.batteryIconOf(item)
+      }))
       const hasRealDevice = normalizedList.length > 0
       const list = hasRealDevice ? normalizedList : [DEFAULT_DEVICE]
 
@@ -456,7 +465,7 @@ Page({
       this.setScene(hasRealDevice ? SCENES.BOUND : SCENES.UNBOUND, {
         hasDevice: hasRealDevice
       })
-      // 页面已经进入展示态后立即真实读取一次 0x04；失败统一保持「--」，不回退 selectedDevice 旧值。
+      // 页面先展示缓存；15 秒内直接复用，超窗再后台读 0x04，失败保留旧值。
       await this.refreshConnectedBattery()
     } catch (error) {
       if (isNetworkError(error)) {
@@ -474,21 +483,6 @@ Page({
     }
   },
 
-  clearDisplayedBattery() {
-    const list = (this.data.deviceList || []).map(item => {
-      const cleared = Object.assign({}, item, batteryUtil.stampBattery(null))
-      return Object.assign(cleared, {
-        batteryText: batteryUtil.batteryText(cleared),
-        batteryIcon: batteryUtil.batteryIconOf(cleared)
-      })
-    })
-    const index = this.data.currentDeviceIndex
-    this.setData({
-      deviceList: list,
-      currentDevice: list[index] || this.data.currentDevice
-    })
-  },
-
   async refreshConnectedBattery() {
     const list = this.data.deviceList || []
     const target = list.find(item => item && item.connected)
@@ -498,7 +492,9 @@ Page({
     }
     const token = (this._batteryReadToken || 0) + 1
     this._batteryReadToken = token
-    const batteryState = await batteryUtil.readLatestBattery(deviceId)
+    const batteryState = await batteryUtil.readLatestBattery(deviceId, {
+      fallback: target
+    })
     if (this._batteryReadToken !== token) {
       return
     }
@@ -526,6 +522,14 @@ Page({
           ? updated
           : this.data.currentDevice
     })
+    if (
+      app.globalData.selectedDevice &&
+      activeDevice.devicesMatch(updated, app.globalData.selectedDevice)
+    ) {
+      app.setSelectedDevice(
+        Object.assign({}, app.globalData.selectedDevice, updated)
+      )
+    }
   },
 
   // 设备硬件序列号(Device_ID)：跨扫描会话稳定，用于去重 / 匹配同一台物理设备。
@@ -826,13 +830,16 @@ Page({
     if (!current) {
       return
     }
-    // info.battery 已由 connectBoundDevice 统一通过本次 0x04 读取；失败时写 null，
-    // 不再从 current/selectedDevice 沿用任何旧电量。
+    // 连接成功优先采用本次/15 秒缓存电量；读失败时保留卡片最近一次有效值。
+    const batteryState =
+      info && batteryUtil.normalizeBattery(info.battery) !== null
+        ? batteryUtil.stampBattery(info.battery)
+        : null
     const updated = Object.assign(
       {},
       current,
       { deviceId, connected: true },
-      info ? batteryUtil.stampBattery(info.battery) : batteryUtil.stampBattery(null)
+      batteryState
     )
     Object.assign(updated, {
       batteryText: batteryUtil.batteryText(updated),

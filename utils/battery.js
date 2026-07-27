@@ -1,11 +1,8 @@
-// 电量统一收口层：实时读取 + 合法性校验 + 图标/文案。
+// 电量统一收口层：15 秒结果缓存 + 在途去重 + 合法性校验 + 图标/文案。
 //
-// 2026-07-27 产品口径：业务页面每次需要展示电量时，都真实发送 0x04 GET_BATTERY；
-// 不再使用 device-info 的 15s 读取缓存，也不再用 selectedDevice 里跨页/落盘的旧电量。
-// 读取失败直接显示「--」，这样继续观察到的数值变化就来自同一条 0x04 设备应答链路，便于判断设备端波动。
-//
-// 同一 deviceId 的并发展示请求只共享「正在进行的那一次」真实读取，完成后立即释放；
-// 这是防 CMD_PENDING 的在途去重，不是按时间复用结果。
+// 2026-07-27 最终产品口径：页面先展示最近一次有效电量，不在刷新前清空成「--」；
+// 15 秒内复用同一设备最近一次 0x04 结果，过期后后台读取，成功再平滑替换。
+// 读取失败保留旧值，避免「旧值 → -- → 真值」闪烁；没有任何历史有效值时才显示「--」。
 //
 // 历史包袱（已废除）：首页曾用常量 30、本模块曾用 DEFAULT_BATTERY=100 给未知电量兜底。
 // 两个假值都会被写回缓存并横向扩散到别的页面，是「来回切页面电量一直在变」的直接成因。
@@ -13,6 +10,10 @@ const deviceBle = require('./device-ble')
 
 // 现有的一组电量图标档位（对应 BatteryLevel/battery-{n}.png）
 const BATTERY_LEVELS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+
+// 同一设备 15 秒内不重复发送 0x04。电量变化慢，这个窗口足以消除页面切换造成的
+// 连续读和数值抖动，同时又不会长期冻结电量。
+const BATTERY_CACHE_TTL_MS = 15 * 1000
 
 // 未知电量的统一占位文案（与详情页 memory/设备ID 行的 '--' 约定一致）
 const UNKNOWN_BATTERY_TEXT = '--'
@@ -35,9 +36,7 @@ function normalizeBattery(value) {
   return Math.round(number)
 }
 
-// 写入侧：把本次 BLE 读到的电量打上时间戳，供当前页面 setData 使用。
-// 读不到时返回 battery=null、batteryAt=null，**主动覆盖掉更早的陈旧值**——
-// 不要把上一次的旧值留在那里继续冒充新值。
+// 写入侧：把一次 BLE 读到的电量打上时间戳，供当前页面和 selectedDevice 缓存使用。
 function stampBattery(value) {
   const battery = normalizeBattery(value)
   return {
@@ -46,7 +45,8 @@ function stampBattery(value) {
   }
 }
 
-// 读取侧：只认当前页面真实读取后带时间戳写入的数据；页面进入时会先清旧值再发 0x04。
+// 展示侧不按 15 秒窗口主动隐藏旧值：TTL 只决定是否重新发 BLE。
+// 页面刷新时旧值继续可见，后台真读成功后再替换，失败也不会闪成「--」。
 function resolveBattery(device) {
   if (!device || !device.connected) {
     return null
@@ -63,13 +63,50 @@ function resolveBattery(device) {
 }
 
 const inflightReads = {}
+const cachedReads = {}
 
-// 每次调用都会真实发送 0x04；唯一例外是同一设备同一时刻已有 0x04 在途，此时共享该 Promise，
-// 避免设备返回 CMD_PENDING。成功/失败都打印统一日志，真机上可据此直接核对设备每次返回的原始值。
-function readLatestBattery(deviceId) {
+function cacheState(deviceId, state) {
+  const id = String(deviceId || '')
+  const battery = state && normalizeBattery(state.battery)
+  const at = Number(state && state.batteryAt)
+  if (!id || battery === null || !Number.isFinite(at) || at <= 0) {
+    return null
+  }
+  const previous = cachedReads[id]
+  if (previous && previous.batteryAt > at) {
+    return previous
+  }
+  const cached = { battery, batteryAt: at }
+  cachedReads[id] = cached
+  return cached
+}
+
+function cachedState(deviceId, fallback) {
+  const id = String(deviceId || '')
+  const fromFallback = fallback && cacheState(id, fallback)
+  return fromFallback || cachedReads[id] || null
+}
+
+// 默认 15 秒内复用缓存；超窗后真读 0x04。同一设备并发请求共享在途 Promise。
+// options.fallback 可传页面当前设备，用于把 selectedDevice/页面里的最近值注入本模块缓存；
+// options.force=true 仅供明确要求立即刷新（如诊断）时跳过 TTL，但仍保留失败回退。
+function readLatestBattery(deviceId, options) {
   const id = String(deviceId || '')
   if (!id) {
     return Promise.resolve(stampBattery(null))
+  }
+  const fallback = cachedState(id, options && options.fallback)
+  const force = !!(options && options.force)
+  if (
+    !force &&
+    fallback &&
+    Date.now() - fallback.batteryAt <= BATTERY_CACHE_TTL_MS
+  ) {
+    console.info('[设备电量][0x04] 命中15秒缓存', {
+      deviceId: id,
+      battery: fallback.battery
+    })
+    return Promise.resolve(fallback)
   }
   if (inflightReads[id]) {
     return inflightReads[id]
@@ -81,28 +118,37 @@ function readLatestBattery(deviceId) {
       if (result.battery === null) {
         console.warn('[设备电量][0x04] 设备返回非法电量', {
           deviceId: id,
-          rawBattery
+          rawBattery,
+          fallbackBattery: fallback && fallback.battery
         })
       } else {
-        console.info('[设备电量][0x04] 实时读取成功', {
+        cacheState(id, result)
+        console.info('[设备电量][0x04] 刷新成功', {
           deviceId: id,
           rawBattery,
           battery: result.battery
         })
       }
       delete inflightReads[id]
-      return result
+      return result.battery === null && fallback ? fallback : result
     },
     error => {
       delete inflightReads[id]
       console.warn('[设备电量][0x04] 实时读取失败', {
         deviceId: id,
-        error: (error && error.message) || error
+        error: (error && error.message) || error,
+        fallbackBattery: fallback && fallback.battery
       })
-      return stampBattery(null)
+      return fallback || stampBattery(null)
     }
   )
   return inflightReads[id]
+}
+
+// 单测隔离用；业务代码不调用。
+function clearCacheForTest() {
+  Object.keys(cachedReads).forEach(key => delete cachedReads[key])
+  Object.keys(inflightReads).forEach(key => delete inflightReads[key])
 }
 
 // 展示侧：'87%' 或 '--'。页面直接把返回值塞进 setData，模板不再自己拼 '%'。
@@ -127,6 +173,7 @@ function batteryIconOf(device) {
 }
 
 module.exports = {
+  BATTERY_CACHE_TTL_MS,
   UNKNOWN_BATTERY_TEXT,
   normalizeBattery,
   stampBattery,
@@ -134,5 +181,6 @@ module.exports = {
   resolveBattery,
   batteryText,
   getBatteryIcon,
-  batteryIconOf
+  batteryIconOf,
+  clearCacheForTest
 }

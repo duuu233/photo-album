@@ -4,6 +4,7 @@ const deviceBle = require('../../../utils/device-ble')
 const toast = require('../../../utils/toast')
 const system = require('../../../utils/system')
 const batteryUtil = require('../../../utils/battery')
+const activeDevice = require('../../../utils/active-device')
 
 const app = getApp()
 
@@ -65,12 +66,7 @@ function firmwareFileName(url, version) {
 }
 
 function sameDevice(a, b) {
-  if (!a || !b) {
-    return false
-  }
-  const aId = textValue(a.id || a.userProductId)
-  const bId = textValue(b.id || b.userProductId)
-  return !!(aId && bId && aId === bId)
+  return activeDevice.devicesMatch(a, b)
 }
 
 function mergeSelectedDevice(device) {
@@ -86,11 +82,13 @@ function mergeSelectedDevice(device) {
     })
   }
 
-  const bleDeviceId = textValue(
-    merged && (merged.deviceId || merged.bleDeviceId)
-  )
+  // OTA 属于不可逆风险较高的设备操作，绝不能只凭 selectedDevice 里的旧 BLE 句柄判断连接。
+  // 只有完整设备身份与当前详情记录一致的活动会话才可进入真实升级。
+  const bleDeviceId = activeDevice.findConnectedDeviceId(merged)
   return Object.assign({}, merged, {
-    connected: !!(bleDeviceId && deviceBle.isConnected(bleDeviceId))
+    deviceId: bleDeviceId,
+    bleDeviceId,
+    connected: !!bleDeviceId
   })
 }
 
@@ -253,17 +251,14 @@ Page({
   },
 
   getBleDeviceId() {
-    const firmware = this.data.firmware || {}
     const device = this.data.device || {}
     const selected = (app.globalData && app.globalData.selectedDevice) || {}
-    return (
-      firmware.bleDeviceId ||
-      device.deviceId ||
-      device.bleDeviceId ||
-      selected.deviceId ||
-      selected.bleDeviceId ||
-      ''
-    )
+    const pageDeviceId = activeDevice.findConnectedDeviceId(device)
+    if (pageDeviceId) {
+      return pageDeviceId
+    }
+    // 本地测试模式允许没有详情记录，才退回全局选中设备；正常 OTA 不得借用另一台设备的连接。
+    return this._testMode ? activeDevice.findConnectedDeviceId(selected) : ''
   },
 
   async refreshDisplayedBattery() {
@@ -274,12 +269,9 @@ Page({
     }
     const token = (this._batteryReadToken || 0) + 1
     this._batteryReadToken = token
-    const cleared = Object.assign({}, device, batteryUtil.stampBattery(null))
-    this.setData({
-      device: cleared,
-      batteryText: batteryUtil.batteryText(cleared)
+    const batteryState = await batteryUtil.readLatestBattery(deviceId, {
+      fallback: device
     })
-    const batteryState = await batteryUtil.readLatestBattery(deviceId)
     if (this._batteryReadToken !== token) {
       return
     }
@@ -288,18 +280,25 @@ Page({
       device: updated,
       batteryText: batteryUtil.batteryText(updated)
     })
+    const selected = app.globalData && app.globalData.selectedDevice
+    if (
+      selected &&
+      (selected.deviceId === deviceId || selected.bleDeviceId === deviceId)
+    ) {
+      app.setSelectedDevice(Object.assign({}, selected, updated))
+    }
   },
 
   // 本地固件测试流程：跳过后台，直接把代码包内的 .bin 当作升级包。
   // bleDeviceId 取当前全局选中设备（详情页连接后会写入）。已连接走真实蓝牙；未连接则提示将做干跑校验。
   async loadLocalTestFirmware() {
     const selected = (app.globalData && app.globalData.selectedDevice) || {}
-    const bleDeviceId = selected.deviceId || selected.bleDeviceId || ''
-    const connected = !!(bleDeviceId && deviceBle.isConnected(bleDeviceId))
+    const bleDeviceId = activeDevice.findConnectedDeviceId(selected)
+    const connected = !!bleDeviceId
     const willDryRun = this._forceDryRun || !connected
 
     const batteryState = connected
-      ? await batteryUtil.readLatestBattery(bleDeviceId)
+      ? await batteryUtil.readLatestBattery(bleDeviceId, { fallback: selected })
       : batteryUtil.stampBattery(null)
     const device = Object.assign({
       name: selected.name || '测试设备',
@@ -445,7 +444,9 @@ Page({
       const batteryDeviceId = device.deviceId || device.bleDeviceId
       const batteryState =
         device.connected && batteryDeviceId
-          ? await batteryUtil.readLatestBattery(batteryDeviceId)
+          ? await batteryUtil.readLatestBattery(batteryDeviceId, {
+              fallback: device
+            })
           : batteryUtil.stampBattery(null)
       device = Object.assign({}, device, batteryState)
       const firmware = buildFirmwareFromDevice(device)

@@ -77,6 +77,13 @@ Page({
       })
     }
 
+    const liveId = activeDevice.findConnectedDeviceId(device)
+    device = Object.assign({}, device, {
+      deviceId: liveId,
+      bleDeviceId: liveId,
+      connected: !!liveId
+    })
+
     const intervalIndex = this.data.intervalOptions.indexOf(device ? device.intervalHours : 2)
     this.setData({
       device,
@@ -91,7 +98,7 @@ Page({
   // 未连接 / 手动模式 / 用户明确关过轮播(carouselEnabled=false) 都算未开启，
   // 与详情页 getPlaybackLabel 的「未启用」判定保持一致，避免详情页显示未启用、进来开关却是橙色。
   computeCarouselOn(device) {
-    if (!device || !device.deviceId || !deviceBle.isConnected(device.deviceId)) {
+    if (!activeDevice.isDeviceConnected(device)) {
       return false
     }
     if (device.carouselEnabled === false) {
@@ -102,8 +109,7 @@ Page({
 
   // 当前设备是否已建立真实蓝牙会话
   isDeviceConnected() {
-    const d = this.data.device
-    return !!(d && d.deviceId && deviceBle.isConnected(d.deviceId))
+    return activeDevice.isDeviceConnected(this.data.device)
   },
 
   // 开启/关闭轮播。开启前必须已连接设备：未连接则提示先连接并把开关还原为未开启。

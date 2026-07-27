@@ -263,16 +263,23 @@ Page({
   // 真实投屏主流程：连接 → 读设备信息 → 逐张解码并图传 → 按真实结果置成功/失败
   async runRealProjection() {
     const pending = wx.getStorageSync('pendingProjection') || {}
-    const device = pending.device || {}
+    let device = pending.device || {}
     // 记住本次投屏的设备，供成功后「继续投屏」复用（成功会清掉 pendingProjection）
     this._sessionDevice = device
     // 只投有真实图片文件的照片（相册占位图 url 为空，无法图传）
     const images = (pending.images || []).filter(
       item => item && (item.tempFilePath || item.url)
     )
-    const deviceId = device.deviceId
+    let deviceId = ''
 
-    if (!deviceId) {
+    if (
+      !(
+        device.deviceId ||
+        device.bleDeviceId ||
+        device.deviceNo ||
+        device.productDeviceId
+      )
+    ) {
       this.finishProjection(device, {
         uploaded: 0,
         failCount: images.length ? 1 : 0,
@@ -292,7 +299,6 @@ Page({
     }
 
     this._aborted = false
-    this._activeDeviceId = deviceId
     // 投屏期间保持屏幕常亮：避免息屏导致蓝牙被挂起、传输中断
     wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: true })
     // 批量传输可达数十秒且左上角返回随时可点：传输期间拦截返回（左上角/安卓物理键/侧滑），
@@ -322,7 +328,7 @@ Page({
       progressCurrent: 0,
       progressPercent: 0
     })
-    console.log(`[投屏] 开始：deviceId=${deviceId}，待投 ${total} 张`)
+    console.log(`[投屏] 开始：目标设备=${device.id || device.deviceNo || '--'}，待投 ${total} 张`)
 
     let uploaded = 0
     // 最后一张的异步刷屏(0x24)Promise：收尾把连接间隔回落到空闲档(100ms)时要等它跑完再发——
@@ -360,9 +366,20 @@ Page({
       // 1) 连接并读取真实设备信息（屏幕尺寸/类型/容量/已存掩码）。
       // 这几步在第一包数据发出前要花点时间（连接尤其慢），逐步更新文案，避免页面看起来卡在 0% 不动。
       this.setData({ desc: '正在连接设备…' })
-      performance.connectionReused = deviceBle.isConnected(deviceId)
+      performance.connectionReused = !!activeDevice.findConnectedDeviceId(device)
       let phaseStartedAt = Date.now()
-      await deviceBle.ensureConnection(deviceId)
+      // pendingProjection 可能来自旧页面/旧缓存，里面的 BLE deviceId 不能直接信任。
+      // 统一按后端记录 ID + 完整硬件 ID 找到同一台设备；扫描候选也会在 0x01 校验通过后才返回。
+      deviceId = await activeDevice.ensureDeviceConnected(device, {
+        showLoading: false
+      })
+      device = Object.assign({}, device, {
+        deviceId,
+        bleDeviceId: deviceId,
+        connected: true
+      })
+      this._sessionDevice = device
+      this._activeDeviceId = deviceId
       performance.phases.connectMs = Date.now() - phaseStartedAt
       this.setData({ desc: '正在读取设备信息…' })
       phaseStartedAt = Date.now()
