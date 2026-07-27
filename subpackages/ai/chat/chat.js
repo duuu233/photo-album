@@ -11,6 +11,14 @@
 // 必须**配文字**一起发送（纯图片不可发）；发送即带 image_urls 走 POST /chat，服务端按
 // 张数+生图关键词自行分流（1 张+关键词=图生图美化 / 多张+关键词=友好拒绝 / 其余=分析讨论）。
 // 旧「选图后下一条输入 → /image/enhance」的单图链路随之下线（enhanceImage 接口仍保留作独立入口）。
+//
+// 2026-07-27 六项体验修复（详见 docs/2026-07-24-AI模块开发进度.md 同日日志）：
+//   1 上传前压到 ~100KB（media.compressToTarget）+ 图片按 img_orientation 预占高宽；
+//   2 打字机改 ~60fps 递归 setTimeout + 贴底改 scroll-top（原 scroll-into-view 跟不上）；
+//   3 AI 回复的文字与图渲染进**同一个气泡**（kind='rich'，图挂在 message.images 上）；
+//   4 按住说话的动效改成**盖住整个输入区**（含展开的工具栏），且录音期间不显示识别文字；
+//   5 首屏「先渲染 → 贴底 → 再显形」，图片占位防内容被顶飞；
+//   6 AI 气泡去头像、按屏宽铺满（用户侧气泡维持原样）。
 const aiApi = require('../../../utils/ai-api')
 const aiI18n = require('../../../utils/ai-i18n')
 const api = require('../../../utils/api')
@@ -54,7 +62,23 @@ const INPUT_HOLD_MOVE_PX = 10
 const TOKEN_STORAGE_KEY = 'aiTokenBalanceDemo'
 const TOKEN_DEFAULT = 100
 
-const TYPE_INTERVAL_MS = 30 // 打字机 30ms/字（文档 §6.4）
+// 打字机（2026-07-27 优化顺滑度）。原实现是 setInterval(30ms) 每帧追 3 字 —— 30ms 一跳、
+// 一跳 3 字，肉眼能看出「一顿一顿」。现在按 ~60fps 出字、每帧尽量只追 1 字，视觉上连续得多：
+//   · TYPE_TICK_MS 16ms ≈ 一帧，用递归 setTimeout 自计时（setInterval 遇上 setData 慢会堆帧）；
+//   · 每帧字数 = max(1, ceil(总字数 / TYPE_MAX_TICKS))，长回复自动加快，整段最长 ~6.7s 打完，
+//     不至于让人对着几千字干等。
+const TYPE_TICK_MS = 16
+const TYPE_MAX_TICKS = 420
+
+// 贴底滚动：scroll-top 给一个远超内容高度的值，让 scroll-view 自己夹到底部（不必量高度）。
+// 两个相邻大值交替使用 —— 属性值没变化时组件不会重新滚动，连续贴底会被吃掉；差 1px 视觉无感。
+const SCROLL_BOTTOM_A = 999998
+const SCROLL_BOTTOM_B = 999999
+// 打字期间贴底的节流间隔(ms)。每帧都 setData 一次 scrollTop 会和出字的 setData 抢主线程，
+// 反而更卡；80ms 一次 ≈ 落后不到 5 个字，打完还会强制贴一次底。
+const SCROLL_STICK_MS = 80
+// 距底多少 px 以内算「还贴着底」。用户主动往上翻看历史时就别再把他拽回来了。
+const SCROLL_STICK_PX = 60
 
 // 图文多模态一次最多带 4 张图（文档 v1.0.3 §二 image_urls 上限；超出服务端回 20012）
 const MAX_IMAGES = 4
@@ -71,12 +95,54 @@ const STYLE_OPTIONS = [
   { key: 'anime', label: '动漫' }
 ]
 
-// 图片比例（需求：竖向/横向/方形；API img_orientation 必传）
+// 图片比例（需求：竖向/横向/方形；API img_orientation 必传）。
+// pad = 高/宽×100，直接当占位盒的 padding-bottom 百分比用（见 IMAGE_PAD_DEFAULT 上方注释）。
 const ORIENTATION_OPTIONS = [
-  { key: 'vertical', label: '竖向', size: '1104×1472' },
-  { key: 'horizontal', label: '横向', size: '1472×1104' },
-  { key: 'square', label: '方形', size: '1328×1328' }
+  { key: 'vertical', label: '竖向', size: '1104×1472', pad: 133.33 },
+  { key: 'horizontal', label: '横向', size: '1472×1104', pad: 75 },
+  { key: 'square', label: '方形', size: '1328×1328', pad: 100 }
 ]
+
+// 用户可能按「landscape/portrait」这套叫法传/说方向，但接口只认 horizontal/square/vertical
+// （文档 §八 20007 INVALID_IMAGE_ORIENTATION 明确「仅 horizontal/square/vertical」），
+// 传别名过去必定报 20007。这里统一归一化，界面/存储用哪套都不影响发出去的值。
+const ORIENTATION_ALIAS = {
+  landscape: 'horizontal',
+  portrait: 'vertical',
+  '1:1': 'square',
+  '16:9': 'horizontal',
+  '9:16': 'vertical'
+}
+
+// 图片占位比例（2026-07-27 需求 1.2 / 5.2）：图片没加载完时先按已知比例把高度**占住**，
+// 加载完不会把上面的内容顶飞。取值就是「高/宽×100」，wxml 里作为占位盒的 padding-bottom 百分比。
+//
+// ⚠️ 比例来源：按 API 文档 v1.0.4 §四/§参数速查表的实际出图尺寸算 ——
+//    vertical 1104×1472(3:4) / horizontal 1472×1104(4:3) / square 1328×1328(1:1)。
+//    用户口述的是 {square 1:1, landscape 16:9, portrait 9:16}，与文档的 4:3 / 3:4 **不一致**，
+//    待后端确认到底出哪种；无论哪种都不会出错 —— 图片 bindload 回来会用**真实尺寸**改写这个比例
+//    （见 onImageLoad），文档若变了只需改上面 ORIENTATION_OPTIONS 的 pad 三个数。
+const IMAGE_PAD_DEFAULT = 133.33 // 历史消息取不到方向时按默认的竖向占位
+const IMAGE_PAD_MIN = 40 // 过于扁/长的图钳一下，免得占位盒把整屏撑没了
+const IMAGE_PAD_MAX = 240
+
+function clampPad(pad) {
+  const value = Number(pad)
+  if (!(value > 0)) {
+    return IMAGE_PAD_DEFAULT
+  }
+  return Math.min(IMAGE_PAD_MAX, Math.max(IMAGE_PAD_MIN, Number(value.toFixed(2))))
+}
+
+// 由宽高算占位比例；拿不到尺寸就回 0，交给调用方决定用不用默认值
+function padFromSize(width, height) {
+  const w = Number(width) || 0
+  const h = Number(height) || 0
+  if (!(w > 0) || !(h > 0)) {
+    return 0
+  }
+  return clampPad((h / w) * 100)
+}
 
 // AI 生成图的 OSS 地址，接口回的是 **http://**（见 API 文档 §四 images 示例），
 // 而 `wx.downloadFile` 只认 https —— 这就是「下载/投屏一律提示图片过期」的头号原因：
@@ -129,23 +195,31 @@ Page({
     sessionTitle: '新对话',
     tokenBalance: TOKEN_DEFAULT,
 
-    // 消息模型：{ id, serverId, role: 'user'|'assistant', kind: 'text'|'image',
-    //            content(文本), url(图片), loading(三点动画), typing(打字机进行中) }
+    // 消息模型：{ id, serverId, role: 'user'|'assistant',
+    //            kind: 'text'(纯文字) | 'image'(纯图，仅用户侧) | 'rich'(AI 回复：文字+图同一个气泡),
+    //            content(文本), images([{ url, serverId, pad }]), loading(三点动画), typing(打字机进行中) }
+    //
+    // AI 回复恒为 kind='rich'（2026-07-27 需求 3）：一次回复里的文字和图**必须同一个气泡**，
+    // 所以图不再各自成一条消息，而是挂在同一条消息的 images 上；历史消息里连着的 assistant 图片行
+    // 也会并回它前面那条（见 openSession），保证重进会话与刚回复时长得一样。
     messages: [],
     historyLoading: false,
+    // 首屏「先定位到底部、再显形」用（需求 5.1）：false 时聊天区透明但已渲染 —— 必须已渲染，
+    // 没布局就没法滚到底；显形前完成贴底，用户就看不到那一下「从头刷到尾」的下滑。
+    chatReady: true,
 
     inputValue: '',
-    // 待发送图片（v1.0.3 图文多模态）：{ id, url, tempFilePath, uploading }，缩略图停在输入框内，
+    // 待发送图片（v1.0.3 图文多模态）：{ id, url, tempFilePath, uploading, pad }，缩略图停在输入框内，
     // 每张可删、最多 MAX_IMAGES 张；发送时随文字一起以 image_urls 提交（纯图片不可发）。
+    // pad = 相册回的高/宽×100，发出去后用户图片气泡靠它先占住高度（需求 5.2）。
     pendingImages: [],
     maxImages: MAX_IMAGES,
     sending: false, // 等待 AI 回复中（含打字机渲染期），期间禁止再次发送
     banned: false, // 22002/22003 封禁后禁用输入（文档 §八）
 
     voiceMode: false, // 键盘/按住说话切换（🎤 专属语音按钮）
-    recording: false, // 录音中：显示仿微信的浮层
-    voiceCancel: false, // 已上滑到取消区：浮层转红、松手丢弃
-    voiceText: '', // 实时识别到的文字（WechatSI onRecognize 的中间结果），浮层里滚动显示
+    recording: false, // 录音中：动效盖住整个输入区（含展开的工具栏）
+    voiceCancel: false, // 已上滑到取消区：动效转红、松手丢弃
     speechReady: false, // 同声传译插件可用（后台已开通）。false 时只能录音、转不了文字
 
     showTools: false, // + 工具面板（相册/拍照/一键生图/比例）
@@ -157,7 +231,11 @@ Page({
     // 投屏设备选择弹窗（未连接时弹出已绑定设备列表，需求「投屏流程」）
     devicePicker: { show: false, loading: false, devices: [] },
 
-    scrollInto: '' // scroll-view 锚点
+    // 贴底滚动（2026-07-27 需求 2.2/5.1 重做）：原先用 scroll-into-view + 「先清空再设锚点」
+    // 两次 setData 触发，打字期间跟不上、首屏还会当着用户的面从头滚到尾。现在改 scroll-top
+    // 交替大值，一次 setData 直接夹到底（见 SCROLL_BOTTOM_A 注释与 stickToBottom）。
+    scrollTop: 0,
+    scrollAnimate: false // 首屏定位/打字期间关动画（动画本身就是「赶不上」的来源），发消息时才开
   },
 
   onLoad(options) {
@@ -165,6 +243,9 @@ Page({
     this._uid = 0 // 本地消息自增 id
     this._pid = 0 // 待发送图片自增 id
     this._typeTimer = null
+    this._stick = true // 视图是否还贴着底（用户上翻看历史时置 false，见 onChatScroll）
+    this._lastStickAt = 0 // 上次贴底时间，打字期间按 SCROLL_STICK_MS 节流
+    this._chatViewH = 0 // 聊天区可视高度，onReady 量一次，用来算「距底多远」
     this._chatReq = null // 进行中的 chat/enhance 请求，供「停止生成」abort
     this._createReq = null // 在途的建会话请求，连点发送时去重（见 createSession）
     this._pendingProjectImage = '' // 设备弹窗确认前暂存的待投屏图片 URL
@@ -224,6 +305,33 @@ Page({
     this.bindSpeechHandlers()
   },
 
+  // 量一次聊天区高度，供 onChatScroll 判断「用户是不是自己翻上去了」。
+  // 量不到就保持 _stick=true（＝一直自动贴底，与改造前行为一致），不影响主流程。
+  //
+  // 为什么量一次就够：聊天区高度 = 屏高 - 输入区高度，而 onReady 这一刻输入区是**最矮**的
+  // （没有待发图缩略图条、没展开工具栏、没有封禁横幅），所以这个值是聊天区能有的**最大**高度。
+  // 之后输入区变高、聊天区变矮，这个偏大的值会让「距底距离」被算小 → 更容易判成「还贴着底」
+  // ——偏向继续自动贴底，正是安全的那一侧（宁可多贴一次，也不要 AI 在回复而视图纹丝不动）。
+  onReady() {
+    this.measureChatView()
+  },
+
+  measureChatView() {
+    try {
+      wx.createSelectorQuery()
+        .in(this)
+        .select('.chat-scroll')
+        .boundingClientRect(rect => {
+          if (rect && rect.height > 0) {
+            this._chatViewH = rect.height
+          }
+        })
+        .exec()
+    } catch (error) {
+      this._chatViewH = 0
+    }
+  },
+
   onUnload() {
     this.stopGenerate(true)
     // 录音/长按计时器不清的话，回调会打在已销毁的页面上，麦克风也可能一直占着
@@ -240,6 +348,7 @@ Page({
   // sending 也要归位：调用方（resetFromList）刚用 stopGenerate(true) 把在途请求掐了，
   // 而静默模式不动 sending，漏了这一下这一页就永远「正在回复中」、再也发不出消息。
   resetToNewSession() {
+    this._stick = true // 空态没什么可滚的，但别把上一条会话「用户翻上去了」的状态带过来
     this.setData({
       messages: [],
       sessionTitle: '新对话',
@@ -247,7 +356,10 @@ Page({
       banned: false,
       sending: false,
       pendingImages: [],
-      inputValue: ''
+      inputValue: '',
+      // 有可能是在某条会话「还没定位完」时被重置的（聊天页正载入时列表页把这条删了），
+      // 漏了这一下招呼语就一直透明着，看着像白屏
+      chatReady: true
     })
   },
 
@@ -265,6 +377,7 @@ Page({
       return
     }
     this.stopGenerate(true)
+    this._stick = true // 换会话＝换内容，别把上一条会话「用户翻上去了」的状态带过来
     // sending: false 同 resetToNewSession —— 刚掐掉的在途回复不能把这一页锁在「正在回复中」
     this.setData({ messages: [], banned: false, sending: false, pendingImages: [], inputValue: '' })
     this.openSession(sessionId, title)
@@ -313,7 +426,8 @@ Page({
     this.setData({
       sessionId,
       sessionTitle: title || '对话',
-      historyLoading: true
+      historyLoading: true,
+      chatReady: false // 载入期间聊天区保持隐形，等定位到底部再显形（需求 5.1）
     })
     try {
       const history = await aiApi.getHistory(sessionId, 1, 100)
@@ -321,25 +435,64 @@ Page({
         toast.show({ title: aiI18n.t('info.10001'), icon: 'none' })
       }
       // 接口时间倒序，倒回正序渲染；assistant 且 content 以 http 开头 = 图片（文档 §6.5）
-      const messages = history.list
-        .slice()
-        .reverse()
-        .map(item => ({
-          id: ++this._uid,
-          serverId: item.id,
-          role: item.role,
-          kind: /^https?:\/\//.test(item.content) ? 'image' : 'text',
-          content: item.content,
-          url: item.content,
-          loading: false,
-          typing: false
-        }))
-      this.setData({ messages, historyLoading: false })
-      this.scrollToBottom()
+      //
+      // ⚠️ 这三层嵌套就是需求 5.1 的全部要点：**先渲染 → 再贴底 → 最后显形**，
+      // 一层都不能省，而且必须用 setData 的完成回调串（它才保证「界面已更新」，
+      // wx.nextTick 只是下一个时间片，不保证渲染已落地）：
+      //   · 消息得先真的渲染出来（有布局）才滚得动 → 所以只能透明，不能 wx:if 藏起来；
+      //   · 显形放在贴底**渲染完成之后** → 用户就看不到「从最老一条一路飞到最新」那一下。
+      this.setData({ messages: this.buildHistoryMessages(history.list), historyLoading: false }, () => {
+        this.stickToBottom({ force: true, done: () => this.setData({ chatReady: true }) })
+      })
     } catch (error) {
-      this.setData({ historyLoading: false })
+      this.setData({ historyLoading: false, chatReady: true })
       aiI18n.handleAiError(error, { onRetry: () => this.openSession(sessionId, title) })
     }
+  },
+
+  // 历史消息 → 页面消息模型。两件事：
+  //   ① assistant 的图片行**并回它前面那条 assistant 消息**（需求 3：一次回复的图文同一个气泡）。
+  //      一轮对话＝1 条 user + 1 条 assistant（文字）+ N 条 assistant（图），所以「连着的 assistant 行
+  //      属于同一轮」这个前提是成立的，不会把两轮回复并到一起。
+  //   ② 用户侧维持原样（需求 6.3）：文字一条、图片一条，各自成气泡。
+  buildHistoryMessages(list) {
+    const rows = (list || []).slice().reverse()
+    const messages = []
+    rows.forEach(row => {
+      const isImage = /^https?:\/\//.test(row.content)
+      if (row.role !== 'user' && isImage) {
+        const last = messages[messages.length - 1]
+        if (last && last.role !== 'user' && last.kind === 'rich') {
+          last.images = last.images.concat([{ url: row.content, serverId: row.id, pad: IMAGE_PAD_DEFAULT }])
+          return
+        }
+        // 前面没有可挂的文字气泡（纯图回复）：自己起一条无文字的 rich
+        messages.push({
+          id: ++this._uid,
+          serverId: '',
+          role: row.role,
+          kind: 'rich',
+          content: '',
+          images: [{ url: row.content, serverId: row.id, pad: IMAGE_PAD_DEFAULT }],
+          loading: false,
+          typing: false
+        })
+        return
+      }
+      messages.push({
+        id: ++this._uid,
+        serverId: row.id,
+        role: row.role,
+        kind: row.role === 'user' ? (isImage ? 'image' : 'text') : 'rich',
+        content: isImage ? '' : row.content,
+        // 用户图片消息：serverId 已在上一行记在消息本身上，images[0] 就别再记一遍，
+        // 否则删这条会对同一个 message_id 打两次 DELETE
+        images: isImage ? [{ url: row.content, serverId: '', pad: IMAGE_PAD_DEFAULT }] : [],
+        loading: false,
+        typing: false
+      })
+    })
+    return messages
   },
 
   goSessions() {
@@ -398,7 +551,8 @@ Page({
       toast.show({ title: '图片上传中，请稍候…', icon: 'none' })
       return
     }
-    const imageUrls = images.map(img => img.url).filter(Boolean)
+    // 带上 pad（选图时由相册回的宽高算出）：用户图片气泡也先把高度占住，不等图加载完再顶内容
+    const sendImages = images.filter(img => img.url).map(img => ({ url: img.url, pad: img.pad }))
     // 先把会话建出来，**再清输入框**。顺序不能反：建会话可能失败（网络异常 / 20013 会话已达上限），
     // 先清的话用户打的字和选的图就白没了——而「首次发送才建会话」之后，每轮新对话的第一条都会走到这。
     if (!this.data.sessionId) {
@@ -408,12 +562,14 @@ Page({
       }
     }
     this.setData({ inputValue: '', pendingImages: [] })
-    this.sendChat(text, undefined, imageUrls)
+    this.sendChat(text, undefined, sendImages)
   },
 
   // 发送对话 / 一键生图 / 图文多模态。styleKey 仅一键生图传（cartoon/landscape/portrait/anime）；
-  // imageUrls 为随文字一起发送的图片 URL（≤4，v1.0.3）。先把用户消息（图片气泡+文字气泡）上屏，
-  // 再交给 _dispatchChat 发请求——这样 30xxx 重试只重发请求、不重复堆用户气泡。
+  // imageUrls 为随文字一起发送的图片（≤4，v1.0.3），可传 URL 字符串数组，也可传
+  // { url, pad } 数组（带上占位比例，图片气泡就不会在加载完时把内容顶飞）。
+  // 先把用户消息（图片气泡+文字气泡）上屏，再交给 _dispatchChat 发请求
+  // ——这样 30xxx 重试只重发请求、不重复堆用户气泡。
   async sendChat(message, styleKey, imageUrls) {
     if (this.data.sending || this.data.banned) {
       return
@@ -431,10 +587,32 @@ Page({
       }
     }
 
-    const urls = Array.isArray(imageUrls) ? imageUrls.filter(Boolean) : []
-    // 用户消息：先按张追加图片气泡（用户上传的原图 URL），再追加文字气泡
-    const userMsgs = urls.map(url => ({ id: ++this._uid, role: 'user', kind: 'image', url, content: url }))
-    userMsgs.push({ id: ++this._uid, role: 'user', kind: 'text', content: message })
+    // 入参兼容字符串数组与 { url, pad } 数组（见方法上方注释）
+    const picked = (Array.isArray(imageUrls) ? imageUrls : [])
+      .map(item => (typeof item === 'string' ? { url: item, pad: 0 } : item))
+      .filter(item => item && item.url)
+    const urls = picked.map(item => item.url)
+    // 用户消息：先按张追加图片气泡（用户上传的原图 URL），再追加文字气泡（需求 6.3 用户侧维持原样）
+    const userMsgs = picked.map(item => ({
+      id: ++this._uid,
+      serverId: '',
+      role: 'user',
+      kind: 'image',
+      content: '',
+      images: [{ url: item.url, serverId: '', pad: clampPad(item.pad) }],
+      loading: false,
+      typing: false
+    }))
+    userMsgs.push({
+      id: ++this._uid,
+      serverId: '',
+      role: 'user',
+      kind: 'text',
+      content: message,
+      images: [],
+      loading: false,
+      typing: false
+    })
     this.setData({
       messages: this.data.messages.concat(userMsgs),
       // 首条消息后标题自动变为首条内容（与后端 session.title 行为一致，本地同步免重拉）。
@@ -443,21 +621,31 @@ Page({
         ? message.slice(0, SESSION_TITLE_MAX)
         : this.data.sessionTitle
     })
-    this.scrollToBottom()
+    this.stickToBottom({ force: true, animate: true })
     this._dispatchChat(message, styleKey, urls)
   },
 
   // 发一次 /chat 请求并渲染回复（可被「重试」重复调用，不再追加用户气泡）
   async _dispatchChat(message, styleKey, urls) {
-    const holder = { id: ++this._uid, role: 'assistant', kind: 'text', content: '', loading: true }
+    // 占位气泡就是最终那一个气泡：文字打进它的 content，图片挂进它的 images（需求 3：图文同一气泡）
+    const holder = {
+      id: ++this._uid,
+      serverId: '',
+      role: 'assistant',
+      kind: 'rich',
+      content: '',
+      images: [],
+      loading: true,
+      typing: false
+    }
     this.setData({ messages: this.data.messages.concat([holder]), sending: true })
-    this.scrollToBottom()
+    this.stickToBottom({ force: true, animate: true })
 
     try {
       this._chatReq = aiApi.chat({
         sessionId: this.data.sessionId,
         message,
-        imgOrientation: this.data.orientation,
+        imgOrientation: this.normalizedOrientation(),
         imgStyle: styleKey,
         imageUrls: urls
       })
@@ -479,68 +667,75 @@ Page({
     }
   },
 
-  // 回复渲染：文字走打字机（30ms/字），图片按气泡追加（文档 §6.3/6.4）
+  // 回复渲染（需求 3：文字与图片渲染进**同一个气泡**）：文字走打字机，图片打完字后挂到同一条消息的
+  // images 上。图片先按当前 img_orientation 占好高度（需求 1.2），加载完再用真实尺寸校正（onImageLoad）。
   renderReply(holderId, text, images) {
-    const imageMsgs = (images || []).map(url => ({
-      id: ++this._uid,
-      role: 'assistant',
-      kind: 'image',
-      url,
-      content: url
-    }))
+    const pad = this.orientationPad()
+    const replyImages = (images || [])
+      .filter(Boolean)
+      .map(url => ({ url, serverId: '', pad }))
 
-    if (!text) {
-      // 只有图没有文字：占位气泡直接替换成图片
-      const messages = this.data.messages.filter(item => item.id !== holderId).concat(imageMsgs)
-      this.setData({ messages, sending: false })
-      this.scrollToBottom()
-      return
-    }
-
-    const startIndex = this.data.messages.findIndex(item => item.id === holderId)
-    if (startIndex < 0) {
+    const index = this.data.messages.findIndex(item => item.id === holderId)
+    if (index < 0) {
       this.setData({ sending: false })
       return
     }
-    this.setData({
-      [`messages[${startIndex}].loading`]: false,
-      [`messages[${startIndex}].typing`]: true
-    })
 
-    const chars = text.split('')
+    if (!text) {
+      // 只有图没有文字：占位气泡直接变成图片气泡（仍是同一个气泡）
+      this.setData({
+        [`messages[${index}].loading`]: false,
+        [`messages[${index}].typing`]: false,
+        [`messages[${index}].images`]: replyImages,
+        sending: false
+      })
+      this.stickToBottom({ force: true, animate: true })
+      return
+    }
+
+    this.setData({
+      [`messages[${index}].loading`]: false,
+      [`messages[${index}].typing`]: true
+    })
+    this.startTyping(holderId, text, replyImages)
+  },
+
+  // 客户端打字机。两点与旧实现不同（2026-07-27 需求 2.1「再顺滑一点」）：
+  //   ① 递归 setTimeout 而非 setInterval —— setData 偶尔慢一点时 interval 会堆帧、追上来时一次吐一大段
+  //      （就是那种「卡一下、蹦一截」的观感）；自计时永远是「渲染完再排下一帧」。
+  //   ② Array.from 而不是 split('')：split 会把 emoji / 生僻字的**代理对**劈成两半，
+  //      打到一半那一帧会渲染出乱码方块（AI 回复里 ✨ 之类相当常见）。
+  startTyping(holderId, text, replyImages) {
+    const chars = Array.from(text)
+    const perTick = Math.max(1, Math.ceil(chars.length / TYPE_MAX_TICKS))
     let pos = 0
-    this._typeTimer = setInterval(() => {
-      // 打字期间用户可能删除了前面的消息导致数组下标变化，每帧按 id 重新定位
+    let typed = ''
+
+    const step = () => {
+      this._typeTimer = null
+      // 打字期间用户可能删掉了前面的消息导致数组下标变化，每帧按 id 重新定位
       const index = this.data.messages.findIndex(item => item.id === holderId)
       if (index < 0) {
-        clearInterval(this._typeTimer)
-        this._typeTimer = null
         this.setData({ sending: false })
         return
       }
       if (pos >= chars.length) {
-        clearInterval(this._typeTimer)
-        this._typeTimer = null
-        let finalMessages = this.data.messages.map(item =>
-          item.id === holderId ? Object.assign({}, item, { typing: false }) : item
-        )
-        if (imageMsgs.length) {
-          finalMessages = finalMessages.concat(imageMsgs)
+        const patch = { [`messages[${index}].typing`]: false, sending: false }
+        if (replyImages.length) {
+          patch[`messages[${index}].images`] = replyImages
         }
-        this.setData({ messages: finalMessages, sending: false })
-        this.scrollToBottom()
+        this.setData(patch)
+        this.stickToBottom({ force: true, animate: true })
         return
       }
-      // 每帧追 3 字减少 setData 频率（视觉上仍是连续打字）
-      const next = chars.slice(pos, pos + 3).join('')
-      pos += 3
-      this.setData({
-        [`messages[${index}].content`]: this.data.messages[index].content + next
-      })
-      if (pos % 30 < 3) {
-        this.scrollToBottom()
-      }
-    }, TYPE_INTERVAL_MS)
+      typed += chars.slice(pos, pos + perTick).join('')
+      pos += perTick
+      this.setData({ [`messages[${index}].content`]: typed })
+      this.stickToBottom() // 内部按 SCROLL_STICK_MS 节流，并尊重「用户已上翻」
+      this._typeTimer = setTimeout(step, TYPE_TICK_MS)
+    }
+
+    step()
   },
 
   // 停止生成：中断请求 + 结束打字机（已打出的内容保留）。silent=true 用于切会话/卸载时清理
@@ -550,7 +745,7 @@ Page({
       this._chatReq = null
     }
     if (this._typeTimer) {
-      clearInterval(this._typeTimer)
+      clearTimeout(this._typeTimer) // 打字机现在是递归 setTimeout（见 startTyping）
       this._typeTimer = null
     }
     if (!silent) {
@@ -604,6 +799,21 @@ Page({
     this.setData({ orientation: event.currentTarget.dataset.key })
   },
 
+  // 归一化到接口认的三个值（horizontal/square/vertical）。别名见 ORIENTATION_ALIAS，
+  // 认不出来就退回默认竖向 —— 传个空/错值过去会被服务端回 20006/20007，白跑一趟还扣不到图。
+  normalizedOrientation() {
+    const key = String(this.data.orientation || '').toLowerCase()
+    const mapped = ORIENTATION_ALIAS[key] || key
+    return ORIENTATION_OPTIONS.some(item => item.key === mapped) ? mapped : 'vertical'
+  },
+
+  // 当前方向对应的图片占位比例（高/宽×100），生图回来时先按它把气泡里的图占好高度
+  orientationPad() {
+    const key = this.normalizedOrientation()
+    const option = ORIENTATION_OPTIONS.find(item => item.key === key)
+    return clampPad(option ? option.pad : IMAGE_PAD_DEFAULT)
+  },
+
   openStylePicker() {
     this.setData({ showStylePicker: true })
   },
@@ -654,16 +864,34 @@ Page({
       files = files.slice(0, remain)
       toast.show({ title: `一次最多选择 ${MAX_IMAGES} 张图片`, icon: 'none' })
     }
-    // 先各插一张 uploading 缩略图占位，再逐张上传回填 URL（单张失败只移除该张）
-    const items = files.map(file => ({ id: ++this._pid, tempFilePath: file.tempFilePath, url: '', uploading: true }))
+    // 先各插一张 uploading 缩略图占位，再逐张上传回填 URL（单张失败只移除该张）。
+    // pad 用相册回的宽高先算好：发出去后用户图片气泡就能先占住高度，不等图加载完再顶内容（需求 5.2）。
+    const items = files.map(file => ({
+      id: ++this._pid,
+      tempFilePath: file.tempFilePath,
+      url: '',
+      uploading: true,
+      pad: padFromSize(file.width, file.height) || IMAGE_PAD_DEFAULT
+    }))
     this.setData({ pendingImages: this.data.pendingImages.concat(items) })
     items.forEach(item => this.uploadPending(item))
   },
 
-  // 单张上传到 OSS，成功回填 url、清 uploading；失败/无地址移除该缩略图
+  // 单张上传到 OSS，成功回填 url、清 uploading；失败/无地址移除该缩略图。
+  // 上传前先压到 ~100KB（需求 1.1）：AI 只需要看清内容，原图动辄 3~8MB，纯粹在浪费上传时间和流量。
+  // 压缩失败/压不动会原样返回原图（见 media.compressToTarget），绝不因此发不出图。
   async uploadPending(item) {
     try {
-      const uploaded = await api.setFileUpload({ filePaths: [item.tempFilePath] })
+      const shrunk = await media.compressToTarget(item.tempFilePath)
+      console.log(
+        `[AI] 待发图压缩：${(shrunk.bytes / 1024).toFixed(0)}KB` +
+          `${shrunk.compressed ? '（已压缩）' : '（未压缩/原图）'} file=${shrunk.filePath}`
+      )
+      // 上传期间用户可能已把这张删了，压缩是异步的，压完先确认它还在
+      if (this.data.pendingImages.findIndex(p => p.id === item.id) < 0) {
+        return
+      }
+      const uploaded = await api.setFileUpload({ filePaths: [shrunk.filePath] })
       const url = this.extractUrl(uploaded)
       const index = this.data.pendingImages.findIndex(p => p.id === item.id)
       if (index < 0) {
@@ -750,13 +978,10 @@ Page({
     if (!this._speech) {
       return
     }
-    // 中间结果：边说边把文字滚在浮层里，主流 AI APP 都这么做，用户能确认「听到了」
-    this._speech.onRecognize = res => {
-      if (!this.isTopPage()) {
-        return
-      }
-      this.setData({ voiceText: (res && res.result) || '' })
-    }
+    // ⚠️ 2026-07-27 需求 4.3：**不要**再把中间识别结果显示在麦克风/输入框位置。
+    // 用户明确说「松开麦克风时麦克风位置会显示文字，去掉这个，只有用户松开手后直接发送的文字」
+    // ——即录音过程中一个字都不上屏，松手后识别结果直接变成一条发出去的用户消息（参考 deepseek）。
+    // 所以这里不挂 onRecognize（挂了就必然要显示，否则纯属白跑），最终结果从 onStop 拿。
     this._speech.onStop = res => this.isTopPage() && this.onSpeechStop(res)
     this._speech.onError = err => this.isTopPage() && this.onSpeechError(err)
   },
@@ -777,7 +1002,7 @@ Page({
       return false
     }
     this._voiceCancelled = false
-    this.setData({ recording: true, voiceCancel: false, voiceText: '' })
+    this.setData({ recording: true, voiceCancel: false })
     if (wx.vibrateShort) {
       wx.vibrateShort({ type: 'light' }) // 起手震一下，与预览页长按拖拽同一套反馈
     }
@@ -816,7 +1041,7 @@ Page({
     const cancelled = this._voiceCancelled
     this._voiceCancelled = false
     if (this.data.recording) {
-      this.setData({ recording: false, voiceCancel: false, voiceText: '' })
+      this.setData({ recording: false, voiceCancel: false })
     }
     if (cancelled) {
       return // 上滑取消：安静丢弃
@@ -836,7 +1061,7 @@ Page({
     const msg = (err && (err.errMsg || err.msg)) || ''
     this._voiceCancelled = false
     if (this.data.recording) {
-      this.setData({ recording: false, voiceCancel: false, voiceText: '' })
+      this.setData({ recording: false, voiceCancel: false })
     }
     if (/auth|deny|permission/i.test(msg)) {
       wx.showModal({
@@ -957,6 +1182,9 @@ Page({
 
   // ==================== 消息长按菜单 ====================
 
+  // 长按气泡本体：用户纯图气泡→下载/投屏/删除；其余（文字 / AI 图文气泡）→删除整条。
+  // AI 气泡里**某一张图**的长按走 onImageLongPress（在图上 catchlongpress，不冒泡到这里），
+  // 否则「图文同一个气泡」之后就没法只针对某张图下载/投屏了。
   onBubbleLongPress(event) {
     const id = event.currentTarget.dataset.id
     const message = this.data.messages.find(item => item.id === id)
@@ -964,9 +1192,8 @@ Page({
       return
     }
 
-    // 需求：文本消息→删除；图片消息→下载/投屏/删除
-    const isImage = message.kind === 'image'
-    const items = isImage ? ['下载', '投屏', '删除'] : ['删除']
+    const onlyImage = message.kind === 'image' && message.images.length === 1
+    const items = onlyImage ? ['下载', '投屏', '删除'] : ['删除']
     wx.showActionSheet({
       itemList: items,
       success: res => {
@@ -974,26 +1201,86 @@ Page({
         if (action === '删除') {
           this.deleteMessage(message)
         } else if (action === '下载') {
-          this.downloadImage(message.url)
+          this.downloadImage(message.images[0].url)
         } else if (action === '投屏') {
-          this.projectImage(message.url)
+          this.projectImage(message.images[0].url)
         }
       }
     })
   },
 
+  // 长按 AI 气泡里的单张图：下载/投屏都只针对这一张；删除也只摘掉这一张
+  //（气泡里还有文字或别的图就留着，都没了才整条移除）。
+  onImageLongPress(event) {
+    const { id, index } = event.currentTarget.dataset
+    const message = this.data.messages.find(item => item.id === id)
+    if (!message || message.loading || message.typing) {
+      return
+    }
+    const image = message.images[index]
+    if (!image) {
+      return
+    }
+    const items = ['下载', '投屏', '删除']
+    wx.showActionSheet({
+      itemList: items,
+      success: res => {
+        const action = items[res.tapIndex]
+        if (action === '下载') {
+          this.downloadImage(image.url)
+        } else if (action === '投屏') {
+          this.projectImage(image.url)
+        } else if (action === '删除') {
+          this.deleteBubbleImage(message, Number(index))
+        }
+      }
+    })
+  },
+
+  // 删整条消息。图文合并进一个气泡后一条消息可能对应**多个** message_id
+  //（文字行 + 每张图各一行），逐个删掉，漏一个就会重进会话时诡异地只剩半条。
   async deleteMessage(message) {
+    // 历史消息带服务端 id 走接口删除；本轮新产生的消息接口未回 id，仅本地移除
+    //（重进会话会重新出现，待后端在 /chat 响应中带回 message_id 后可彻底删除）
+    const serverIds = [message.serverId]
+      .concat((message.images || []).map(img => img.serverId))
+      .filter(Boolean)
     try {
-      // 历史消息带服务端 id 走接口删除；本轮新产生的消息接口未回 id，仅本地移除
-      //（重进会话会重新出现，待后端在 /chat 响应中带回 message_id 后可彻底删除）
-      if (message.serverId) {
-        await aiApi.deleteMessage(this.data.sessionId, message.serverId)
+      for (const serverId of serverIds) {
+        await aiApi.deleteMessage(this.data.sessionId, serverId)
       }
       this.removeMessageById(message.id)
       toast.show({ title: '已删除', icon: 'none' })
     } catch (error) {
       aiI18n.handleAiError(error)
     }
+  },
+
+  // 只删气泡里的某一张图
+  async deleteBubbleImage(message, index) {
+    const image = message.images[index]
+    if (!image) {
+      return
+    }
+    try {
+      if (image.serverId) {
+        await aiApi.deleteMessage(this.data.sessionId, image.serverId)
+      }
+    } catch (error) {
+      aiI18n.handleAiError(error)
+      return
+    }
+    const rest = message.images.filter((item, i) => i !== index)
+    // 文字和图都没了，这个气泡就该整条消失，别留个空白框
+    if (!rest.length && !message.content) {
+      this.removeMessageById(message.id)
+    } else {
+      const msgIndex = this.data.messages.findIndex(item => item.id === message.id)
+      if (msgIndex >= 0) {
+        this.setData({ [`messages[${msgIndex}].images`]: rest })
+      }
+    }
+    toast.show({ title: '已删除', icon: 'none' })
   },
 
   removeMessageById(id) {
@@ -1003,6 +1290,30 @@ Page({
   onImageTap(event) {
     const url = event.currentTarget.dataset.url
     wx.previewImage({ urls: [url], current: url })
+  },
+
+  // 图片加载完成：用**真实宽高**改写占位比例（需求 1.2/5.2）。
+  // 占位比例发图/生图时是「按 img_orientation 猜的」、历史消息更是只能用默认竖向，
+  // 这里落地成真实值，图片就不会在加载完那一刻把上面的内容顶掉一截。
+  // 已贴底的情况下顺手再贴一次：多张图陆续加载完时，视图始终停在最新一条上。
+  onImageLoad(event) {
+    const { id, index } = event.currentTarget.dataset
+    const detail = event.detail || {}
+    const pad = padFromSize(detail.width, detail.height)
+    if (!pad) {
+      return
+    }
+    const msgIndex = this.data.messages.findIndex(item => item.id === id)
+    if (msgIndex < 0) {
+      return
+    }
+    const image = this.data.messages[msgIndex].images[index]
+    // 差不到 1% 就别 setData 了：一张图一次 setData，多图气泡上纯属白刷
+    if (!image || Math.abs(Number(image.pad) - pad) < 1) {
+      return
+    }
+    this.setData({ [`messages[${msgIndex}].images[${index}].pad`]: pad })
+    this.stickToBottom()
   },
 
   // 统一下载 AI 生成图，resolve 本地临时文件路径。下载与投屏共用同一份，避免两处各写一遍。
@@ -1137,10 +1448,41 @@ Page({
 
   // ==================== 滚动 ====================
 
-  scrollToBottom() {
-    // 先清再设，保证连续两次滚到同一锚点也能触发
-    this.setData({ scrollInto: '' }, () => {
-      this.setData({ scrollInto: 'bottom-anchor' })
-    })
+  // 贴到底部。options：
+  //   force  —— 忽略节流、也忽略「用户已上翻」，并把贴底状态复位（发消息/首屏定位/打字结束时用）；
+  //   animate —— 是否带滚动动画。打字期间必须 **false**：动画本身就是「滚动赶不上打字机」的来源，
+  //             一帧一帧地补动画会越追越远；发消息那一下开动画才好看；
+  //   done   —— 贴底**渲染完成后**的回调（首屏靠它决定何时显形）。只在 force 时用得上：
+  //             非 force 会被节流/上翻判断提前 return，那种情况下不保证被调用。
+  //
+  // 原实现用 scroll-into-view + 「先清空锚点再设锚点」触发，一次贴底两次 setData，
+  // 打字期间根本跟不上。现在一次 setData 交替 scroll-top 大值，由组件自己夹到底部。
+  stickToBottom(options) {
+    const opts = options || {}
+    if (opts.force) {
+      this._stick = true
+    } else {
+      if (!this._stick) {
+        return // 用户正在往上翻看历史，别把他拽回来
+      }
+      const now = Date.now()
+      if (now - this._lastStickAt < SCROLL_STICK_MS) {
+        return
+      }
+    }
+    this._lastStickAt = Date.now()
+    const next = this.data.scrollTop === SCROLL_BOTTOM_A ? SCROLL_BOTTOM_B : SCROLL_BOTTOM_A
+    this.setData({ scrollAnimate: !!opts.animate, scrollTop: next }, opts.done)
+  },
+
+  // 记录「用户是不是自己翻上去了」。量不到聊天区高度时保持自动贴底（＝改造前的行为），
+  // 宁可多贴一次底，也别出现「AI 在回复、视图却纹丝不动」。
+  onChatScroll(event) {
+    if (!this._chatViewH) {
+      return
+    }
+    const detail = event.detail || {}
+    const distance = (detail.scrollHeight || 0) - (detail.scrollTop || 0) - this._chatViewH
+    this._stick = distance <= SCROLL_STICK_PX
   }
 })

@@ -19,55 +19,116 @@
     </view>
   </view>
 
-  <!-- 聊天区 -->
-  <scroll-view class="chat-scroll" scroll-y scroll-into-view="{{scrollInto}}" scroll-with-animation enable-passive>
-    <view wx:if="{{historyLoading}}" class="page-loading chat-loading">
+  <!-- 聊天区。
+       · scroll-top 交替大值贴底（见 chat.js stickToBottom），不再用 scroll-into-view 锚点；
+       · chat-scroll--warming：首屏「已渲染但透明」，等定位到底部再显形（需求 5.1），
+         否则用户会看见内容从最老一条一路滚到最新那一下；
+       · 加载中的 spinner 挪到 scroll-view **外面**盖着：内容必须一直在渲染树里才滚得动。 -->
+  <view class="chat-wrap">
+    <scroll-view
+      class="chat-scroll {{chatReady ? '' : 'chat-scroll--warming'}}"
+      scroll-y
+      scroll-top="{{scrollTop}}"
+      scroll-with-animation="{{scrollAnimate}}"
+      bindscroll="onChatScroll"
+      enable-passive
+    >
+      <!-- 默认状态：星宝招呼语居中（需求原文案） -->
+      <view wx:if="{{!historyLoading && !messages.length}}" class="welcome">
+        <view class="welcome-avatar icon-block icon-block--xl icon-block--purple">✨</view>
+        <view class="welcome-text">你好！我是星宝✨，你的AI创作伙伴。有什么我可以帮你的吗？</view>
+        <view class="welcome-tip">试试：输入「画一只卡通猫」，或点 ＋ 一键生图</view>
+      </view>
+
+      <block wx:for="{{messages}}" wx:key="id">
+        <view id="msg-{{item.id}}" class="msg-row {{item.role === 'user' ? 'msg-row--user' : 'msg-row--ai'}}">
+          <!-- AI 回复气泡（需求 3/6）：文字与图片在**同一个气泡**里；不放头像；宽度按屏宽铺满。
+               气泡本体长按＝删除整条，气泡里某张图的长按/点击由图自己 catch 掉（见下） -->
+          <view
+            wx:if="{{item.role !== 'user'}}"
+            class="bubble bubble--ai"
+            bindlongpress="onBubbleLongPress"
+            data-id="{{item.id}}"
+          >
+            <view wx:if="{{item.loading}}" class="dots">
+              <view class="dot"></view>
+              <view class="dot"></view>
+              <view class="dot"></view>
+            </view>
+            <text wx:elif="{{item.content}}" class="bubble-text" user-select>{{item.content}}<text wx:if="{{item.typing}}" class="caret">▍</text></text>
+
+            <view wx:if="{{item.images.length}}" class="bubble-imgs">
+              <!-- 占位盒：padding-bottom 先按已知比例把高度占住，图加载完不顶内容（需求 1.2/5.2）；
+                   bindload 回来再用真实尺寸校正 -->
+              <view
+                wx:for="{{item.images}}"
+                wx:for-item="img"
+                wx:key="url"
+                class="img-box"
+                style="padding-bottom: {{img.pad}}%"
+                catchtap="onImageTap"
+                catchlongpress="onImageLongPress"
+                data-url="{{img.url}}"
+                data-id="{{item.id}}"
+                data-index="{{index}}"
+              >
+                <image
+                  class="img-el"
+                  src="{{img.url}}"
+                  mode="aspectFit"
+                  lazy-load
+                  bindload="onImageLoad"
+                  data-id="{{item.id}}"
+                  data-index="{{index}}"
+                ></image>
+              </view>
+            </view>
+          </view>
+
+          <!-- 用户文字气泡（需求 6.3：用户侧维持现状不变） -->
+          <view
+            wx:elif="{{item.kind === 'text'}}"
+            class="bubble bubble--user"
+            bindlongpress="onBubbleLongPress"
+            data-id="{{item.id}}"
+          >
+            <text class="bubble-text" user-select>{{item.content}}</text>
+          </view>
+
+          <!-- 用户图片气泡：点击预览，长按 下载/投屏/删除 -->
+          <view
+            wx:else
+            class="bubble bubble--image"
+            bindlongpress="onBubbleLongPress"
+            bindtap="onImageTap"
+            data-id="{{item.id}}"
+            data-url="{{item.images[0].url}}"
+          >
+            <view class="img-box" style="padding-bottom: {{item.images[0].pad}}%">
+              <image
+                class="img-el"
+                src="{{item.images[0].url}}"
+                mode="aspectFit"
+                lazy-load
+                bindload="onImageLoad"
+                data-id="{{item.id}}"
+                data-index="0"
+              ></image>
+            </view>
+          </view>
+        </view>
+      </block>
+
+      <!-- 底部留白。sending 期间加高：「停止生成」浮标是 fixed 在输入区上方的，
+           不留出这段高度它就会**盖住正在打出来的最后两行**（需求 2.2 的「被遮住」） -->
+      <view class="bottom-anchor {{sending ? 'bottom-anchor--sending' : ''}}"></view>
+    </scroll-view>
+
+    <view wx:if="{{historyLoading || !chatReady}}" class="page-loading chat-loading">
       <view class="page-loading__spinner"></view>
       <view class="page-loading__text">加载中…</view>
     </view>
-
-    <!-- 默认状态：星宝招呼语居中（需求原文案） -->
-    <view wx:if="{{!historyLoading && !messages.length}}" class="welcome">
-      <view class="welcome-avatar icon-block icon-block--xl icon-block--purple">✨</view>
-      <view class="welcome-text">你好！我是星宝✨，你的AI创作伙伴。有什么我可以帮你的吗？</view>
-      <view class="welcome-tip">试试：输入「画一只卡通猫」，或点 ＋ 一键生图</view>
-    </view>
-
-    <block wx:for="{{messages}}" wx:key="id">
-      <view id="msg-{{item.id}}" class="msg-row {{item.role === 'user' ? 'msg-row--user' : 'msg-row--ai'}}">
-        <view wx:if="{{item.role !== 'user'}}" class="msg-avatar icon-block icon-block--purple">✨</view>
-
-        <!-- 文本气泡：loading 三点动画 → 打字机填充；长按弹操作菜单 -->
-        <view
-          wx:if="{{item.kind === 'text'}}"
-          class="bubble {{item.role === 'user' ? 'bubble--user' : 'bubble--ai'}}"
-          bindlongpress="onBubbleLongPress"
-          data-id="{{item.id}}"
-        >
-          <view wx:if="{{item.loading}}" class="dots">
-            <view class="dot"></view>
-            <view class="dot"></view>
-            <view class="dot"></view>
-          </view>
-          <text wx:else user-select>{{item.content}}<text wx:if="{{item.typing}}" class="caret">▍</text></text>
-        </view>
-
-        <!-- 图片气泡：点击预览，长按 下载/投屏/删除 -->
-        <view
-          wx:else
-          class="bubble bubble--image"
-          bindlongpress="onBubbleLongPress"
-          bindtap="onImageTap"
-          data-id="{{item.id}}"
-          data-url="{{item.url}}"
-        >
-          <image class="bubble-image" src="{{item.url}}" mode="widthFix" lazy-load></image>
-        </view>
-      </view>
-    </block>
-
-    <view id="bottom-anchor" class="bottom-anchor"></view>
-  </scroll-view>
+  </view>
 
   <!-- 生成中的「停止」浮标（终止 AI 回复，文档 §5.3.4） -->
   <view wx:if="{{sending}}" class="stop-pill" bindtap="onStopTap">
@@ -161,26 +222,27 @@
       </view>
     </view>
     <view class="input-safe"></view>
-  </view>
 
-  <!-- 录音浮层（仿微信）：居中显示，上滑到取消区整块转红。
-       voiceText 是 WechatSI 的**中间识别结果**，边说边出，用户能确认「确实听到了」；
-       插件没开通(speechReady=false)时只能录音转不了字，这里如实说明，别让人以为是自己没说清。 -->
-  <view wx:if="{{recording}}" class="voice-overlay">
-    <view class="voice-panel {{voiceCancel ? 'voice-panel--cancel' : ''}}">
+    <!-- 录音动效（2026-07-27 需求 4，参考 deepseek）：不再是屏幕居中的浮层，而是**盖住整个输入区**
+         —— 就长在 .input-area 里、absolute inset:0，所以工具栏一展开、待发图缩略图一出现，
+         它自动跟着变高把「输入框 + 工具栏」全遮住（需求 4.2），无需 JS 算高度。
+         ⚠️ pointer-events:none 必须留着：手指还按在下面的输入框/说话条上，动效层一旦吃掉触摸，
+            touchmove/touchend 就收不到，会永远卡在录音态。
+         ⚠️ 需求 4.3：这里**不显示任何识别文字**（连中间结果都不取，见 chat.js bindSpeechHandlers），
+            松手后识别结果直接作为一条用户消息发出去。 -->
+    <view wx:if="{{recording}}" class="voice-cover {{voiceCancel ? 'voice-cover--cancel' : ''}}">
       <view class="voice-wave">
         <view class="voice-wave__bar"></view>
         <view class="voice-wave__bar"></view>
         <view class="voice-wave__bar"></view>
         <view class="voice-wave__bar"></view>
         <view class="voice-wave__bar"></view>
+        <view class="voice-wave__bar"></view>
+        <view class="voice-wave__bar"></view>
       </view>
-      <view wx:if="{{voiceText}}" class="voice-heard">{{voiceText}}</view>
-      <view wx:elif="{{!speechReady}}" class="voice-heard voice-heard--warn">未开通语音转文字插件</view>
-      <view wx:else class="voice-heard voice-heard--dim">正在聆听…</view>
-    </view>
-    <view class="voice-hint {{voiceCancel ? 'voice-hint--cancel' : ''}}">
-      {{voiceCancel ? '松开手指，取消发送' : '上滑取消 · 松开发送'}}
+      <view class="voice-tip">{{voiceCancel ? '松开手指，取消发送' : '上滑取消 · 松开直接发送'}}</view>
+      <!-- 插件没开通时只能录音、转不了字：这是**能力提示**不是识别结果，说一声免得用户白说一段 -->
+      <view wx:if="{{!speechReady}}" class="voice-tip voice-tip--warn">未开通语音转文字插件</view>
     </view>
   </view>
 

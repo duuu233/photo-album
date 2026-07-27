@@ -94,11 +94,29 @@
 }
 
 /* ==================== 聊天区 ==================== */
+/* 外层负责占高 + 给「加载中」当定位父级：spinner 必须盖在 scroll-view 上而不是长在里面，
+   否则首屏为了能滚到底就得让内容一直渲染着，两者会上下叠着一起显示。 */
+.chat-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  /* 保持和改造前一样的「flex:1 + min-height:0」撑高方式传给 scroll-view，
+     别改成 height:100%——百分比高度依赖父级有确定高度，flex 项上不保险。 */
+  display: flex;
+  flex-direction: column;
+}
+
 .chat-scroll {
   flex: 1;
   min-height: 0;
   padding: 0 32rpx;
   box-sizing: border-box;
+}
+
+/* 首屏预热：已渲染但透明，等 stickToBottom 定位到底部后再显形（需求 5.1）。
+   用 opacity 而非 wx:if/display:none —— 后者没有布局，滚都滚不动。 */
+.chat-scroll--warming {
+  opacity: 0;
 }
 
 /* 隐藏滚动条但保留滚动（2026-07-25 用户要求）。
@@ -114,8 +132,13 @@
   background: transparent;
 }
 
+/* 盖在聊天区上的「加载中」（含首屏预热那一小段），底下的内容正在悄悄定位到底部。
+   position/min-height 覆盖 app.wxss 的 .page-loading（同为单类选择器，页面 wxss 后加载故生效）。 */
 .chat-loading {
-  padding-top: 200rpx;
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  background: #f2f5fc;
 }
 
 .welcome {
@@ -142,7 +165,6 @@
 .msg-row {
   display: flex;
   align-items: flex-start;
-  gap: 16rpx;
   margin: 24rpx 0;
 }
 
@@ -150,20 +172,28 @@
   flex-direction: row-reverse;
 }
 
-.msg-avatar {
-  margin-top: 4rpx;
-}
+/* AI 回复不再有头像（需求 6.1），所以 .msg-avatar 整块删除；.welcome 里的那个是空态插画，不受影响 */
 
 .bubble {
+  /* 用户气泡沿用原来的 520rpx 上限（需求 6.3 用户侧维持现状）；AI 气泡在下面改成铺满 */
   max-width: 520rpx;
   padding: 20rpx 24rpx;
   border-radius: 24rpx;
   font-size: 28rpx;
   line-height: 1.55;
   word-break: break-all;
+  box-sizing: border-box;
 }
 
+.bubble-text {
+  display: block;
+}
+
+/* AI 回复气泡按宽度铺满（需求 6.2）：左右各留 32rpx 是 .chat-scroll 的页边距，
+   气泡本身在这条内容栏里 100% 撑满。文字和图都在这一个气泡里（需求 3）。 */
 .bubble--ai {
+  width: 100%;
+  max-width: 100%;
   background: #ffffff;
   color: #1f2733;
   border-top-left-radius: 8rpx;
@@ -182,9 +212,41 @@
   box-shadow: 0 4rpx 16rpx rgba(31, 41, 61, 0.05);
 }
 
-.bubble-image {
+/* 气泡内的图片区：AI 回复里 N 张图竖着排，与上面的文字之间留一点间距 */
+.bubble-imgs {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.bubble-text + .bubble-imgs {
+  margin-top: 16rpx;
+}
+
+/* 图片占位盒（需求 1.2/5.2）：高度由 padding-bottom 百分比（＝高/宽×100，行内样式给）**预先占住**，
+   所以图片加载完不会把上面的内容顶飞。图绝对定位铺满这个盒子。
+   ⚠️ padding-bottom 的百分比是相对**宽度**算的，所以 .img-box 必须有确定宽度（下面写死 400rpx）。 */
+.img-box {
+  position: relative;
   width: 400rpx;
+  max-width: 100%;
+  height: 0;
   border-radius: 18rpx;
+  overflow: hidden;
+  background: #f2f5fc;
+}
+
+/* AI 气泡已按屏宽铺满（需求 6.2），里面的图跟着铺满气泡 —— 否则 686rpx 宽的白气泡里摆一张
+   400rpx 的图，右侧一大片空白。用户侧图片气泡不受影响，仍是上面的 400rpx（需求 6.3 维持现状）。 */
+.bubble-imgs .img-box {
+  width: 100%;
+}
+
+.img-el {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   display: block;
 }
 
@@ -239,6 +301,14 @@
   height: 24rpx;
 }
 
+/* 生成中：给「停止生成」浮标腾出高度。浮标是 fixed 在输入区上方的，不腾这一块，
+   正在打出来的最后一两行就被它压住了（需求 2.2 的「底部打字内容会被遮住」）。
+   算法：浮标底边距屏底 220rpx，输入区高约 124rpx（都含同一份 safe-bottom，抵消掉），
+   即浮标底边高出聊天区底边约 96rpx，浮标自身约 62rpx 高 → 需要 ~160rpx，取 180rpx 留余量。 */
+.bottom-anchor--sending {
+  height: 180rpx;
+}
+
 /* ==================== 停止生成 / 封禁 ==================== */
 .stop-pill {
   position: fixed;
@@ -273,7 +343,10 @@
 }
 
 /* ==================== 输入区 ==================== */
+/* position: relative 是给录音动效层（.voice-cover）当定位父级用的：
+   它 absolute inset:0，于是输入区多高就盖多高 —— 工具栏一展开自动跟着变高（需求 4.2）。 */
 .input-area {
+  position: relative;
   background: #ffffff;
   border-top-left-radius: 24rpx;
   border-top-right-radius: 24rpx;
@@ -389,40 +462,37 @@
   color: #ffffff;
 }
 
-/* ==================== 录音浮层（仿微信按住说话） ==================== */
+/* ==================== 录音动效（参考 deepseek：盖住整个输入区） ==================== */
 
-/* 铺满全屏但**不吃触摸**：手指还按在下面的输入框/说话条上，浮层只负责显示。
-   漏了 pointer-events:none 的话，浮层一出现就把 touchmove/touchend 抢走，
-   松手事件收不到 → 永远停在录音态。 */
-.voice-overlay {
-  position: fixed;
+/* 2026-07-27 需求 4：动效**替换文本输入的位置**（4.1），且工具栏展开时要连工具栏一起盖住（4.2）。
+   做法就是 absolute inset:0 长在 .input-area 里 —— 输入区多高它就多高，缩略图条/工具栏一出现
+   自动跟着变高，不需要 JS 量任何高度。
+   ⚠️ pointer-events:none 必须留着：手指还按在下面的输入框/说话条上，动效层一旦吃掉触摸，
+      touchmove/touchend 就收不到 → 永远卡在录音态。
+   ⚠️ 这里**不显示识别文字**（需求 4.3），只有波形 + 手势提示。 */
+.voice-cover {
+  position: absolute;
   inset: 0;
-  z-index: 100;
+  z-index: 30;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 16rpx;
+  padding: 20rpx 32rpx calc(12rpx + var(--safe-bottom));
+  box-sizing: border-box;
+  background: #ffffff;
+  border-top-left-radius: 24rpx;
+  border-top-right-radius: 24rpx;
   pointer-events: none;
 }
 
-.voice-panel {
-  min-width: 320rpx;
-  max-width: 560rpx;
-  padding: 40rpx 48rpx;
-  background: rgba(38, 42, 51, 0.92);
-  border-radius: 32rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 24rpx;
-}
-
 /* 上滑到取消区：整块转红，与文案同步给出「这一松手就丢了」的信号 */
-.voice-panel--cancel {
-  background: rgba(214, 69, 65, 0.94);
+.voice-cover--cancel {
+  background: #fdecec;
 }
 
-/* 五根跳动的竖条：纯 CSS 的录音动画，不依赖真实音量（getRecorderManager 不给实时分贝）。
+/* 跳动的竖条：纯 CSS 录音动画，不依赖真实音量（getRecorderManager 不给实时分贝）。
    只表示「正在听」，别理解成音量条。 */
 .voice-wave {
   display: flex;
@@ -434,51 +504,40 @@
 .voice-wave__bar {
   width: 8rpx;
   height: 20rpx;
-  background: #ffffff;
+  background: #eb5f1b;
   border-radius: 999rpx;
   animation: voiceWave 0.9s ease-in-out infinite;
 }
 
-.voice-wave__bar:nth-child(2) { animation-delay: 0.15s; }
-.voice-wave__bar:nth-child(3) { animation-delay: 0.3s; }
-.voice-wave__bar:nth-child(4) { animation-delay: 0.45s; }
-.voice-wave__bar:nth-child(5) { animation-delay: 0.6s; }
+.voice-cover--cancel .voice-wave__bar {
+  background: #d64541;
+}
+
+.voice-wave__bar:nth-child(2) { animation-delay: 0.12s; }
+.voice-wave__bar:nth-child(3) { animation-delay: 0.24s; }
+.voice-wave__bar:nth-child(4) { animation-delay: 0.36s; }
+.voice-wave__bar:nth-child(5) { animation-delay: 0.48s; }
+.voice-wave__bar:nth-child(6) { animation-delay: 0.6s; }
+.voice-wave__bar:nth-child(7) { animation-delay: 0.72s; }
 
 @keyframes voiceWave {
   0%, 100% { height: 20rpx; }
   50% { height: 52rpx; }
 }
 
-/* 实时识别到的文字：最多两行，超出省略（说得长时不该把浮层撑成一面墙） */
-.voice-heard {
-  max-height: 84rpx;
-  overflow: hidden;
-  color: #ffffff;
-  font-size: 28rpx;
-  line-height: 42rpx;
+.voice-tip {
+  font-size: 26rpx;
+  color: #8b9098;
   text-align: center;
 }
 
-.voice-heard--dim {
-  color: rgba(255, 255, 255, 0.6);
+.voice-cover--cancel .voice-tip {
+  color: #d64541;
 }
 
-.voice-heard--warn {
-  color: #ffd08a;
-  font-size: 26rpx;
-}
-
-.voice-hint {
-  margin-top: 28rpx;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 26rpx;
-  padding: 12rpx 28rpx;
-  background: rgba(38, 42, 51, 0.72);
-  border-radius: 999rpx;
-}
-
-.voice-hint--cancel {
-  background: rgba(214, 69, 65, 0.9);
+.voice-tip--warn {
+  color: #eb8f1b;
+  font-size: 22rpx;
 }
 
 .send-btn {
