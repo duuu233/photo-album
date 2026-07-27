@@ -53,4 +53,39 @@ try {
   http.post = originalPost
 }
 
-console.log('device-id tests passed')
+;(async () => {
+  const originalGetUserProductList = api.getUserProductList
+  try {
+    api.getUserProductList = () =>
+      Promise.resolve([
+        {
+          userProductId: 'record-full',
+          productName: '完整设备',
+          deviceId: 'e948c21ed428'
+        },
+        {
+          userProductId: 'record-empty',
+          productName: '空设备ID',
+          deviceId: ''
+        },
+        {
+          userProductId: 'record-short',
+          productName: '短设备ID',
+          deviceId: 'C21ED428'
+        }
+      ])
+    const devices = await api.getDevices()
+    assert.strictEqual(devices[0].productDeviceId, 'E9:48:C2:1E:D4:28')
+    assert.strictEqual(devices[0].deviceId, '')
+    assert.strictEqual(devices[1].productDeviceId, '')
+    assert.strictEqual(devices[2].productDeviceId, '')
+    assert.strictEqual(devices[2].deviceIdentityInvalid, true)
+  } finally {
+    api.getUserProductList = originalGetUserProductList
+  }
+
+  console.log('device-id tests passed')
+})().catch(error => {
+  console.error(error)
+  process.exitCode = 1
+})

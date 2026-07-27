@@ -148,7 +148,7 @@
 ### 参数参考
 
 - `addUserProduct(data)`：`{ productId(必传), productName, deviceId }`。`deviceId` 必须是连接后通过 `0x01 GET_INFO` 读取的完整 6 字节 `Device_ID`（统一 `AA:BB:CC:DD:EE:FF`）；广播 4 字节短 ID、微信 BLE `deviceId` 均禁止传入，缺失或格式不合法时前端直接终止绑定且不发送请求。`bindDevice` 每次绑定都先调 `getProductList` 拉「全部产品列表」，再用本地蓝牙搜索到的设备(型号/屏幕/名称)逐条匹配出 `productId`；匹配不到则中止绑定并提示。
-- `getUserProductList/getUserProductImgList/getUserProductImgRecordList(params)`：`pageIndex`、`pageSize`、`keyword`、`startDate`、`endDate`；图库/投屏记录另支持 `userProductId`。
+- `getUserProductList/getUserProductImgList/getUserProductImgRecordList(params)`：`pageIndex`、`pageSize`、`keyword`、`startDate`、`endDate`；图库/投屏记录另支持 `userProductId`。设备列表响应的 `deviceId` 经完整 6 字节校验后映射为 `productDeviceId`，非空时在设备卡片展示，空值不展示；微信 BLE 临时句柄仍只保存在页面 `deviceId/bleDeviceId`，不得作为展示值。
 - `getUserProductDetail(params)`：可传 `userProductId` 或 `{ userProductId, productVersionNo }`。
 - `editUserProduct(data)`：`{ userProductId, productName }`。
 - `delUserProduct/clearUserProductImg(userProductId)`：可传 `id` 或 `{ id }`。
@@ -160,6 +160,10 @@
 
 - `subpackages/device/bind/bind.js`：真实蓝牙扫描/读取设备信息后调用 `addUserProduct` 绑定后端设备。
 - `pages/home/home.js`、`subpackages/device/list/list.js`、`subpackages/device/detail/detail.js`：设备列表/详情改为 `getUserProductList`、`getUserProductDetail`、`editUserProduct`、`delUserProduct`。
+- 首页、设备列表、设备详情共享同一真实 BLE 会话：接口刷新或页面字段裁剪后，会按同一
+  `userProductId` 继承完整 6 字节身份；任意页面连接成功都统一回写
+  `productDeviceId/deviceNo/firmwareDeviceId`。三个页面显示该设备时均为“已连接”，其他设备不会
+  因短 ID、名称或旧 BLE 句柄误认领该会话。
 - `subpackages/device/detail/detail.js`、`subpackages/device/slideshow/slideshow.js`：轮播设置走 BLE `setPlayback(0x10)`；电量/容量刷新走 BLE `readDeviceInfo(0x01)`。
 - `subpackages/device/detail/detail.js`：一键清空先走 BLE `deleteImage(0x12)` 删除设备内图片，再调用 `clearUserProductImg` 同步后端。
 - `subpackages/album/list/list.js`：图库列表/删除改为 `getUserProductImgList`、`delUserProductImg`，不再补演示占位照片。

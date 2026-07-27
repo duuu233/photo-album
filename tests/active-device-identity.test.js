@@ -133,6 +133,54 @@ try {
     ''
   )
 
+  // 同一条已核实会话，在首页/列表/详情三种页面对象结构中都必须认领为已连接。
+  const pageRepresentations = [
+    {
+      id: 'record-b',
+      userProductId: 'record-b',
+      deviceNo: deviceB
+    },
+    {
+      id: 'record-b',
+      userProductId: 'record-b',
+      productDeviceId: 'E4:48:C2:1E:D4:28'
+    },
+    {
+      id: 'record-b',
+      userProductId: 'record-b',
+      firmwareDeviceId: deviceB,
+      deviceId: 'ble-b'
+    }
+  ]
+  pageRepresentations.forEach(device => {
+    assert.strictEqual(activeDevice.findConnectedDeviceId(device), 'ble-b')
+    assert.strictEqual(activeDevice.isDeviceConnected(device), true)
+  })
+
+  // 详情接口即使没返回设备 ID，也应从同一 userProductId 的已连接选中项继承完整身份。
+  const inheritedDetail = activeDevice.inheritStableIdentity(
+    {
+      id: 'record-b',
+      userProductId: 'record-b',
+      name: '详情记录'
+    },
+    pageRepresentations[1]
+  )
+  assert.strictEqual(inheritedDetail.productDeviceId, 'E4:48:C2:1E:D4:28')
+  assert.strictEqual(activeDevice.findConnectedDeviceId(inheritedDetail), 'ble-b')
+
+  // 任一页面连接成功，都统一回写完整身份与当前 BLE 句柄，供另外两页直接认领。
+  const connected = activeDevice.applyConnectedIdentity(
+    { id: 'record-b', userProductId: 'record-b' },
+    'ble-b',
+    { deviceId: deviceB }
+  )
+  assert.strictEqual(connected.productDeviceId, 'E4:48:C2:1E:D4:28')
+  assert.strictEqual(connected.deviceNo, 'E4:48:C2:1E:D4:28')
+  assert.strictEqual(connected.firmwareDeviceId, 'E4:48:C2:1E:D4:28')
+  assert.strictEqual(connected.deviceId, 'ble-b')
+  assert.strictEqual(connected.connected, true)
+
   const reconciled = activeDevice.reconcileConnectionFlags([
     {
       id: 'record-a',

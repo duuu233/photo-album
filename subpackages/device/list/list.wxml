@@ -45,6 +45,8 @@
                 <image class="edit-name-icon" src="/assets/images/edit-icon01.png" mode="aspectFit"></image>
               </view>
             </view>
+            <!-- productDeviceId 来自 getUserProductList.deviceId，经 API 层校验为完整 6 字节后展示；空值不占位 -->
+            <text wx:if="{{item.productDeviceId}}" class="device-id">设备ID {{item.productDeviceId}}</text>
             <view class="device-meta">
               <view class="connection {{item.connected ? 'is-connected' : ''}}">
                 <image class="meta-bt-icon" src="{{item.connected ? '/assets/images/bluetooth-icon.png' : '/assets/images/bluetooth-icon-not.png'}}" mode="aspectFit"></image>

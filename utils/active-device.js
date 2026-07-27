@@ -177,11 +177,74 @@ function uniqueSerials(values) {
   )
 }
 
+// 从页面对象/接口记录/0x01 实时信息中取完整设备 ID。
+// 不读取 device.deviceId：该字段在页面层专门保存微信 BLE 临时句柄。
+function stableDeviceId(device) {
+  const candidates = [
+    device && device.productDeviceId,
+    device && device.deviceNo,
+    device && device.firmwareDeviceId,
+    device && device.backendDeviceId
+  ]
+  for (let i = 0; i < candidates.length; i++) {
+    const value = deviceIdUtil.canonical(candidates[i])
+    if (value) {
+      return value
+    }
+  }
+  return ''
+}
+
 function deviceSerials(device) {
   return uniqueSerials([
     device && device.deviceNo,
-    device && device.productDeviceId
+    device && device.productDeviceId,
+    device && device.firmwareDeviceId,
+    device && device.backendDeviceId
   ]).filter(deviceIdUtil.isComplete)
+}
+
+// 页面重新拉接口时可能只返回部分字段：保持当前记录为主，仅从 fallback 继承同一设备的完整 ID。
+function inheritStableIdentity(device, fallback) {
+  const target = Object.assign({}, device || {})
+  const completeId = stableDeviceId(target) || stableDeviceId(fallback)
+  if (!completeId) {
+    return target
+  }
+  return Object.assign(target, {
+    productDeviceId: completeId,
+    deviceNo: completeId,
+    firmwareDeviceId:
+      deviceIdUtil.canonical(target.firmwareDeviceId) || completeId
+  })
+}
+
+// 连接成功后的统一身份回写：首页、列表、详情都通过它生成相同结构。
+// ID 优先取本次 0x01，复用会话时取会话已登记的完整 ID，最后才沿用页面记录。
+function applyConnectedIdentity(device, bleDeviceId, info) {
+  const connection = deviceBle
+    .getActiveConnections()
+    .find(item => item.deviceId === bleDeviceId)
+  const sessionCompleteId = ((connection && connection.serials) || [])
+    .map(deviceIdUtil.canonical)
+    .find(Boolean)
+  const completeId =
+    deviceIdUtil.canonical(info && info.deviceId) ||
+    sessionCompleteId ||
+    stableDeviceId(device)
+  const updated = Object.assign({}, device || {}, {
+    deviceId: bleDeviceId,
+    bleDeviceId,
+    connected: true
+  })
+  if (!completeId) {
+    return updated
+  }
+  return Object.assign(updated, {
+    productDeviceId: completeId,
+    deviceNo: completeId,
+    firmwareDeviceId: completeId
+  })
 }
 
 // 两个序列号是否指同一台物理设备：归一化后精确相等，或互为子串（要求 ≥8 hex/4 字节，避免误并）。
@@ -377,7 +440,12 @@ function syncActiveDeviceId(device, deviceId) {
     // 两边若都有完整 ID，以完整 ID 为准；短广播 ID 不得覆盖完整 ID 冲突。
     const sameBySerial = devicesMatch(device, selected)
     if (sameById || sameBySerial) {
-      app.setSelectedDevice(Object.assign({}, selected, { deviceId, bleDeviceId: deviceId, connected: true }))
+      app.setSelectedDevice(
+        applyConnectedIdentity(
+          inheritStableIdentity(selected, device),
+          deviceId
+        )
+      )
     }
   } catch (error) {
     // 同步失败不影响连接结果
@@ -760,7 +828,7 @@ async function ensureActiveDeviceConnection() {
 
   try {
     const deviceId = await ensureDeviceConnected(device)
-    return Object.assign({}, device, { deviceId, bleDeviceId: deviceId, connected: true })
+    return applyConnectedIdentity(device, deviceId)
   } catch (error) {
     promptSwitchDevice('无法连接当前设备，请前往首页切换设备或绑定新设备')
     throw error
@@ -774,6 +842,9 @@ module.exports = {
   reconcileConnectionFlags,
   serialsMatch,
   serialSetsMatch,
+  stableDeviceId,
+  inheritStableIdentity,
+  applyConnectedIdentity,
   devicesMatch,
   deviceInfoMatches,
   sameScreen,

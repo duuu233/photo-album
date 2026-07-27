@@ -138,11 +138,15 @@ function normalizeDevice(device) {
   // 活动会话按「设备ID×广播ID」交叉匹配认领：接口重拉的记录不带 BLE deviceId，只按 deviceId 直连判断
   // 会把还连着的设备错显示成「未连接」（假断联）；交叉匹配命中后顺带把当下有效 deviceId 回填给记录
   const liveId = activeDevice.findConnectedDeviceId(device)
+  const completeDeviceId = activeDevice.stableDeviceId(device)
   const normalized = {
     id: device.id || DEFAULT_DEVICE.id,
     deviceId: liveId || device.deviceId || '', // 真实蓝牙 deviceId：投屏页据此连接设备并图传
+    bleDeviceId: liveId || device.bleDeviceId || device.deviceId || '',
     // 硬件序列号(Device_ID)：跨扫描会话稳定，按需连接时据此匹配扫描结果，须随设备一路带下去
-    deviceNo: device.deviceNo || device.productDeviceId || '',
+    productDeviceId: completeDeviceId,
+    deviceNo: completeDeviceId,
+    firmwareDeviceId: completeDeviceId,
     name: device.name || device.displayName || '相框',
     // 「已连接」按真实蓝牙会话显示（即连即传，无活动会话即未连接），不再恒为 true
     connected: !!liveId,
@@ -414,10 +418,8 @@ Page({
         if (!sameAsCached) {
           return item
         }
-        return Object.assign(
-          {},
-          item,
-          {
+        return activeDevice.inheritStableIdentity(
+          Object.assign({}, item, {
             deviceId: item.deviceId || cached.deviceId,
             bleDeviceId: item.bleDeviceId || cached.bleDeviceId || cached.deviceId,
             battery:
@@ -425,7 +427,8 @@ Page({
                 ? cached.battery
                 : item.battery,
             batteryAt: item.batteryAt || cached.batteryAt || null
-          }
+          }),
+          cached
         )
       })
 
@@ -835,11 +838,10 @@ Page({
       info && batteryUtil.normalizeBattery(info.battery) !== null
         ? batteryUtil.stampBattery(info.battery)
         : null
-    const updated = Object.assign(
-      {},
-      current,
-      { deviceId, connected: true },
-      batteryState
+    const updated = activeDevice.applyConnectedIdentity(
+      Object.assign({}, current, batteryState),
+      deviceId,
+      info
     )
     Object.assign(updated, {
       batteryText: batteryUtil.batteryText(updated),

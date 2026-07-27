@@ -73,7 +73,7 @@ Page({
       // 用 id 或序列号匹配：绑定/重连后选中设备与列表项可能不同源，只靠 id 会漏配、错显示成「未连接」。
       // 后端记录主键/完整设备 ID 优先，避免同尺寸设备因广播短 ID 相同而合并状态。
       const isSelected = !!selected && activeDevice.devicesMatch(item, selected)
-      const merged = !isSelected
+      const mergedBase = !isSelected
         ? Object.assign({}, item)
         : Object.assign(
             {},
@@ -89,6 +89,10 @@ Page({
               batteryAt: item.batteryAt || selected.batteryAt || null
             }
           )
+      const merged = activeDevice.inheritStableIdentity(
+        mergedBase,
+        isSelected ? selected : null
+      )
       // 用 App 当前真实的蓝牙会话状态覆盖后端的 connected：后端并不知道本机的蓝牙连接。
       // 判连接用「deviceId 直连 + 设备ID×广播ID 序列号交叉匹配」（findConnectedDeviceId）：
       // 接口重拉的记录常不带 BLE deviceId，只按 deviceId 判断会把还连着的设备错显示成「未连接」；
@@ -369,7 +373,7 @@ Page({
   // 连接成功后的统一收尾（新连接与复用活动会话共用）：合并设备实时信息 → 设为全局选中设备 → 刷新列表项。
   // info 的电量来自 15 秒缓存或本次 0x04；读取失败时保留设备卡已有有效值。
   applyConnectedDevice(device, deviceId, info) {
-    const updated = Object.assign(
+    const updatedBase = Object.assign(
       {},
       device,
       {
@@ -400,6 +404,11 @@ Page({
               : batteryUtil.stampBattery(info.battery)
           )
         : null
+    )
+    const updated = activeDevice.applyConnectedIdentity(
+      updatedBase,
+      deviceId,
+      info
     )
 
     // 连接成功即设为当前选中设备：设备是单连接，「正连着的」就是当前在用的。

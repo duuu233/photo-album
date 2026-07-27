@@ -116,12 +116,23 @@
   height: 36rpx;
 }
 
+.device-id {
+  display: block;
+  overflow: hidden;
+  margin-top: 8rpx;
+  color: #8b9098;
+  font-size: 22rpx;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .device-meta {
   display: flex;
   align-items: center;
   gap: 26rpx;
   min-height: 34rpx;
-  margin-top: 14rpx;
+  margin-top: 10rpx;
   color: #8b9098;
   font-size: 24rpx;
   line-height: 1;

@@ -348,16 +348,19 @@ Page({
       activeDevice.devicesMatch(device, selected)
 
     if (isSelected) {
-      device = Object.assign({}, device, {
-        deviceId: device.deviceId || selected.deviceId,
-        bleDeviceId:
-          device.bleDeviceId || selected.bleDeviceId || selected.deviceId,
-        battery:
-          batteryUtil.normalizeBattery(device.battery) === null
-            ? selected.battery
-            : device.battery,
-        batteryAt: device.batteryAt || selected.batteryAt || null
-      })
+      device = activeDevice.inheritStableIdentity(
+        Object.assign({}, device, {
+          deviceId: device.deviceId || selected.deviceId,
+          bleDeviceId:
+            device.bleDeviceId || selected.bleDeviceId || selected.deviceId,
+          battery:
+            batteryUtil.normalizeBattery(device.battery) === null
+              ? selected.battery
+              : device.battery,
+          batteryAt: device.batteryAt || selected.batteryAt || null
+        }),
+        selected
+      )
     }
 
     // 判连接用「deviceId 直连 + 设备ID×广播ID 序列号交叉匹配」：详情记录从接口重拉后常不带 BLE deviceId，
@@ -367,11 +370,7 @@ Page({
     if (liveId) {
       // 连接态以 BLE 会话为准，先行置位；0x01 只用于补充内存/播放模式等信息，
       // 读失败不影响「已连接」显示（此前读失败会被静默吞掉，明明连着却显示成未连接）。
-      device = Object.assign({}, device, {
-        deviceId: liveId,
-        bleDeviceId: liveId,
-        connected: true
-      })
+      device = activeDevice.applyConnectedIdentity(device, liveId)
       // 0x01 读取其它设备信息；电量先显示缓存，15 秒过期后再读 0x04。
       let info = null
       try {
@@ -738,7 +737,7 @@ Page({
     if (info) {
       this.cacheBleInfo(deviceId, info) // 登记最近一次真实 0x01；紧随的 loadDetail 仍会重新读取
     }
-    const updated = Object.assign(
+    const updatedBase = Object.assign(
       {},
       device,
       {
@@ -771,6 +770,11 @@ Page({
               : batteryUtil.stampBattery(info.battery)
           )
         : null
+    )
+    const updated = activeDevice.applyConnectedIdentity(
+      updatedBase,
+      deviceId,
+      info
     )
     app.setSelectedDevice(updated)
 
