@@ -163,9 +163,9 @@
   background: #ff5f1f;
 }
 
-/* 分段控制器（2026-07-25 改，仿 element-plus el-segmented）：竖向/横向/原图 三档等宽同框。
-   位置/外框沿用原 .tool-bar（同 margin、同圆角、同投影），只把「三个独立按钮」变成
-   「一条轨道 + 一块会滑动的选中滑块」。轨道底色比页面稍深，白色滑块才浮得出来。 */
+/* 分段控制器（2026-07-27 恢复仿 element-plus el-segmented 交互）：竖向/横向/原图三档等宽同框。
+   结构为「一条轨道 + 一块会滑动的选中滑块」，竖/横切换时滑块跟随 orientation 移动；
+   「原图」仍是还原动作，不占用滑块状态。轨道底色比页面稍深，白色滑块才浮得出来。 */
 .segmented {
   position: relative;
   z-index: 1;
@@ -173,8 +173,9 @@
   margin: 28rpx 46rpx 0;
   /* 滑块靠 6rpx 内边距嵌在轨道里；.segmented-thumb 的宽度算式与这个值强耦合，改一处要同步另一处 */
   padding: 6rpx;
-  background: rgba(226, 233, 243, 0.62);
-  border: 2rpx solid rgba(255, 255, 255, 0.86);
+  /* background: rgba(226, 233, 243, 0.62); */
+  background: rgba(226, 233, 243, 0);
+  border: 1rpx solid rgba(255, 255, 255, 0.86);
   border-radius: 40rpx;
   box-shadow: 0 24rpx 54rpx rgba(121, 145, 178, 0.13);
 }

@@ -18,6 +18,18 @@
     "ignoreDevUnusedFiles": false,
     "bigPackageSizeSupport": true
   },
-  "condition": {},
+  "condition": {
+    "miniprogram": {
+      "list": [
+        {
+          "name": "subpackages/projection/preview/preview",
+          "pathName": "subpackages/projection/preview/preview",
+          "query": "",
+          "scene": null,
+          "launchMode": "default"
+        }
+      ]
+    }
+  },
   "libVersion": "3.16.1"
 }
