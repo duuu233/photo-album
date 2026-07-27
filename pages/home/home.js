@@ -409,7 +409,7 @@ Page({
       // 列表里对应的那台（id 或序列号匹配），连接状态才判得对——否则即便蓝牙仍连着，列表项因缺
       // deviceId 也会被 normalizeDevice 错判成「未连接」（之前轮播卡片就是这么一直显示未连接的）。
       const mergedDevices = uniqueDevices.map(item => {
-        // 后端记录主键不同或完整设备 ID 不同就不得合并；广播短 ID 仅在缺少完整身份时兜底。
+        // 后端记录主键不同或完整 6 字节设备 ID 不同就不得合并；广播短 ID 不参与状态合并。
         const sameAsCached = !!cached && activeDevice.devicesMatch(item, cached)
         if (!sameAsCached) {
           return item

@@ -4,24 +4,10 @@ const permission = require('../../../utils/permission')
 const bluetooth = require('../../../utils/bluetooth')
 const deviceBle = require('../../../utils/device-ble')
 const activeDevice = require('../../../utils/active-device')
+const deviceIdUtil = require('../../../utils/device-id')
 const system = require('../../../utils/system')
 
 const app = getApp()
-
-// 搜索列表里展示的「设备ID」：取广播里的 Device_ID（bluetooth.normalizeDevice 的 deviceNo），
-// 去掉分隔符并大写，得到 8 位十六进制（如 1A2B3C4D）——同型号设备默认名相同（默认名=产品广播名），
-// 这是绑定前唯一能把两台区分开的稳定标识。
-// 兜底：广播厂商数据解析不出来时 deviceNo 会退化成蓝牙 deviceId（安卓 MAC / iOS 36 位 UUID），
-// 那种值又长又对用户无意义，只取末 8 位保持可读且仍能区分（WXSS 另有 ellipsis 兜底）。
-function displayDeviceCode(device) {
-  const raw = String((device && device.deviceNo) || '')
-    .replace(/[:\-\s]/g, '')
-    .toUpperCase()
-  if (!raw) {
-    return ''
-  }
-  return raw.length > 8 ? raw.slice(-8) : raw
-}
 
 Page({
   data: {
@@ -142,9 +128,7 @@ Page({
     if (seq !== this.scanSeq) {
       return // 本次扫描已取消，丢弃增量结果
     }
-    const devices = (list || []).map(item =>
-      Object.assign({}, item, { deviceCode: displayDeviceCode(item) })
-    )
+    const devices = (list || []).map(item => Object.assign({}, item))
     this.setData({
       devices,
       selectedId:
@@ -201,8 +185,7 @@ Page({
     })
   },
 
-  // 设备硬件序列号(Device_ID)：跨扫描会话稳定，用于判断「这台是否已绑定」。
-  // 归一化（去分隔符 + 大写）以兼容后端与蓝牙广播两侧可能的格式差异。
+  // 设备硬件序列号归一化，仅用于本页比较。
   deviceSerial(value) {
     return String(value == null ? '' : value).replace(/[:\-\s]/g, '').toUpperCase()
   },
@@ -212,16 +195,14 @@ Page({
   //
   // 「已绑定设备再搜索后有概率变成新设备」的两个元凶都在这里治理：
   //   ① 拉已绑定列表偶发网络失败时旧代码直接 return null → 判成新设备 → 重复绑定。改为重试一次。
-  //   ② 序列号有两种表示：连上读 0x01 得到的是 6 字节 Device_ID，扫描广播里的只有 4 字节。
-  //      两边都有完整 ID 时必须按完整 ID 判定；短广播 ID 只在缺少完整 ID 时兜底，避免同批次设备误判为同一台。
+  //   ② 扫描广播只有 4 字节短 ID，不具备稳定身份资格；判重只使用连上后 0x01 返回的完整 6 字节 ID。
   async findBoundDevice(scanDevice, info) {
-    // 候选序列号：优先用连上读到的 Device_ID(6字节)，再并入扫描广播里的 deviceNo/productDeviceId(4字节)
-    const candidates = [info && info.deviceId, scanDevice.deviceNo, scanDevice.productDeviceId]
-      .map(value => this.deviceSerial(value))
-      .filter(Boolean)
-    if (!candidates.length) {
+    // 绑定判重也只认 0x01 返回的完整 6 字节 ID；广播短 ID 不再作为稳定身份兜底。
+    const completeId = deviceIdUtil.canonical(info && info.deviceId)
+    if (!completeId) {
       return null
     }
+    const candidates = [this.deviceSerial(completeId)]
 
     // 拉已绑定列表判重：网络抖动会让这步偶发失败，一旦失败旧代码就按「新设备」绑定 → 重复绑定。
     // 这里重试一次，尽量拿到真实列表再判重；两次都失败才不阻断绑定。
@@ -246,11 +227,9 @@ Page({
     const matched =
       devices.find(item => {
         const itemSerials = [item.deviceNo, item.productDeviceId]
+          .filter(value => deviceIdUtil.isComplete(value))
           .map(value => this.deviceSerial(value))
           .filter(Boolean)
-        if (!itemSerials.length && item.deviceId) {
-          itemSerials.push(this.deviceSerial(item.deviceId))
-        }
         if (!itemSerials.length) {
           return false
         }
@@ -311,6 +290,11 @@ Page({
       wx.showLoading({ title: '连接设备中', mask: true })
       try {
         info = await deviceBle.readDeviceInfo(scanDevice.deviceId)
+        // readDeviceInfo 成功不等于身份字段一定有效；未拿到完整 6 字节 ID 时禁止继续绑定。
+        info.deviceId = deviceIdUtil.requireComplete(
+          info && info.deviceId,
+          '设备-未读取到完整的6字节设备ID，请重新连接后再试'
+        )
         bleConnected = true // ensureConnection 已建立可复用会话，绑定成功后将沿用它
         try {
           const conn = await deviceBle.getConnectionInterval(
@@ -349,6 +333,9 @@ Page({
       const reused = Object.assign({}, existed, {
         deviceId: scanDevice.deviceId, // 本次会话有效的 BLE deviceId，供后续断开/图传复用
         bleDeviceId: scanDevice.deviceId,
+        productDeviceId: info.deviceId,
+        deviceNo: info.deviceId,
+        firmwareDeviceId: info.deviceId,
         battery: info && typeof info.battery === 'number' ? info.battery : existed.battery
       })
       wx.hideLoading()
@@ -362,7 +349,10 @@ Page({
     // 合并：扫描得到的蓝牙标识 + 连接后读到的真实设备信息（保留蓝牙 deviceId 供后续重连）
     const payload = Object.assign({}, scanDevice, info || {}, {
       deviceId: scanDevice.deviceId,
-      deviceNo: (info && info.deviceId) || scanDevice.deviceNo,
+      bleDeviceId: scanDevice.deviceId,
+      productDeviceId: info.deviceId,
+      deviceNo: info.deviceId,
+      firmwareDeviceId: info.deviceId,
       name: scanDevice.name
     })
 

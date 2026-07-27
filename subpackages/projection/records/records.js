@@ -2,6 +2,7 @@ const api = require('../../../utils/api')
 const system = require('../../../utils/system')
 const toast = require('../../../utils/toast')
 const activeDevice = require('../../../utils/active-device')
+const deviceIdUtil = require('../../../utils/device-id')
 
 Page({
   data: {
@@ -182,8 +183,8 @@ Page({
     })
   },
 
-  // 定位「该条记录对应的设备」：优先按 userProductId 从用户设备列表精确匹配，其次按设备序列号
-  // (productDeviceId/deviceNo) 容错匹配；都匹配不到时退回当前全局选中设备（保证单设备场景仍可用）。
+  // 定位「该条记录对应的设备」：优先按 userProductId 精确匹配，其次按完整 6 字节设备 ID 精确匹配。
+  // 两者都缺失/不匹配时返回 null，禁止退回全局选中设备，避免把记录再次投屏到另一台设备。
   // 返回带序列号的设备对象(供 ensureConnectedForAction 扫描匹配连接)或 null。
   async resolveRecordDevice(record) {
     let devices = []
@@ -205,18 +206,20 @@ Page({
       }
     }
 
-    const serial = record && (record.productDeviceId || record.deviceNo)
+    const serial = deviceIdUtil.canonical(
+      record && (record.productDeviceId || record.deviceNo)
+    )
     if (serial) {
-      const bySerial = devices.find(item =>
-        activeDevice.serialsMatch(item.deviceNo || item.productDeviceId, serial)
+      const bySerial = devices.find(
+        item =>
+          deviceIdUtil.canonical(item.deviceNo || item.productDeviceId) === serial
       )
       if (bySerial) {
         return bySerial
       }
     }
 
-    // 兜底：记录未带可匹配的设备标识时，退回全局选中设备（沿用旧行为，单设备场景不受影响）
-    return activeDevice.getActiveDevice()
+    return null
   },
 
   // 按记录的 uProductImgId 到图库找同一张照片的原图地址；找不到/失败返回 ''，调用方回退记录图。

@@ -9,6 +9,7 @@ const protocol = require('../../../utils/frame-protocol')
 const media = require('../../../utils/media')
 const activeDevice = require('../../../utils/active-device')
 const deviceName = require('../../../utils/device-name')
+const deviceIdUtil = require('../../../utils/device-id')
 
 const app = getApp()
 
@@ -93,14 +94,6 @@ function logClearDeviceData(traceId, label, data) {
 
 function textValue(value) {
   return String(value || '').trim()
-}
-
-// 设备硬件序列号(Device_ID)：跨扫描会话稳定，用于匹配同一台物理设备。
-// 归一化（去分隔符 + 大写）以兼容后端与蓝牙广播两侧可能的格式差异（与 list.js 的 deviceSerial 一致）。
-function deviceSerial(device) {
-  return String((device && (device.deviceNo || device.productDeviceId)) || '')
-    .replace(/[:\-\s]/g, '')
-    .toUpperCase()
 }
 
 // 给「设备返回 / 蓝牙链路」类错误统一加「设备-」前缀（与 toast 来源前缀约定一致：
@@ -419,16 +412,16 @@ Page({
     const intervalIndex = this.data.intervalOptions.indexOf(
       device ? device.intervalHours : 2
     )
-    // 设备ID优先展示固件读到的真实 Device_ID（0x01，与调试台一致）；
-    // 未连接/读取失败时回退后端序列号末 6 位数字，再缺失用 -- 占位（不再用假的 123456）
-    const digitId =
-      device && device.deviceNo
-        ? String(device.deviceNo).replace(/\D/g, '').slice(-6)
-        : ''
-    const deviceCode = (device && device.firmwareDeviceId) || digitId || '--'
     // 电量优先走最近缓存，超窗后台刷新；只有从未读到有效值时才显示未知。
     // 轮播设置/固件升级的右侧值只在已连接时展示，未连接一律 -- 占位（点击时提示先连接设备）
     const connected = !!(device && device.connected)
+    // 设备ID只展示完整 6 字节值：优先本次 0x01 结果，读取失败可回退后端保存的完整 ID；
+    // 广播 4 字节短 ID、末 6 位截断值和微信 BLE deviceId 一律不展示。
+    const deviceCode = connected
+      ? deviceIdUtil.canonical(device && device.firmwareDeviceId) ||
+        deviceIdUtil.canonical(device && device.deviceNo) ||
+        '--'
+      : '--'
 
     this.setData({
       device,
@@ -724,10 +717,9 @@ Page({
       return null
     }
     try {
-      // 扫描+匹配+连接主链已收敛到 active-device.connectBoundDevice（首页/列表/详情共用一份，改一处全生效）。
-      // 详情页传入带「名称兜底」的匹配器(老记录没序列号时按名连)，并对复用的活动会话先读设备信息做活性校验。
+      // 扫描+匹配+连接主链已收敛到 active-device.connectBoundDevice（首页/列表/详情共用一份）。
+      // 只用完整 6 字节 ID 筛选/复核，不再按名称连接；复用活动会话前先读设备信息做活性校验。
       const res = await activeDevice.connectBoundDevice(device, {
-        match: (found, dev) => this.matchScannedDevice(found, dev),
         verifyReuse: true
       })
       const updated = this.applyConnectedDevice(device, res.deviceId, res.info)
@@ -792,31 +784,13 @@ Page({
         : '--',
       playbackLabel: getPlaybackLabel(updated),
       newVersionNo: updated.newVersionNo || updated.firmwareVersion || '--',
-      // 在详情页内点「连接」成功后，设备ID行立即切换为固件真实 Device_ID
-      deviceCode: updated.firmwareDeviceId || this.data.deviceCode
+      // 在详情页内点「连接」成功后只展示完整 6 字节 Device_ID。
+      deviceCode:
+        deviceIdUtil.canonical(updated.firmwareDeviceId) ||
+        deviceIdUtil.canonical(updated.deviceNo) ||
+        '--'
     })
     return updated
-  },
-
-  // 把后端设备(序列号/名称)与扫描结果匹配，返回带「本次会话有效 deviceId」的那条。
-  // 序列号用 active-device.serialsMatch 容错比对（归一化+互为子串）：广播 Device_ID 只有 4 字节、
-  // 后端存 6 字节，之前的精确相等必然对不上，实际一直靠名称兜底碰巧连上（默认设备名=产品广播名）；
-  // 用户一改名两条路全断，表现为「改名后点连接提示未搜索到该设备」。
-  // 名称兜底只留给没有序列号的老记录：有序列号却没匹配上即视为设备不在附近，不再按名连接——
-  // 同型号广播名相同，按名兜底可能连到别人的相框。
-  matchScannedDevice(found, device) {
-    const bySerial = activeDevice.matchScannedDevice(found, device)
-    if (bySerial) {
-      return bySerial
-    }
-    if (deviceSerial(device)) {
-      return null
-    }
-    const name = String((device && device.name) || '').trim()
-    if (!name) {
-      return null
-    }
-    return (found || []).find(item => String(item.name || '').trim() === name) || null
   },
 
   // 点「轮播设置」：未连接设备时不进入，提示先连接（与 startProjection 同一实时判连方式）

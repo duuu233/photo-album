@@ -35,13 +35,13 @@ assert.strictEqual(
   false
 )
 
-// 老记录若只有广播短 ID，仍保留兼容；这类记录本身无法区分短 ID 相同的两台设备。
+// 设备身份统一要求完整 6 字节 ID；只有广播短 ID 的老记录不得再通过身份校验。
 assert.strictEqual(
   activeDevice.deviceInfoMatches(
     { productDeviceId: sharedBroadcastId },
     { deviceId: deviceA }
   ),
-  true
+  false
 )
 
 // 两条后端用户设备记录都有主键时，主键不同不得因短 ID 相同而合并连接状态。
@@ -122,6 +122,15 @@ try {
       deviceId: 'ble-b'
     }),
     'ble-b'
+  )
+  assert.strictEqual(
+    activeDevice.findConnectedDeviceId({
+      id: 'legacy-short-record',
+      userProductId: 'legacy-short-record',
+      productDeviceId: sharedBroadcastId,
+      deviceId: 'ble-b'
+    }),
+    ''
   )
 
   const reconciled = activeDevice.reconcileConnectionFlags([

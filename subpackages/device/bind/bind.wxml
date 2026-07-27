@@ -36,8 +36,8 @@
           <view class="nearby-copy">
             <text class="nearby-name">{{item.name}}</text>
             <text class="nearby-sub">{{item.screen ? item.screen + ' · ' : ''}}{{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.signalText || '--'}}</text>
-            <!-- 设备ID：同名设备（默认设备名=产品广播名，同型号必然重名）靠它区分是哪一台 -->
-            <text class="nearby-sub">ID {{item.deviceCode || '--'}}</text>
+            <!-- 扫描阶段不展示4字节短ID；完整6字节设备ID在连接后通过0x01读取 -->
+            <text class="nearby-sub">设备ID 绑定后读取</text>
           </view>
           <image wx:if="{{selectedId === (item.id || item.deviceId)}}" class="select-circle" src="/assets/images/selected-icon.png" mode="aspectFit"></image>
           <view wx:else class="select-circle select-circle--empty"></view>

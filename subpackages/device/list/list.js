@@ -351,10 +351,9 @@ Page({
   // 所以「直连不中也不会连不上」，只是慢一点。成功返回带有效 deviceId/实时信息的设备对象并刷新列表 UI；失败提示后返回 null。
   async connectDevice(device) {
     try {
-      // 扫描+匹配+连接主链已收敛到 active-device.connectBoundDevice（首页/列表/详情共用一份，改一处全生效）。
-      // 列表页传入带「名称兜底」的匹配器(老记录没序列号时按名连)，并对复用的活动会话先读设备信息做活性校验。
+      // 扫描+匹配+连接主链已收敛到 active-device.connectBoundDevice（首页/列表/详情共用一份）。
+      // 只用完整 6 字节 ID 筛选/复核，不再按名称连接；复用活动会话前先读设备信息做活性校验。
       const res = await activeDevice.connectBoundDevice(device, {
-        match: (found, dev) => this.matchScannedDevice(found, dev),
         verifyReuse: true
       })
       const updated = this.applyConnectedDevice(device, res.deviceId, res.info)
@@ -421,27 +420,6 @@ Page({
         }))
     })
     return updated
-  },
-
-  // 把后端来的设备(只有序列号/名称)和扫描结果匹配，返回带「本次会话有效 deviceId」的那条。
-  // 序列号用 active-device.serialsMatch 容错比对（归一化+互为子串）：广播 Device_ID 只有 4 字节、
-  // 后端存 6 字节，之前的精确相等必然对不上，实际一直靠名称兜底碰巧连上（默认设备名=产品广播名）；
-  // 用户一改名两条路全断，表现为「改名后点连接提示未搜索到该设备」。
-  // 名称兜底只留给没有序列号的老记录：有序列号却没匹配上即视为设备不在附近，不再按名连接——
-  // 同型号广播名相同，按名兜底可能连到别人的相框。
-  matchScannedDevice(found, device) {
-    const bySerial = activeDevice.matchScannedDevice(found, device)
-    if (bySerial) {
-      return bySerial
-    }
-    if (this.deviceSerial(device)) {
-      return null
-    }
-    const name = String((device && device.name) || '').trim()
-    if (!name) {
-      return null
-    }
-    return (found || []).find(item => String(item.name || '').trim() === name) || null
   },
 
   renameDevice(e) {

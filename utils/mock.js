@@ -1,5 +1,7 @@
 // 本地模拟后端：用一份存在 Storage 里的“数据库”模拟全部接口，无需真实服务端即可联调。
 // 入口是底部的 handle(options)，按 url/method 路由到对应处理函数；config.useMock 控制是否启用。
+const deviceIdUtil = require('./device-id')
+
 const STORE_KEY = 'mockPhotoAlbumDb' // 模拟数据库在本地缓存中的键名
 const STORE_VERSION = 3
 
@@ -306,9 +308,14 @@ function bindEmail(data) {
 // 没读到的状态字段一律留空/0，由页面显示为「--」，绝不再现编假值。
 function realDeviceFields(scan) {
   const intervalSeconds = Number(scan.intervalSeconds) || 0
+  const productDeviceId = deviceIdUtil.requireComplete(
+    scan.productDeviceId || scan.deviceNo || scan.hardwareDeviceId,
+    '设备-模拟绑定失败：未读取到完整的6字节设备ID'
+  )
   return {
     name: scan.name || scan.screen || '智能相框',
-    deviceNo: scan.deviceNo || scan.deviceId || `FRAME-${Date.now()}`,
+    productDeviceId,
+    deviceNo: productDeviceId,
     deviceId: scan.deviceId || '', // 蓝牙连接用的 deviceId，供详情页重连读取
     screen: scan.screen || '',
     model: scan.model || '',
@@ -316,7 +323,7 @@ function realDeviceFields(scan) {
     battery: typeof scan.battery === 'number' ? scan.battery : null,
     firmwareVersion: scan.firmwareVersion || '',
     hwVersion: scan.hwVersion || 0,
-    macAddress: scan.deviceNo || '', // 设备 SN，详情页当 MAC/编号展示
+    macAddress: productDeviceId, // 设备 SN，详情页当 MAC/编号展示
     connectionIntervalUnits: Number(scan.connectionIntervalUnits) || 0,
     connectionIntervalMs: Number(scan.connectionIntervalMs) || 0,
     playbackMode: scan.playMode || 'order',
@@ -332,20 +339,19 @@ function realDeviceFields(scan) {
 function bindDevice(data) {
   const store = readStore()
   const scan = data.device || data
-  // 同一台设备按蓝牙 deviceId 或设备编号识别，重复绑定则刷新其真实信息
-  const existed = store.devices.find(item =>
-    (scan.deviceId && item.deviceId === scan.deviceId) || (scan.deviceNo && item.deviceNo === scan.deviceNo)
-  )
+  const fields = realDeviceFields(scan)
+  // 模拟后端也只按完整 6 字节设备 ID 判重，BLE 临时句柄不参与稳定身份。
+  const existed = store.devices.find(item => item.deviceNo === fields.deviceNo)
 
   if (existed) {
-    Object.assign(existed, realDeviceFields(scan), { connected: true, lastOnline: '刚刚' })
+    Object.assign(existed, fields, { connected: true, lastOnline: '刚刚' })
     writeStore(store)
     return delay(existed)
   }
 
   const device = Object.assign(
     { id: `d_${Date.now()}`, connected: true, lastOnline: '刚刚' },
-    realDeviceFields(scan)
+    fields
   )
   store.devices.unshift(device)
   writeStore(store)

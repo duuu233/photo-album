@@ -147,7 +147,7 @@
 
 ### 参数参考
 
-- `addUserProduct(data)`：`{ productId(必传), productName, deviceId }`。`bindDevice` 每次绑定都先调 `getProductList` 拉「全部产品列表」，再用本地蓝牙搜索到的设备(型号/屏幕/名称)逐条匹配出 `productId`；匹配不到则中止绑定并提示。
+- `addUserProduct(data)`：`{ productId(必传), productName, deviceId }`。`deviceId` 必须是连接后通过 `0x01 GET_INFO` 读取的完整 6 字节 `Device_ID`（统一 `AA:BB:CC:DD:EE:FF`）；广播 4 字节短 ID、微信 BLE `deviceId` 均禁止传入，缺失或格式不合法时前端直接终止绑定且不发送请求。`bindDevice` 每次绑定都先调 `getProductList` 拉「全部产品列表」，再用本地蓝牙搜索到的设备(型号/屏幕/名称)逐条匹配出 `productId`；匹配不到则中止绑定并提示。
 - `getUserProductList/getUserProductImgList/getUserProductImgRecordList(params)`：`pageIndex`、`pageSize`、`keyword`、`startDate`、`endDate`；图库/投屏记录另支持 `userProductId`。
 - `getUserProductDetail(params)`：可传 `userProductId` 或 `{ userProductId, productVersionNo }`。
 - `editUserProduct(data)`：`{ userProductId, productName }`。

@@ -1,6 +1,7 @@
 // 业务接口集中定义层：每个方法对应一个后端接口，统一通过 request.js 发起。
 // 第三个参数为请求选项，常用：loading 显示加载、auth:false 免登录、showError:false 静默错误。
 const http = require('./request')
+const deviceIdUtil = require('./device-id')
 const { md5 } = require('./md5')
 
 // setUserProductUpload 里请求后端把它存的那张图压到多大（KB）。后端默认约 300-400KB，
@@ -89,13 +90,16 @@ function normalizeDevice(device = {}) {
     device.bluetoothDeviceId,
     device.bleId
   )
-  const productDeviceId = firstValue(
+  const rawProductDeviceId = firstValue(
     device.productDeviceId,
     device.deviceNo,
     device.serialNo,
     device.productSerialNo,
     bleDeviceId ? device.backendDeviceId : device.deviceId
   )
+  // 后端稳定设备身份只接收完整 6 字节 ID。历史 4 字节广播短 ID 保留在
+  // rawProductDeviceId 便于排查，但不得继续进入匹配、展示或后续绑定链路。
+  const productDeviceId = deviceIdUtil.canonical(rawProductDeviceId)
   const usedMemory = normalizeNumber(
     firstValue(device.usedMemory, device.imgCount),
     0
@@ -132,6 +136,8 @@ function normalizeDevice(device = {}) {
     deviceId: bleDeviceId,
     productDeviceId,
     deviceNo: productDeviceId,
+    rawProductDeviceId,
+    deviceIdentityInvalid: !!rawProductDeviceId && !productDeviceId,
     name: firstValue(
       device.name,
       device.productName,
@@ -202,6 +208,12 @@ function normalizeProjectionRecord(record = {}, index = 0) {
       ? state === 1
       : stateText.indexOf('成功') > -1
   const status = success ? 'success' : 'fail'
+  const rawProductDeviceId = firstValue(
+    record.productDeviceId,
+    record.deviceNo,
+    record.serialNo
+  )
+  const productDeviceId = deviceIdUtil.canonical(rawProductDeviceId)
 
   return Object.assign({}, record, {
     id: String(firstValue(record.upirId, record.id, `record_${index}`)),
@@ -214,6 +226,10 @@ function normalizeProjectionRecord(record = {}, index = 0) {
     ),
     createdAt: firstValue(record.upTime, record.joinTime, record.createdAt, ''),
     deviceName: firstValue(record.productName, record.deviceName, '相框'),
+    productDeviceId,
+    deviceNo: productDeviceId,
+    rawProductDeviceId,
+    deviceIdentityInvalid: !!rawProductDeviceId && !productDeviceId,
     thumbUrl: firstValue(record.img, record.thumbUrl, record.url, ''),
     // 投屏管理列表小图专用：优先后端新字段 imgThumb（缩略图），旧数据回退 img/url 避免空图。
     // thumbUrl 保持整图，仍供「再次投屏」兜底用（见 records.js 的 imageUrl）。
@@ -470,7 +486,14 @@ module.exports = {
   // —— 设备接口（UserProduct）——
   // 添加/绑定用户设备。data: { productId(必传), productName, deviceId }
   addUserProduct(data = {}) {
-    return http.post('/Client/UserProduct/addUserProduct', data, {
+    const payload = Object.assign({}, data, {
+      // 绑定入库只允许 0x01 返回的完整 6 字节 Device_ID；禁止广播短 ID / BLE 句柄兜底。
+      deviceId: deviceIdUtil.requireComplete(
+        data.deviceId,
+        '设备-绑定失败：未读取到完整的6字节设备ID'
+      )
+    })
+    return http.post('/Client/UserProduct/addUserProduct', payload, {
       mock: false,
       loading: true,
       loadingText: '绑定中'
@@ -787,11 +810,14 @@ module.exports = {
       scan.screen,
       '智能相框'
     )
-    const productDeviceId = firstValue(
-      scan.deviceNo,
-      scan.hardwareDeviceId,
-      scan.productSerialNo,
-      scan.deviceId
+    const productDeviceId = deviceIdUtil.requireComplete(
+      firstValue(
+        scan.deviceNo,
+        scan.productDeviceId,
+        scan.hardwareDeviceId,
+        scan.productSerialNo
+      ),
+      '设备-绑定失败：未读取到完整的6字节设备ID'
     )
     const payload = {
       productId, // 必传，已在上面确保非空

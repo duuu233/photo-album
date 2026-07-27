@@ -192,6 +192,9 @@ function parseAck(payload) {
 // 解析 CMD=0x01 设备信息的 data 段（ACK 去掉 ackCmd/result 后的 28 字节，6.7.3）
 function parseDeviceInfo(data) {
   const b = toBytes(data)
+  if (b.length < 28) {
+    throw new Error(`设备信息长度不足：期望28字节，实际${b.length}字节`)
+  }
   const screenType = b[26]
   const screen = SCREEN_TYPES[screenType] || {}
   const imgCount = popcount(b, 8, 12)

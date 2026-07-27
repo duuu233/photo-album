@@ -12,6 +12,7 @@ const toast = require('./toast')
 const protocol = require('./frame-protocol')
 const connCache = require('./device-conn-cache')
 const batteryUtil = require('./battery')
+const deviceIdUtil = require('./device-id')
 
 // 连接前的信号闸（2026-07-20，治「信号正常档经常连不上」）：
 // 扫描命中目标时若 RSSI 弱于此值，不立刻发起连接，先等一个短窗口看有没有更强的一帧。
@@ -65,23 +66,22 @@ function findConnectedDeviceId(device) {
     return ''
   }
   const serials = deviceSerials(device)
+  if (!serials.length) {
+    return ''
+  }
   const connections = deviceBle.getActiveConnections()
   const directId = device.deviceId || device.bleDeviceId
   if (directId && deviceBle.isConnected(directId)) {
     const directConnection = connections.find(conn => conn.deviceId === directId)
-    // 设备记录里带稳定 ID 时，不能只因 BLE 临时句柄相等就认领会话：
+    // 不能只因 BLE 临时句柄相等就认领会话：
     // 页面数据或旧直连缓存可能曾把 B 的句柄写到 A 上，必须让会话里 0x01 读到的完整 ID 再确认一次。
     if (
-      !serials.length ||
-      (directConnection &&
-        sameScreen(device, directConnection.screenType) &&
-        sessionMatchesSerials(directConnection.serials, serials))
+      directConnection &&
+      sameScreen(device, directConnection.screenType) &&
+      sessionMatchesSerials(directConnection.serials, serials)
     ) {
       return directId
     }
-  }
-  if (!serials.length) {
-    return ''
   }
   const hit = connections.find(conn =>
     // 先按型号/尺寸过一道闸：会话广播 screenType 与设备记录尺寸对不上（不同型号）直接跳过，防串台
@@ -91,21 +91,15 @@ function findConnectedDeviceId(device) {
   return hit ? hit.deviceId : ''
 }
 
-// 这条活动会话与这条设备记录是否指同一台：把「会话登记的序列号」与「设备记录的序列号」两两比对，
-// 后端设备记录有完整 ID 时，只接受会话里同样完整且相等的 ID；只有后端本身也只有短 ID 时才允许锚定匹配。
-// 这样广播短 ID 相同的同尺寸设备不会仅凭短 ID 共用同一条会话。
+// 这条活动会话与设备记录是否指同一台：双方都必须带 0x01 的完整 6 字节 ID并精确相等。
+// 广播短 ID 只负责扫描候选，不能认领活动会话。
 function sessionMatchesSerials(sessionSerials, deviceSerials) {
-  const left = uniqueSerials(sessionSerials)
-  const right = uniqueSerials(deviceSerials)
+  const left = uniqueSerials(sessionSerials).filter(deviceIdUtil.isComplete)
+  const right = uniqueSerials(deviceSerials).filter(deviceIdUtil.isComplete)
   if (!left.length || !right.length) {
     return false
   }
-  const completeExpected = right.filter(serial => serial.length >= 12)
-  if (completeExpected.length) {
-    const completeSession = left.filter(serial => serial.length >= 12)
-    return completeSession.some(serial => completeExpected.indexOf(serial) > -1)
-  }
-  return serialSetsMatch(left, right)
+  return left.some(serial => right.indexOf(serial) > -1)
 }
 
 // 是否已有可用连接：deviceId 直连命中，或序列号交叉匹配到活动会话
@@ -121,10 +115,8 @@ function isDeviceConnected(device) {
 // 于是「连了 B，A 还显示已连接」，且 A 那行照旧给出「投屏/断开」按钮，点下去操作的是已经不存在的会话。
 // 单连接的不变式是「最多只有一台已连接」，这里就是把它落到 UI 上的唯一入口。
 // App 侧对应 state.dart 的 reconcileConnectionFlags 与「连接成功后 item.connected = identical(item, device)」。
-// 每条会话只认领一行：逐行独立判断还不够。会话未必登记得到 6 字节固件序列号
-// （ensureDeviceConnected 的自动重连路径只走 scanMatchConnect，不读 0x01，会话上只有广播 4 字节），
-// 此时两台同批次设备（前 4 字节相同）会双双锚定命中同一条会话 —— 又回到「A、B 都显示已连接」。
-// 所以按匹配强度打分取最强的那一行，其余即便也"像"，也一律判未连接。
+// 每条会话只认领一行：逐行独立判断还不够。当前会话必须登记 0x01 的完整 6 字节 ID；
+// 再按匹配强度选唯一一行，防止历史页面缓存把同一个 BLE 句柄复制给多条记录。
 function reconcileConnectionFlags(devices) {
   const list = devices || []
   const conns = deviceBle.getActiveConnections()
@@ -189,7 +181,7 @@ function deviceSerials(device) {
   return uniqueSerials([
     device && device.deviceNo,
     device && device.productDeviceId
-  ])
+  ]).filter(deviceIdUtil.isComplete)
 }
 
 // 两个序列号是否指同一台物理设备：归一化后精确相等，或互为子串（要求 ≥8 hex/4 字节，避免误并）。
@@ -291,15 +283,15 @@ function devicesMatch(left, right) {
   return serialSetsMatch(leftSerials, rightSerials)
 }
 
-// 连接建立后用 0x01 返回的完整 Device_ID 做最终身份确认。设备记录没有稳定 ID 时保留旧设备兼容；
-// 一旦记录里有完整 ID，实际完整 ID 必须精确相等，不能再用同尺寸或广播短 ID 放行。
+// 连接建立后用 0x01 返回的完整 Device_ID 做最终身份确认。
+// 前后两侧都必须是完整 6 字节 ID 并精确相等；广播 4 字节短 ID 不具备身份确认资格。
 function deviceInfoMatches(device, info) {
   const expected = deviceSerials(device)
   if (!expected.length) {
-    return true
+    return false
   }
   const actual = normalizeSerial(info && info.deviceId)
-  return !!actual && serialSetsMatch([actual], expected)
+  return deviceIdUtil.isComplete(actual) && expected.indexOf(actual) > -1
 }
 
 function identityMismatchError(device, actualDeviceId) {
@@ -358,6 +350,7 @@ function matchScannedDevice(found, device) {
     device && device.deviceNo,
     device && device.productDeviceId
   ]
+    .filter(deviceIdUtil.isComplete)
     .map(normalizeSerial)
     .filter(Boolean)
   if (!serials.length) {
@@ -394,7 +387,9 @@ function syncActiveDeviceId(device, deviceId) {
 // 直连缓存键：后端唯一且固定的设备ID（normalizeDevice 落在 productDeviceId，兜底 deviceNo）。
 // 用它当键而非 BLE deviceId——BLE deviceId 每次扫描会变，后端设备ID 一台一号、永不变。
 function directConnectKey(device) {
-  return (device && (device.productDeviceId || device.deviceNo)) || ''
+  return deviceIdUtil.canonical(
+    device && (device.productDeviceId || device.deviceNo)
+  )
 }
 
 // 短超时探测直连：命中缓存就直接连旧 deviceId，不走扫描。resolve(true)=连接已建立；
@@ -472,7 +467,7 @@ async function tryDirectConnect(device, onConnectStart, rejectedDeviceIds) {
 // home/设备列表/设备详情的「连接蓝牙」按钮与操作前自动重连(ensureDeviceConnected)全共用这一份，
 // 改一处即全生效（此前四处各抄一遍，改一处漏三处）。返回连上的 target（含本次会话有效 deviceId 与广播 deviceNo）。
 // 扫不到抛「未搜索到该设备」；定位/权限/蓝牙错误按原样抛（error.code 如 PERMISSION_DENIED 保留）。
-// match(found, device)：扫描结果匹配器——首页/自动重连用纯序列号 matchScannedDevice，列表/详情传入带名称兜底的。
+// match(found, device)：扫描结果匹配器；默认规则只用完整 ID 对广播短 ID 做候选筛选，不按名称兜底。
 // onConnectStart：可选。扫到目标、正式 ensureConnection 前回调一次，供调用方把 loading 从「搜索中」切到「连接中」。
 // 本函数不弹/不关 loading（由各调用方按自己的场景管理）。
 async function scanMatchConnect(device, match, onConnectStart) {
@@ -588,6 +583,12 @@ async function scanForTarget(device, match, rejectedDeviceIds) {
 // 返回连上的当下有效 deviceId；连不上抛错(error.code 保留，如 PERMISSION_DENIED)。
 // 已连接：直接返回，不弹 loading。未连接：默认弹「连接设备中」loading（options.showLoading:false 可关）。
 async function ensureDeviceConnected(device, options = {}) {
+  if (!deviceSerials(device).length) {
+    deviceIdUtil.requireComplete(
+      device && (device.productDeviceId || device.deviceNo),
+      '设备-当前设备记录缺少完整的6字节设备ID，请删除后重新绑定'
+    )
+  }
   // 先认活动会话（deviceId 直连 + 序列号交叉匹配）：会话还活着就直接复用，绝不重扫——
   // 设备是单连接，被自己占线时不广播，重扫必然「未搜索到该设备」还白等 6 秒
   const existingId = findConnectedDeviceId(device)
@@ -618,10 +619,15 @@ async function ensureDeviceConnected(device, options = {}) {
 //   - reused=true：复用了已存在的活动会话；未开 verifyReuse 时 info 为 null（没读设备信息）。
 //   - reused=false：新扫描连接；info 为 readDeviceInfo 结果。
 // 失败抛错（error.code 保留 PERMISSION_DENIED），调用方 catch 后用 showConnectError 统一提示。
-// options.match(found, device)：可选。扫描结果匹配器；默认 matchScannedDevice（纯序列号，首页用）。
-//   设备列表/详情传入带「名称兜底」的匹配器（老记录没序列号时按名连）。
+// options.match(found, device)：可选扫描结果匹配器；稳定设备身份始终要求完整 6 字节 ID。
 // options.verifyReuse：复用活动会话前是否先 readDeviceInfo 活性校验（列表/详情 true；首页省略即 false）。
 async function connectBoundDevice(device, options = {}) {
+  if (!deviceSerials(device).length) {
+    deviceIdUtil.requireComplete(
+      device && (device.productDeviceId || device.deviceNo),
+      '设备-当前设备记录缺少完整的6字节设备ID，请删除后重新绑定'
+    )
+  }
   const match = typeof options.match === 'function' ? options.match : matchScannedDevice
 
   // 1) 先认活动会话：会话还活着就直接复用，绝不重扫（设备单连接、被自己占线时不广播，重扫必「未搜索到」）
