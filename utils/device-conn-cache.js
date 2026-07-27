@@ -12,7 +12,9 @@
 //     归一化（去分隔符+大写）后作键，保证同一台设备在两侧格式差异下仍命中。
 // 值：本机上次成功建连时微信给的有效 deviceId（安卓=MAC / iOS=UUID），原样存、原样喂给 createBLEConnection。
 //
-// 自愈：缓存失效（设备重启/换机/地址轮换/离线）时直连快速失败并回落扫描；扫描成功会用新 deviceId 覆盖本键。
+// 自愈：缓存失效（设备重启/换机/地址轮换/离线）时直连快速失败并回落扫描；
+// 若旧版本曾把 B 的句柄误写到 A 键下，active-device 会在 0x01 完整 ID 校验失败后删除该键并排除 B。
+// 只有完整身份校验通过的扫描结果才会重新写入缓存。
 const STORAGE_KEY = 'bleDirectConnCache'
 
 // 与 active-device.normalizeSerial 同规则：去 :-空格 + 大写
@@ -59,7 +61,7 @@ function put(backendId, deviceId) {
   writeAll(all)
 }
 
-// 删除这台设备的缓存（解绑等场景可调用；当前 put 覆盖已能自愈，故非必需）
+// 删除这台设备的缓存：解绑、或完整设备 ID 校验发现键值串台时调用。
 function remove(backendId) {
   const key = normalizeKey(backendId)
   if (!key) {

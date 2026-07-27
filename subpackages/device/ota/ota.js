@@ -3,6 +3,7 @@ const otaBle = require('../../../utils/ota-ble')
 const deviceBle = require('../../../utils/device-ble')
 const toast = require('../../../utils/toast')
 const system = require('../../../utils/system')
+const batteryUtil = require('../../../utils/battery')
 
 const app = getApp()
 
@@ -81,8 +82,6 @@ function mergeSelectedDevice(device) {
       deviceId: device.deviceId || selected.deviceId || selected.bleDeviceId,
       bleDeviceId:
         device.bleDeviceId || selected.bleDeviceId || selected.deviceId,
-      battery:
-        typeof device.battery === 'number' ? device.battery : selected.battery,
       firmwareVersion: device.firmwareVersion || selected.firmwareVersion
     })
   }
@@ -191,6 +190,13 @@ Page({
     }
   },
 
+  onShow() {
+    // onLoad 首次进入由 loadFirmware/loadLocalTestFirmware 读取；从后台或下一页返回时再实时读一次。
+    if (this.data.device && this.data.state !== 'upgrading') {
+      this.refreshDisplayedBattery()
+    }
+  },
+
   onHide() {
     if (this.data.state === 'upgrading') {
       this._abortUpgrade = true
@@ -260,20 +266,46 @@ Page({
     )
   },
 
+  async refreshDisplayedBattery() {
+    const deviceId = this.getBleDeviceId()
+    const device = this.data.device
+    if (!device || !deviceId || !deviceBle.isConnected(deviceId)) {
+      return
+    }
+    const token = (this._batteryReadToken || 0) + 1
+    this._batteryReadToken = token
+    const cleared = Object.assign({}, device, batteryUtil.stampBattery(null))
+    this.setData({
+      device: cleared,
+      batteryText: batteryUtil.batteryText(cleared)
+    })
+    const batteryState = await batteryUtil.readLatestBattery(deviceId)
+    if (this._batteryReadToken !== token) {
+      return
+    }
+    const updated = Object.assign({}, this.data.device || device, batteryState)
+    this.setData({
+      device: updated,
+      batteryText: batteryUtil.batteryText(updated)
+    })
+  },
+
   // 本地固件测试流程：跳过后台，直接把代码包内的 .bin 当作升级包。
   // bleDeviceId 取当前全局选中设备（详情页连接后会写入）。已连接走真实蓝牙；未连接则提示将做干跑校验。
-  loadLocalTestFirmware() {
+  async loadLocalTestFirmware() {
     const selected = (app.globalData && app.globalData.selectedDevice) || {}
     const bleDeviceId = selected.deviceId || selected.bleDeviceId || ''
     const connected = !!(bleDeviceId && deviceBle.isConnected(bleDeviceId))
     const willDryRun = this._forceDryRun || !connected
 
-    const device = {
+    const batteryState = connected
+      ? await batteryUtil.readLatestBattery(bleDeviceId)
+      : batteryUtil.stampBattery(null)
+    const device = Object.assign({
       name: selected.name || '测试设备',
-      battery: typeof selected.battery === 'number' ? selected.battery : null,
       connected,
       deviceId: bleDeviceId
-    }
+    }, batteryState)
     const firmware = {
       hasUpdate: true,
       currentVersion: selected.firmwareVersion || '--',
@@ -296,7 +328,7 @@ Page({
       }
     }
 
-    const batteryText = typeof device.battery === 'number' ? `${device.battery}%` : '--'
+    const batteryText = batteryUtil.batteryText(device)
     this.setData({
       loading: false,
       device,
@@ -324,7 +356,7 @@ Page({
 
   deriveViewData(device, firmware) {
     const pkg = firmware && firmware.package ? firmware.package : null
-    const batteryText = device && typeof device.battery === 'number' ? `${device.battery}%` : '--'
+    const batteryText = batteryUtil.batteryText(device)
     const hasPackage = !!(firmware && firmware.hasUpdate && pkg)
     const bleDeviceId = (firmware && firmware.bleDeviceId) || (device && device.deviceId) || ''
     let canUpgrade = hasPackage && !!bleDeviceId && device && device.connected !== false
@@ -410,6 +442,12 @@ Page({
       }
 
       device = mergeSelectedDevice(device)
+      const batteryDeviceId = device.deviceId || device.bleDeviceId
+      const batteryState =
+        device.connected && batteryDeviceId
+          ? await batteryUtil.readLatestBattery(batteryDeviceId)
+          : batteryUtil.stampBattery(null)
+      device = Object.assign({}, device, batteryState)
       const firmware = buildFirmwareFromDevice(device)
       const viewData = this.deriveViewData(device, firmware)
       const nextState = firmware.invalidUpdate

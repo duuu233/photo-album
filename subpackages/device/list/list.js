@@ -52,6 +52,8 @@ Page({
   // 首屏渲染即 loading=true（见 data），等接口返回再决定展示列表还是空态，避免空态先闪一下；
   // 二次进入（如绑定后返回）已有内容，沿用旧列表直到新数据到位，不再回到 loading。
   async loadDevices() {
+    // 保留列表结构，但 onShow 一开始就撤掉上次读数，接口期间不展示缓存电量。
+    this.clearDisplayedBattery()
     let sourceDevices
     try {
       sourceDevices = await api.getDevices()
@@ -60,6 +62,7 @@ Page({
       // 首次加载失败才标记 loadError 展示「加载失败+重新加载」——落到「暂无设备」
       // 会让用户误以为设备被解绑了，且没有任何重试手段
       this.setData({ loading: false, loadError: !this.data.devices.length })
+      await this.refreshConnectedBattery()
       return
     }
     const selected = app.globalData.selectedDevice
@@ -67,31 +70,23 @@ Page({
     // 同一台相框可能被重复绑定出多条记录：按稳定的硬件序列号(Device_ID)去重，只保留一条，
     // 避免「设备页反复出现同一设备」。同序列号优先保留当前选中(正在用/已连接)的那条。
     const uniqueDevices = this.dedupeDevices(sourceDevices, selected)
-    const selectedSerial = this.deviceSerial(selected)
-
     const devices = uniqueDevices.map(item => {
       // 选中设备的 BLE deviceId（连接用、后端不存）要回填到对应记录，连接状态才显示得对。
       // 用 id 或序列号匹配：绑定/重连后选中设备与列表项可能不同源，只靠 id 会漏配、错显示成「未连接」。
-      const isSelected = !!selected && (
-        String(selected.id) === String(item.id) ||
-        // 序列号容错比对（归一化+互为子串也算同一台）：绑定侧广播 4 字节 vs 后端 6 字节
-        // 精确相等必对不上，正连着的设备会被误判「未连接」（与首页 loadHomeState 同一套规则）
-        activeDevice.serialsMatch(this.deviceSerial(item), selectedSerial)
-      )
-      // 电量与其时间戳必须**成对**搬运：只搬值不搬戳，新鲜度判定会把它当来路不明的历史值
-      // 丢弃（见 battery.js resolveBattery 第②道闸）。后端不存电量，实际总是走 selected 这侧。
+      // 后端记录主键/完整设备 ID 优先，避免同尺寸设备因广播短 ID 相同而合并状态。
+      const isSelected = !!selected && activeDevice.devicesMatch(item, selected)
       const merged = !isSelected
-        ? item
+        ? Object.assign({}, item, { battery: null, batteryAt: null })
         : Object.assign(
             {},
             item,
             {
               deviceId: item.deviceId || selected.deviceId,
-              bleDeviceId: item.bleDeviceId || selected.bleDeviceId || selected.deviceId
-            },
-            typeof item.battery === 'number'
-              ? { battery: item.battery, batteryAt: item.batteryAt || null }
-              : { battery: selected.battery, batteryAt: selected.batteryAt || null }
+              bleDeviceId: item.bleDeviceId || selected.bleDeviceId || selected.deviceId,
+              // 列表每次展示都先清旧值，收尾再对活动会话真实发送一次 0x04。
+              battery: null,
+              batteryAt: null
+            }
           )
       // 用 App 当前真实的蓝牙会话状态覆盖后端的 connected：后端并不知道本机的蓝牙连接。
       // 判连接用「deviceId 直连 + 设备ID×广播ID 序列号交叉匹配」（findConnectedDeviceId）：
@@ -109,7 +104,7 @@ Page({
       // 先算内存百分比，再标记“可删除提示”仅显示在最后一个离线设备上（引导用户清理）
       devices: devices.map(item => Object.assign({}, item, {
         memoryPercent: memoryPercent(item),
-        // 电量文案/图标统一由 batteryUtil 判定（未连接、无时间戳、超过有效期一律未知 '--'）
+        // 电量文案/图标先置未知，下面 refreshConnectedBattery 的本次 0x04 返回后再更新。
         batteryIcon: batteryUtil.batteryIconOf(item),
         batteryText: batteryUtil.batteryText(item)
       })).map((item, index, list) => Object.assign({}, item, {
@@ -119,6 +114,47 @@ Page({
       loading: false,
       loadError: false
     })
+    await this.refreshConnectedBattery()
+  },
+
+  clearDisplayedBattery() {
+    const devices = (this.data.devices || []).map(item => {
+      const cleared = Object.assign({}, item, batteryUtil.stampBattery(null))
+      return Object.assign(cleared, {
+        batteryIcon: batteryUtil.batteryIconOf(cleared),
+        batteryText: batteryUtil.batteryText(cleared)
+      })
+    })
+    this.setData({ devices })
+  },
+
+  async refreshConnectedBattery() {
+    const target = (this.data.devices || []).find(item => item && item.connected)
+    const deviceId = target && activeDevice.findConnectedDeviceId(target)
+    if (!target || !deviceId) {
+      return
+    }
+    const token = (this._batteryReadToken || 0) + 1
+    this._batteryReadToken = token
+    const batteryState = await batteryUtil.readLatestBattery(deviceId)
+    if (this._batteryReadToken !== token) {
+      return
+    }
+
+    const devices = (this.data.devices || []).map(item => {
+      if (
+        !item ||
+        !(item.deviceId === deviceId || activeDevice.devicesMatch(item, target))
+      ) {
+        return item
+      }
+      const updated = Object.assign({}, item, batteryState)
+      return Object.assign(updated, {
+        batteryIcon: batteryUtil.batteryIconOf(updated),
+        batteryText: batteryUtil.batteryText(updated)
+      })
+    })
+    this.setData({ devices })
   },
 
   // 失败态「重新加载」：先回到 loading 转圈（即时反馈），再走一遍正常加载
@@ -320,8 +356,7 @@ Page({
   },
 
   // 连接成功后的统一收尾（新连接与复用活动会话共用）：合并设备实时信息 → 设为全局选中设备 → 刷新列表项。
-  // info 可能为 null（复用活动会话且活性校验撞上在途指令 CMD_PENDING 时不读设备信息）：
-  // 此时只置连接态，电量/内存等沿用现有数据。
+  // info 的电量已由 connectBoundDevice 统一通过 0x04 实时读取；读取失败为 null，不回退旧值。
   applyConnectedDevice(device, deviceId, info) {
     const updated = Object.assign(
       {},
@@ -334,18 +369,25 @@ Page({
       info
         ? Object.assign(
             {
-              usedMemory: info.imgCount,
-              totalMemory: info.capacity,
-              playbackMode: info.playMode,
-              intervalSeconds: info.intervalSeconds,
-              intervalHours: info.intervalSeconds ? Math.max(1, Math.round(info.intervalSeconds / 3600)) : device.intervalHours,
+              usedMemory:
+                info.imgCount === undefined ? device.usedMemory : info.imgCount,
+              totalMemory:
+                info.capacity === undefined ? device.totalMemory : info.capacity,
+              playbackMode:
+                info.playMode === undefined ? device.playbackMode : info.playMode,
+              intervalSeconds:
+                info.intervalSeconds === undefined
+                  ? device.intervalSeconds
+                  : info.intervalSeconds,
+              intervalHours: info.intervalSeconds
+                ? Math.max(1, Math.round(info.intervalSeconds / 3600))
+                : device.intervalHours,
               firmwareVersion: info.firmwareVersion || device.firmwareVersion
             },
-            // 电量带时间戳（info 为 null 时整块跳过：沿用旧值+旧戳，由 TTL 判过期，
-            // 绝不把旧值当成本次读到的新值重新打戳）
+            // 连接成功展示的电量来自本次 0x04。
             batteryUtil.stampBattery(info.battery)
           )
-        : null
+        : batteryUtil.stampBattery(null)
     )
 
     // 连接成功即设为当前选中设备：设备是单连接，「正连着的」就是当前在用的。

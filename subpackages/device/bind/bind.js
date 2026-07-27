@@ -212,8 +212,8 @@ Page({
   //
   // 「已绑定设备再搜索后有概率变成新设备」的两个元凶都在这里治理：
   //   ① 拉已绑定列表偶发网络失败时旧代码直接 return null → 判成新设备 → 重复绑定。改为重试一次。
-  //   ② 序列号有两种表示：连上读 0x01 得到的是 6 字节 Device_ID，扫描广播里的只有 4 字节，
-  //      归一化后长度不同、精确相等匹配不上 → 判成新设备。改为「精确相等 或 互为子串(≥4字节)」匹配。
+  //   ② 序列号有两种表示：连上读 0x01 得到的是 6 字节 Device_ID，扫描广播里的只有 4 字节。
+  //      两边都有完整 ID 时必须按完整 ID 判定；短广播 ID 只在缺少完整 ID 时兜底，避免同批次设备误判为同一台。
   async findBoundDevice(scanDevice, info) {
     // 候选序列号：优先用连上读到的 Device_ID(6字节)，再并入扫描广播里的 deviceNo/productDeviceId(4字节)
     const candidates = [info && info.deviceId, scanDevice.deviceNo, scanDevice.productDeviceId]
@@ -245,10 +245,13 @@ Page({
 
     const matched =
       devices.find(item => {
-        const serial = this.deviceSerial(
-          item.deviceNo || item.productDeviceId || item.deviceId
-        )
-        if (!serial) {
+        const itemSerials = [item.deviceNo, item.productDeviceId]
+          .map(value => this.deviceSerial(value))
+          .filter(Boolean)
+        if (!itemSerials.length && item.deviceId) {
+          itemSerials.push(this.deviceSerial(item.deviceId))
+        }
+        if (!itemSerials.length) {
           return false
         }
         // 型号/尺寸对不上(不同型号设备)直接排除：防广播 4 字节与后端 6 字节偶合，把新设备(如 3.7寸)
@@ -256,14 +259,9 @@ Page({
         if (!activeDevice.sameScreen(item, (info && info.screenType) || scanDevice.screenType)) {
           return false
         }
-        return candidates.some(
-          candidate =>
-            candidate === serial ||
-            // 广播 4 字节 vs 连接 6 字节：一个是另一个的子串即视为同一台(要求 ≥8 hex/4 字节，避免误并)
-            (serial.length >= 8 &&
-              candidate.length >= 8 &&
-              (serial.indexOf(candidate) > -1 || candidate.indexOf(serial) > -1))
-        )
+        // 候选侧已有 0x01 的完整 ID 时，以完整 ID 为最高优先级；
+        // 即使广播短 ID 相同，完整 ID 不同也必须判为两台设备。
+        return activeDevice.serialSetsMatch(candidates, itemSerials)
       }) || null
 
     console.log('[绑定判重]', {

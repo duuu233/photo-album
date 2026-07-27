@@ -434,7 +434,7 @@ Page({
     try {
       // 读固件已占用槽位（升序），用同一份快照把每张选中照片解析成对应槽位；
       // 不在本设备上的（解析为 -1）跳过，只删能对上的。curImgIndex 用于判断是否删到屏显图。
-      // force：槽位掩码是删除操作的依据，绝不能吃 15s 节流缓存（读到旧掩码会删错槽位）。
+      // 槽位掩码是删除操作的依据，必须真实读取；deviceInfo 已取消 15s 节流。
       const info = await deviceInfo.read(device.deviceId, { force: true })
       const occupied = protocol.maskToIndexes(info.imgMask)
       const slotIndexes = ids

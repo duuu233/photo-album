@@ -149,10 +149,10 @@ function normalizeDevice(device) {
     // 屏幕分辨率：投屏预览页裁剪按此 width/height 锁定比例，透传给下游（接口就绪后即生效）
     width: device.width,
     height: device.height,
-    // 电量：原样透传缓存里的值与时间戳，可不可信交给 batteryUtil 判（未连接/无戳/超时=未知）。
-    // 本页按设计不主动读 BLE（onShow 必须快），显示的就是「上次真读到的值」，所以时间戳不能丢。
-    battery: batteryUtil.normalizeBattery(device.battery),
-    batteryAt: device.batteryAt || null
+    // 首页每次展示都从未知态开始，loadHomeState 收尾会对真实连接发送一次 0x04。
+    // 不从 selectedDevice/接口继承旧电量，避免读取完成前短暂闪出缓存值。
+    battery: null,
+    batteryAt: null
   }
   // connected 已就位，才能算出电量文案/图标（未连接一律未知）
   return Object.assign(normalized, {
@@ -383,6 +383,8 @@ Page({
 
   // 拉取设备列表确定首页处于已绑定还是未绑定场景；失败则兜底为未绑定
   async loadHomeState() {
+    // onShow 一开始就撤掉上次读数，避免接口请求期间仍展示旧电量。
+    this.clearDisplayedBattery()
     // 游客模式：未登录不强制跳登录，直接展示「未绑定」首页；登录留到需要的操作时再触发
     if (!app.globalData.token && !wx.getStorageSync('token')) {
       this.setData({
@@ -405,35 +407,22 @@ Page({
 
       // 同一台相框可能被重复绑定出多条记录：按硬件序列号去重，避免轮播重复出现同一台
       const uniqueDevices = this.dedupeDevices(devices, cached)
-      const cachedSerial = this.deviceSerial(cached)
-
       // 后端不存 BLE deviceId，只有 selectedDevice(自动重连/手动连上时写入)带着它。把它回填到
       // 列表里对应的那台（id 或序列号匹配），连接状态才判得对——否则即便蓝牙仍连着，列表项因缺
       // deviceId 也会被 normalizeDevice 错判成「未连接」（之前轮播卡片就是这么一直显示未连接的）。
       const mergedDevices = uniqueDevices.map(item => {
-        const sameAsCached = !!cached && (
-          String(cached.id) === String(item.id) ||
-          // 序列号容错比对（广播4字节 vs 后端6字节互为子串也算同一台）：
-          // 精确相等在两侧格式不一致时对不上，正连着的设备会被误判「未连接」（改名刷新列表时尤其明显）
-          activeDevice.serialsMatch(this.deviceSerial(item), cachedSerial)
-        )
+        // 后端记录主键不同或完整设备 ID 不同就不得合并；广播短 ID 仅在缺少完整身份时兜底。
+        const sameAsCached = !!cached && activeDevice.devicesMatch(item, cached)
         if (!sameAsCached) {
           return item
         }
-        // 电量与其时间戳必须**成对**搬运：只搬值不搬戳，新鲜度判定会把它当来路不明的历史值
-        // 丢弃（见 battery.js resolveBattery 第②道闸）。后端不存电量，实际总是走 cached 这侧。
-        const batteryPair =
-          typeof item.battery === 'number'
-            ? { battery: item.battery, batteryAt: item.batteryAt || null }
-            : { battery: cached.battery, batteryAt: cached.batteryAt || null }
         return Object.assign(
           {},
           item,
           {
             deviceId: item.deviceId || cached.deviceId,
             bleDeviceId: item.bleDeviceId || cached.bleDeviceId || cached.deviceId
-          },
-          batteryPair
+          }
         )
       })
 
@@ -447,7 +436,7 @@ Page({
       const connectedIndex = list.findIndex(item => item.connected)
       const cachedIndex = list.findIndex(item =>
         (cachedId && String(item.id) === cachedId) ||
-        activeDevice.serialsMatch(this.deviceSerial(item), cachedSerial)
+        activeDevice.devicesMatch(item, cached)
       )
       const currentDeviceIndex = connectedIndex >= 0 ? connectedIndex : Math.max(0, cachedIndex)
       const currentDevice = list[currentDeviceIndex] || DEFAULT_DEVICE
@@ -467,6 +456,8 @@ Page({
       this.setScene(hasRealDevice ? SCENES.BOUND : SCENES.UNBOUND, {
         hasDevice: hasRealDevice
       })
+      // 页面已经进入展示态后立即真实读取一次 0x04；失败统一保持「--」，不回退 selectedDevice 旧值。
+      await this.refreshConnectedBattery()
     } catch (error) {
       if (isNetworkError(error)) {
         this.showOfflineMode()
@@ -481,6 +472,60 @@ Page({
         hasDevice: false
       })
     }
+  },
+
+  clearDisplayedBattery() {
+    const list = (this.data.deviceList || []).map(item => {
+      const cleared = Object.assign({}, item, batteryUtil.stampBattery(null))
+      return Object.assign(cleared, {
+        batteryText: batteryUtil.batteryText(cleared),
+        batteryIcon: batteryUtil.batteryIconOf(cleared)
+      })
+    })
+    const index = this.data.currentDeviceIndex
+    this.setData({
+      deviceList: list,
+      currentDevice: list[index] || this.data.currentDevice
+    })
+  },
+
+  async refreshConnectedBattery() {
+    const list = this.data.deviceList || []
+    const target = list.find(item => item && item.connected)
+    const deviceId = target && activeDevice.findConnectedDeviceId(target)
+    if (!target || !deviceId) {
+      return
+    }
+    const token = (this._batteryReadToken || 0) + 1
+    this._batteryReadToken = token
+    const batteryState = await batteryUtil.readLatestBattery(deviceId)
+    if (this._batteryReadToken !== token) {
+      return
+    }
+
+    const latestList = (this.data.deviceList || []).slice()
+    const index = latestList.findIndex(item =>
+      item && (
+        item.deviceId === deviceId ||
+        activeDevice.devicesMatch(item, target)
+      )
+    )
+    if (index < 0) {
+      return
+    }
+    const updated = Object.assign({}, latestList[index], batteryState)
+    Object.assign(updated, {
+      batteryText: batteryUtil.batteryText(updated),
+      batteryIcon: batteryUtil.batteryIconOf(updated)
+    })
+    latestList[index] = updated
+    this.setData({
+      deviceList: latestList,
+      currentDevice:
+        index === this.data.currentDeviceIndex
+          ? updated
+          : this.data.currentDevice
+    })
   },
 
   // 设备硬件序列号(Device_ID)：跨扫描会话稳定，用于去重 / 匹配同一台物理设备。
@@ -781,15 +826,13 @@ Page({
     if (!current) {
       return
     }
-    // info 为 null = 复用了已有活动会话、本次没读设备信息（见 active-device.connectBoundDevice
-    // 的 verifyReuse，首页不传即 false）。此时**不动电量**：沿用缓存里的值和它原本的时间戳，
-    // 由 TTL 自行判定过不过期。旧代码在这里把 current.battery（很可能是兜底的 30）重新当成
-    // 本次读到的值写回缓存，假值就是这样扩散到设备列表页的。
+    // info.battery 已由 connectBoundDevice 统一通过本次 0x04 读取；失败时写 null，
+    // 不再从 current/selectedDevice 沿用任何旧电量。
     const updated = Object.assign(
       {},
       current,
       { deviceId, connected: true },
-      info ? batteryUtil.stampBattery(info.battery) : null
+      info ? batteryUtil.stampBattery(info.battery) : batteryUtil.stampBattery(null)
     )
     Object.assign(updated, {
       batteryText: batteryUtil.batteryText(updated),

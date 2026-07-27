@@ -276,8 +276,7 @@ Page({
 
   noop() {},
 
-  // 0x01 节流缓存已收归全局（utils/device-info.js）：此前它是本页私有字段，切到首页/设备列表
-  // 就失效，别处读 0x01 的地方也各读各的。这两个方法保留为薄封装，调用方无需改动。
+  // 0x01 最近结果登记已收归 utils/device-info.js；读取本身不再做 15s 节流。
   cacheBleInfo(deviceId, info) {
     deviceInfo.put(deviceId, info)
   },
@@ -308,6 +307,18 @@ Page({
   async loadDetail() {
     if (this._loadingDetail) {
       return
+    }
+    if (this.data.device) {
+      const cleared = Object.assign(
+        {},
+        this.data.device,
+        batteryUtil.stampBattery(null)
+      )
+      this.setData({
+        device: cleared,
+        batteryIcon: batteryUtil.batteryIconOf(cleared),
+        batteryText: batteryUtil.batteryText(cleared)
+      })
     }
     this._loadingDetail = true
     try {
@@ -341,46 +352,42 @@ Page({
     // 选中设备与详情记录可能「不同源」（绑定返回的 id 可能落到序列号，详情记录是 userProductId，
     // 或同一台设备的重复绑定记录），只按 id 匹配会漏配、错显示成「未连接」——
     // 与 list.js 一致：id 匹配不上时按硬件序列号兜底。
-    const selectedSerial = deviceSerial(selected)
     const isSelected =
       !!selected &&
       !!device &&
-      (String(selected.id) === String(device.id) ||
-        // 序列号容错比对（归一化+互为子串也算同一台）：绑定侧广播 4 字节 vs 后端 6 字节
-        // 精确相等必对不上，正连着的设备会被误判「未连接」（与首页/列表页同一套规则）
-        activeDevice.serialsMatch(deviceSerial(device), selectedSerial))
+      // 后端记录主键/完整设备 ID 优先，避免同尺寸设备因广播短 ID 相同而串用选中状态。
+      activeDevice.devicesMatch(device, selected)
 
     if (isSelected) {
       device = Object.assign({}, device, {
         deviceId: device.deviceId || selected.deviceId,
         bleDeviceId:
-          device.bleDeviceId || selected.bleDeviceId || selected.deviceId,
-        battery:
-          typeof device.battery === 'number' ? device.battery : selected.battery
+          device.bleDeviceId || selected.bleDeviceId || selected.deviceId
       })
     }
+    // 详情每次展示都先清除接口/selectedDevice 旧值，连接态下随后真实发送一次 0x04。
+    device = Object.assign({}, device, { battery: null, batteryAt: null })
 
     // 判连接用「deviceId 直连 + 设备ID×广播ID 序列号交叉匹配」：详情记录从接口重拉后常不带 BLE deviceId，
     // 只按 deviceId 判断会把还连着的设备错显示成「未连接」（假断联）；命中后把当下有效 deviceId 回填给记录，
     // 顶部「断开」、投屏、轮播设置等操作才有正确的 deviceId 可用。
     const liveId = activeDevice.findConnectedDeviceId(device)
     if (liveId) {
-      // 连接态以 BLE 会话为准，先行置位；readDeviceInfo 只用于补充电量/内存/播放模式，
+      // 连接态以 BLE 会话为准，先行置位；0x01 只用于补充内存/播放模式等信息，
       // 读失败不影响「已连接」显示（此前读失败会被静默吞掉，明明连着却显示成未连接）。
       device = Object.assign({}, device, {
         deviceId: liveId,
         bleDeviceId: liveId,
         connected: true
       })
-      // 0x01 读节流+在途去重统一由 utils/device-info.js 承担：同一连接 15s 内复用上次结果，
-      // 换连接/超窗/被写操作作废(invalidateBleInfo，见 applyPlayback/一键清空)才真正重读。
-      // 空闲连接间隔(100ms)下一次读要数百 ms，每次 onShow 都读会让页面切换「闪一下才稳定」。
+      // 0x01 每次真实读取其它设备信息；电量单独统一走 0x04，排除缓存和命令来源差异。
       let info = null
       try {
         info = await deviceInfo.read(liveId)
       } catch (error) {
-        // 详情展示不因读取设备信息失败而中断，电量/内存等沿用接口/选中设备的数据。
+        // 其它设备信息读取失败不影响连接态；电量仍会在下面独立读取 0x04。
       }
+      const batteryState = await batteryUtil.readLatestBattery(liveId)
       if (info) {
         device = Object.assign(
           {},
@@ -397,16 +404,14 @@ Page({
             // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
             firmwareDeviceId: info.deviceId || device.firmwareDeviceId
           },
-          // 电量带时间戳写入，供首页/列表判断新鲜度（见 utils/battery.js）
-          batteryUtil.stampBattery(info.battery)
+          batteryState
         )
-        // 回写选中设备：本页是三个页面里**唯一真读 BLE** 的地方，这里的电量是全局唯一的真值。
-        // 不回写的话首页/设备列表只能拿到更早的缓存值，表现就是「来回切三个页面电量一直在变」
-        // （详情真值 ↔ 首页兜底值 反复跳）。本分支处在 liveId 命中内，即当前设备就是正连着的
-        // 那一台；设备为单连接模型，连着的即选中的，直接合并到 selectedDevice 安全。
+        // 回写其它连接/设备信息；app.setSelectedDevice 会主动剔除电量，避免跨页面复用。
         app.setSelectedDevice(
           Object.assign({}, app.globalData.selectedDevice || {}, device)
         )
+      } else {
+        device = Object.assign({}, device, batteryState)
       }
     }
     // 把当前间隔小时数映射到选择器下标，缺省落到第 1 项（2 小时）
@@ -420,7 +425,7 @@ Page({
         ? String(device.deviceNo).replace(/\D/g, '').slice(-6)
         : ''
     const deviceCode = (device && device.firmwareDeviceId) || digitId || '--'
-    // 电量取值/文案统一走 batteryUtil（内含未连接、无时间戳、超时三道未知判定）
+    // 电量取值/文案统一走本次 0x04 结果；未连接/读取失败均为未知。
     // 轮播设置/固件升级的右侧值只在已连接时展示，未连接一律 -- 占位（点击时提示先连接设备）
     const connected = !!(device && device.connected)
 
@@ -554,7 +559,7 @@ Page({
     wx.showLoading({ title: '保存中', mask: true })
     try {
       await deviceBle.setPlayback(deviceId, mode, intervalSeconds)
-      this.invalidateBleInfo() // 播放配置已变，作废 0x01 节流缓存，下次 loadDetail 重读
+      this.invalidateBleInfo() // 播放配置已变，清掉最近结果；下次 loadDetail 仍会真实重读
       const updated = Object.assign({}, device, {
         deviceId,
         bleDeviceId: deviceId,
@@ -735,11 +740,10 @@ Page({
   },
 
   // 连接成功后的统一收尾（新连接与复用活动会话共用）：合并设备实时信息 → 设为全局选中设备 → 刷新页面 UI。
-  // info 可能为 null（复用活动会话且活性校验撞上在途指令 CMD_PENDING 时不读设备信息）：
-  // 此时只置连接态，电量/内存等沿用现有数据，稍后 loadDetail 会补齐。
+  // info 的电量已由 connectBoundDevice 统一通过 0x04 实时读取；失败时为 null，不回退旧值。
   applyConnectedDevice(device, deviceId, info) {
     if (info) {
-      this.cacheBleInfo(deviceId, info) // 新鲜 0x01 数据同步进节流缓存，紧随的 loadDetail 直接复用
+      this.cacheBleInfo(deviceId, info) // 登记最近一次真实 0x01；紧随的 loadDetail 仍会重新读取
     }
     const updated = Object.assign(
       {},
@@ -752,10 +756,16 @@ Page({
       info
         ? Object.assign(
             {
-              usedMemory: info.imgCount,
-              totalMemory: info.capacity,
-              playbackMode: info.playMode,
-              intervalSeconds: info.intervalSeconds,
+              usedMemory:
+                info.imgCount === undefined ? device.usedMemory : info.imgCount,
+              totalMemory:
+                info.capacity === undefined ? device.totalMemory : info.capacity,
+              playbackMode:
+                info.playMode === undefined ? device.playbackMode : info.playMode,
+              intervalSeconds:
+                info.intervalSeconds === undefined
+                  ? device.intervalSeconds
+                  : info.intervalSeconds,
               intervalHours: info.intervalSeconds
                 ? Math.max(1, Math.round(info.intervalSeconds / 3600))
                 : device.intervalHours,
@@ -763,10 +773,10 @@ Page({
               // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
               firmwareDeviceId: info.deviceId || device.firmwareDeviceId
             },
-            // 电量带时间戳（info 为 null 时整块跳过，沿用旧值+旧时间戳，由 TTL 自行判定过期）
+            // 连接成功展示的电量来自本次 0x04。
             batteryUtil.stampBattery(info.battery)
           )
-        : null
+        : batteryUtil.stampBattery(null)
     )
     app.setSelectedDevice(updated)
 
@@ -1159,8 +1169,7 @@ Page({
       await deviceBle.ensureConnection(deviceId)
       logClearDeviceData(traceId, 'BLE 连接已就绪', { deviceId })
 
-      // force：要删哪些槽位取决于这份 imgMask，属破坏性操作的依据，绝不能吃 15s 节流缓存。
-      // 读到的结果同样回填全局缓存（清空成功后 invalidateBleInfo 会再作废它）。
+      // 要删哪些槽位取决于这份 imgMask，必须真实回读 0x01；deviceInfo 已取消 15s 节流。
       const info = await deviceInfo.read(deviceId, { force: true })
       const indexes = protocol.maskToIndexes(info.imgMask)
       logClearDeviceData(traceId, '设备信息(0x01/0x03解析结果)', Object.assign({}, info, {
@@ -1196,8 +1205,7 @@ Page({
               await new Promise(resolve => setTimeout(resolve, 4000))
             }
             try {
-              // force：这次回读是用来核对「是否真的清空了」，命中缓存会读到清空前的旧 mask，
-              // 直接导致误判成「没清干净」并把设备错误抛给用户
+              // 这次回读用来核对「是否真的清空了」；deviceInfo 已取消 15s 结果复用。
               after = await deviceInfo.read(deviceId, { force: true })
             } catch (error) {
               reReadError = error
@@ -1275,7 +1283,7 @@ Page({
       title: '已清空',
       icon: 'none'
     })
-    // 一键清空后马上回读设备信息(0x01)，把内存占用/电量立刻刷新到详情页（不等下面 loadDetail 的接口往返）
+    // 一键清空后马上回读设备信息和 0x04 电量，不等下面 loadDetail 的接口往返。
     await this.refreshDeviceMemoryFromBle(deviceId)
     try {
       await this.loadDetail()
@@ -1285,7 +1293,7 @@ Page({
     }
   },
 
-  // 一键清空成功后立刻回读设备信息(0x01)并刷新详情页的内存占用/电量，不等 loadDetail 的接口往返，
+  // 一键清空成功后立刻回读设备信息(0x01)及电量(0x04)，不等 loadDetail 的接口往返，
   // 让「已清空」后内存数马上归零。读失败(设备刚擦完可能短暂无响应)不影响清空结果，随后 loadDetail 仍会再同步一次。
   async refreshDeviceMemoryFromBle(deviceId) {
     if (!deviceId) {
@@ -1293,12 +1301,11 @@ Page({
     }
     let info
     try {
-      // force：刚清空完必须看到新值，不能吃 15s 节流缓存（读到的结果会回填缓存，
-      // 紧随的 loadDetail 直接复用，不会再多读一次）
       info = await deviceInfo.read(deviceId, { force: true })
     } catch (error) {
       return
     }
+    const batteryState = await batteryUtil.readLatestBattery(deviceId)
     const prev = this.data.device || {}
     const device = Object.assign(
       {},
@@ -1307,9 +1314,9 @@ Page({
         usedMemory: info.imgCount,
         totalMemory: info.capacity
       },
-      batteryUtil.stampBattery(info.battery)
+      batteryState
     )
-    // 同样回写选中设备：这也是一次真实 0x01 读，首页/列表应当跟着刷新（见 doLoadDetail 的同款注释）
+    // 仅回写设备连接/容量等信息；电量不会跨页缓存。
     app.setSelectedDevice(
       Object.assign({}, app.globalData.selectedDevice || {}, device)
     )
@@ -1421,7 +1428,7 @@ Page({
           title: '格式化完成',
           icon: 'none'
         })
-        this.invalidateBleInfo() // 设备照片已被清，作废 0x01 节流缓存让 loadDetail 重读内存占用
+        this.invalidateBleInfo() // 设备照片已被清，清掉最近结果并让 loadDetail 重读内存占用
         this.loadDetail()
       }
     })
