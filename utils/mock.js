@@ -588,6 +588,7 @@ function deleteProjectionRecord(recordId) {
 
 function deleteAccount() {
   wx.removeStorageSync('token')
+  wx.removeStorageSync('jwtToken')
   wx.removeStorageSync('userInfo')
   wx.removeStorageSync('selectedDevice')
   wx.removeStorageSync(STORE_KEY)

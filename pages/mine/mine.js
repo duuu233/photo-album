@@ -45,7 +45,10 @@ Page({
   // 并行拉取用户信息、相册照片、设备列表，组装“我的”页头部展示数据
   async loadUserInfo() {
     // 游客模式：未登录展示默认头部，不强制跳登录（登录留到具体操作时再触发）
-    if (!app.globalData.token && !wx.getStorageSync('token')) {
+    const token = app.globalData.token || wx.getStorageSync('token')
+    const jwtToken =
+      app.globalData.jwtToken || wx.getStorageSync('jwtToken')
+    if (!token || !jwtToken) {
       this._mineLoaded = false // 登出后回默认态，此前的成功数据不再保留
       this.setData({
         avatarUrl: '',

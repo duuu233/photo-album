@@ -289,7 +289,10 @@ Page({
   // 头像几乎不变：优先用会话内已有的 globalData.userInfo（登录/个人资料页保存都会同步它），
   // 仅会话内还没拉到过用户信息时才请求一次——此前每次切 tab/返回首页都白拉一遍 getUserProfile。
   async loadUserAvatar() {
-    if (!app.globalData.token && !wx.getStorageSync('token')) {
+    const token = app.globalData.token || wx.getStorageSync('token')
+    const jwtToken =
+      app.globalData.jwtToken || wx.getStorageSync('jwtToken')
+    if (!token || !jwtToken) {
       this.setData({
         avatarUrl: DEFAULT_AVATAR
       })
@@ -388,7 +391,10 @@ Page({
   // 拉取设备列表确定首页处于已绑定还是未绑定场景；失败则兜底为未绑定
   async loadHomeState() {
     // 游客模式：未登录不强制跳登录，直接展示「未绑定」首页；登录留到需要的操作时再触发
-    if (!app.globalData.token && !wx.getStorageSync('token')) {
+    const token = app.globalData.token || wx.getStorageSync('token')
+    const jwtToken =
+      app.globalData.jwtToken || wx.getStorageSync('jwtToken')
+    if (!token || !jwtToken) {
       this.setData({
         currentDevice: DEFAULT_DEVICE,
         hasDevice: false

@@ -51,6 +51,10 @@ function getToken() {
   return wx.getStorageSync('token') || ''
 }
 
+function getJwtToken() {
+  return wx.getStorageSync('jwtToken') || ''
+}
+
 function getSystemInfo() {
   try {
     // 新版基础库：用 getDeviceInfo(取 model) + getAppBaseInfo(取 language) 替代已废弃的 getSystemInfoSync
@@ -284,6 +288,7 @@ function handleSessionExpired() {
   } else {
     // App 尚未就绪（启动早期）时兜底清 Storage
     wx.removeStorageSync('token')
+    wx.removeStorageSync('jwtToken')
     wx.removeStorageSync('userInfo')
   }
 
@@ -307,6 +312,7 @@ function request(rawOptions) {
   const method = (options.method || 'GET').toUpperCase()
   const data = options.data || {}
   const token = getToken()
+  const jwtToken = getJwtToken()
   const authToken = options.auth === false ? '' : token
   const header = appendClientHeaders(options.header, authToken)
   const clientQuery =
@@ -317,6 +323,9 @@ function request(rawOptions) {
   // 有 token 且未显式关闭鉴权时，自动带上 Bearer 头
   if (token && options.auth !== false) {
     header.Authorization = `Bearer ${token}`
+  }
+  if (jwtToken && options.auth !== false) {
+    header.Authentication = `Bearer ${jwtToken}`
   }
 
   if (options.loading) {
@@ -460,6 +469,7 @@ function requestWithRetry(sendOptions, retriesLeft) {
 function upload(rawOptions) {
   const options = normalizeOptions(rawOptions)
   const token = getToken()
+  const jwtToken = getJwtToken()
   const authToken = options.auth === false ? '' : token
   const header = appendClientHeaders(options.header, authToken)
   const filePaths = Array.isArray(options.filePaths)
@@ -475,6 +485,9 @@ function upload(rawOptions) {
 
   if (token && options.auth !== false) {
     header.Authorization = `Bearer ${token}`
+  }
+  if (jwtToken && options.auth !== false) {
+    header.Authentication = `Bearer ${jwtToken}`
   }
 
   if (!filePaths.length) {

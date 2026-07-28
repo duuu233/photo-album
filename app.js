@@ -49,8 +49,10 @@ App({
 
     try {
       const token = this.globalData.token || wx.getStorageSync('token')
+      const jwtToken =
+        this.globalData.jwtToken || wx.getStorageSync('jwtToken')
       const selected = this.globalData.selectedDevice
-      if (!token || !selected || !selected.id) {
+      if (!token || !jwtToken || !selected || !selected.id) {
         return
       }
 
@@ -83,8 +85,24 @@ App({
 
   // 把本地缓存里的会话信息读回内存（globalData），作为全局单一数据源
   restoreSession() {
-    this.globalData.token = wx.getStorageSync('token') || ''
-    this.globalData.userInfo = wx.getStorageSync('userInfo') || null
+    const token = wx.getStorageSync('token') || ''
+    const jwtToken = wx.getStorageSync('jwtToken') || ''
+
+    // 新鉴权契约要求 userToken 与 jwtToken 同时存在。旧版本只缓存 userToken，
+    // 这类半会话无法为后续请求生成 Authentication 头，冷启动时直接按未登录处理。
+    if (token && jwtToken) {
+      this.globalData.token = token
+      this.globalData.jwtToken = jwtToken
+      this.globalData.userInfo = wx.getStorageSync('userInfo') || null
+    } else {
+      this.globalData.token = ''
+      this.globalData.jwtToken = ''
+      this.globalData.userInfo = null
+      wx.removeStorageSync('token')
+      wx.removeStorageSync('jwtToken')
+      wx.removeStorageSync('userInfo')
+      wx.removeStorageSync('selectedDevice')
+    }
     // 选中设备连同最近一次有效电量恢复；页面先展示缓存，15 秒窗口外再后台刷新，
     // 避免启动/切页时出现「-- → 真值」闪烁。
     this.globalData.selectedDevice = wx.getStorageSync('selectedDevice') || null
@@ -100,12 +118,13 @@ App({
       language: system.getSystemLanguageInfo().value
     })
 
-    // 内存与本地缓存双写，保证下次启动能恢复
-    this.globalData.token = session.token
-    this.globalData.userInfo = session.user
-    wx.setStorageSync('token', session.token)
-    wx.setStorageSync('userInfo', session.user)
-    return session
+    const profile = session.user
+      ? Object.assign({}, session.user, {
+          userToken: session.userToken || session.token,
+          jwtToken: session.jwtToken
+        })
+      : session
+    return this.applyWechatSession(profile)
   },
 
   // 真实 BoltFox 一键登录：detail 来自 button open-type="getPhoneNumber" 的回调，
@@ -125,18 +144,35 @@ App({
     return this.applyWechatSession(profile)
   },
 
-  // 把后端返回的 UserInfoDetailApiOut 落地为会话：写 token + 规范化用户信息，内存与缓存双写。
+  // 把后端返回的 UserInfoDetailApiOut 落地为会话：
+  // userToken 继续用于业务公共参数，jwtToken 专用于 Authentication 请求头。
   applyWechatSession(profile = {}) {
     const token = profile.userToken || ''
+    const jwtToken = profile.jwtToken || ''
     const userInfo = this.normalizeUserInfo(profile)
 
+    if (!token || !jwtToken) {
+      wx.showToast({
+        title: '登录响应缺少登录凭证，请稍后重试',
+        icon: 'none',
+        duration: 3000
+      })
+      throw {
+        code: 'LOGIN_CREDENTIALS_MISSING',
+        message: '登录响应缺少 userToken 或 jwtToken'
+      }
+    }
+
     this.globalData.token = token
+    this.globalData.jwtToken = jwtToken
     this.globalData.userInfo = userInfo
     wx.setStorageSync('token', token)
+    wx.setStorageSync('jwtToken', jwtToken)
     wx.setStorageSync('userInfo', userInfo)
 
     return {
       token,
+      jwtToken,
       user: userInfo
     }
   },
@@ -158,7 +194,10 @@ App({
   // 点击事件的同步登录拦截：已登录返回 true；未登录跳转登录页并返回 false。
   // 与异步的 ensureLogin 区分——这里不返回 Promise，便于在 tap 处理函数里直接 if 判断后 return。
   requireLogin() {
-    if (this.globalData.token || wx.getStorageSync('token')) {
+    const token = this.globalData.token || wx.getStorageSync('token')
+    const jwtToken =
+      this.globalData.jwtToken || wx.getStorageSync('jwtToken')
+    if (token && jwtToken) {
       return true
     }
 
@@ -175,9 +214,10 @@ App({
 
   // 需要登录态的入口统一调用：已登录直接复用，未登录才触发微信登录
   ensureLogin() {
-    if (this.globalData.token) {
+    if (this.globalData.token && this.globalData.jwtToken) {
       return Promise.resolve({
         token: this.globalData.token,
+        jwtToken: this.globalData.jwtToken,
         user: this.globalData.userInfo
       })
     }
@@ -216,14 +256,17 @@ App({
     // 换账号、退出、注销和 401/406 登录态失效后都需要重新确认。
     aiServiceConsent.clearCurrentUserConsent()
     this.globalData.token = ''
+    this.globalData.jwtToken = ''
     this.globalData.userInfo = null
     this.setSelectedDevice(null)
     wx.removeStorageSync('token')
+    wx.removeStorageSync('jwtToken')
     wx.removeStorageSync('userInfo')
   },
 
   globalData: {
     token: '',
+    jwtToken: '',
     userInfo: null,
     selectedDevice: null,
     // 登录页在过渡 loading 期间预取的设备列表，首页 loadHomeState 一次性消费后置回 null

@@ -13,7 +13,10 @@ Page({
 
   onShow() {
     // 已登录则无需停留在登录页，直接进入首页
-    if (app.globalData.token || wx.getStorageSync('token')) {
+    const token = app.globalData.token || wx.getStorageSync('token')
+    const jwtToken =
+      app.globalData.jwtToken || wx.getStorageSync('jwtToken')
+    if (token && jwtToken) {
       wx.switchTab({
         url: '/pages/home/home'
       })
