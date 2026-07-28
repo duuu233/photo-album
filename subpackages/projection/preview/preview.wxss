@@ -1,6 +1,7 @@
 .preview-page {
   display: flex;
   flex-direction: column;
+  min-height: 100vh;
 }
 
 .preview-counter {
@@ -23,15 +24,16 @@
   padding: 4rpx 30rpx;
 }
 
-/* 编辑舞台：高度改这里务必同步 preview.js 的 STAGE_H_RPX。
-   2026-07-24：上下留白加大（margin 48rpx/24rpx），并恢复 swiper 轮播承载多图。 */
+/* 编辑舞台：对齐 Flutter 的 Expanded 布局，在 680rpx 短屏下限之上占满页面剩余空间。
+   JS 会实测最终高度供 fallback 与编辑层共用；上下留白仍保持 48rpx/24rpx。 */
 .preview-stage {
   position: relative;
   z-index: 1;
+  flex: 1 0 680rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 680rpx;
+  min-height: 680rpx;
   margin: 48rpx 46rpx 24rpx;
 }
 

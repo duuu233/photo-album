@@ -8,10 +8,10 @@ const dithering = require('../../../utils/dithering')
 const DEFAULT_DEVICE_SIZE = { width: 480, height: 720 }
 
 // 预览舞台（.preview-stage）的可用区域，单位 rpx：宽 = 屏宽 750 - 左右各 46 边距；
-// 高与 wxss 里 .preview-stage 的 height 保持一致（改一处务必同步另一处）。
-// 烘焙后按此区域把图片「等比缩放」铺满 photo-wrap（fallback 展示用），保证整张图完整显示且不留白。
+// 高度与 Flutter 的 Expanded + LayoutBuilder 对齐：680rpx 只是短屏下限，长屏会占满页面剩余空间。
+// fallback / 烘焙预览必须使用 _measureStage 实测后的高度，不能再把 680rpx 当成固定上限。
 const STAGE_W_RPX = 658
-const STAGE_H_RPX = 680
+const STAGE_MIN_H_RPX = 680
 
 // 画布导出格式（性能优化，2026-07-13）。canvasToTempFilePath 的 fileType 默认是 png——
 // 照片存 png 是同画质 jpg 的 5~10 倍（长边 2000 的照片常到 5MB+）。而本页导出的这个临时文件
@@ -274,17 +274,32 @@ Page({
       : { width: dev.width, height: dev.height }
   },
 
+  // 把实测舞台 px 尺寸换算成 rpx。首屏尚未测量时才回退到 658×680rpx；
+  // 测量完成后与编辑层共用同一个真实舞台，避免 fallback 比取景框明显偏小。
+  _stageSizeRpx() {
+    const stage = this._stageRect
+    if (stage && stage.width > 0 && stage.height > 0) {
+      const rpxPerPx = STAGE_W_RPX / stage.width
+      return {
+        width: STAGE_W_RPX,
+        height: stage.height * rpxPerPx
+      }
+    }
+    return { width: STAGE_W_RPX, height: STAGE_MIN_H_RPX }
+  },
+
   // 由一组宽高算出 photo-wrap 在舞台内等比缩放后的展示尺寸（rpx）。
   // 返回 {dispW, dispH}；宽高非法时返回 null。
   computeWrapSize(w, h) {
     if (!(w > 0) || !(h > 0)) {
       return null
     }
+    const stage = this._stageSizeRpx()
     const aspect = w / h
-    let dispW = STAGE_W_RPX
+    let dispW = stage.width
     let dispH = dispW / aspect
-    if (dispH > STAGE_H_RPX) {
-      dispH = STAGE_H_RPX
+    if (dispH > stage.height) {
+      dispH = stage.height
       dispW = dispH * aspect
     }
     return { dispW, dispH }
@@ -316,7 +331,8 @@ Page({
     )
   },
 
-  // 量取编辑舞台（.preview-stage）的 px 尺寸：页面布局固定，只量一次后缓存（切图/换向都不变）
+  // 量取编辑舞台（.preview-stage）的 px 尺寸：页面初始布局完成后只量一次，
+  // 切图/换向期间尺寸不变；实测高度同时用于 fallback photo-wrap。
   _measureStage() {
     return new Promise((resolve) => {
       if (this._stageRect) {
@@ -329,6 +345,11 @@ Page({
         const rect = res && res[0]
         if (rect && rect.width) {
           this._stageRect = { width: rect.width, height: rect.height }
+          const size = this.getDeviceCropSize(this.data.device)
+          const deviceWrapStyle = this.computeWrapStyle(size.width, size.height)
+          if (deviceWrapStyle !== this.data.deviceWrapStyle) {
+            this.setData({ deviceWrapStyle })
+          }
         }
         resolve(this._stageRect || null)
       })
