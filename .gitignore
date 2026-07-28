@@ -1,0 +1,2 @@
+# CodeGraph indexes are generated locally and must not be committed.
+.codegraph/

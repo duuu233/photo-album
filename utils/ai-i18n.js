@@ -1,6 +1,6 @@
 // BoltStar AI 模块多语种错误文案 + 统一错误分发。
 // 文案来源：assets/ai/BoltStar-i18n-Errors.json（后端只回 code，不回面向用户的文案，
-// 文案由前端按当前语种管理，见 assets/ai/BoltStar-API-Doc-v2-1.0.4.md §6.7）。
+// 文案由前端按当前语种管理，见 docs/reference/ai/BoltStar-API-Doc-v2-1.0.4.md §6.7）。
 // 语种取 utils/language.getSelectedLanguage()（用户显式选过用用户的，否则跟随系统），
 // 与后端接口的 language 码同一数据源，保证 AI 提示语种与全局一致。
 //

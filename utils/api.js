@@ -600,7 +600,7 @@ module.exports = {
 
   // 编辑投屏记录：BLE 图传到设备成功后调用，用上传接口返回的 taskId/upirId 把该条投屏记录的
   // 设备上传状态置为成功(deviceUploadState=1)。设备图传失败则不调用（记录保持失败态）。
-  // imgIndex=这张图实际写入设备的物理槽位索引，供图库删除/刷新屏幕定位（见 docs/图片索引-imgIndex方案.md）。
+  // imgIndex=这张图实际写入设备的物理槽位索引，供图库删除/刷新屏幕定位（见 docs/decisions/image-slot-index.md）。
   // body 只传业务字段；device/language/terminal/userToken 由 request.js 经 header/query 注入。
   editUserProductImgRecord(data = {}) {
     return http.post(

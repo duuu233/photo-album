@@ -1,134 +1,101 @@
 # Project AI Instructions
 
-## Code Understanding
+## Project Context
 
-This project uses CodeGraph as the primary code intelligence system.
+This project is maintained across multiple development environments:
 
-When analyzing:
+- Office computer
+- Home computer
+- Remote SSH servers
 
-- architecture
-- dependencies
-- call chains
-- impact of changes
-- refactoring scope
+Git repository is the single source of truth.
 
-Use CodeGraph tools first instead of relying only on text search.
+Do not assume local machine state is shared between environments.
+
+The project may be modified from different computers at different times.
+
+Always consider synchronization and compatibility with other development environments.
 
 ---
 
-## Knowledge Management
+# AI Working Principles
 
-This project maintains two layers of knowledge:
+The AI assistant should act as a long-term project collaborator.
 
-### Layer 1: CodeGraph (Current Code Knowledge)
+Before making changes:
 
-CodeGraph represents:
+1. Understand the existing implementation.
+2. Check dependencies and impact.
+3. Avoid unnecessary changes.
+4. Preserve existing design decisions.
 
-- current project structure
+Prefer understanding before modifying.
+
+---
+
+# CodeGraph Usage
+
+This project uses CodeGraph as the primary code intelligence system.
+
+Use CodeGraph first when analyzing:
+
+- project architecture
+- module relationships
+- dependencies
+- function call chains
+- class relationships
+- impact of changes
+- refactoring scope
+- unfamiliar code
+
+Do not rely only on text search when structural understanding is required.
+
+Examples:
+
+Use CodeGraph for questions like:
+
+- "Who calls this function?"
+- "What modules depend on this?"
+- "What will be affected if this changes?"
+- "Explain this subsystem architecture."
+
+---
+
+# CodeGraph Management
+
+CodeGraph represents the current state of the codebase.
+
+CodeGraph contains:
+
+- project structure
+- files
 - symbols
 - functions/classes
 - dependencies
 - callers/callees
-- impact analysis
+- impact relationships
 
-Keep CodeGraph synchronized after meaningful code changes.
+## Local Index Rules
 
-When code structure changes significantly:
+The `.codegraph/` directory is a local generated index.
 
-- run codegraph sync
-- verify affected relationships
+Rules:
 
----
+- Never commit `.codegraph/` to Git.
+- Each computer maintains its own CodeGraph index.
+- The index can always be regenerated.
+- Do not depend on another machine's `.codegraph/` data.
 
-### Layer 2: Markdown Documentation (Project Memory)
-
-Markdown files represent:
-
-- why decisions were made
-- historical context
-- architecture decisions
-- optimization records
-- trade-offs
-- known issues
-- future plans
-
-Do not replace Markdown documentation with CodeGraph.
+The project Git repository contains source and knowledge, not CodeGraph cache.
 
 ---
 
-## Documentation Rules
+# CodeGraph Synchronization
 
-When making code changes:
+After pulling code changes from Git:
 
-1. Before modifying complex code:
-   - Use CodeGraph to understand dependencies and impact.
+Run:
 
-2. After completing changes:
-   Decide whether documentation should be updated.
-
-Update Markdown when changes involve:
-
-- architecture changes
-- new modules
-- database changes
-- API changes
-- performance optimization
-- security changes
-- important bug fixes
-- non-obvious design decisions
-
----
-
-## Change Record Format
-
-For important changes, create or update:
-
-docs/changes/YYYY-MM-DD-{topic}.md
-
-Include:
-
-# Change Title
-
-## Background
-
-Why this change was needed.
-
-## Problem
-
-What problem existed.
-
-## Solution
-
-What was changed.
-
-## Affected Areas
-
-Files/modules affected.
-
-## Technical Decisions
-
-Why this approach was chosen.
-
-## Risks
-
-Potential side effects.
-
-## Follow-up
-
-Future improvements.
-
----
-
-## Working Style
-
-Before large changes:
-
-1. Analyze using CodeGraph.
-2. Explain affected components.
-3. Propose a plan.
-
-After changes:
-
-1. Update CodeGraph index if needed.
-2. Update Markdown knowledge if the change has long-term value.
-3. Summarize what changed.
+```bash
+codegraph sync
+```

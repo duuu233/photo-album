@@ -1,5 +1,5 @@
 // AI 对话（星宝）主界面 —— 需求见 assets/ai/支付&ai&官方图库.docx「一、AI对话模块」，
-// 接口见 assets/ai/BoltStar-API-Doc-v2-1.0.4.md（当前对接版本；小程序只能走非流式 + 客户端打字机）。
+// 接口见 docs/reference/ai/BoltStar-API-Doc-v2-1.0.4.md（当前对接版本；小程序只能走非流式 + 客户端打字机）。
 // UI 未出图，图标一律用色块占位（icon-block），后续换图只动 wxml/wxss。
 //
 // 会话创建时机（2026-07-25 二次拍板，改动前请先看 createSession 上方注释）：
@@ -12,7 +12,7 @@
 // 张数+生图关键词自行分流（1 张+关键词=图生图美化 / 多张+关键词=友好拒绝 / 其余=分析讨论）。
 // 旧「选图后下一条输入 → /image/enhance」的单图链路随之下线（enhanceImage 接口仍保留作独立入口）。
 //
-// 2026-07-27 六项体验修复（详见 docs/2026-07-24-AI模块开发进度.md 同日日志）：
+// 2026-07-27 六项体验修复（详见 docs/changes/2026-07-24-AI模块开发进度.md 同日日志）：
 //   1 上传前压到 ~100KB（media.compressToTarget）+ 图片按 img_orientation 预占高宽；
 //   2 打字机改 ~60fps 递归 setTimeout + 贴底改 scroll-top（原 scroll-into-view 跟不上）；
 //   3 AI 回复的文字与图渲染进**同一个气泡**（kind='rich'，图挂在 message.images 上）；

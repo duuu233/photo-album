@@ -47,7 +47,7 @@ function getActiveDeviceNames(devices) {
 
 // 后端记录的设备槽位索引(imgIndex, String) → 数字；无索引/非法值统一返回 -1。
 // ⚠️ 0 是合法槽位（相框第一个位置），所以只能判 undefined/null/''，绝不能写 if (!imgIndex)——
-// 否则第一个位置上的照片永远删不掉、刷不到。见 docs/图片索引-imgIndex方案.md 的问题 E。
+// 否则第一个位置上的照片永远删不掉、刷不到。见 docs/decisions/image-slot-index.md 的问题 E。
 function parseImgIndex(value) {
   if (value === undefined || value === null || value === '') {
     return -1
@@ -575,7 +575,7 @@ Page({
   // 选中照片 → 固件图片槽位索引。删除图片(0x12)与刷新屏幕(0x24)共用这一处解析。
   //
   // ① 首选后端记录的真实槽位 imgIndex：投屏成功时由 result.js 上报的设备物理位置，是准确值。
-  // ② 没有 imgIndex 时才回退推算（投屏成功但记账失败会产生这种记录，见 docs/图片索引-imgIndex方案.md
+  // ② 没有 imgIndex 时才回退推算（投屏成功但记账失败会产生这种记录，见 docs/decisions/image-slot-index.md
   //    的问题 B）：固件已占用槽位(occupied)按索引升序，上传时用 firstFreeIndex 从最小空闲槽位起填，
   //    即最早上传的图落在最小槽位；所以把本设备照片按「上传先后」排好，第 N 张对应升序槽位里的第 N 个。
   //    直接用后端列表顺序(常见最新在前)去对 occupied[pos] 会刷错图 —— 这是「指定刷新图片不对」的旧根因。

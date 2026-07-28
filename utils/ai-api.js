@@ -1,4 +1,4 @@
-// BoltStar AI（星宝）第三方接口层。文档：assets/ai/BoltStar-API-Doc-v2-1.0.4.md（当前对接版本）
+// BoltStar AI（星宝）第三方接口层。文档：docs/reference/ai/BoltStar-API-Doc-v2-1.0.4.md（当前对接版本）
 //
 // 与 utils/request.js 分开的原因：AI 服务是独立的第三方（阿里云 FC），Base URL、响应结构
 // （success/code/data/params/detail）、错误码体系都与 BoltFox 后端不同，公共参数（token/language 头）
@@ -137,7 +137,7 @@ module.exports = {
   // ⚠️ 2026-07-25 起本模块不再提供任何「清空」能力：会话级「清空全部」已下线，
   //    消息级 `clearHistory()`（`DELETE /chat/history/clear`）也一并删除（原本全项目无调用）。
   //    清理一律走逐条删：会话用 deleteSession、消息用 deleteMessage。别再加回来，理由见
-  //    docs/2026-07-24-AI模块开发进度.md。
+  //    docs/changes/2026-07-24-AI模块开发进度.md。
 
   // POST /chat（非流式）— 对话/生图/图文多模态。resolve { text, images }。
   // params: { sessionId, message, imgOrientation(必传: vertical/horizontal/square),

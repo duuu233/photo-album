@@ -1,6 +1,6 @@
 // 投屏结果页：进入时（status=progress）真实连接设备并走 BLE 图传，进度条与张数为真实进度；
 // 传完按真实结果切到「成功 / 失败」。正常投屏链路（2026-07-22 起设备帧改由 seekink 抖动接口生成，
-// 不再下载后端转码的 .bin，见 utils/dithering.js 与 docs/server-image-processing-ble-transfer.md）：
+// 不再下载后端转码的 .bin，见 utils/dithering.js 与 docs/architecture/image-projection-pipeline.md）：
 //   连接 → 读真实设备信息(0x01) → 逐张（两路网络并行，见 acquireFrame）：
 //     ① 设备帧：预览处理后的设备分辨率图 → 统一压缩(compressForUpload) → 抖动接口 → 六色4bpp帧
 //     ② 投屏记录：原图（进预览页前未操作过的图，_origSrc）→ 同一套统一压缩 →
@@ -572,7 +572,7 @@ Page({
         // 尽力而为：记账失败只记日志，不回滚设备、不把整单判失败，避免设备已传成功却被误删/误判失败。
         // 记账放入并行队列，不挡住下一张 BLE。必须带上本张实际写入设备的槽位索引 index(imgIndex)：
         // 图库删除/刷新屏幕靠它定位相框上的物理位置，不上报的话这张图在图库里就成了「不知道在哪」的记录。
-        // ⚠️ index 可能为 0（相框第一个位置），是合法值，勿按假值过滤。见 docs/图片索引-imgIndex方案.md。
+        // ⚠️ index 可能为 0（相框第一个位置），是合法值，勿按假值过滤。见 docs/decisions/image-slot-index.md。
         this.queueRecordTask(
           `第 ${i + 1}/${total} 张投屏记录写入失败`,
           async () => {

@@ -43,7 +43,7 @@ function chatPagesInStack() {
 }
 
 // 「N 条消息」补数的并发上限（2026-07-25）。
-// 背景：/session/list 回来的 msg_count 恒为 0（排查结论见 docs/2026-07-24-AI模块开发进度.md，
+// 背景：/session/list 回来的 msg_count 恒为 0（排查结论见 docs/changes/2026-07-24-AI模块开发进度.md，
 // **前端取值无误**——同一个 item 里的 title/updated_at 都显示正常，只有 msg_count 是 0），
 // 只能拿 /chat/history 的 total 兜底。代价是 N+1 请求，所以严格限制：
 // 只补**当前已渲染出来的那几行**、page_size=1 只要 total、并发 ≤ 本值、失败静默、每条只试一次。
