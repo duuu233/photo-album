@@ -33,7 +33,8 @@
         "guide/guide",
         "update/update",
         "privacy/privacy",
-        "agreement/agreement"
+        "agreement/agreement",
+        "ai-agreement/ai-agreement"
       ]
     }
   ],

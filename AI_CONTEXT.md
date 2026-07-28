@@ -51,7 +51,7 @@
   - 小程序端不使用 SSE，AI 回复为完整 JSON 后在客户端做打字机效果。
 - 测试：
   - 使用 Node.js 内置测试运行器；
-  - 当前只有 `device-id`、`active-device-identity`、`battery` 三组单元测试；
+  - 当前有 `device-id`、`active-device-identity`、`battery`、`ai-service-consent` 四组单元测试；
   - BLE、投屏、OTA、HTTP 和 AI 主链路仍依赖真机或人工联调。
 - 代码理解：
   - 仓库已接入 CodeGraph；
@@ -242,11 +242,13 @@
   - 非流式文本/生图/图文对话；
   - 图片压缩、BoltFox 上传和 URL 传递；
   - 客户端打字机、停止生成、错误本地化；
+  - 按登录用户 ID 缓存 AI 服务协议同意状态，并在发送前强制校验；
   - AI 图片下载后复用统一投屏链路。
 - 关键文件：
   - `subpackages/ai/chat/chat.js`
   - `subpackages/ai/sessions/sessions.js`
   - `utils/ai-api.js`
+  - `utils/ai-service-consent.js`
   - `utils/ai-i18n.js`
   - `utils/media.js`
 
@@ -337,8 +339,12 @@ App.onShow
 
 ```text
 进入 AI 页面
+  → 按当前用户 ID 检查 BoltStar AI 服务协议缓存
+      ├─ 已同意：继续
+      └─ 未同意：弹确认框；拒绝后仍可输入，但不能发送
   → 检查绑定设备
-  → 首次真实发送时才创建会话
+  → 每次发送前再次校验协议；未同意则原样保留草稿和待发图片
+  → 首次真实发送且已同意协议时才创建会话
   → 可选图片先压缩到约 100KB
   → BoltFox setFileUpload 获取公网 URL
   → BoltStar 非流式 /chat（最多 4 张图片）
@@ -422,7 +428,12 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
    - 欢迎语由前端静态展示，不写入服务端历史；
    - 首次真实消息才创建会话，避免空会话。
 
-10. **CodeGraph 和 Markdown 分工。**
+10. **AI 服务协议同意状态按用户和协议版本隔离。**
+    - `utils/ai-service-consent.js` 以原始登录用户 ID 为键、协议日期为版本；
+    - 缓存缺失、换账号、退出、注销或登录态失效后必须重新同意；
+    - 同意校验必须早于会话创建、草稿清空、图片上传和 AI 请求。
+
+11. **CodeGraph 和 Markdown 分工。**
     - CodeGraph 是当前符号、依赖、调用链和影响范围的来源；
     - Markdown 保存设计原因、协议契约、历史、风险和跨端约束；
     - 不能用归档 Markdown 覆盖当前代码事实，也不能用 CodeGraph 取代决策历史。
@@ -474,11 +485,14 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
    - 文件上传、AI 聊天和生图不自动重试；
    - 新增有副作用的 POST 前应判断自动重试是否可能造成重复操作。
 
-9. 页面是否可达以 `app.json` 为准，不要因为目录存在就认为功能已上线。
+9. 修改 AI 发送链路时必须保留按用户的协议校验；退出、注销和登录态失效必须在清空
+   `userInfo` 前删除当前用户的同意缓存。
 
-10. 重要架构、协议、API、安全、性能或一致性变化应更新 `docs/` 中对应长期主文档，并按需新增 `docs/changes/YYYY-MM-DD-topic.md`。
+10. 页面是否可达以 `app.json` 为准，不要因为目录存在就认为功能已上线。
 
-11. 验证顺序：
+11. 重要架构、协议、API、安全、性能或一致性变化应更新 `docs/` 中对应长期主文档，并按需新增 `docs/changes/YYYY-MM-DD-topic.md`。
+
+12. 验证顺序：
     - 运行相关 Node 测试和语法/静态检查；
     - BLE、投屏、后台切换、权限、OTA 必须做真机测试；
     - 设备身份至少用两台同型号设备做防串台验证；
@@ -590,4 +604,3 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
    - 不要把具体权限、扫描、身份或协议错误统一吞成模糊提示。
 10. 仓库可能在不同电脑和远程环境修改。不要依赖未提交的本机缓存、BLE 句柄、CodeGraph 数据库或小程序开发工具私有状态。
 11. 本文中的“待确认”不得被后续 AI 自动补全为事实；需要代码、官方接口/协议或真机证据后才能改为确认。
-

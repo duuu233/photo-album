@@ -27,6 +27,7 @@ const system = require('../../../utils/system')
 const toast = require('../../../utils/toast')
 const activeDevice = require('../../../utils/active-device')
 const language = require('../../../utils/language')
+const aiServiceConsent = require('../../../utils/ai-service-consent')
 
 // 微信「同声传译」插件（WechatSI）：录音直接转文字，小程序里做语音输入的官方方案。
 // ⚠️ 光在 app.json 声明还不够，必须先在**小程序后台**「设置 → 第三方设置 → 插件管理」
@@ -248,6 +249,7 @@ Page({
     this._chatViewH = 0 // 聊天区可视高度，onReady 量一次，用来算「距底多远」
     this._chatReq = null // 进行中的 chat/enhance 请求，供「停止生成」abort
     this._createReq = null // 在途的建会话请求，连点发送时去重（见 createSession）
+    this._consentPrompt = null // AI 服务协议弹窗在途去重：首次进入与发送不能叠两层弹窗
     this._pendingProjectImage = '' // 设备弹窗确认前暂存的待投屏图片 URL
     this.initRecorder()
 
@@ -262,8 +264,49 @@ Page({
       this.openSession(options.sessionId, safeDecodeTitle(options.title))
     }
 
-    // 权限规则（API 文档 §5.5）：无绑定设备时拦截 AI 入口，提示先绑定
-    this.checkDeviceBound()
+    // 首次进入先确认 AI 服务协议，再检查设备绑定，避免两个 showModal 同时弹出互相覆盖。
+    // 不同意仍可正常查看/输入；真正发送时会再次弹出同一引导，直到当前用户同意。
+    this.requestAiServiceConsent(false).then(() => this.checkDeviceBound())
+  },
+
+  // AI 服务协议确认：同意状态按当前登录用户 ID 缓存；缓存丢失、换账号、退出/注销后都会重新弹。
+  // sendAttempt=true 时标题直接提示「请先同意…」，但正文与首次进入完全一致。
+  requestAiServiceConsent(sendAttempt) {
+    if (aiServiceConsent.hasCurrentUserConsent()) {
+      return Promise.resolve(true)
+    }
+    if (this._consentPrompt) {
+      return this._consentPrompt
+    }
+    this._consentPrompt = new Promise((resolve) => {
+      wx.showModal({
+        title: sendAttempt
+          ? aiServiceConsent.CONSENT_REQUIRED_TITLE
+          : aiServiceConsent.CONSENT_TITLE,
+        content: aiServiceConsent.CONSENT_SUMMARY,
+        confirmText: '同意',
+        cancelText: '不同意',
+        success: res => {
+          if (!res.confirm) {
+            resolve(false)
+            return
+          }
+          const granted = aiServiceConsent.grantCurrentUserConsent()
+          if (!granted) {
+            toast.warn({ title: '登录信息异常，请重新登录后使用 AI 服务' })
+          }
+          resolve(granted)
+        },
+        fail: () => resolve(false)
+      })
+    }).then((accepted) => {
+      this._consentPrompt = null
+      return accepted
+    }, () => {
+      this._consentPrompt = null
+      return false
+    })
+    return this._consentPrompt
   },
 
   async checkDeviceBound() {
@@ -546,6 +589,9 @@ Page({
       })
       return
     }
+    if (!(await this.requestAiServiceConsent(true))) {
+      return // 草稿和待发图片原样保留；下次发送继续引导，直到同意
+    }
     // 还有图片在上传：等 OSS URL 就绪再发，否则 image_urls 会缺图
     if (images.some(img => img.uploading)) {
       toast.show({ title: '图片上传中，请稍候…', icon: 'none' })
@@ -572,6 +618,9 @@ Page({
   // ——这样 30xxx 重试只重发请求、不重复堆用户气泡。
   async sendChat(message, styleKey, imageUrls) {
     if (this.data.sending || this.data.banned) {
+      return
+    }
+    if (!(await this.requestAiServiceConsent(true))) {
       return
     }
     if (!this.guardToken()) {
@@ -1090,6 +1139,10 @@ Page({
   // 别让用户白说一遍——语音内容重打一遍的代价比打字高得多。
   async sendVoiceText(text) {
     if (this.data.sending || this.data.banned) {
+      this.setData({ inputValue: text })
+      return
+    }
+    if (!(await this.requestAiServiceConsent(true))) {
       this.setData({ inputValue: text })
       return
     }

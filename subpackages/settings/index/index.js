@@ -69,6 +69,12 @@ Page({
     })
   },
 
+  goAiAgreement() {
+    wx.navigateTo({
+      url: '/subpackages/settings/ai-agreement/ai-agreement'
+    })
+  },
+
   goUpdate() {
     wx.navigateTo({
       url: '/subpackages/settings/update/update?state=available'

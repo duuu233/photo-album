@@ -33,6 +33,11 @@
       <text class="row-label">用户协议</text>
       <image class="chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
     </view>
+    <view class="setting-row" hover-class="none" bindtap="goAiAgreement">
+      <view class="setting-icon blue-icon"><image class="setting-icon__img" src="/assets/images/set-icon04.png" mode="aspectFit"></image></view>
+      <text class="row-label">AI服务协议</text>
+      <image class="chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
+    </view>
     <!-- <view class="setting-row" hover-class="none" bindtap="goUpdate">
       <view class="setting-icon blue-icon"><image class="setting-icon__img" src="/assets/images/set-icon05.png" mode="aspectFit"></image></view>
       <text class="row-label">更新BoltStar</text>

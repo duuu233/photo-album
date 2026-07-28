@@ -1,0 +1,79 @@
+<view class="settings-shell" style="--status-bar: {{statusBarHeight}}px;">
+  <page-nav title="BoltStar AI服务协议"></page-nav>
+
+  <scroll-view class="article-scroll" scroll-y>
+    <view class="glass-card article-card">
+      <view class="article-title">《BoltStar AI服务协议》</view>
+      <view class="date-row">
+        <text>更新日期：2026年7月28日</text>
+        <text>生效日期：2026年7月28日</text>
+      </view>
+
+      <view class="article-section-title">1. 服务说明</view>
+      <view class="article-p">本协议适用于你使用本应用提供的AI相关功能，包括但不限于：</view>
+      <view class="article-list">• AI文本对话</view>
+      <view class="article-list">• AI图片生成（文生图）</view>
+      <view class="article-list">• AI图片美化（图生图）</view>
+      <view class="article-p">上述功能由阿里云百炼（阿里云计算有限公司）提供底层AI技术服务。</view>
+
+      <view class="article-section-title">2. 数据使用与授权</view>
+      <view class="article-p">为了向你提供AI服务，你需要知悉并授权以下内容：</view>
+      <view class="article-list">• 数据传输：你发送的文字或图片内容，将被传输至阿里云百炼AI服务进行处理。</view>
+      <view class="article-list">• 数据处理：你发送的内容仅用于本次AI处理操作，不会被存储或用于模型训练。</view>
+      <view class="article-list">• 数据用途：阿里云百炼仅作为技术处理方，不会将你的内容用于任何其他目的。</view>
+      <view class="article-p">你授权本应用将你主动提交的内容传输至阿里云百炼进行处理，授权仅在你使用AI功能时生效。</view>
+
+      <view class="article-section-title">3. 使用规范</view>
+      <view class="article-p">使用AI功能时，你承诺不提交、不传播以下内容：</view>
+      <view class="article-list">• 违反法律法规的内容</view>
+      <view class="article-list">• 色情、低俗内容</view>
+      <view class="article-list">• 暴力、恐怖内容</view>
+      <view class="article-list">• 侮辱、诽谤他人内容</view>
+      <view class="article-list">• 其他违法违规或违背公序良俗的内容</view>
+      <view class="article-p">本应用已接入阿里云内容安全审核服务，所有提交内容均会自动进行合规检测。</view>
+
+      <view class="article-section-title">4. 违规处理</view>
+      <view class="article-p">为维护良好的使用环境，对于违反使用规范的用户，将采取以下处理措施：</view>
+      <view class="article-table">
+        <view class="article-table-row is-header">
+          <view class="article-table-cell">违规次数</view>
+          <view class="article-table-cell">处理措施</view>
+        </view>
+        <view class="article-table-row">
+          <view class="article-table-cell">第1次</view>
+          <view class="article-table-cell">警告提醒，AI功能封禁24小时</view>
+        </view>
+        <view class="article-table-row">
+          <view class="article-table-cell">第2次</view>
+          <view class="article-table-cell">AI功能封禁24小时</view>
+        </view>
+        <view class="article-table-row">
+          <view class="article-table-cell">第3次</view>
+          <view class="article-table-cell">AI功能封禁24小时</view>
+        </view>
+        <view class="article-table-row">
+          <view class="article-table-cell">累计3次后，每新增1次</view>
+          <view class="article-table-cell">AI功能封禁24小时</view>
+        </view>
+        <view class="article-table-row">
+          <view class="article-table-cell">累计满9次</view>
+          <view class="article-table-cell">AI功能永久封禁</view>
+        </view>
+      </view>
+      <view class="article-p">说明：封禁仅针对AI功能，不影响你使用应用的其他功能。如对封禁有异议，可联系客服申诉。</view>
+
+      <view class="article-section-title">5. 免责声明</view>
+      <view class="article-list">• AI生成内容仅供参考，本应用不对AI生成内容的准确性、完整性、合法性承担保证责任。</view>
+      <view class="article-list">• 你应对使用AI功能产生的内容自行判断和负责。</view>
+      <view class="article-list">• 本应用保留随时修改、暂停或终止AI服务的权利，会尽可能提前通知。</view>
+
+      <view class="article-section-title">6. 协议的变更</view>
+      <view class="article-p">本应用可能根据法律法规变化或服务升级需要，适时更新本协议。更新后的协议会在本页面发布，并在你下次使用AI功能时提醒你查阅。</view>
+
+      <view class="article-section-title">7. 联系方式</view>
+      <view class="article-p">如对本协议有任何疑问，或对封禁处理有异议，可通过邮箱方式联系我们：boltstarservice@boltstar.net</view>
+    </view>
+  </scroll-view>
+
+  <global-toast id="globalToast"></global-toast>
+</view>

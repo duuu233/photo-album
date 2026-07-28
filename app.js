@@ -1,6 +1,7 @@
 const api = require('./utils/api')
 const system = require('./utils/system')
 const deviceBle = require('./utils/device-ble')
+const aiServiceConsent = require('./utils/ai-service-consent')
 
 // 将回调式的 wx.login 封装为 Promise，便于在 async 流程中 await
 function wxLogin() {
@@ -211,6 +212,9 @@ App({
 
   // 退出登录：清空内存与缓存中的所有会话相关数据
   clearSession() {
+    // 必须在 userInfo 置空前按当前用户 ID 清掉 AI 协议同意记录：
+    // 换账号、退出、注销和 401/406 登录态失效后都需要重新确认。
+    aiServiceConsent.clearCurrentUserConsent()
     this.globalData.token = ''
     this.globalData.userInfo = null
     this.setSelectedDevice(null)
