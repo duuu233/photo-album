@@ -2,7 +2,8 @@
 //
 // 与 utils/request.js 分开的原因：AI 服务是独立的第三方（阿里云 FC），Base URL、响应结构
 // （success/code/data/params/detail）、错误码体系都与 BoltFox 后端不同，公共参数（token/language 头）
-// 也不适用，硬塞进 request.js 反而两边互相迁就。错误统一 reject { code, params, detail }，
+// 也不适用，硬塞进 request.js 反而两边互相迁就。错误统一 reject { code, params, detail }；
+// 已确认可安全展示的固定网关错误额外带 userMessage，
 // 由 utils/ai-i18n.handleAiError 按语种/区间分发提示。
 //
 // ⚠️ 小程序 wx.request 不支持 SSE/ReadableStream，只能走「非流式」URL + 客户端打字机
@@ -13,6 +14,41 @@ const STREAM_BASE_URL = 'https://boltstagent-web-jncfttrxvt.ap-southeast-1.fcapp
 // 普通接口 15s；/chat 与 /image/enhance 涉及生图（上游文生图可能 30s+），放宽到 120s 且不重试
 const DEFAULT_TIMEOUT = 15000
 const GENERATE_TIMEOUT = 120000
+
+// 阿里云网关在 JWT 缺失时返回的是大写字段，和 BoltStar 的
+// { success, code, data, params, detail } 业务协议完全不同。只对白名单中的固定
+// Code + Message 生成可展示文案，避免把其它未知网关响应或 detail 泄露给用户。
+const JWT_TOKEN_MISSING_CODE = 'JWTTokenIsMissing'
+const JWT_TOKEN_MISSING_MESSAGE = 'the jwt token is missing'
+
+function parseResponseBody(data) {
+  if (typeof data !== 'string') {
+    return data
+  }
+  try {
+    return JSON.parse(data)
+  } catch (error) {
+    return data
+  }
+}
+
+function gatewayErrorMessage(body) {
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    body.Code !== JWT_TOKEN_MISSING_CODE ||
+    body.Message !== JWT_TOKEN_MISSING_MESSAGE
+  ) {
+    return ''
+  }
+  const requestId =
+    body.RequestId === undefined || body.RequestId === null
+      ? ''
+      : String(body.RequestId).trim()
+  return `JWTTokenIsMissing：the jwt token is missing${
+    requestId ? `（RequestId: ${requestId}）` : ''
+  }`
+}
 
 // 当前登录用户作为 AI 侧 user_id（同一 user_id 多端历史互通，文档 §5.3.5）。
 // 未登录兜底一个固定演示 id，保证 demo 可跑通。
@@ -40,7 +76,16 @@ function aiRequest(options) {
       timeout: options.timeout || DEFAULT_TIMEOUT,
       header: { 'Content-Type': 'application/json' },
       success(res) {
-        const body = res.data
+        const body = parseResponseBody(res.data)
+        const gatewayMessage = gatewayErrorMessage(body)
+        if (gatewayMessage) {
+          reject({
+            code: 31001,
+            detail: gatewayMessage,
+            userMessage: gatewayMessage
+          })
+          return
+        }
         if (res.statusCode === 200 && body && body.success) {
           resolve(body)
           return
@@ -76,6 +121,7 @@ module.exports = {
   STREAM_BASE_URL,
   NON_STREAM_BASE_URL,
   getAiUserId,
+  gatewayErrorMessage,
 
   // POST /session/new — 新建会话，resolve session 对象 { session_id, title, ... }。
   // title 默认「新对话」，后端在首条用户消息后自动填成该消息前 20 字（v1.0.4 §二）。

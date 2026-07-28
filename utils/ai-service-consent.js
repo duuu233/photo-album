@@ -4,7 +4,7 @@
 // app.clearSession() 在清除 userInfo 前调用 clearCurrentUserConsent()。
 // 协议版本写进缓存值，后续协议发生实质变更时只需更新 CONSENT_VERSION，即可让用户重新确认。
 const STORAGE_KEY = 'aiServiceConsentByUser'
-const CONSENT_VERSION = '2026-07-28'
+const CONSENT_VERSION = '2026-07-28-v2'
 
 const CONSENT_TITLE = 'BoltStar AI服务协议'
 const CONSENT_REQUIRED_TITLE = '请先同意BoltStar AI服务协议'

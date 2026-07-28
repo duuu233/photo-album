@@ -147,15 +147,31 @@ function textForCode(code, params) {
 //   30000~30999 上游错误    → 传了 onRetry 则弹「重试」确认框，否则 toast
 //   其余(参数/违规/资源等)  → toast
 // toast 走「接口-」来源前缀约定（该 AI 服务是后端接口，与 request.js 同类；弹窗类不加前缀）。
-// err 形态：ai-api.js reject 出来的 { code, params, detail }；非标错误(网络失败等)按 30001 处理。
+// err 形态：ai-api.js reject 出来的 { code, params, detail, userMessage? }；
+// userMessage 只由 AI 请求层对明确白名单的网关错误生成，非标错误(网络失败等)按 30001 处理。
 function handleAiError(err, options = {}) {
   const error = err || {}
   const code = Number(error.code) || 31001
-  const message = textForCode(code, error.params)
+  const userMessage =
+    typeof error.userMessage === 'string' ? error.userMessage.trim() : ''
+  const message = userMessage || textForCode(code, error.params)
 
   // detail 是开发者排障信息，严禁展示给用户，只打日志
   if (error.detail) {
     console.warn(`[BoltStar] code=${code}`, error.detail)
+  }
+
+  // 仅 AI 请求层确认过字段签名的固定网关错误可走这里，并且必须直接 toast，
+  // 让 RequestId 留在用户截图中用于服务端定位；其它 detail 仍不得展示。
+  if (userMessage) {
+    toast.show({
+      title: /^(接口-|设备-|小程序-)/.test(message)
+        ? message
+        : `接口-${message}`,
+      icon: 'none',
+      duration: 5000
+    })
+    return
   }
 
   if (code === 22002 || code === 22003) {
