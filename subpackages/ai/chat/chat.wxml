@@ -298,5 +298,20 @@
     </view>
   </view>
 
+  <!-- 原生 wx.showModal 无法控制正文对齐；AI 协议需要两段说明稳定居左，故使用页内确认框。 -->
+  <view wx:if="{{consentDialogVisible}}" class="consent-mask" catchtouchmove="noop">
+    <view class="consent-dialog" catchtap="noop">
+      <view class="consent-dialog__title">{{consentDialogTitle}}</view>
+      <view class="consent-dialog__content">
+        <view class="consent-dialog__paragraph">{{consentServiceDescription}}</view>
+        <view class="consent-dialog__paragraph">{{consentDataNotice}}</view>
+      </view>
+      <view class="consent-dialog__actions">
+        <view class="consent-dialog__button consent-dialog__button--cancel" hover-class="none" bindtap="onConsentDisagree">不同意</view>
+        <view class="consent-dialog__button consent-dialog__button--confirm" hover-class="none" bindtap="onConsentAgree">同意</view>
+      </view>
+    </view>
+  </view>
+
   <global-toast id="globalToast"></global-toast>
 </view>

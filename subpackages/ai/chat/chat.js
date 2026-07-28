@@ -195,6 +195,10 @@ Page({
     sessionId: '',
     sessionTitle: '新对话',
     tokenBalance: TOKEN_DEFAULT,
+    consentDialogVisible: false,
+    consentDialogTitle: aiServiceConsent.CONSENT_TITLE,
+    consentServiceDescription: aiServiceConsent.CONSENT_SERVICE_DESCRIPTION,
+    consentDataNotice: aiServiceConsent.CONSENT_DATA_NOTICE,
 
     // 消息模型：{ id, serverId, role: 'user'|'assistant',
     //            kind: 'text'(纯文字) | 'image'(纯图，仅用户侧) | 'rich'(AI 回复：文字+图同一个气泡),
@@ -250,6 +254,7 @@ Page({
     this._chatReq = null // 进行中的 chat/enhance 请求，供「停止生成」abort
     this._createReq = null // 在途的建会话请求，连点发送时去重（见 createSession）
     this._consentPrompt = null // AI 服务协议弹窗在途去重：首次进入与发送不能叠两层弹窗
+    this._consentResolve = null // 自定义协议弹窗的 Promise 完成函数
     this._pendingProjectImage = '' // 设备弹窗确认前暂存的待投屏图片 URL
     this.initRecorder()
 
@@ -279,25 +284,12 @@ Page({
       return this._consentPrompt
     }
     this._consentPrompt = new Promise((resolve) => {
-      wx.showModal({
-        title: sendAttempt
+      this._consentResolve = resolve
+      this.setData({
+        consentDialogVisible: true,
+        consentDialogTitle: sendAttempt
           ? aiServiceConsent.CONSENT_REQUIRED_TITLE
-          : aiServiceConsent.CONSENT_TITLE,
-        content: aiServiceConsent.CONSENT_SUMMARY,
-        confirmText: '同意',
-        cancelText: '不同意',
-        success: res => {
-          if (!res.confirm) {
-            resolve(false)
-            return
-          }
-          const granted = aiServiceConsent.grantCurrentUserConsent()
-          if (!granted) {
-            toast.warn({ title: '登录信息异常，请重新登录后使用 AI 服务' })
-          }
-          resolve(granted)
-        },
-        fail: () => resolve(false)
+          : aiServiceConsent.CONSENT_TITLE
       })
     }).then((accepted) => {
       this._consentPrompt = null
@@ -307,6 +299,31 @@ Page({
       return false
     })
     return this._consentPrompt
+  },
+
+  onConsentDisagree() {
+    this.resolveAiServiceConsent(false)
+  },
+
+  onConsentAgree() {
+    this.resolveAiServiceConsent(true)
+  },
+
+  resolveAiServiceConsent(accepted) {
+    const resolve = this._consentResolve
+    if (!resolve) {
+      return
+    }
+    this._consentResolve = null
+    let granted = false
+    if (accepted) {
+      granted = aiServiceConsent.grantCurrentUserConsent()
+      if (!granted) {
+        toast.warn({ title: '登录信息异常，请重新登录后使用 AI 服务' })
+      }
+    }
+    this.setData({ consentDialogVisible: false })
+    resolve(granted)
   },
 
   async checkDeviceBound() {
@@ -376,6 +393,12 @@ Page({
   },
 
   onUnload() {
+    // 系统返回手势可直接销毁页面；若协议弹窗还开着，必须结束在途 Promise，避免悬空。
+    if (this._consentResolve) {
+      const resolve = this._consentResolve
+      this._consentResolve = null
+      resolve(false)
+    }
     this.stopGenerate(true)
     // 录音/长按计时器不清的话，回调会打在已销毁的页面上，麦克风也可能一直占着
     this.clearHoldTimer()

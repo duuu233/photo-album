@@ -8,9 +8,11 @@ const CONSENT_VERSION = '2026-07-28'
 
 const CONSENT_TITLE = 'BoltStar AI服务协议'
 const CONSENT_REQUIRED_TITLE = '请先同意BoltStar AI服务协议'
-const CONSENT_SUMMARY =
-  '为了使用 AI 服务（包括文本对话、根据文字生成图片、以及上传图片进行美化），我们需要将你当前发送的内容（文字或图片）传输至“阿里云百炼”AI 服务进行处理，该服务由阿里云计算有限公司提供。\n\n' +
+const CONSENT_SERVICE_DESCRIPTION =
+  '为了使用 AI 服务（包括文本对话、根据文字生成图片、以及上传图片进行美化），我们需要将你当前发送的内容（文字或图片）传输至“阿里云百炼”AI 服务进行处理，该服务由阿里云计算有限公司提供。'
+const CONSENT_DATA_NOTICE =
   '你发送的内容仅用于本次操作，不会被存储或用于模型训练。'
+const CONSENT_SUMMARY = `${CONSENT_SERVICE_DESCRIPTION}\n\n${CONSENT_DATA_NOTICE}`
 
 function currentUserId() {
   try {
@@ -84,6 +86,8 @@ module.exports = {
   CONSENT_VERSION,
   CONSENT_TITLE,
   CONSENT_REQUIRED_TITLE,
+  CONSENT_SERVICE_DESCRIPTION,
+  CONSENT_DATA_NOTICE,
   CONSENT_SUMMARY,
   currentUserId,
   hasCurrentUserConsent,
