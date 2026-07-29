@@ -315,7 +315,8 @@ function isDiscovering() {
 }
 
 // 把蓝牙信号强度(RSSI，单位 dBm，越接近 0 越强)翻译成用户能看懂的文字档位。
-// 裸数字对用户没有意义，绑定列表里只展示「极强 / 强 / 正常 / 偏弱 / 弱」。
+// 现场 RSSI 容易受瞬时尖峰影响，展示口径统一保守下调一级：原「极强」显示为「强」，
+// 其余依次下调，最弱档仍封底为「弱」。这里只改文案，不参与连接门槛/重试策略。
 // RSSI 缺省(0)或非法(>=0)时返回空串，由页面兜底成「--」。
 function rssiToSignalText(rssi) {
   const value = Number(rssi)
@@ -323,15 +324,12 @@ function rssiToSignalText(rssi) {
     return '' // 未知信号
   }
   if (value >= -55) {
-    return '极强'
-  }
-  if (value >= -67) {
     return '强'
   }
-  if (value >= -78) {
+  if (value >= -67) {
     return '正常'
   }
-  if (value >= -88) {
+  if (value >= -78) {
     return '偏弱'
   }
   return '弱'
@@ -360,7 +358,7 @@ function normalizeDevice(device) {
     screenType: ad.screenType || 0,
     battery: ad.battery,
     RSSI: device.RSSI || 0,
-    // 信号强度文字档位（极强/强/正常/偏弱/弱），供列表展示，避免给用户看裸 RSSI 数字
+    // 信号强度展示档位（强/正常/偏弱/弱，已按产品口径保守下调一级）
     signalText: rssiToSignalText(device.RSSI),
     localName: device.localName || '',
     advertisServiceUUIDs: device.advertisServiceUUIDs || [],
