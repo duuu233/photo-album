@@ -24,6 +24,11 @@ Page({
     this.loadRecords()
   },
 
+  onUnload() {
+    // 页面销毁后作废在途请求，避免慢接口回包继续向已卸载页面 setData。
+    this.loadSeq = (this.loadSeq || 0) + 1
+  },
+
   setSystemMetrics() {
     this.setData(system.getLayoutMetrics())
   },
@@ -49,30 +54,44 @@ Page({
   // 按当前标签向后端请求对应状态的投屏记录（成功 deviceUploadState=1 / 失败=0），
   // 不再一次性拉全部再本地筛。数据已在 api 层归一化。
   async loadRecords(filter = this.data.filter) {
-    // 首屏渲染即 loading=true，等接口返回再决定展示列表还是空态，避免空态先闪一下。
-    // 切换标签/二次进入时已有内容，不再回到 loading，沿用旧内容直到新数据到位。
+    // 点击 tab 时先同步切换选中态，再把列表区域换成局部 loading；不能继续展示上一个
+    // tab 的记录，也不能等慢接口回包后才移动 tab 指示器。
+    const seq = (this.loadSeq || 0) + 1
+    this.loadSeq = seq
+    this.records = []
+    this.setData({
+      filter,
+      filteredRecords: [],
+      loading: true,
+      loadError: false
+    })
+
     try {
       const records = await api.getProjectionRecords({
         deviceUploadState: this.filterToUploadState(filter)
       })
+      // 用户可能在慢请求期间又切了 tab：只允许最新一轮回写，防止旧响应倒灌。
+      if (seq !== this.loadSeq || filter !== this.data.filter) {
+        return
+      }
       this.records = records
       this.setData({
-        filter,
         // 后端已按状态过滤；再按 status 兜底过滤一层，兼容后端忽略该参数的情况
         filteredRecords: records.filter(item => item.status === filter),
         loading: false,
         loadError: false
       })
     } catch (error) {
+      if (seq !== this.loadSeq || filter !== this.data.filter) {
+        return
+      }
       // 接口失败时 api 层已 toast 提示；标记 loadError 展示「加载失败+重新加载」——
       // 落到「暂无记录」会让用户误以为记录被清空，且没有任何重试手段。
-      // 不动 filter/filteredRecords（切标签失败时维持原标签与原内容的一致性）。
       this.setData({ loading: false, loadError: true })
     }
   },
 
   retryLoad() {
-    this.setData({ loading: true, loadError: false })
     this.loadRecords()
   },
 

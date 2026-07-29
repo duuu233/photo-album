@@ -13,7 +13,7 @@
       <view class="record-tab {{filter === 'fail' ? 'is-active' : ''}}" hover-class="none" data-filter="fail" bindtap="switchFilter">投屏失败</view>
     </view>
 
-    <!-- 加载中：等接口返回再决定展示列表还是空态，避免空态先闪一下 -->
+    <!-- 列表区域局部加载：Tab 已在点击瞬间完成切换，慢接口期间只替换下方列表 -->
     <view wx:if="{{loading}}" class="page-loading">
       <view class="page-loading__spinner"></view>
       <view class="page-loading__text">加载中…</view>

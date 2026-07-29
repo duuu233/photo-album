@@ -157,6 +157,7 @@ Page({
     currentFilter: '',
     currentFilterLabel: '',
     showFilterMenu: false,
+    filterLoading: false,
     // sourcePhotos/photos 不进 data：模板只渲染 filteredPhotos，这两份全量列表纯 JS 使用
     // （见 this.sourcePhotos/this.photos）。100 张时三份全字段照片一起 setData 序列化可达上百 KB，
     // 已逼近 setData 性能红线，移出后传输量降到 1/3。
@@ -216,13 +217,7 @@ Page({
     // 再并入「照片里带的设备ID、但设备列表里没有的」(如已解绑设备的老照片)兜底，避免这些照片筛不出来。
     // 全程按设备ID(userProductId)对齐去重：设备改名后老照片按 ID 仍归到改名后的设备项下。
     const photoFilters = buildDeviceFilters(photos)
-    const merged = buildDeviceFiltersFromDevices(devices)
-    photoFilters.forEach(item => {
-      if (!merged.some(existing => existing.value === item.value)) {
-        merged.push(item)
-      }
-    })
-    const filters = disambiguateFilterLabels(merged)
+    const filters = this.buildLatestDeviceFilters(devices, photos)
     // 默认选中：保留原选中(仍在列表) → 否则优先第一台「有照片」的设备(避免默认打开空设备，维持原有观感) → 再否则第一台
     const currentFilter = filters.some(item => item.value === this.data.currentFilter)
       ? this.data.currentFilter
@@ -239,6 +234,7 @@ Page({
       selectedMap: {},
       selectedCount: 0,
       showDeleteConfirm: false,
+      filterLoading: false,
       loading: false,
       loadError: false
     })
@@ -248,7 +244,7 @@ Page({
   // 按设备ID(userProductId)筛选照片（无「全部」选项）；filter 为空（无照片/无设备）时回退展示全部，切换筛选时清空已选。
   // 老照片可能没有 deviceId(后端未回 userProductId)：按当前筛选项的原始设备名(rawLabel)兜底匹配，
   // 避免这些照片永远筛不出来；同名设备下它们会在两台里都出现——没有 ID 无从区分，属可接受的降级。
-  applyFilter(filter, photos = this.photos || []) {
+  applyFilter(filter, photos = this.photos || [], keepFilterMenuOpen = false) {
     const active = (this.data.filters || []).find(item => item.value === filter)
     const activeLabel = active ? (active.rawLabel || active.label) : ''
     const filteredPhotos = filter
@@ -267,7 +263,7 @@ Page({
       // 原来在 loadPhotos 里写死 photos.length（全部设备合计），切设备时也不会变——
       // 用户看到的是「筛到了 3 张，却写着共 12 张」。
       totalCount: filteredPhotos.length,
-      showFilterMenu: false,
+      showFilterMenu: keepFilterMenuOpen,
       selectedMap: {},
       selectedCount: 0
     })
@@ -336,10 +332,55 @@ Page({
     return (first && (first.userProductId || first.id)) || ''
   },
 
-  toggleFilterMenu() {
-    this.setData({
-      showFilterMenu: !this.data.showFilterMenu
+  // 设备下拉每次展开都重新调用 getDevices：不把上次进页时的 state/data 当设备列表缓存。
+  // 菜单先打开并只显示局部 loading，接口返回后再用最新设备列表重建选项；图库照片无需重复请求。
+  async toggleFilterMenu() {
+    if (this.data.showFilterMenu) {
+      this.filterRefreshSeq = (this.filterRefreshSeq || 0) + 1
+      this.setData({ showFilterMenu: false, filterLoading: false })
+      return
+    }
+
+    const seq = (this.filterRefreshSeq || 0) + 1
+    this.filterRefreshSeq = seq
+    this.setData({ showFilterMenu: true, filterLoading: true })
+
+    let devices
+    try {
+      devices = await api.getDevices()
+    } catch (error) {
+      if (seq === this.filterRefreshSeq && this.data.showFilterMenu) {
+        // 接口层已提示错误；保留现有选项作为失败兜底，但本次确实发起了真实请求。
+        this.setData({ filterLoading: false })
+      }
+      return
+    }
+    if (seq !== this.filterRefreshSeq || !this.data.showFilterMenu) {
+      return
+    }
+
+    this.devices = devices
+    const photos = this.photos || []
+    const filters = this.buildLatestDeviceFilters(devices, photos)
+    const photoFilters = buildDeviceFilters(photos)
+    const currentFilter = filters.some(item => item.value === this.data.currentFilter)
+      ? this.data.currentFilter
+      : ((photoFilters[0] && photoFilters[0].value) || (filters[0] ? filters[0].value : ''))
+
+    this.setData({ filters, currentFilter, filterLoading: false })
+    // 刷新后仍保持菜单展开；只有用户真正选项时才关闭。
+    this.applyFilter(currentFilter, photos, true)
+  },
+
+  // 设备接口为主、照片里的历史设备为兜底，按后端设备ID合并并做同名消歧。
+  buildLatestDeviceFilters(devices, photos) {
+    const merged = buildDeviceFiltersFromDevices(devices)
+    buildDeviceFilters(photos).forEach(item => {
+      if (!merged.some(existing => existing.value === item.value)) {
+        merged.push(item)
+      }
     })
+    return disambiguateFilterLabels(merged)
   },
 
   selectFilter(e) {

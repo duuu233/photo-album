@@ -39,7 +39,10 @@
         </view>
         <!-- 下拉筛选菜单：value=后端设备ID(同名设备也能分开筛)，label 仅展示设备名(重名时带序列号尾号) -->
         <view class="filter-menu" wx:if="{{showFilterMenu}}">
-          <view wx:for="{{filters}}" wx:key="value" class="filter-option {{currentFilter === item.value ? 'is-active' : ''}}" hover-class="none" data-value="{{item.value}}" bindtap="selectFilter">{{item.label}}</view>
+          <view wx:if="{{filterLoading}}" class="filter-option filter-option--loading">加载中…</view>
+          <block wx:else>
+            <view wx:for="{{filters}}" wx:key="value" class="filter-option {{currentFilter === item.value ? 'is-active' : ''}}" hover-class="none" data-value="{{item.value}}" bindtap="selectFilter">{{item.label}}</view>
+          </block>
         </view>
       </view>
     </view>
