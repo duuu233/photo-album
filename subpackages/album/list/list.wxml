@@ -32,7 +32,9 @@
       </view>
       <view class="filter-wrap">
         <view class="filter-btn" hover-class="none" bindtap="toggleFilterMenu">
-          <text>{{currentFilterLabel}}</text>
+          <!-- 设备名可能很长（还会被重名消歧追加序列号尾号），必须单行省略号，绝不换行：
+               换行会把胶囊撑成两行、顶开整条工具栏（见 list.wxss .filter-label） -->
+          <text class="filter-label">{{currentFilterLabel}}</text>
           <view class="filter-arrow {{showFilterMenu ? 'is-open' : ''}}"></view>
         </view>
         <!-- 下拉筛选菜单：value=后端设备ID(同名设备也能分开筛)，label 仅展示设备名(重名时带序列号尾号) -->

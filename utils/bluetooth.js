@@ -351,6 +351,10 @@ function normalizeDevice(device) {
     name,
     // 设备编号优先用广播里的 Device_ID，兜底用蓝牙 deviceId
     deviceNo: ad.deviceId || device.deviceId,
+    // 广播厂商数据里的 4 字节 Device_ID（形如 AA:BB:CC:DD），解析不到为空串。
+    // 与 deviceNo 的区别：deviceNo 会兜底成微信 BLE 句柄，不能用来判断「到底有没有拿到广播 ID」；
+    // 展示层要区分「真有广播ID」和「只有句柄」，故单独留一个不兜底的字段（见 bind.js displayDeviceCode）。
+    broadcastDeviceId: ad.deviceId || '',
     model: ad.model || '',
     screen: ad.screen || '',
     screenType: ad.screenType || 0,

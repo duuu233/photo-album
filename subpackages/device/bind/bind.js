@@ -155,7 +155,10 @@ Page({
       if (order[key] === undefined) {
         order[key] = next++
       }
-      return Object.assign({}, item)
+      // deviceCode：列表里给用户看的「设备ID」，扫描阶段就能拿到（见 displayDeviceCode）
+      return Object.assign({}, item, {
+        deviceCode: this.displayDeviceCode(item)
+      })
     })
     this.scanOrderNext = next
     devices.sort((a, b) => order[a.deviceId || a.id] - order[b.deviceId || b.id])
@@ -233,6 +236,26 @@ Page({
   // 设备硬件序列号归一化，仅用于本页比较。
   deviceSerial(value) {
     return String(value == null ? '' : value).replace(/[:\-\s]/g, '').toUpperCase()
+  },
+
+  // 列表里展示给用户看的「设备ID」：取广播厂商数据里的 4 字节 Device_ID，归一化成 8 位十六进制
+  //（如 1A2B3C4D）。与 Flutter 端 bind_device_flow._displayDeviceCode 同规则，两端展示同一个值。
+  //
+  // 为什么扫描阶段就要展示：默认设备名 = 产品广播名（EF6-370/EF6-589），同型号设备必然重名，
+  // 绑定前这是用户唯一能把两台区分开的标识。以前这里写死「设备ID 绑定后读取」，理由是
+  // 「广播只有 4 字节、完整 6 字节要连上读 0x01」——那条规则约束的是**身份判定**
+  //（判重/交叉匹配一律只认 0x01 的完整 ID，见 findBoundDevice / active-device），
+  // 不该顺带把**展示**也一起禁掉：展示只需要能区分眼前这几台，4 字节足够。
+  //
+  // 兜底：广播厂商数据解析不出来时退回微信 BLE deviceId（安卓是 MAC、iOS 是 UUID，
+  // 又长又对用户无意义），同样只取末 8 位；两者都没有才返回空串（模板隐藏这一行）。
+  displayDeviceCode(device) {
+    const broadcast = this.deviceSerial(device && device.broadcastDeviceId)
+    const raw = broadcast || this.deviceSerial(device && device.deviceId)
+    if (!raw) {
+      return ''
+    }
+    return raw.length > 8 ? raw.slice(-8) : raw
   },
 
   // 查当前用户是否已绑定这台设备（按硬件 Device_ID 匹配），命中则返回那条已绑定记录。
