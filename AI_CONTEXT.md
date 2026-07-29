@@ -103,7 +103,7 @@
 三类外部网络客户端刻意分离：
 
 1. BoltFox 业务 API 经 `utils/api.js` 和 `utils/request.js`；
-2. BoltStar AI 经 `utils/ai-api.js`，不继承 BoltFox token/header/错误码；
+2. BoltStar AI 经 `utils/ai-api.js`，不继承 BoltFox 公共参数/错误码，但共用登录下发的 `jwtToken` 自拼 `Authentication: Bearer` 头（2026-07-29 起网关强制）；
 3. seekink 抖动经 `utils/dithering.js`，其认证 token 由 BoltFox `getXTYUserToken` 提供。
 
 设备协议也分为两个独立会话层：

@@ -3,6 +3,11 @@
 // 与 utils/request.js 分开的原因：AI 服务是独立的第三方（阿里云 FC），Base URL、响应结构
 // （success/code/data/params/detail）、错误码体系都与 BoltFox 后端不同，公共参数（token/language 头）
 // 也不适用，硬塞进 request.js 反而两边互相迁就。错误统一 reject { code, params, detail }；
+//
+// 鉴权（2026-07-29 起网关强制）：每个请求带 `Authentication: Bearer <jwtToken>` 头，
+// jwtToken 来自 BoltFox 登录接口 setWechatAppLogin 的下发（app.js 存 storage『jwtToken』），
+// 与 request.js 打给 BoltFox 后端的是同一枚、同一个头名（注意是 Authentication 不是 Authorization）。
+// 缺失时网关直接 403 { Code: 'JWTTokenIsMissing' }，由下方白名单转成可展示文案。
 // 已确认可安全展示的固定网关错误额外带 userMessage，
 // 由 utils/ai-i18n.handleAiError 按语种/区间分发提示。
 //
@@ -50,6 +55,16 @@ function gatewayErrorMessage(body) {
   }`
 }
 
+// 与 app.js 一致：内存(globalData)优先、storage 兜底。每次请求现取，登录/退出后无需重启生效。
+function getJwtToken() {
+  const app = typeof getApp === 'function' ? getApp() : null
+  return (
+    (app && app.globalData && app.globalData.jwtToken) ||
+    wx.getStorageSync('jwtToken') ||
+    ''
+  )
+}
+
 // 当前登录用户作为 AI 侧 user_id（同一 user_id 多端历史互通，文档 §5.3.5）。
 // 未登录兜底一个固定演示 id，保证 demo 可跑通。
 function getAiUserId() {
@@ -68,13 +83,19 @@ function getAiUserId() {
 // 返回的 promise 挂了 .abort()，供「终止 AI 回复」用（文档 §5.3.4）。
 function aiRequest(options) {
   let task = null
+  const header = { 'Content-Type': 'application/json' }
+  const jwtToken = getJwtToken()
+  // 未登录（无 jwtToken）不带头照发：网关会回 JWTTokenIsMissing，走白名单提示，不在端上另造错误
+  if (jwtToken) {
+    header.Authentication = `Bearer ${jwtToken}`
+  }
   const promise = new Promise((resolve, reject) => {
     task = wx.request({
       url: `${NON_STREAM_BASE_URL}${options.url}`,
       method: options.method || 'POST',
       data: options.data,
       timeout: options.timeout || DEFAULT_TIMEOUT,
-      header: { 'Content-Type': 'application/json' },
+      header,
       success(res) {
         const body = parseResponseBody(res.data)
         const gatewayMessage = gatewayErrorMessage(body)

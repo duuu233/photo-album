@@ -1226,6 +1226,10 @@ Page({
     this._holdTimer = setTimeout(() => {
       this._holdTimer = null
       this._holdFired = this.beginVoice()
+      if (this._holdFired) {
+        // 长按前可能正打着字（键盘已开）：唤起语音的同时把键盘收掉，录音浮层不和键盘叠着
+        this.hideKeyboard()
+      }
     }, INPUT_HOLD_MS)
   },
 
@@ -1251,6 +1255,16 @@ Page({
     if (this._holdFired) {
       this._holdFired = false
       this.onVoiceEnd()
+      // 松手那一下若仍触发了 <input> 原生聚焦（disabled 对「已开始的本次触摸」在部分机型
+      // 不一定拦得住），延迟一拍把键盘压回去；正常被 disabled 拦住时这句是空操作。
+      setTimeout(() => this.hideKeyboard(), 100)
+    }
+  },
+
+  // 收起软键盘：基础库 2.21.0 起才有 wx.hideKeyboard，低版本静默跳过（唯一后果是保底不生效）
+  hideKeyboard() {
+    if (wx.hideKeyboard) {
+      wx.hideKeyboard({})
     }
   },
 

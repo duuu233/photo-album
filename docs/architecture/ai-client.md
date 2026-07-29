@@ -1,7 +1,7 @@
 # AI 客户端架构
 
 > 状态：current  
-> 最后核对：2026-07-28  
+> 最后核对：2026-07-29  
 > 适用范围：微信小程序“星宝”聊天与会话列表  
 > 外部契约：[BoltStar API v1.0.4](../reference/ai/BoltStar-API-Doc-v2-1.0.4.md)
 
@@ -9,6 +9,7 @@
 
 - BoltStar 使用独立的 `utils/ai-api.js`，不复用 BoltFox `utils/request.js`。
 - 原因是两者 Base URL、响应结构、错误码、超时和公共参数完全不同。
+- 鉴权是唯一交集（2026-07-29 起网关强制）：每个 AI 请求带 `Authentication: Bearer <jwtToken>` 头，token 与 BoltFox 共用登录接口下发的 `jwtToken`（头名是 `Authentication`，不是 `Authorization`）；未登录不带头，由网关回 `JWTTokenIsMissing` 走白名单提示。
 - 小程序使用 JSON 非流式 `/chat`；SSE 仅适用于支持流式读取的其它客户端。
 - 聊天/生图超时较长，POST 不自动重试，避免重复生成或重复计费。
 
