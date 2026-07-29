@@ -205,6 +205,14 @@
   box-shadow: 0 4rpx 16rpx rgba(31, 41, 61, 0.05);
 }
 
+/* 「正在加载」气泡（只有三个跳动的点）不跟着 .bubble--ai 铺满屏宽：
+   一个占满整行的空白大框看着像出错/空回复。width:auto 让它按内容收缩到刚好包住三个点。
+   内容一到（content/images 上屏，item.loading 转 false）就回到铺满的正常 AI 气泡。 */
+.bubble--ai.bubble--loading {
+  width: auto;
+  max-width: 520rpx;
+}
+
 .bubble--user {
   background: linear-gradient(135deg, #ff8a3c, #eb5f1b);
   color: #ffffff;

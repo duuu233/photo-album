@@ -18,15 +18,20 @@
 
 
     <view class="radar-wrap">
-      <image wx:if="{{!scanning && devices.length}}" class="radar-art" src="/assets/images/device_found_art.png" mode="aspectFit"></image>
-      <image wx:elif="{{!scanning && !devices.length}}" class="radar-art" src="/assets/images/device_not_found_art.png" mode="aspectFit"></image>
-      <image wx:else class="radar-art radar-art-gif" src="https://oss.boltfox.cn/prodFile/202606161504054302273.gif" mode="aspectFit"></image>
+      <!-- 搜索期间雷达一直转（哪怕已经搜到设备）：下面的列表同步追加，两者并存才是「边搜边显示」 -->
+      <image wx:if="{{scanning}}" class="radar-art radar-art-gif" src="https://oss.boltfox.cn/prodFile/202606161504054302273.gif" mode="aspectFit"></image>
+      <image wx:elif="{{devices.length}}" class="radar-art" src="/assets/images/device_found_art.png" mode="aspectFit"></image>
+      <image wx:else class="radar-art" src="/assets/images/device_not_found_art.png" mode="aspectFit"></image>
     </view>
 
-    <block wx:if="{{!scanning && devices.length}}">
+    <!-- 搜到一个显示一个：只要已经搜到设备就渲染列表，不再等扫描结束。
+         此前这一段挂在 wx:if="{{!scanning && devices.length}}" 上，即使 onUpdate 已经把设备
+         增量塞进 devices，用户也要干等满整个搜索窗口才看得到任何一台——窗口一拉长体验就更差。
+         搜索中也能直接点「立即绑定」，confirmBind 会先停扫再连接。 -->
+    <block wx:if="{{devices.length}}">
       <view class="nearby-head">
-        <text>附近设备</text>
-        <image class="refresh-btn" src="/assets/images/refresh-icon.png" mode="aspectFit" aria-label="重新搜索" bindtap="scan"></image>
+        <text>{{scanning ? '正在搜索…已找到 ' + devices.length + ' 台' : '附近设备'}}</text>
+        <image wx:if="{{!scanning}}" class="refresh-btn" src="/assets/images/refresh-icon.png" mode="aspectFit" aria-label="重新搜索" bindtap="scan"></image>
       </view>
       <!-- 单选列表：点选某台设备高亮，底部「立即绑定」绑定选中项；长按某行可进入该设备的硬件联调 -->
       <scroll-view scroll-y class="device-list">
@@ -43,6 +48,8 @@
           <view wx:else class="select-circle select-circle--empty"></view>
         </view>
       </scroll-view>
+      <!-- 搜索中：仍可随时收手停扫（列表已搜到的保留），不必等满窗口 -->
+      <view wx:if="{{scanning}}" class="scan-help-link" hover-class="none" bindtap="stopScanForBind">停止搜索</view>
       <view class="primary-action bind-bottom" hover-class="none" bindtap="confirmBind">立即绑定</view>
     </block>
 

@@ -50,7 +50,7 @@
                气泡本体长按＝删除整条，气泡里某张图的长按/点击由图自己 catch 掉（见下） -->
           <view
             wx:if="{{item.role !== 'user'}}"
-            class="bubble bubble--ai"
+            class="bubble bubble--ai {{item.loading ? 'bubble--loading' : ''}}"
             bindlongpress="onBubbleLongPress"
             data-id="{{item.id}}"
           >
@@ -198,7 +198,8 @@
       <view class="round-btn" hover-class="none" bindtap="toggleTools">
         <view class="icon-block icon-block--grey">＋</view>
       </view>
-      <view class="send-btn {{inputValue && !sending && !banned ? 'send-btn--active' : ''}}" hover-class="none" bindtap="onSendTap">发送</view>
+      <!-- submitting：已点发送但请求还没发出（建会话中）也要置灰，否则这段空窗能连点重复发送 -->
+      <view class="send-btn {{inputValue && !sending && !submitting && !banned ? 'send-btn--active' : ''}}" hover-class="none" bindtap="onSendTap">发送</view>
     </view>
 
     <!-- ＋ 工具面板：相册 / 拍照 / 一键生图 / 图片比例 -->

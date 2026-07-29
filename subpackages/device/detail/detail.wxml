@@ -114,6 +114,19 @@
         </view>
         <view class="thin-divider">
         </view>
+        <!-- 屏幕物理分辨率（如 680*960）：产品静态属性，不随连接状态置 --（见 detail.js resolutionText） -->
+        <view class="detail-row">
+          <view class="row-left">
+            <image
+              class="row-icon"
+              src="/assets/images/device-detail-icon02.png"
+              mode="aspectFit" />
+            <text>分辨率</text>
+          </view>
+          <view class="row-value">{{resolutionText}}</view>
+        </view>
+        <view class="thin-divider">
+        </view>
         <view class="detail-row">
           <view class="row-left">
             <image

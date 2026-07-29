@@ -10,7 +10,7 @@ const toast = require('../../../utils/toast')
 const app = getApp()
 
 const TOTAL_PLACEHOLDER_COUNT = 0
-// 筛选项按照片里出现的设备名动态生成（见 buildDeviceFilters），不再有「全部」
+// 筛选项按设备接口/照片动态生成、以后端设备ID为值（见 buildDeviceFilters*），不再有「全部」
 const DEFAULT_FILTERS = []
 const DEVICE_NAMES = ['房间相册', '客厅相框', '书房相框']
 const THUMB_TYPES = [
@@ -74,35 +74,67 @@ function buildDisplayPhotos(sourcePhotos, devices) {
     .map(normalizePhoto)
 }
 
-// 由当前照片里出现的设备名生成筛选项（去重，无「全部」）。
-// 直接取自照片的 deviceName，保证每个筛选项都能筛出照片，也不会因设备改名导致筛选与照片对不上。
+// 由当前照片里出现的设备生成筛选项（按后端设备ID去重，无「全部」）。
+// value 用照片的 deviceId(即后端 userProductId)而非设备名：两台设备可能同名，按名筛会把两台的照片混在一起。
+// 只收带 deviceId 的照片；没有 deviceId 的老照片走 applyFilter 的设备名兜底匹配，不单独成筛选项。
 function buildDeviceFilters(photos) {
   const filters = []
 
   ;(photos || []).forEach(photo => {
-    const name = photo.deviceName
-    if (name && !filters.some(item => item.value === name)) {
-      filters.push({ label: name, value: name })
+    const value = String(photo.deviceId || '')
+    if (value && !filters.some(item => item.value === value)) {
+      filters.push({ label: photo.deviceName, value })
     }
   })
 
   return filters
 }
 
-// 由设备接口(getDevices)列表生成筛选项(设备名去重)。图库为空但用户有设备时用它——
+// 由设备接口(getDevices)列表生成筛选项(按后端设备ID userProductId 去重)。图库为空但用户有设备时用它——
 // filter-wrap 是设备展示载体，只要设备接口有数据就该显示设备并默认选中第一台。
-// 用与 resolveUserProductId 同一套 (device,index) normalizeDeviceName 规则，保证选中名能反查回 userProductId。
+// value=userProductId(兜底 id)即后端查询参数本身(见 checkDeviceClearStatus)；label 仅作展示。
 function buildDeviceFiltersFromDevices(devices) {
   const filters = []
 
   ;(devices || []).forEach((device, index) => {
-    const name = normalizeDeviceName(device.name, index)
-    if (name && !filters.some(item => item.value === name)) {
-      filters.push({ label: name, value: name })
+    const value = String(device.userProductId || device.id || '')
+    if (value && !filters.some(item => item.value === value)) {
+      filters.push({
+        label: normalizeDeviceName(device.name, index),
+        serialTail: serialTail(device),
+        value
+      })
     }
   })
 
   return filters
+}
+
+// 设备序列号(deviceNo/productDeviceId, AA:BB:…:FF)去分隔符后的尾 4 位(如 D428)，供同名设备下拉消歧
+function serialTail(device) {
+  const serial = String((device && (device.deviceNo || device.productDeviceId)) || '')
+    .replace(/[:\-\s]/g, '')
+  return serial ? serial.slice(-4) : ''
+}
+
+// 同名设备消歧：筛选值已按设备ID区分，但下拉里两个一样的名字用户无法分辨，
+// 重名时给 label 补序列号尾 4 位(取不到序列号则按出现次序补 (2)/(3))。
+// rawLabel 保留原始设备名：applyFilter 里「无 deviceId 老照片」的设备名兜底匹配要用它，不能拿加了后缀的 label 去比。
+function disambiguateFilterLabels(filters) {
+  const counts = {}
+  filters.forEach(item => {
+    counts[item.label] = (counts[item.label] || 0) + 1
+  })
+  const seen = {}
+  return filters.map(item => {
+    const label = item.label
+    seen[label] = (seen[label] || 0) + 1
+    if (counts[label] < 2) {
+      return { label, rawLabel: label, value: item.value }
+    }
+    const suffix = item.serialTail || String(seen[label])
+    return { label: `${label}(${suffix})`, rawLabel: label, value: item.value }
+  })
 }
 
 // 已选照片 id 列表 / 计数：selectedMap 用数据路径更新后（toggleSelect），取消选中的键
@@ -121,7 +153,9 @@ Page({
     statusBarHeight: 20,
     safeBottom: 0,
     filters: DEFAULT_FILTERS,
+    // currentFilter 存后端设备ID(筛选/查询用)，currentFilterLabel 存展示名(筛选按钮文案用)
     currentFilter: '',
+    currentFilterLabel: '',
     showFilterMenu: false,
     // sourcePhotos/photos 不进 data：模板只渲染 filteredPhotos，这两份全量列表纯 JS 使用
     // （见 this.sourcePhotos/this.photos）。100 张时三份全字段照片一起 setData 序列化可达上百 KB，
@@ -171,7 +205,7 @@ Page({
     }
     const sourcePhotos = result[0]
     const devices = result[1]
-    // 设备列表存实例上（不参与渲染）：切换筛选时用设备名反查 userProductId 查一键清除状态
+    // 设备列表存实例上（不参与渲染）：图库为空时取第一台的 userProductId 查一键清除状态(firstDeviceUserProductId)
     this.devices = devices
     // 列表以后端返回为准：删除已实际删掉设备(0x12)+后端记录，不再叠加本地软隐藏
     //（旧的软隐藏是永久的，会把后端仍返回的图一直藏起来，导致「接口有 N 条却只显示 1 条」）
@@ -179,14 +213,16 @@ Page({
 
     // 筛选项(filter-wrap/下拉是设备展示载体)：始终以「设备接口全量绑定设备」为准，保证每台绑定设备都出现在下拉里——
     // 含刚绑定、还没有照片的设备。此前有照片时只按「照片里的设备名」生成，无照片的设备被漏掉，导致下拉只剩有图的那台。
-    // 再并入「照片里出现、但设备列表里没有的设备名」(如设备改名后老照片仍带旧名)兜底，避免这些照片筛不出来。
+    // 再并入「照片里带的设备ID、但设备列表里没有的」(如已解绑设备的老照片)兜底，避免这些照片筛不出来。
+    // 全程按设备ID(userProductId)对齐去重：设备改名后老照片按 ID 仍归到改名后的设备项下。
     const photoFilters = buildDeviceFilters(photos)
-    const filters = buildDeviceFiltersFromDevices(devices)
+    const merged = buildDeviceFiltersFromDevices(devices)
     photoFilters.forEach(item => {
-      if (!filters.some(existing => existing.value === item.value)) {
-        filters.push(item)
+      if (!merged.some(existing => existing.value === item.value)) {
+        merged.push(item)
       }
     })
+    const filters = disambiguateFilterLabels(merged)
     // 默认选中：保留原选中(仍在列表) → 否则优先第一台「有照片」的设备(避免默认打开空设备，维持原有观感) → 再否则第一台
     const currentFilter = filters.some(item => item.value === this.data.currentFilter)
       ? this.data.currentFilter
@@ -209,12 +245,22 @@ Page({
     this.applyFilter(currentFilter, photos)
   },
 
-  // 按设备名筛选照片（无「全部」选项）；filter 为空（无照片/无设备）时回退展示全部，切换筛选时清空已选
+  // 按设备ID(userProductId)筛选照片（无「全部」选项）；filter 为空（无照片/无设备）时回退展示全部，切换筛选时清空已选。
+  // 老照片可能没有 deviceId(后端未回 userProductId)：按当前筛选项的原始设备名(rawLabel)兜底匹配，
+  // 避免这些照片永远筛不出来；同名设备下它们会在两台里都出现——没有 ID 无从区分，属可接受的降级。
   applyFilter(filter, photos = this.photos || []) {
-    const filteredPhotos = filter ? photos.filter(item => item.deviceName === filter) : photos
+    const active = (this.data.filters || []).find(item => item.value === filter)
+    const activeLabel = active ? (active.rawLabel || active.label) : ''
+    const filteredPhotos = filter
+      ? photos.filter(item =>
+          String(item.deviceId || '') === filter ||
+          (!item.deviceId && activeLabel && item.deviceName === activeLabel)
+        )
+      : photos
 
     this.setData({
       currentFilter: filter,
+      currentFilterLabel: active ? active.label : '',
       filteredPhotos,
       // 左上角「共 N 张」取**当前设备**的张数，不是全部设备的合计。
       // 这里是唯一维护点：首次加载与每次切换设备都经过 applyFilter，算一处即处处对。
@@ -233,12 +279,12 @@ Page({
   // 查询所选设备的一键清除状态（getUserProductClearImg，retData: 0=未清除, 1=已清除）。
   // 设备在别处被执行过清空时（图库照片已不在设备上），弹确认框提醒重新上传；
   // 确认后调 editUserProduct 把 isClearImg 复位为 0，后端不再返回「已清除」，避免每次进来都弹。
-  async checkDeviceClearStatus(filterName) {
-    // 图库有照片：用筛选设备名反查其 userProductId（原流程）。
-    // 图库为空(无照片故无筛选项、filterName 为空、反查不到)：只要用户设备接口有数据，
+  async checkDeviceClearStatus(filterValue) {
+    // 筛选值本身就是后端设备ID(userProductId，见 buildDeviceFilters*)，直接用，无需再按设备名反查。
+    // 图库为空(无照片故无筛选项、filterValue 为空)：只要用户设备接口有数据，
     // 就默认用设备列表第一项的设备ID 去查一键清除状态——设备被清空后图库自然为空，正需靠它弹「重新上传」提醒。
     // 图库与设备接口都空 → userProductId 为空 → 直接 return 不查。
-    const userProductId = this.resolveUserProductId(filterName) || this.firstDeviceUserProductId()
+    const userProductId = filterValue || this.firstDeviceUserProductId()
     if (!userProductId) {
       return
     }
@@ -281,26 +327,6 @@ Page({
         this.clearImgModalShowing = false
       }
     })
-  },
-
-  // 筛选项（设备名）→ 后端 userProductId：先按设备列表的名字匹配（与 buildDeviceFilters
-  // 同一套 normalizeDeviceName 规则），匹配不到再从照片上取 deviceId（即后端 userProductId）
-  resolveUserProductId(filterName) {
-    if (!filterName) {
-      return ''
-    }
-
-    const matched = (this.devices || []).find(
-      (device, index) => normalizeDeviceName(device.name, index) === filterName
-    )
-    if (matched && (matched.userProductId || matched.id)) {
-      return matched.userProductId || matched.id
-    }
-
-    const photo = (this.photos || []).find(
-      item => item.deviceName === filterName && item.deviceId
-    )
-    return (photo && photo.deviceId) || ''
   },
 
   // 用户设备接口(getDevices)返回列表第一项的后端设备ID(userProductId，兜底 id)。
@@ -593,12 +619,20 @@ Page({
     const deviceKey = String((device && (device.userProductId || device.id)) || '')
     const deviceName = device ? normalizeDeviceName(device.name, 0) : ''
 
-    // 选中设备的照片：优先按后端 userProductId 匹配，再按设备名；都匹配不到则退化为全部（多为单设备）
+    // 选中设备的照片：按后端 userProductId 匹配；都匹配不到则退化为全部（多为单设备）。
+    // 设备名只在两种情况下参与匹配（与 applyFilter 同一套降级规则）：
+    //   ① 设备没有后端ID(deviceKey 为空) → 整体退回按名匹配；
+    //   ② 有ID但照片没有 deviceId（后端未回的老照片）→ 这些照片按名兜底。
+    // ⚠️ 不能写成「ID 匹配 || 名字匹配」：两台设备可能同名，带ID的照片必须按ID归属，
+    //    否则同名设备的照片会一起参与下面的「上传先后」排队，推算出的槽位错位 → 刷错图。
     let devicePhotos = onDevicePhotos.filter(item => {
       if (deviceKey && String(item.deviceId || '') === deviceKey) {
         return true
       }
-      return deviceName && item.deviceName === deviceName
+      if (!deviceName) {
+        return false
+      }
+      return (!deviceKey || !item.deviceId) && item.deviceName === deviceName
     })
     if (!devicePhotos.length) {
       devicePhotos = onDevicePhotos

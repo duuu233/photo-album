@@ -9,6 +9,14 @@ const system = require('../../../utils/system')
 
 const app = getApp()
 
+// 扫描窗口（2026-07-29 由 12s 放宽到 20s）。
+// 依据：设备广播间隔约 3s，7 台同时在场时 12s 实测经常搜不全（少 1~2 台）——每台设备一个窗口内
+// 只有几次现身机会，还要和别台抢同一条广播信道。20s 给每台约 6~7 次机会，基本能扫全。
+// 之所以敢把窗口拉这么长，是因为交互已改成「搜到一个显示一个」：用户不用等满窗口——
+// 列表边搜边追加，看到自己那台就能直接点「立即绑定」（stopScanForBind 会立刻停扫转入连接）。
+// 旧交互下列表要等窗口跑满才整批出现，单方面拉长窗口只会让人干等，这也是这次必须两件事一起改的原因。
+const SCAN_TIMEOUT_MS = 20000
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -41,6 +49,10 @@ Page({
   },
 
   onUnload() {
+    // 让在途扫描结果失效：stopDiscovery 只停硬件扫描，在途的 discoverDevices 仍会在自己的 timeout
+    // 到点后 resolve 并回调 applyScanResult——窗口拉到 20s 后「人已退出页面、扫描才 resolve」很常见，
+    // 不作废就是往已卸载的页面 setData（与 cancelScan 同一处理）。
+    this.scanSeq = (this.scanSeq || 0) + 1
     bluetooth.stopDiscovery() // 离开页面务必停止扫描，释放蓝牙资源
   },
 
@@ -57,10 +69,14 @@ Page({
     this.scanSeq = (this.scanSeq || 0) + 1
     const seq = this.scanSeq
 
+    // 展示顺序表跟着本次扫描一起重置（见 applyScanResult）
+    this.scanOrder = {}
+    this.scanOrderNext = 0
+
     this.setData({
       scanning: true,
       devices: [],
-      selectedId: '', // 每次重新搜索清空选中，让本次搜到的信号最强设备被默认选中
+      selectedId: '', // 每次重新搜索清空选中，让本次最先搜到的设备被默认选中
       showHelp: false
     })
 
@@ -82,10 +98,9 @@ Page({
       await bluetooth.openAdapter()
 
       // 只扫真实相框（广播名以 EF6 开头或带合法厂商数据），不再用模拟设备兜底。
-      // onUpdate：搜到一台就渲染一台（边搜边显示），不必等满超时；窗口加长到 12s，
-      // 让「同时存在 2 台及以上设备」时每台都有足够广播机会被搜到，避免只搜到一台。
+      // onUpdate：搜到一台就渲染一台（边搜边显示），不必等满超时；窗口见 SCAN_TIMEOUT_MS。
       const devices = await bluetooth.discoverDevices({
-        timeout: 12000,
+        timeout: SCAN_TIMEOUT_MS,
         onUpdate: list => this.applyScanResult(seq, list)
       })
 
@@ -122,18 +137,48 @@ Page({
     }
   },
 
-  // 把一次扫描结果（增量或最终）渲染到列表。作废的扫描直接丢弃；首次出现设备时默认选中信号最强那台，
+  // 把一次扫描结果（增量或最终）渲染到列表。作废的扫描直接丢弃；首次出现设备时默认选中第一台，
   // 之后保留已有/用户的选择，避免增量刷新时选中项来回跳。
+  //
+  // 展示顺序按「首次被搜到的先后」钉死，新设备一律追加到末尾：
+  // bluetooth.subscriberList 回吐的是**按 RSSI 降序**的列表，边搜边渲染时信号一抖动整列表就重排，
+  // 行与行来回跳，用户指头底下那台可能在按下的瞬间换成了别台（误绑）。首见序号一旦分配就不再变，
+  // 列表只增不重排，这才是「下面同步新增已搜出的设备」该有的观感。
   applyScanResult(seq, list) {
     if (seq !== this.scanSeq) {
       return // 本次扫描已取消，丢弃增量结果
     }
-    const devices = (list || []).map(item => Object.assign({}, item))
+    const order = this.scanOrder || (this.scanOrder = {})
+    let next = this.scanOrderNext || 0
+    const devices = (list || []).map(item => {
+      const key = item.deviceId || item.id
+      if (order[key] === undefined) {
+        order[key] = next++
+      }
+      return Object.assign({}, item)
+    })
+    this.scanOrderNext = next
+    devices.sort((a, b) => order[a.deviceId || a.id] - order[b.deviceId || b.id])
+
     this.setData({
       devices,
       selectedId:
         this.data.selectedId || (devices.length ? devices[0].id || devices[0].deviceId : '')
     })
+  },
+
+  // 立刻结束搜索但**保留已搜到的列表**（与 cancelScan 不同，后者还会退出本页）。
+  // 两个入口：① 用户点「停止搜索」；② 搜索还没结束就点了「立即绑定」——此时必须先停扫再连：
+  //   · 扫描与连接抢同一路射频，边扫边连本就是「连不上」的主因之一（见 utils/bluetooth.js whenScanStopped）；
+  //   · scanSeq 自增后在途扫描的结果不再回写列表，用户选中的那台不会在连接过程中被新搜到的设备挤动。
+  // 在途的 discoverDevices 仍会在自己的 timeout 到点后 resolve，但那时 seq 已对不上，直接被丢弃。
+  stopScanForBind() {
+    if (!this.data.scanning) {
+      return
+    }
+    this.scanSeq = (this.scanSeq || 0) + 1
+    bluetooth.stopDiscovery()
+    this.setData({ scanning: false })
   },
 
   // 取消正在进行的搜索：停止蓝牙扫描并让在途的 scan 结果失效，然后退出绑定流程
@@ -256,7 +301,7 @@ Page({
   },
 
   // 底部「立即绑定」：绑定当前选中的设备
-  confirmBind() {
+  async confirmBind() {
     if (this.data.binding) {
       return // 绑定进行中，忽略重复点击，避免重复绑定
     }
@@ -267,6 +312,15 @@ Page({
       })
       return
     }
+    // binding 在**任何 await 之前**同步置起：下面要等停扫落地，这段时间按钮照样点得动，
+    // 晚一步置起就给连点留了空窗（与 AI 发送那处同款病灶，见 ai/chat guardedSend）。
+    this.setData({ binding: true })
+    // 搜索中直接点绑定：先停扫，并等射频真正安静下来再连（见 stopScanForBind）。
+    // 这一步以前不需要：旧交互下列表只在扫描结束后才出现，点绑定时扫描早停了；
+    // 现在「边搜边显示」让用户绝大多数时候是在**扫描中**点绑定的，不等停扫就是拿连接去和
+    // 自己的扫描抢射频（弱信号下连不上的主因之一）。whenScanStopped 在别的订阅者还在扫时直接返回。
+    this.stopScanForBind()
+    await bluetooth.whenScanStopped()
     this.bindById(this.data.selectedId)
   },
 
@@ -277,6 +331,8 @@ Page({
     )
 
     if (!scanDevice) {
+      // 选中项已不在列表（列表刷新过）：把 confirmBind 提前置起的 binding 放开，别把按钮永久锁死
+      this.setData({ binding: false })
       return
     }
 

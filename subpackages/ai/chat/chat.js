@@ -220,6 +220,8 @@ Page({
     pendingImages: [],
     maxImages: MAX_IMAGES,
     sending: false, // 等待 AI 回复中（含打字机渲染期），期间禁止再次发送
+    // 已点发送、但请求还没真正发出（正在确认服务协议/建会话）。见 guardedSend 注释。
+    submitting: false,
     banned: false, // 22002/22003 封禁后禁用输入（文档 §八）
 
     voiceMode: false, // 键盘/按住说话切换（🎤 专属语音按钮）
@@ -581,7 +583,9 @@ Page({
   // 会话统一等用户发出第一条消息时才建（见 createSession 注释）——否则点一次＋就在服务端留一条
   // 空会话，连点几次就能把 20 条额度占满，正是本次要治的病。
   startNewSession() {
-    if (this.data.sending) {
+    // submitting 同 sending 一起挡：上一条正卡在「建会话」空窗时点＋，界面会退回空态，
+    // 而那条消息随后仍会发进刚建出来的会话里——一次操作两个矛盾结果（见 guardedSend）。
+    if (this.data.sending || this.data.submitting) {
       return
     }
     if (this.isPristineNewSession()) {
@@ -598,8 +602,29 @@ Page({
     this.setData({ inputValue: event.detail.value })
   },
 
+  // 发送入口的**同步**闸（2026-07-29）。
+  // 病灶：`sending` 要等 sendChat 内真正发出请求那一刻（追加 loading 气泡时）才置起，而在它之前
+  // 还隔着「AI 服务协议确认 + 建会话」最多两次网络往返 —— **首次进入 AI 在空态发第一条消息**时
+  // 这段空窗最长（必须先 POST /session/new），期间按钮仍是亮的、guard 里 sending 仍是 false，
+  // 用户连点就能把同一条消息发出去好几遍（_createReq 只去重了「建会话」，没去重「发送」）。
+  // 这里在任何 await 之前先同步置起 submitting（WXML 与 sending 一起决定按钮灰不灰），
+  // 无论成功/失败/提前 return 都由 finally 归位。
+  // 返回 false = 被闸挡下（调用方据此决定要不要回填草稿）。
+  async guardedSend(task) {
+    if (this.data.sending || this.data.submitting || this.data.banned) {
+      return false
+    }
+    this.setData({ submitting: true })
+    try {
+      await task()
+    } finally {
+      this.setData({ submitting: false })
+    }
+    return true
+  },
+
   async onSendTap() {
-    if (this.data.sending || this.data.banned) {
+    if (this.data.sending || this.data.submitting || this.data.banned) {
       return
     }
     const text = String(this.data.inputValue || '').trim()
@@ -612,26 +637,29 @@ Page({
       })
       return
     }
-    if (!(await this.requestAiServiceConsent(true))) {
-      return // 草稿和待发图片原样保留；下次发送继续引导，直到同意
-    }
-    // 还有图片在上传：等 OSS URL 就绪再发，否则 image_urls 会缺图
-    if (images.some(img => img.uploading)) {
-      toast.show({ title: '图片上传中，请稍候…', icon: 'none' })
-      return
-    }
-    // 带上 pad（选图时由相册回的宽高算出）：用户图片气泡也先把高度占住，不等图加载完再顶内容
-    const sendImages = images.filter(img => img.url).map(img => ({ url: img.url, pad: img.pad }))
-    // 先把会话建出来，**再清输入框**。顺序不能反：建会话可能失败（网络异常 / 20013 会话已达上限），
-    // 先清的话用户打的字和选的图就白没了——而「首次发送才建会话」之后，每轮新对话的第一条都会走到这。
-    if (!this.data.sessionId) {
-      await this.createSession()
-      if (!this.data.sessionId) {
-        return // 错误提示已由 createSession 弹出；草稿原样留着，用户可直接重发
+    await this.guardedSend(async () => {
+      if (!(await this.requestAiServiceConsent(true))) {
+        return // 草稿和待发图片原样保留；下次发送继续引导，直到同意
       }
-    }
-    this.setData({ inputValue: '', pendingImages: [] })
-    this.sendChat(text, undefined, sendImages)
+      // 还有图片在上传：等 OSS URL 就绪再发，否则 image_urls 会缺图
+      if (images.some(img => img.uploading)) {
+        toast.show({ title: '图片上传中，请稍候…', icon: 'none' })
+        return
+      }
+      // 带上 pad（选图时由相册回的宽高算出）：用户图片气泡也先把高度占住，不等图加载完再顶内容
+      const sendImages = images.filter(img => img.url).map(img => ({ url: img.url, pad: img.pad }))
+      // 先把会话建出来，**再清输入框**。顺序不能反：建会话可能失败（网络异常 / 20013 会话已达上限），
+      // 先清的话用户打的字和选的图就白没了——而「首次发送才建会话」之后，每轮新对话的第一条都会走到这。
+      if (!this.data.sessionId) {
+        await this.createSession()
+        if (!this.data.sessionId) {
+          return // 错误提示已由 createSession 弹出；草稿原样留着，用户可直接重发
+        }
+      }
+      this.setData({ inputValue: '', pendingImages: [] })
+      // await：让 submitting 一直持有到请求真正发出（sendChat 内 sending 接棒），中间不留空窗
+      await this.sendChat(text, undefined, sendImages)
+    })
   },
 
   // 发送对话 / 一键生图 / 图文多模态。styleKey 仅一键生图传（cartoon/landscape/portrait/anime）；
@@ -905,10 +933,11 @@ Page({
   },
 
   // 一键生图：按语种自动拼 message（如「生成图片-卡通」），img_style 触发生图（文档 §5.3.2）
-  onStyleTap(event) {
+  // 同样过一遍同步闸（见 guardedSend）：这条路径也要先建会话，连点样式一样会重复发。
+  async onStyleTap(event) {
     const key = event.currentTarget.dataset.key
     this.setData({ showStylePicker: false, showTools: false })
-    this.sendChat(aiI18n.genMessage(key), key)
+    await this.guardedSend(() => this.sendChat(aiI18n.genMessage(key), key))
   },
 
   chooseAlbum() {
@@ -1076,7 +1105,8 @@ Page({
 
   // 开始录音（两个入口共用）。返回是否真的起来了，供输入框长按决定要不要拦截后续手势。
   beginVoice() {
-    if (this.data.recording || this.data.sending || this.data.banned) {
+    // submitting 同 sending 一起挡：上一条正卡在「建会话」空窗时不该再录一句叠上来
+    if (this.data.recording || this.data.sending || this.data.submitting || this.data.banned) {
       return false
     }
     if (!this._speech && !this._recorder) {
@@ -1161,30 +1191,33 @@ Page({
   // 顺序与 onSendTap 一致：先确保会话再清待发图；任何一步发不出去都把文字**回填输入框**，
   // 别让用户白说一遍——语音内容重打一遍的代价比打字高得多。
   async sendVoiceText(text) {
-    if (this.data.sending || this.data.banned) {
-      this.setData({ inputValue: text })
-      return
-    }
-    if (!(await this.requestAiServiceConsent(true))) {
-      this.setData({ inputValue: text })
-      return
-    }
-    const images = this.data.pendingImages
-    if (images.some(img => img.uploading)) {
-      this.setData({ inputValue: text })
-      toast.show({ title: '图片上传中，请稍候…', icon: 'none' })
-      return
-    }
-    const imageUrls = images.map(img => img.url).filter(Boolean)
-    if (!this.data.sessionId) {
-      await this.createSession()
-      if (!this.data.sessionId) {
+    // 与发送按钮同一把同步闸（见 guardedSend）：语音松手也会走建会话那段空窗，
+    // 期间再按住说一句同样能重复发出去。被闸挡下时按本方法约定把文字回填输入框。
+    const passed = await this.guardedSend(async () => {
+      if (!(await this.requestAiServiceConsent(true))) {
         this.setData({ inputValue: text })
         return
       }
+      const images = this.data.pendingImages
+      if (images.some(img => img.uploading)) {
+        this.setData({ inputValue: text })
+        toast.show({ title: '图片上传中，请稍候…', icon: 'none' })
+        return
+      }
+      const imageUrls = images.map(img => img.url).filter(Boolean)
+      if (!this.data.sessionId) {
+        await this.createSession()
+        if (!this.data.sessionId) {
+          this.setData({ inputValue: text })
+          return
+        }
+      }
+      this.setData({ inputValue: '', pendingImages: [] })
+      await this.sendChat(text, undefined, imageUrls)
+    })
+    if (!passed) {
+      this.setData({ inputValue: text })
     }
-    this.setData({ inputValue: '', pendingImages: [] })
-    this.sendChat(text, undefined, imageUrls)
   },
 
   // —— 「按住说话」条（🎤 语音模式）——

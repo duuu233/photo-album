@@ -13,6 +13,20 @@ const deviceIdUtil = require('../../../utils/device-id')
 
 const app = getApp()
 
+// 屏幕物理分辨率文案（展示在「设备ID」下方），如 `680*960`。
+// 取值优先级：0x01 读到的 screenType 查表 → 后端记录的 width/height → '--'。
+// 与设备ID/内存不同，分辨率是**产品静态属性**而非实时数据，所以**不跟随连接状态置 --**：
+// 未连接时后端记录里的宽高一样准，硬要置 -- 只会让常态未连接的设备永远看不到分辨率。
+function resolutionText(device) {
+  if (!device) {
+    return '--'
+  }
+  const screen = protocol.SCREEN_TYPES[device.screenType] || {}
+  const width = Number(screen.width || device.width) || 0
+  const height = Number(screen.height || device.height) || 0
+  return width && height ? `${width}*${height}` : '--'
+}
+
 // 计算设备存储使用百分比（已用/总量），上限 100，用于进度条展示
 function memoryPercent(device) {
   if (!device || !device.totalMemory) {
@@ -218,6 +232,7 @@ Page({
     // 首帧未知电量：传 null 取未知档图标（旧写法取 DEFAULT_BATTERY=100 会先闪一下满电）
     batteryIcon: batteryUtil.getBatteryIcon(null),
     deviceCode: '',
+    resolutionText: '--',
     memoryText: '',
     macAddress: '',
     newVersionNo: '--',
@@ -428,6 +443,7 @@ Page({
       batteryIcon: batteryUtil.batteryIconOf(device),
       batteryText: batteryUtil.batteryText(device),
       deviceCode,
+      resolutionText: resolutionText(device),
       memoryText:
         device && device.totalMemory
           ? `${device.usedMemory}/${device.totalMemory}`
@@ -681,10 +697,12 @@ Page({
     ) {
       app.setSelectedDevice(updated)
     }
-    // 断开后轮播设置/固件版本/设备ID/内存都不再可信，与未连接态一致回落到 --（内存进度条一并归零）
+    // 断开后轮播设置/固件版本/设备ID/内存都不再可信，与未连接态一致回落到 --（内存进度条一并归零）。
+    // 分辨率是产品静态属性、断开后依然成立，故照常刷新而不置 --（见 resolutionText 注释）
     this.setData({
       device: updated,
       deviceCode: '--',
+      resolutionText: resolutionText(updated),
       memoryText: '--',
       memoryPercent: 0,
       playbackLabel: '--',
@@ -786,6 +804,8 @@ Page({
       memoryText: updated.totalMemory
         ? `${updated.usedMemory}/${updated.totalMemory}`
         : '--',
+      // 连上后 0x01 的 screenType 才到手，分辨率这时才可能从「后端宽高/--」升级为权威值
+      resolutionText: resolutionText(updated),
       playbackLabel: getPlaybackLabel(updated),
       newVersionNo: updated.newVersionNo || updated.firmwareVersion || '--',
       // 在详情页内点「连接」成功后只展示完整 6 字节 Device_ID。
@@ -1309,6 +1329,7 @@ Page({
       memoryText: device.totalMemory
         ? `${device.usedMemory}/${device.totalMemory}`
         : '--',
+      resolutionText: resolutionText(device),
       batteryIcon: batteryUtil.batteryIconOf(device),
       batteryText: batteryUtil.batteryText(device)
     })
