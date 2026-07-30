@@ -4,13 +4,10 @@
     <image class="tab-icon" src="{{active === 'home' ? '/assets/images/tabbar-home02.svg' : '/assets/images/tabbar-home01.svg'}}" mode="aspectFit"></image>
     <view>首页</view>
   </view>
-  <!-- 中间 AI 入口（新版需求：Tab 栏中间新增独立 ICON）。UI 未出图，先用渐变色块占位。
-       ⚠️ 当前需求：AI生图入口暂时整体屏蔽（后续再开放），aiEntryEnabled 默认 false 隐藏本按钮，
-       置回 true 即恢复。屏蔽期间可在「硬件联调调试台」底部暗门输入口令临时进入 AI 页面。
-       用 wx:else 空占位保住中间栏，维持首页/我的的左右布局不塌。 -->
-  <view wx:if="{{aiEntryEnabled}}" class="tab-item tab-item--ai" hover-class="none" bindtap="goAi">
-    <view class="ai-fab">AI</view>
-    <view class="ai-label">AI生图</view>
+  <!-- AI 对话已开放；官方图库暂不接入，因此底栏保持「首页 / AI 对话 / 我的」三栏。 -->
+  <view wx:if="{{aiEntryEnabled}}" class="tab-item tab-item--ai {{active === 'ai' ? 'active' : ''}}" hover-class="none" bindtap="goAi">
+    <image class="tab-icon tab-icon--ai" src="/assets/images/ai-chat.png" mode="aspectFit"></image>
+    <view>AI对话</view>
   </view>
   <view wx:else class="tab-item tab-item--ai-placeholder"></view>
   <view class="tab-item {{active === 'mine' ? 'active' : ''}}" hover-class="none" bindtap="switchToMine">

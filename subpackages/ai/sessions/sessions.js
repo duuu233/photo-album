@@ -1,5 +1,5 @@
-// AI 会话列表页 —— 需求「会话列表管理」：时间倒序、标题=首条消息、每页 20 条滚动加载、
-// 长按删除单条、新建会话。数据仅保留最近 7 天（后端策略）。
+// AI 会话列表页 —— 时间倒序、按日期分组、每页 20 条滚动加载、左滑/长按删除单条、新建会话。
+// 数据仅保留最近 7 天（后端策略）。
 //
 // 与聊天页怎么联动（2026-07-25 重做，用户要求「从会话列表进去要能原路径返回」）：
 //   ① 点某条会话 / 点「新建对话」→ **navigateTo 新开一个聊天页**（见 goChat）。本页因此留在
@@ -50,20 +50,50 @@ function chatPagesInStack() {
 // ⚠️ 后端把 msg_count 修好后，把 fillMsgCounts/_counted 及两处调用一并删掉即可（自动回落到接口值）。
 const HISTORY_FILL_CONCURRENCY = 4
 
-// ISO 时间 → 列表友好展示：今天显示 HH:mm，其余显示 MM-DD HH:mm
+// ISO 时间 → 卡片右侧只显示 HH:mm；日期由列表分组标题承载。
 function formatTime(iso) {
   const date = new Date(iso)
   if (isNaN(date.getTime())) {
     return ''
   }
-  const now = new Date()
   const pad = n => (n < 10 ? `0${n}` : `${n}`)
-  const hm = `${pad(date.getHours())}:${pad(date.getMinutes())}`
-  const sameDay =
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function dateKey(iso) {
+  const date = new Date(iso)
+  if (isNaN(date.getTime())) {
+    return 'unknown'
+  }
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
+}
+
+function dateLabel(iso) {
+  const date = new Date(iso)
+  if (isNaN(date.getTime())) {
+    return '更早'
+  }
+  const now = new Date()
+  if (
     date.getFullYear() === now.getFullYear() &&
     date.getMonth() === now.getMonth() &&
     date.getDate() === now.getDate()
-  return sameDay ? hm : `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${hm}`
+  ) {
+    return '今天'
+  }
+  return `${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+// 只给每个日期分组的第一条写 groupLabel，WXML 仍可保持单层循环，分页/补数逻辑无需改形态。
+function decorateGroups(list) {
+  let previousKey = ''
+  return (list || []).map(item => {
+    const firstInGroup = item.dateKey !== previousKey
+    previousKey = item.dateKey
+    return Object.assign({}, item, {
+      groupLabel: firstInGroup ? item.dateLabel : ''
+    })
+  })
 }
 
 Page({
@@ -73,7 +103,8 @@ Page({
     loading: true,
     sessions: [], // 当前已展示（分页追加）
     hasMore: false,
-    currentId: '' // 聊天页当前会话，高亮标记
+    currentId: '', // 聊天页当前会话，高亮标记
+    openedSessionId: '' // 左滑后当前露出删除按钮的会话
   },
 
   onLoad(options) {
@@ -82,6 +113,9 @@ Page({
     this._counted = {} // sessionId → 已试过补数（不论成败只试一次，防翻页来回反复打接口）
     this._navigating = false // 在途的跳转，防连点叠出两页聊天页
     this._lastOpened = '' // 上次从本页打开的会话：退回本页时只重新补它的条数（它才刚变过）
+    this._swipeStart = null
+    this._swipeDelta = null
+    this._suppressTapUntil = 0
     this.loadSessions()
   },
 
@@ -89,6 +123,9 @@ Page({
   // 都可能变了，所以每次重新可见都静默刷一遍。首次 onShow 紧跟 onLoad，跳过以免重复请求。
   onShow() {
     this._navigating = false
+    if (this.data.openedSessionId) {
+      this.setData({ openedSessionId: '' })
+    }
     if (!this._shownOnce) {
       this._shownOnce = true
       return
@@ -116,12 +153,19 @@ Page({
           counted[item.sessionId] = item.msgCount
         }
       })
-      this._all = sessions.map(item => ({
-        sessionId: item.session_id,
-        title: item.title || '新对话',
-        msgCount: item.msg_count || counted[item.session_id] || 0,
-        timeText: formatTime(item.updated_at || item.created_at)
-      }))
+      this._all = decorateGroups(
+        sessions.map(item => {
+          const timestamp = item.updated_at || item.created_at
+          return {
+            sessionId: item.session_id,
+            title: item.title || '新对话',
+            msgCount: item.msg_count || counted[item.session_id] || 0,
+            timeText: formatTime(timestamp),
+            dateKey: dateKey(timestamp),
+            dateLabel: dateLabel(timestamp)
+          }
+        })
+      )
       // 静默刷新保持用户已翻到的行数，别把人拉回第一页
       const shown = Math.max(PAGE_SIZE, this.data.sessions.length)
       this.setData({
@@ -221,12 +265,27 @@ Page({
     })
   },
 
+  goBack() {
+    wx.navigateBack()
+  },
+
+  sessionFromEvent(event) {
+    const id = event.currentTarget.dataset.id
+    return this.data.sessions.find(item => item.sessionId === id)
+  },
+
   // 点击会话：新开一页聊天页载入这条会话的历史（返回键即原路退回本列表）
   onSessionTap(event) {
-    const index = event.currentTarget.dataset.index
-    const session = this.data.sessions[index]
+    if (Date.now() < this._suppressTapUntil) {
+      return
+    }
+    const session = this.sessionFromEvent(event)
     if (!session || this._navigating) {
       return // 连点去重：navigateBack 那条分支连点两次会一路退过头（把下层聊天页也弹掉）
+    }
+    if (this.data.openedSessionId) {
+      this.setData({ openedSessionId: '' })
+      return
     }
     // 点的正是下层聊天页已经打开的那条（列表里带「当前」标记的）：没必要再叠一页一样的，直接退回去
     if (session.sessionId && session.sessionId === this.data.currentId) {
@@ -244,10 +303,62 @@ Page({
     )
   },
 
-  // 长按删除单条（需求：左滑或长按，取长按实现）
+  // 左滑露出删除按钮。只在手势以横向为主且超过 36px 时提交，纵向滚动列表不会被误判。
+  onSessionTouchStart(event) {
+    const touch = event.touches && event.touches[0]
+    if (!touch) {
+      return
+    }
+    this._swipeStart = {
+      id: event.currentTarget.dataset.id,
+      x: touch.clientX,
+      y: touch.clientY
+    }
+    this._swipeDelta = { x: 0, y: 0 }
+  },
+
+  onSessionTouchMove(event) {
+    const touch = event.touches && event.touches[0]
+    if (!touch || !this._swipeStart) {
+      return
+    }
+    this._swipeDelta = {
+      x: touch.clientX - this._swipeStart.x,
+      y: touch.clientY - this._swipeStart.y
+    }
+  },
+
+  onSessionTouchEnd(event) {
+    const start = this._swipeStart
+    let delta = this._swipeDelta || { x: 0, y: 0 }
+    const touch = event.changedTouches && event.changedTouches[0]
+    if (start && touch) {
+      delta = {
+        x: touch.clientX - start.x,
+        y: touch.clientY - start.y
+      }
+    }
+    this._swipeStart = null
+    this._swipeDelta = null
+    if (!start || Math.abs(delta.x) < 36 || Math.abs(delta.x) <= Math.abs(delta.y)) {
+      return
+    }
+    this._suppressTapUntil = Date.now() + 260
+    this.setData({
+      openedSessionId: delta.x < 0 ? start.id : ''
+    })
+  },
+
+  onSessionDeleteTap(event) {
+    const session = this.sessionFromEvent(event)
+    if (session) {
+      this.deleteSession(session)
+    }
+  },
+
+  // 长按作为不熟悉左滑手势时的无障碍兜底。
   onSessionLongPress(event) {
-    const index = event.currentTarget.dataset.index
-    const session = this.data.sessions[index]
+    const session = this.sessionFromEvent(event)
     if (!session) {
       return
     }
@@ -261,9 +372,14 @@ Page({
   async deleteSession(session) {
     try {
       await aiApi.deleteSession(session.sessionId)
-      this._all = this._all.filter(item => item.sessionId !== session.sessionId)
+      const shown = this.data.sessions.length
+      this._all = decorateGroups(
+        this._all.filter(item => item.sessionId !== session.sessionId)
+      )
       this.setData({
-        sessions: this.data.sessions.filter(item => item.sessionId !== session.sessionId)
+        sessions: this._all.slice(0, shown),
+        hasMore: this._all.length > shown,
+        openedSessionId: ''
       })
       toast.show({ title: '已删除', icon: 'none' })
       // 删的是某个聊天页正打开的会话：只通知那一页退回空态，避免用户继续往已删会话发消息。

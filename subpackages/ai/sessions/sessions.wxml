@@ -1,42 +1,79 @@
-<view class="sessions-root" style="--safe-bottom: {{safeBottom}}px;">
-  <page-nav title="会话记录"></page-nav>
+<view
+  class="sessions-root"
+  style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;"
+>
+  <view class="sessions-header">
+    <view class="sessions-nav">
+      <view class="nav-back" hover-class="nav-back--pressed" bindtap="goBack">
+        <view class="nav-back__arrow"></view>
+      </view>
+      <view class="nav-title">历史会话</view>
+      <view class="new-action" hover-class="new-action--pressed" bindtap="createNew">
+        <image
+          class="new-action__icon"
+          src="/assets/images/ai-new-chat.png"
+          mode="aspectFit"
+        ></image>
+        <text>新建</text>
+      </view>
+    </view>
+  </view>
 
-  <view class="keep-tip">会话记录仅保留最近 7 天</view>
+  <view wx:if="{{!loading && sessions.length}}" class="keep-tip">
+    <view class="keep-tip__icon">i</view>
+    <text>仅保留最近7天会话记录</text>
+  </view>
 
-  <view wx:if="{{loading}}" class="page-loading">
+  <view wx:if="{{loading}}" class="page-loading sessions-loading">
     <view class="page-loading__spinner"></view>
     <view class="page-loading__text">加载中…</view>
   </view>
 
-  <view wx:elif="{{!sessions.length}}" class="empty-card">
-    <view class="icon-block icon-block--xl icon-block--purple">✨</view>
-    <view class="empty-text">还没有会话记录</view>
-    <view class="empty-desc">点击下方「新建对话」开始和星宝聊天</view>
+  <view wx:elif="{{!sessions.length}}" class="empty-state">
+    <image
+      class="empty-state__image"
+      src="/assets/images/ai-empty-sessions.png"
+      mode="aspectFit"
+    ></image>
+    <view class="empty-state__title">暂时没有历史会话</view>
+    <view class="empty-state__desc">开始一次新的历史创作吧</view>
   </view>
 
   <view wx:else class="session-list">
-    <view
-      wx:for="{{sessions}}"
-      wx:key="sessionId"
-      class="session-item {{item.sessionId === currentId ? 'session-item--current' : ''}}"
-      data-index="{{index}}"
-      bindtap="onSessionTap"
-      bindlongpress="onSessionLongPress"
-    >
-      <view class="icon-block icon-block--purple">✨</view>
-      <view class="session-copy">
-        <view class="session-title">{{item.title}}</view>
-        <!-- 条数未知（接口 msg_count=0 且 /chat/history 兜底也没补到）就只显示时间：
-             与其摆一个明知是错的「0 条消息」，不如不显示。补到了会自动出现。 -->
-        <view class="session-meta">{{item.msgCount ? item.timeText + ' · ' + item.msgCount + ' 条消息' : item.timeText}}</view>
+    <block wx:for="{{sessions}}" wx:key="sessionId">
+      <view wx:if="{{item.groupLabel}}" class="date-title">
+        <view class="date-title__bar"></view>
+        <text>{{item.groupLabel}}</text>
       </view>
-      <view wx:if="{{item.sessionId === currentId}}" class="current-tag">当前</view>
-    </view>
-    <view wx:if="{{hasMore}}" class="list-more">上拉加载更多</view>
-    <view wx:else class="list-more">长按会话可删除</view>
-  </view>
 
-  <view class="new-btn" bindtap="createNew">＋ 新建对话</view>
+      <view
+        class="session-swipe"
+        data-id="{{item.sessionId}}"
+        bindtouchstart="onSessionTouchStart"
+        bindtouchmove="onSessionTouchMove"
+        bindtouchend="onSessionTouchEnd"
+        bindtouchcancel="onSessionTouchEnd"
+      >
+        <view
+          class="session-delete"
+          data-id="{{item.sessionId}}"
+          catchtap="onSessionDeleteTap"
+        >删除</view>
+        <view
+          class="session-card {{openedSessionId === item.sessionId ? 'session-card--open' : ''}} {{item.sessionId === currentId ? 'session-card--current' : ''}}"
+          data-id="{{item.sessionId}}"
+          bindtap="onSessionTap"
+          bindlongpress="onSessionLongPress"
+        >
+          <view class="session-title">{{item.title}}</view>
+          <view class="session-time">{{item.timeText}}</view>
+          <view class="session-chevron"></view>
+        </view>
+      </view>
+    </block>
+
+    <view wx:if="{{hasMore}}" class="list-more">上拉加载更多</view>
+  </view>
 
   <global-toast id="globalToast"></global-toast>
 </view>

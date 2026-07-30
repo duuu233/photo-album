@@ -1,6 +1,6 @@
-// AI 对话（星宝）主界面 —— 需求见 assets/ai/支付&ai&官方图库.docx「一、AI对话模块」，
+// AI 对话（星宝）主界面 —— 当前边界见 docs/architecture/ai-client.md，
 // 接口见 docs/reference/ai/BoltStar-API-Doc-v2-1.0.4.md（当前对接版本；小程序只能走非流式 + 客户端打字机）。
-// UI 未出图，图标一律用色块占位（icon-block），后续换图只动 wxml/wxss。
+// 2026-07-30 已按 assets/ai/UI 视觉稿重写；已有图标使用 assets/images/ai-*.png，缺失项继续用色块占位。
 //
 // 会话创建时机（2026-07-25 二次拍板，改动前请先看 createSession 上方注释）：
 //   **只有「空态下发出第一条消息」才建会话**。进页面不建、点＋「新对话」不建（只把界面退回
@@ -91,9 +91,9 @@ const SESSION_TITLE_MAX = 20
 // 一键生图风格（需求文案：漫画/风景/肖像/动漫；API 值：cartoon/landscape/portrait/anime）
 const STYLE_OPTIONS = [
   { key: 'cartoon', label: '漫画' },
+  { key: 'portrait', label: '人物' },
   { key: 'landscape', label: '风景' },
-  { key: 'portrait', label: '肖像' },
-  { key: 'anime', label: '动漫' }
+  { key: 'anime', label: '卡通' }
 ]
 
 // 图片比例（需求：竖向/横向/方形；API img_orientation 必传）。
@@ -187,6 +187,46 @@ function safeDecodeTitle(value) {
   }
 }
 
+const MESSAGE_TIME_GAP_MS = 5 * 60 * 1000
+
+function timestampMs(value) {
+  const valueMs = new Date(value).getTime()
+  return isNaN(valueMs) ? 0 : valueMs
+}
+
+// 视觉稿中的消息时间：今天只显示时分，昨天加「昨天」，更早显示月日。
+function formatChatTime(value) {
+  const date = new Date(value)
+  if (isNaN(date.getTime())) {
+    return ''
+  }
+  const now = new Date()
+  const pad = n => (n < 10 ? `0${n}` : `${n}`)
+  const hm = `${pad(date.getHours())}:${pad(date.getMinutes())}`
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  if (dateStart === todayStart) {
+    return hm
+  }
+  if (dateStart === todayStart - 24 * 60 * 60 * 1000) {
+    return `昨天 ${hm}`
+  }
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${hm}`
+}
+
+function nextMessageTimeMeta(messages, value) {
+  const time = timestampMs(value)
+  const last = messages && messages.length ? messages[messages.length - 1] : null
+  const lastTime = Number(last && last.timestampMs) || 0
+  return {
+    timestampMs: time,
+    timeLabel:
+      time && (!lastTime || time - lastTime >= MESSAGE_TIME_GAP_MS)
+        ? formatChatTime(time)
+        : ''
+  }
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -202,7 +242,8 @@ Page({
 
     // 消息模型：{ id, serverId, role: 'user'|'assistant',
     //            kind: 'text'(纯文字) | 'image'(纯图，仅用户侧) | 'rich'(AI 回复：文字+图同一个气泡),
-    //            content(文本), images([{ url, serverId, pad }]), loading(三点动画), typing(打字机进行中) }
+    //            content(文本), images([{ url, serverId, pad }]), loading(三点动画), typing(打字机进行中),
+    //            timestampMs/timeLabel(时间分隔), failed/failureTitle/failureDesc(可重试失败卡片) }
     //
     // AI 回复恒为 kind='rich'（2026-07-27 需求 3）：一次回复里的文字和图**必须同一个气泡**，
     // 所以图不再各自成一条消息，而是挂在同一条消息的 images 上；历史消息里连着的 assistant 图片行
@@ -229,14 +270,20 @@ Page({
     voiceCancel: false, // 已上滑到取消区：动效转红、松手丢弃
     speechReady: false, // 同声传译插件可用（后台已开通）。false 时只能录音、转不了文字
 
-    showTools: false, // + 工具面板（相册/拍照/一键生图/比例）
-    showStylePicker: false, // 一键生图风格弹层
+    showTools: false, // 兼容旧交互字段；新版四个工具入口常驻输入卡片
+    showOrientationPicker: false,
+    showStylePicker: false,
     styleOptions: STYLE_OPTIONS,
     orientationOptions: ORIENTATION_OPTIONS,
     orientation: 'vertical', // 默认竖向（电子相框主流为竖屏）
+    orientationLabel: '竖向',
+
+    // 长按 AI 图片后显示视觉稿里的「下载 / 投屏 / 删除」内联操作条。
+    activeImageMessageId: 0,
+    activeImageIndex: -1,
 
     // 投屏设备选择弹窗（未连接时弹出已绑定设备列表，需求「投屏流程」）
-    devicePicker: { show: false, loading: false, devices: [] },
+    devicePicker: { show: false, loading: false, devices: [], selectedId: '' },
 
     // 贴底滚动（2026-07-27 需求 2.2/5.1 重做）：原先用 scroll-into-view + 「先清空再设锚点」
     // 两次 setData 触发，打字期间跟不上、首屏还会当着用户的面从头滚到尾。现在改 scroll-top
@@ -255,6 +302,7 @@ Page({
     this._chatViewH = 0 // 聊天区可视高度，onReady 量一次，用来算「距底多远」
     this._chatReq = null // 进行中的 chat/enhance 请求，供「停止生成」abort
     this._createReq = null // 在途的建会话请求，连点发送时去重（见 createSession）
+    this._retryByMessage = {} // 失败卡片 id → 原请求参数；只留内存，不持久化
     this._consentPrompt = null // AI 服务协议弹窗在途去重：首次进入与发送不能叠两层弹窗
     this._consentResolve = null // 自定义协议弹窗的 Promise 完成函数
     this._pendingProjectImage = '' // 设备弹窗确认前暂存的待投屏图片 URL
@@ -417,6 +465,7 @@ Page({
   // 而静默模式不动 sending，漏了这一下这一页就永远「正在回复中」、再也发不出消息。
   resetToNewSession() {
     this._stick = true // 空态没什么可滚的，但别把上一条会话「用户翻上去了」的状态带过来
+    this._retryByMessage = {}
     this.setData({
       messages: [],
       sessionTitle: '新对话',
@@ -425,6 +474,10 @@ Page({
       sending: false,
       pendingImages: [],
       inputValue: '',
+      showOrientationPicker: false,
+      showStylePicker: false,
+      activeImageMessageId: 0,
+      activeImageIndex: -1,
       // 有可能是在某条会话「还没定位完」时被重置的（聊天页正载入时列表页把这条删了），
       // 漏了这一下招呼语就一直透明着，看着像白屏
       chatReady: true
@@ -445,9 +498,20 @@ Page({
       return
     }
     this.stopGenerate(true)
+    this._retryByMessage = {}
     this._stick = true // 换会话＝换内容，别把上一条会话「用户翻上去了」的状态带过来
     // sending: false 同 resetToNewSession —— 刚掐掉的在途回复不能把这一页锁在「正在回复中」
-    this.setData({ messages: [], banned: false, sending: false, pendingImages: [], inputValue: '' })
+    this.setData({
+      messages: [],
+      banned: false,
+      sending: false,
+      pendingImages: [],
+      inputValue: '',
+      showOrientationPicker: false,
+      showStylePicker: false,
+      activeImageMessageId: 0,
+      activeImageIndex: -1
+    })
     this.openSession(sessionId, title)
   },
 
@@ -535,6 +599,7 @@ Page({
           return
         }
         // 前面没有可挂的文字气泡（纯图回复）：自己起一条无文字的 rich
+        const timeMeta = nextMessageTimeMeta(messages, row.timestamp)
         messages.push({
           id: ++this._uid,
           serverId: '',
@@ -543,10 +608,14 @@ Page({
           content: '',
           images: [{ url: row.content, serverId: row.id, pad: IMAGE_PAD_DEFAULT }],
           loading: false,
-          typing: false
+          typing: false,
+          failed: false,
+          timestampMs: timeMeta.timestampMs,
+          timeLabel: timeMeta.timeLabel
         })
         return
       }
+      const timeMeta = nextMessageTimeMeta(messages, row.timestamp)
       messages.push({
         id: ++this._uid,
         serverId: row.id,
@@ -557,7 +626,10 @@ Page({
         // 否则删这条会对同一个 message_id 打两次 DELETE
         images: isImage ? [{ url: row.content, serverId: '', pad: IMAGE_PAD_DEFAULT }] : [],
         loading: false,
-        typing: false
+        typing: false,
+        failed: false,
+        timestampMs: timeMeta.timestampMs,
+        timeLabel: timeMeta.timeLabel
       })
     })
     return messages
@@ -692,8 +764,10 @@ Page({
       .map(item => (typeof item === 'string' ? { url: item, pad: 0 } : item))
       .filter(item => item && item.url)
     const urls = picked.map(item => item.url)
+    const sentAt = Date.now()
+    const timeMeta = nextMessageTimeMeta(this.data.messages, sentAt)
     // 用户消息：先按张追加图片气泡（用户上传的原图 URL），再追加文字气泡（需求 6.3 用户侧维持原样）
-    const userMsgs = picked.map(item => ({
+    const userMsgs = picked.map((item, index) => ({
       id: ++this._uid,
       serverId: '',
       role: 'user',
@@ -701,7 +775,10 @@ Page({
       content: '',
       images: [{ url: item.url, serverId: '', pad: clampPad(item.pad) }],
       loading: false,
-      typing: false
+      typing: false,
+      failed: false,
+      timestampMs: sentAt,
+      timeLabel: index === 0 ? timeMeta.timeLabel : ''
     }))
     userMsgs.push({
       id: ++this._uid,
@@ -711,7 +788,10 @@ Page({
       content: message,
       images: [],
       loading: false,
-      typing: false
+      typing: false,
+      failed: false,
+      timestampMs: sentAt,
+      timeLabel: picked.length ? '' : timeMeta.timeLabel
     })
     this.setData({
       messages: this.data.messages.concat(userMsgs),
@@ -736,7 +816,10 @@ Page({
       content: '',
       images: [],
       loading: true,
-      typing: false
+      typing: false,
+      failed: false,
+      timestampMs: Date.now(),
+      timeLabel: ''
     }
     this.setData({ messages: this.data.messages.concat([holder]), sending: true })
     this.stickToBottom({ force: true, animate: true })
@@ -755,16 +838,59 @@ Page({
       this.renderReply(holder.id, reply.text, reply.images)
     } catch (error) {
       this._chatReq = null
-      this.removeMessageById(holder.id)
-      this.setData({ sending: false })
       if (error && error.code === 'ABORTED') {
+        this.removeMessageById(holder.id)
+        this.setData({ sending: false })
         return // 用户主动停止，静默
       }
+      const code = Number(error && error.code) || 31001
+      const showInlineFailure =
+        !(error && error.userMessage) &&
+        ((code >= 30000 && code < 31000) || code === 31001)
+      if (showInlineFailure) {
+        const index = this.data.messages.findIndex(item => item.id === holder.id)
+        if (index >= 0) {
+          this._retryByMessage[holder.id] = { message, styleKey, urls }
+          if (error && error.detail) {
+            console.warn(`[BoltStar] code=${code}`, error.detail)
+          }
+          this.setData({
+            [`messages[${index}].loading`]: false,
+            [`messages[${index}].failed`]: true,
+            [`messages[${index}].failureTitle`]: '生成未完成',
+            [`messages[${index}].failureDesc`]: '网络或服务繁忙，请稍后重试',
+            sending: false
+          })
+          this.stickToBottom({ force: true, animate: true })
+          return
+        }
+      }
+      this.removeMessageById(holder.id)
+      this.setData({ sending: false })
       aiI18n.handleAiError(error, {
         onRetry: () => this._dispatchChat(message, styleKey, urls),
         onBanned: () => this.setData({ banned: true })
       })
     }
+  },
+
+  async onRetryMessage(event) {
+    const id = Number(event.currentTarget.dataset.id)
+    const retry = this._retryByMessage[id]
+    if (!retry || this.data.sending || this.data.submitting || this.data.banned) {
+      return
+    }
+    await this.guardedSend(async () => {
+      delete this._retryByMessage[id]
+      this.removeMessageById(id)
+      await this._dispatchChat(retry.message, retry.styleKey, retry.urls)
+    })
+  },
+
+  onFailureDelete(event) {
+    const id = Number(event.currentTarget.dataset.id)
+    delete this._retryByMessage[id]
+    this.removeMessageById(id)
   },
 
   // 回复渲染（需求 3：文字与图片渲染进**同一个气泡**）：文字走打字机，图片打完字后挂到同一条消息的
@@ -883,7 +1009,7 @@ Page({
   // ==================== 工具面板 ====================
 
   toggleTools() {
-    this.setData({ showTools: !this.data.showTools, showStylePicker: false })
+    this.toggleOrientationPicker()
   },
 
   // 点工具栏以外的地方就收起（2026-07-27 需求 2，仿底部弹框点外面关闭）。
@@ -891,8 +1017,19 @@ Page({
   // （键盘和工具栏不该同时占着底部）。没做成全屏遮罩层是因为遮罩会把拖动也吃掉，聊天记录就滑不动了。
   // 已经关着就别 setData，免得每次聚焦输入框、每次点聊天区都白跑一次渲染。
   closeTools() {
-    if (this.data.showTools) {
-      this.setData({ showTools: false })
+    if (
+      this.data.showTools ||
+      this.data.showOrientationPicker ||
+      this.data.showStylePicker ||
+      this.data.activeImageMessageId
+    ) {
+      this.setData({
+        showTools: false,
+        showOrientationPicker: false,
+        showStylePicker: false,
+        activeImageMessageId: 0,
+        activeImageIndex: -1
+      })
     }
   },
 
@@ -902,11 +1039,29 @@ Page({
       this.endVoice(true)
     }
     this.clearHoldTimer()
-    this.setData({ voiceMode: !this.data.voiceMode, showTools: false })
+    this.setData({
+      voiceMode: !this.data.voiceMode,
+      showTools: false,
+      showOrientationPicker: false,
+      showStylePicker: false
+    })
+  },
+
+  toggleOrientationPicker() {
+    this.setData({
+      showOrientationPicker: !this.data.showOrientationPicker,
+      showStylePicker: false
+    })
   },
 
   onOrientationTap(event) {
-    this.setData({ orientation: event.currentTarget.dataset.key })
+    const key = event.currentTarget.dataset.key
+    const option = ORIENTATION_OPTIONS.find(item => item.key === key)
+    this.setData({
+      orientation: key,
+      orientationLabel: option ? option.label : '竖向',
+      showOrientationPicker: false
+    })
   },
 
   // 归一化到接口认的三个值（horizontal/square/vertical）。别名见 ORIENTATION_ALIAS，
@@ -925,7 +1080,10 @@ Page({
   },
 
   openStylePicker() {
-    this.setData({ showStylePicker: true })
+    this.setData({
+      showStylePicker: !this.data.showStylePicker,
+      showOrientationPicker: false
+    })
   },
 
   closeStylePicker() {
@@ -936,7 +1094,11 @@ Page({
   // 同样过一遍同步闸（见 guardedSend）：这条路径也要先建会话，连点样式一样会重复发。
   async onStyleTap(event) {
     const key = event.currentTarget.dataset.key
-    this.setData({ showStylePicker: false, showTools: false })
+    this.setData({
+      showStylePicker: false,
+      showOrientationPicker: false,
+      showTools: false
+    })
     await this.guardedSend(() => this.sendChat(aiI18n.genMessage(key), key))
   },
 
@@ -951,7 +1113,11 @@ Page({
   // 选图（相册可多选）→ 立即上传 OSS → 以缩略图停在输入框内（v1.0.3 §5.1.4）。
   // 不马上调接口，等用户输入文字点发送时随 image_urls 一起提交；最多 MAX_IMAGES 张。
   async pickImage(source) {
-    this.setData({ showTools: false })
+    this.setData({
+      showTools: false,
+      showOrientationPicker: false,
+      showStylePicker: false
+    })
     if (this.data.banned) {
       return
     }
@@ -1342,8 +1508,7 @@ Page({
     })
   },
 
-  // 长按 AI 气泡里的单张图：下载/投屏都只针对这一张；删除也只摘掉这一张
-  //（气泡里还有文字或别的图就留着，都没了才整条移除）。
+  // 长按 AI 气泡里的单张图：展开视觉稿中的内联操作条。
   onImageLongPress(event) {
     const { id, index } = event.currentTarget.dataset
     const message = this.data.messages.find(item => item.id === id)
@@ -1354,20 +1519,30 @@ Page({
     if (!image) {
       return
     }
-    const items = ['下载', '投屏', '删除']
-    wx.showActionSheet({
-      itemList: items,
-      success: res => {
-        const action = items[res.tapIndex]
-        if (action === '下载') {
-          this.downloadImage(image.url)
-        } else if (action === '投屏') {
-          this.projectImage(image.url)
-        } else if (action === '删除') {
-          this.deleteBubbleImage(message, Number(index))
-        }
-      }
+    this.setData({
+      activeImageMessageId: message.id,
+      activeImageIndex: Number(index),
+      showOrientationPicker: false,
+      showStylePicker: false
     })
+  },
+
+  onImageActionTap(event) {
+    const { action, url } = event.currentTarget.dataset
+    const id = Number(event.currentTarget.dataset.id)
+    const index = Number(event.currentTarget.dataset.index)
+    const message = this.data.messages.find(item => item.id === id)
+    this.setData({ activeImageMessageId: 0, activeImageIndex: -1 })
+    if (!message || !message.images[index]) {
+      return
+    }
+    if (action === 'download') {
+      this.downloadImage(url)
+    } else if (action === 'project') {
+      this.projectImage(url)
+    } else if (action === 'delete') {
+      this.deleteBubbleImage(message, index)
+    }
   },
 
   // 删整条消息。图文合并进一个气泡后一条消息可能对应**多个** message_id
@@ -1417,7 +1592,14 @@ Page({
   },
 
   removeMessageById(id) {
+    if (this._retryByMessage) {
+      delete this._retryByMessage[id]
+    }
+    const clearsImageMenu = this.data.activeImageMessageId === id
     this.setData({ messages: this.data.messages.filter(item => item.id !== id) })
+    if (clearsImageMenu) {
+      this.setData({ activeImageMessageId: 0, activeImageIndex: -1 })
+    }
   },
 
   onImageTap(event) {
@@ -1525,7 +1707,15 @@ Page({
 
     // 未连接：弹已绑定设备列表
     this._pendingProjectImage = url
-    this.setData({ devicePicker: { show: true, loading: true, devices: [] } })
+    const selectedId = device && device.id != null ? String(device.id) : ''
+    this.setData({
+      devicePicker: {
+        show: true,
+        loading: true,
+        devices: [],
+        selectedId
+      }
+    })
     try {
       const devices = await api.getDevices()
       if (!devices.length) {
@@ -1533,7 +1723,23 @@ Page({
         toast.show({ title: '暂无已绑定设备，请先绑定设备', icon: 'none' })
         return
       }
-      this.setData({ devicePicker: { show: true, loading: false, devices } })
+      const pickerDevices = devices.map((item, index) =>
+        Object.assign({}, item, {
+          pickerId: String(
+            item.id != null
+              ? item.id
+              : (item.deviceId || item.deviceNo || item.name || index)
+          )
+        })
+      )
+      this.setData({
+        devicePicker: {
+          show: true,
+          loading: false,
+          devices: pickerDevices,
+          selectedId
+        }
+      })
     } catch (error) {
       this.setData({ 'devicePicker.show': false })
     }
@@ -1549,6 +1755,7 @@ Page({
   },
 
   closeDevicePicker() {
+    this._pendingProjectImage = ''
     this.setData({ 'devicePicker.show': false })
   },
 

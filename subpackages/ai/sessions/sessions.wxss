@@ -1,127 +1,224 @@
-/* AI 会话列表页。图标同聊天页用色块占位 */
 .sessions-root {
   min-height: 100vh;
-  background: #f2f5fc;
-  padding-bottom: calc(180rpx + var(--safe-bottom));
+  padding-bottom: calc(48rpx + var(--safe-bottom));
+  overflow-x: hidden;
+  color: #2c2c2c;
+  background: #f7f5f0;
   box-sizing: border-box;
 }
 
-.icon-block {
-  width: 64rpx;
-  height: 64rpx;
-  border-radius: 18rpx;
+.sessions-header {
+  padding-top: var(--status-bar);
+}
+
+.sessions-nav {
+  display: grid;
+  grid-template-columns: 176rpx 1fr 176rpx;
+  align-items: center;
+  height: 112rpx;
+  padding: 0 40rpx;
+}
+
+.nav-back {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 30rpx;
-  color: #ffffff;
-  flex-shrink: 0;
+  width: 66rpx;
+  height: 66rpx;
+  border: 2rpx solid rgba(255, 255, 255, 0.88);
+  border-radius: 20rpx;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 10rpx 28rpx rgba(83, 73, 60, 0.08);
 }
 
-.icon-block--purple {
-  background: linear-gradient(135deg, #a06bff, #7a3cf0);
+.nav-back--pressed,
+.new-action--pressed {
+  opacity: 0.68;
 }
 
-.icon-block--xl {
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 28rpx;
-  font-size: 44rpx;
+.nav-back__arrow {
+  width: 22rpx;
+  height: 22rpx;
+  margin-left: 8rpx;
+  border-bottom: 4rpx solid #5c5c5c;
+  border-left: 4rpx solid #5c5c5c;
+  transform: rotate(45deg);
 }
 
-.keep-tip {
-  padding: 8rpx 32rpx 16rpx;
-  font-size: 22rpx;
-  color: #9aa3b0;
-}
-
-.empty-card {
-  margin: 120rpx 48rpx 0;
-  background: #ffffff;
-  border-radius: 32rpx;
-  padding: 80rpx 40rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20rpx;
-}
-
-.empty-text {
-  font-size: 30rpx;
-  color: #1f2733;
-  font-weight: 500;
-}
-
-.empty-desc {
-  font-size: 24rpx;
-  color: #8b9098;
-}
-
-.session-list {
-  padding: 0 32rpx;
-}
-
-.session-item {
-  display: flex;
-  align-items: center;
-  gap: 20rpx;
-  background: #ffffff;
-  border-radius: 24rpx;
-  padding: 28rpx 24rpx;
-  margin-bottom: 20rpx;
-  box-shadow: 0 4rpx 16rpx rgba(31, 41, 61, 0.04);
-}
-
-.session-item--current {
-  border: 2rpx solid rgba(235, 95, 27, 0.4);
-}
-
-.session-copy {
-  flex: 1;
-  min-width: 0;
-}
-
-.session-title {
-  font-size: 28rpx;
-  color: #1f2733;
+.nav-title {
   overflow: hidden;
+  color: #111111;
+  font-size: 36rpx;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.session-meta {
-  font-size: 22rpx;
-  color: #9aa3b0;
-  margin-top: 6rpx;
+.new-action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12rpx;
+  color: #ef641e;
+  font-size: 32rpx;
+  font-weight: 500;
 }
 
-.current-tag {
-  font-size: 20rpx;
-  color: #eb5f1b;
-  background: rgba(235, 95, 27, 0.1);
+.new-action__icon {
+  width: 34rpx;
+  height: 34rpx;
+}
+
+.keep-tip {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 32rpx 40rpx 12rpx;
+  color: #8b8b8b;
+  font-size: 25rpx;
+}
+
+.keep-tip__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26rpx;
+  height: 26rpx;
+  border: 2rpx solid currentColor;
+  border-radius: 50%;
+  font-size: 18rpx;
+  line-height: 1;
+}
+
+.sessions-loading {
+  min-height: 58vh;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 300rpx 40rpx 0;
+  text-align: center;
+}
+
+.empty-state__image {
+  width: 220rpx;
+  height: 220rpx;
+  opacity: 0.42;
+}
+
+.empty-state__title {
+  margin-top: 36rpx;
+  color: #2e2e2e;
+  font-size: 38rpx;
+  font-weight: 600;
+}
+
+.empty-state__desc {
+  margin-top: 18rpx;
+  color: #929292;
+  font-size: 28rpx;
+}
+
+.session-list {
+  padding: 0 40rpx;
+}
+
+.date-title {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin: 26rpx 0 18rpx;
+  color: #292929;
+  font-size: 30rpx;
+  font-weight: 500;
+}
+
+.date-title__bar {
+  width: 7rpx;
+  height: 28rpx;
   border-radius: 999rpx;
-  padding: 4rpx 16rpx;
-  flex-shrink: 0;
+  background: #ff762e;
+}
+
+.session-swipe {
+  position: relative;
+  height: 112rpx;
+  margin-bottom: 20rpx;
+  overflow: hidden;
+  border-radius: 28rpx;
+}
+
+.session-delete {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 134rpx;
+  color: #ffffff;
+  background: #e75d51;
+  font-size: 28rpx;
+  font-weight: 500;
+}
+
+.session-card {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 24rpx;
+  align-items: center;
+  gap: 22rpx;
+  width: 100%;
+  height: 112rpx;
+  padding: 0 30rpx;
+  border: 2rpx solid rgba(255, 255, 255, 0.9);
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 10rpx 26rpx rgba(92, 79, 61, 0.07);
+  transform: translateX(0);
+  transition: transform 0.22s ease;
+}
+
+.session-card--open {
+  transform: translateX(-134rpx);
+}
+
+.session-card--current {
+  border-color: rgba(255, 126, 57, 0.34);
+}
+
+.session-title {
+  overflow: hidden;
+  color: #5c5c5c;
+  font-size: 29rpx;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-time {
+  color: #9a9a9a;
+  font-size: 28rpx;
+  white-space: nowrap;
+}
+
+.session-chevron {
+  width: 18rpx;
+  height: 18rpx;
+  border-top: 4rpx solid #9a9a9a;
+  border-right: 4rpx solid #9a9a9a;
+  transform: rotate(45deg);
 }
 
 .list-more {
-  text-align: center;
-  font-size: 22rpx;
-  color: #b4bcc9;
   padding: 12rpx 0 24rpx;
-}
-
-.new-btn {
-  position: fixed;
-  left: 48rpx;
-  right: 48rpx;
-  bottom: calc(40rpx + var(--safe-bottom));
-  height: 96rpx;
-  line-height: 96rpx;
+  color: #aaa49c;
+  font-size: 23rpx;
   text-align: center;
-  border-radius: 999rpx;
-  background: linear-gradient(135deg, #ff8a3c, #eb5f1b);
-  color: #ffffff;
-  font-size: 30rpx;
-  box-shadow: 0 12rpx 28rpx rgba(235, 95, 27, 0.3);
 }

@@ -1,134 +1,120 @@
-/* AI 对话页。UI 未出图：所有图标先用 icon-block 色块占位，换图时把 icon-block 替换为 <image> 即可 */
 .ai-root {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #f2f5fc;
+  padding-bottom: calc(166rpx + var(--safe-bottom));
+  overflow: hidden;
+  color: #292929;
+  background: #f7f5f0;
   box-sizing: border-box;
 }
 
-/* ==================== 色块占位图标 ==================== */
-.icon-block {
-  width: 56rpx;
-  height: 56rpx;
-  border-radius: 16rpx;
-  display: flex;
+/* ==================== 顶部导航 ==================== */
+.ai-header {
+  flex: 0 0 auto;
+  padding-top: var(--status-bar);
+}
+
+.ai-header__row {
+  display: grid;
+  grid-template-columns: 190rpx minmax(0, 1fr) 190rpx;
   align-items: center;
+  height: 112rpx;
+  padding: 0 40rpx;
+}
+
+.history-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   justify-content: center;
-  font-size: 28rpx;
-  color: #ffffff;
-  flex-shrink: 0;
+  gap: 9rpx;
+  width: 66rpx;
+  height: 66rpx;
+  padding: 0 16rpx;
+  border: 2rpx solid rgba(255, 255, 255, 0.88);
+  border-radius: 20rpx;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: 0 10rpx 28rpx rgba(83, 73, 60, 0.08);
 }
 
-.icon-block--orange {
-  background: linear-gradient(135deg, #ff8a3c, #eb5f1b);
-}
-
-.icon-block--blue {
-  background: linear-gradient(135deg, #5b8cff, #3a66e0);
-}
-
-.icon-block--green {
-  background: linear-gradient(135deg, #4cd07d, #2aa85c);
-}
-
-.icon-block--purple {
-  background: linear-gradient(135deg, #a06bff, #7a3cf0);
-}
-
-.icon-block--grey {
-  background: #e4e9f2;
-  color: #55606e;
-}
-
-.icon-block--gold {
-  background: linear-gradient(135deg, #ffd35c, #f0a11b);
-}
-
-.icon-block--mini {
+.history-button__line {
   width: 32rpx;
-  height: 32rpx;
-  border-radius: 8rpx;
-  font-size: 20rpx;
+  height: 4rpx;
+  border-radius: 999rpx;
+  background: #5c5c5c;
 }
 
-.icon-block--xl {
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 28rpx;
-  font-size: 44rpx;
+.history-button__line:nth-child(2) {
+  width: 25rpx;
 }
 
-/* ==================== 工具行 ==================== */
-.ai-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12rpx 32rpx;
+.header-button--pressed,
+.quick-tool--pressed {
+  opacity: 0.68;
 }
 
-.toolbar-btn {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-  font-size: 26rpx;
-  color: #3d4350;
-}
-
-.toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 24rpx;
+.ai-header__title {
+  overflow: hidden;
+  color: #111111;
+  font-size: 36rpx;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .token-pill {
+  justify-self: end;
   display: flex;
   align-items: center;
-  gap: 8rpx;
-  background: #ffffff;
+  gap: 7rpx;
+  min-width: 176rpx;
+  height: 58rpx;
+  padding: 0 18rpx;
+  border: 2rpx solid rgba(255, 255, 255, 0.88);
   border-radius: 999rpx;
-  padding: 8rpx 20rpx;
-  font-size: 24rpx;
-  color: #55606e;
-  box-shadow: 0 4rpx 16rpx rgba(31, 41, 61, 0.06);
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: 0 10rpx 28rpx rgba(83, 73, 60, 0.08);
+}
+
+.token-pill__icon {
+  width: 25rpx;
+  height: 25rpx;
+}
+
+.token-pill__value {
+  color: #ff6f25;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.token-pill__unit {
+  color: #777777;
+  font-size: 22rpx;
 }
 
 /* ==================== 聊天区 ==================== */
-/* 外层负责占高 + 给「加载中」当定位父级：spinner 必须盖在 scroll-view 上而不是长在里面，
-   否则首屏为了能滚到底就得让内容一直渲染着，两者会上下叠着一起显示。 */
 .chat-wrap {
   position: relative;
-  flex: 1;
-  min-height: 0;
-  /* 保持和改造前一样的「flex:1 + min-height:0」撑高方式传给 scroll-view，
-     别改成 height:100%——百分比高度依赖父级有确定高度，flex 项上不保险。 */
   display: flex;
+  flex: 1;
   flex-direction: column;
+  min-height: 0;
 }
 
 .chat-scroll {
   flex: 1;
   min-height: 0;
-  padding: 0 32rpx;
+  padding: 0 40rpx;
   box-sizing: border-box;
 }
 
-/* 首屏预热：已渲染但透明，等 stickToBottom 定位到底部后再显形（需求 5.1）。
-   用 opacity 而非 wx:if/display:none —— 后者没有布局，滚都滚不动。 */
 .chat-scroll--warming {
   opacity: 0;
 }
 
-/* 隐藏滚动条但保留滚动（2026-07-25 用户要求；2026-07-27 改成不带类名的写法才真正生效）。
-   scroll-view 的 show-scrollbar 属性只在 Skyline 渲染器生效，本项目是 WebView 渲染器
-   （app.json 未开 skyline），所以只能走 ::-webkit-scrollbar。
-   🔴 为什么原来的 `.chat-scroll::-webkit-scrollbar` 没用：WebView 下 scroll-view 编译成
-      <wx-scroll-view class="chat-scroll"><div class="wx-scroll-view">…</div></wx-scroll-view>，
-      **真正滚动、真正长滚动条的是内层那个 div**，类名挂在外层壳上，所以那条规则打了个空。
-      这里写成不带选择器的形式（等价于 *::-webkit-scrollbar），内层壳一起盖住；
-      wxss 是页面级的，只影响本页，不会波及别的页面。
-   三个属性都写：display 管主流内核，width/height 兜底某些 Android WebView 只认尺寸。
-   ⚠️ 只是隐藏滚动条外观，scroll-y / scroll-top 贴底逻辑一概不动，上下滑照常。 */
 ::-webkit-scrollbar {
   display: none;
   width: 0;
@@ -137,54 +123,82 @@
   background: transparent;
 }
 
-/* 盖在聊天区上的「加载中」（含首屏预热那一小段），底下的内容正在悄悄定位到底部。
-   position/min-height 覆盖 app.wxss 的 .page-loading（同为单类选择器，页面 wxss 后加载故生效）。 */
 .chat-loading {
   position: absolute;
   inset: 0;
   min-height: 0;
-  background: #f2f5fc;
+  background: #f7f5f0;
 }
 
 .welcome {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24rpx;
-  padding: 160rpx 40rpx 0;
+  padding: 150rpx 36rpx 0;
   text-align: center;
 }
 
+.welcome-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ff8b48, #ff6425);
+  box-shadow: 0 18rpx 34rpx rgba(255, 104, 39, 0.24);
+}
+
+.welcome-mark image {
+  width: 46rpx;
+  height: 46rpx;
+}
+
+.welcome-title {
+  margin-top: 32rpx;
+  color: #2e2e2e;
+  font-size: 36rpx;
+  font-weight: 600;
+}
+
 .welcome-text {
-  font-size: 32rpx;
-  color: #1f2733;
+  margin-top: 14rpx;
+  color: #777777;
+  font-size: 27rpx;
   line-height: 1.6;
-  font-weight: 500;
 }
 
 .welcome-tip {
-  font-size: 24rpx;
-  color: #8b9098;
+  margin-top: 28rpx;
+  padding: 13rpx 24rpx;
+  border-radius: 999rpx;
+  color: #ef6b2a;
+  background: rgba(255, 118, 46, 0.09);
+  font-size: 23rpx;
+}
+
+.message-time {
+  margin: 26rpx 0 18rpx;
+  color: #aaa6a1;
+  font-size: 25rpx;
+  text-align: center;
 }
 
 .msg-row {
   display: flex;
   align-items: flex-start;
-  margin: 24rpx 0;
+  margin: 20rpx 0;
 }
 
 .msg-row--user {
   flex-direction: row-reverse;
 }
 
-/* AI 回复不再有头像（需求 6.1），所以 .msg-avatar 整块删除；.welcome 里的那个是空态插画，不受影响 */
-
 .bubble {
-  /* 用户气泡沿用原来的 520rpx 上限（需求 6.3 用户侧维持现状）；AI 气泡在下面改成铺满 */
-  max-width: 520rpx;
+  max-width: 560rpx;
   padding: 20rpx 24rpx;
-  border-radius: 24rpx;
-  font-size: 28rpx;
+  border-radius: 28rpx;
+  font-size: 29rpx;
   line-height: 1.55;
   word-break: break-all;
   box-sizing: border-box;
@@ -194,77 +208,72 @@
   display: block;
 }
 
-/* AI 回复气泡按宽度铺满（需求 6.2）：左右各留 32rpx 是 .chat-scroll 的页边距，
-   气泡本身在这条内容栏里 100% 撑满。文字和图都在这一个气泡里（需求 3）。 */
 .bubble--ai {
-  width: 100%;
-  max-width: 100%;
-  background: #ffffff;
-  color: #1f2733;
-  border-top-left-radius: 8rpx;
-  box-shadow: 0 4rpx 16rpx rgba(31, 41, 61, 0.05);
+  color: #555555;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 12rpx 30rpx rgba(89, 76, 58, 0.07);
 }
 
-/* 「正在加载」气泡（只有三个跳动的点）不跟着 .bubble--ai 铺满屏宽：
-   一个占满整行的空白大框看着像出错/空回复。width:auto 让它按内容收缩到刚好包住三个点。
-   内容一到（content/images 上屏，item.loading 转 false）就回到铺满的正常 AI 气泡。 */
 .bubble--ai.bubble--loading {
   width: auto;
-  max-width: 520rpx;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+  box-shadow: none;
+}
+
+.loading-bubble {
+  display: block;
+  width: 142rpx;
 }
 
 .bubble--user {
-  background: linear-gradient(135deg, #ff8a3c, #eb5f1b);
-  color: #ffffff;
-  border-top-right-radius: 8rpx;
+  color: #555555;
+  background: #ffddc8;
+  border-top-right-radius: 10rpx;
 }
 
 .bubble--image {
-  padding: 8rpx;
-  background: #ffffff;
-  box-shadow: 0 4rpx 16rpx rgba(31, 41, 61, 0.05);
+  width: 430rpx;
+  padding: 10rpx;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 12rpx 30rpx rgba(89, 76, 58, 0.07);
 }
 
-/* 气泡内的图片区：AI 回复里 N 张图竖着排，与上面的文字之间留一点间距 */
 .bubble-imgs {
   display: flex;
   flex-direction: column;
-  gap: 12rpx;
+  gap: 14rpx;
 }
 
 .bubble-text + .bubble-imgs {
-  margin-top: 16rpx;
+  margin-top: 18rpx;
 }
 
-/* 图片占位盒（需求 1.2/5.2）：高度由 padding-bottom 百分比（＝高/宽×100，行内样式给）**预先占住**，
-   所以图片加载完不会把上面的内容顶飞。图绝对定位铺满这个盒子。
-   ⚠️ padding-bottom 的百分比是相对**宽度**算的，所以 .img-box 必须有确定宽度（下面写死 400rpx）。 */
 .img-box {
   position: relative;
   width: 400rpx;
   max-width: 100%;
   height: 0;
-  border-radius: 18rpx;
   overflow: hidden;
-  background: #f2f5fc;
+  border-radius: 22rpx;
+  background: #eee9e2;
 }
 
-/* AI 气泡已按屏宽铺满（需求 6.2），里面的图跟着铺满气泡 —— 否则 686rpx 宽的白气泡里摆一张
-   400rpx 的图，右侧一大片空白。用户侧图片气泡不受影响，仍是上面的 400rpx（需求 6.3 维持现状）。 */
 .bubble-imgs .img-box {
-  width: 100%;
+  width: 510rpx;
 }
 
 .img-el {
   position: absolute;
   inset: 0;
+  display: block;
   width: 100%;
   height: 100%;
-  display: block;
 }
 
 .caret {
-  color: #eb5f1b;
+  color: #ef641e;
   animation: blink 0.8s infinite;
 }
 
@@ -274,113 +283,199 @@
   }
 }
 
-/* AI 回复 loading：三点闪烁 */
-.dots {
+.image-actions {
   display: flex;
+  align-items: center;
+  align-self: flex-start;
+  height: 76rpx;
+  margin-top: 12rpx;
+  padding: 0 18rpx;
+  border: 2rpx solid rgba(255, 255, 255, 0.92);
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 12rpx 28rpx rgba(74, 62, 46, 0.12);
+}
+
+.image-action {
+  display: flex;
+  align-items: center;
   gap: 10rpx;
-  padding: 8rpx 4rpx;
+  height: 100%;
+  padding: 0 14rpx;
+  color: #2f2f2f;
+  font-size: 25rpx;
 }
 
-.dot {
-  width: 12rpx;
-  height: 12rpx;
+.image-action--danger {
+  color: #ef4545;
+}
+
+.image-actions__divider {
+  width: 2rpx;
+  height: 34rpx;
+  background: #dedbd7;
+}
+
+/* 视觉稿尚未提供下载/投屏/删除图标，按约定保留小色块占位。 */
+.action-placeholder {
+  width: 23rpx;
+  height: 23rpx;
+  border: 3rpx solid currentColor;
+  border-radius: 5rpx;
+}
+
+.action-placeholder--download {
+  border-top-color: transparent;
+}
+
+.action-placeholder--project {
+  border-radius: 3rpx;
+}
+
+.action-placeholder--delete {
   border-radius: 50%;
-  background: #b4bcc9;
-  animation: dot-bounce 1.2s infinite;
-}
-
-.dot:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.dot:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes dot-bounce {
-  0%,
-  60%,
-  100% {
-    opacity: 0.35;
-    transform: translateY(0);
-  }
-  30% {
-    opacity: 1;
-    transform: translateY(-6rpx);
-  }
 }
 
 .bottom-anchor {
-  height: 24rpx;
+  height: 26rpx;
 }
 
-/* 生成中：给「停止生成」浮标腾出高度。浮标是 fixed 在输入区上方的，不腾这一块，
-   正在打出来的最后一两行就被它压住了（需求 2.2 的「底部打字内容会被遮住」）。
-   算法：浮标底边距屏底 220rpx，输入区高约 124rpx（都含同一份 safe-bottom，抵消掉），
-   即浮标底边高出聊天区底边约 96rpx，浮标自身约 62rpx 高 → 需要 ~160rpx，取 180rpx 留余量。 */
 .bottom-anchor--sending {
-  height: 180rpx;
+  height: 150rpx;
 }
 
-/* ==================== 停止生成 / 封禁 ==================== */
-.stop-pill {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(220rpx + var(--safe-bottom));
+/* ==================== 失败卡片 ==================== */
+.bubble--ai.bubble--failed {
+  position: relative;
+  width: 520rpx;
+  max-width: 520rpx;
+  padding: 10rpx;
+  overflow: visible;
+}
+
+.failure-card__delete {
+  position: absolute;
+  top: -54rpx;
+  right: -18rpx;
+  z-index: 2;
+  padding: 15rpx 24rpx;
+  border-radius: 22rpx;
+  color: #ef4545;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 10rpx 24rpx rgba(74, 62, 46, 0.1);
+  font-size: 24rpx;
+}
+
+.failure-card__visual {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400rpx;
+  padding: 38rpx;
+  border-radius: 22rpx;
+  background:
+    radial-gradient(circle at 50% 28%, rgba(255, 255, 255, 0.78), transparent 230rpx),
+    linear-gradient(180deg, #fff0e7 0%, #f5eee8 100%);
+}
+
+.failure-card__title {
+  color: #2b2b2b;
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.failure-card__desc {
+  margin-top: 16rpx;
+  color: #85817d;
+  font-size: 25rpx;
+  text-align: center;
+}
+
+.failure-card__retry {
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  background: #ffffff;
+  justify-content: center;
+  gap: 14rpx;
+  min-width: 260rpx;
+  height: 72rpx;
+  margin-top: 32rpx;
   border-radius: 999rpx;
-  padding: 14rpx 32rpx;
-  font-size: 26rpx;
-  color: #3d4350;
-  box-shadow: 0 8rpx 24rpx rgba(31, 41, 61, 0.12);
-  z-index: 10;
+  color: #ffffff;
+  background: linear-gradient(90deg, #ed8a69, #ed744f);
+  box-shadow: 0 14rpx 26rpx rgba(226, 111, 75, 0.22);
+  font-size: 27rpx;
+  font-weight: 500;
 }
 
-.stop-square {
-  width: 20rpx;
-  height: 20rpx;
-  border-radius: 4rpx;
-  background: #eb5f1b;
-}
-
-.banned-bar {
-  background: #fdecec;
-  color: #d64541;
-  font-size: 24rpx;
-  text-align: center;
-  padding: 12rpx 32rpx;
+.retry-placeholder {
+  font-size: 39rpx;
+  line-height: 1;
 }
 
 /* ==================== 输入区 ==================== */
-/* position: relative 是给录音动效层（.voice-cover）当定位父级用的：
-   它 absolute inset:0，于是输入区多高就盖多高 —— 工具栏一展开自动跟着变高（需求 4.2）。 */
-.input-area {
-  position: relative;
-  background: #ffffff;
-  border-top-left-radius: 24rpx;
-  border-top-right-radius: 24rpx;
-  box-shadow: 0 -6rpx 24rpx rgba(31, 41, 61, 0.06);
+.stop-pill {
+  position: fixed;
+  left: 50%;
+  bottom: calc(450rpx + var(--safe-bottom));
+  z-index: 14;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 13rpx 28rpx;
+  border-radius: 999rpx;
+  color: #555555;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 10rpx 28rpx rgba(74, 62, 46, 0.12);
+  font-size: 25rpx;
+  transform: translateX(-50%);
 }
 
-/* 待发送图片缩略图条（v1.0.3 图文多模态）：横向可滚动，停在输入行上方 */
+.stop-square {
+  width: 18rpx;
+  height: 18rpx;
+  border-radius: 4rpx;
+  background: #ef641e;
+}
+
+.banned-bar {
+  flex: 0 0 auto;
+  margin: 0 32rpx 12rpx;
+  padding: 11rpx 20rpx;
+  border-radius: 16rpx;
+  color: #d64541;
+  background: #fdecec;
+  font-size: 23rpx;
+  text-align: center;
+}
+
+.input-area {
+  position: relative;
+  z-index: 12;
+  flex: 0 0 auto;
+  margin: 8rpx 32rpx 18rpx;
+  padding: 20rpx 20rpx 18rpx;
+  border: 2rpx solid rgba(255, 255, 255, 0.94);
+  border-radius: 42rpx;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 20rpx 44rpx rgba(91, 72, 45, 0.16);
+}
+
 .pending-strip {
+  width: 100%;
+  margin-bottom: 14rpx;
   white-space: nowrap;
-  padding: 16rpx 24rpx 0;
 }
 
 .pending-thumb {
   position: relative;
   display: inline-block;
-  width: 112rpx;
-  height: 112rpx;
-  margin-right: 16rpx;
-  border-radius: 16rpx;
+  width: 100rpx;
+  height: 100rpx;
+  margin-right: 14rpx;
   overflow: hidden;
-  background: #f2f5fc;
+  border-radius: 16rpx;
+  background: #eee9e2;
   vertical-align: top;
 }
 
@@ -399,8 +494,8 @@
 }
 
 .pending-thumb__spin {
-  width: 32rpx;
-  height: 32rpx;
+  width: 30rpx;
+  height: 30rpx;
   border: 4rpx solid rgba(255, 255, 255, 0.35);
   border-top-color: #ffffff;
   border-radius: 50%;
@@ -408,81 +503,290 @@
 }
 
 @keyframes pending-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-/* 删除按钮：右上角小圆角 ✕（catchtap 阻止冒泡，只删不触发预览等） */
 .pending-thumb__del {
   position: absolute;
   top: 0;
   right: 0;
-  width: 36rpx;
-  height: 36rpx;
-  line-height: 36rpx;
-  text-align: center;
-  font-size: 22rpx;
-  color: #ffffff;
-  background: rgba(15, 20, 30, 0.55);
-  border-bottom-left-radius: 16rpx;
-}
-
-.input-bar {
   display: flex;
   align-items: center;
-  gap: 16rpx;
-  padding: 20rpx 24rpx;
+  justify-content: center;
+  width: 34rpx;
+  height: 34rpx;
+  color: #ffffff;
+  background: rgba(15, 20, 30, 0.55);
+  border-bottom-left-radius: 14rpx;
+  font-size: 23rpx;
 }
 
-.round-btn {
-  flex-shrink: 0;
+.quick-tools {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.35fr 1.75fr;
+  align-items: center;
+  gap: 8rpx;
 }
 
-.round-btn .icon-block {
-  border-radius: 50%;
+.quick-tool,
+.orientation-button,
+.generate-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9rpx;
+  min-width: 0;
+  height: 58rpx;
+  border-radius: 999rpx;
+  color: #6f6f6f;
+  font-size: 25rpx;
+  white-space: nowrap;
 }
 
-/* 输入框外层：承接「长按唤起语音」的手势（见 chat.wxml）。
-   flex 从 .chat-input 挪到这里，输入框改为撑满外层，视觉尺寸不变。 */
-.input-wrap {
+.quick-tool__icon {
+  width: 27rpx;
+  height: 27rpx;
+}
+
+.orientation-button {
+  border: 2rpx solid transparent;
+}
+
+.orientation-button--active {
+  color: #f26724;
+  border-color: #f5a77e;
+  background: #fff4ed;
+}
+
+.orientation-button__icon {
+  width: 27rpx;
+  height: 27rpx;
+  opacity: 0.75;
+}
+
+.orientation-button__tail {
+  color: inherit;
+  font-size: 34rpx;
+  line-height: 1;
+}
+
+.generate-button {
+  color: #ffffff;
+  background: linear-gradient(90deg, #ff5f24, #ff884a);
+  box-shadow: 0 10rpx 22rpx rgba(255, 104, 39, 0.22);
+  font-weight: 500;
+}
+
+.generate-button--active {
+  color: #f26724;
+  border: 2rpx solid #f26724;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: none;
+}
+
+.generate-button__icon {
+  width: 29rpx;
+  height: 29rpx;
+}
+
+.input-line {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  min-height: 82rpx;
+  margin-top: 12rpx;
+  padding: 0 4rpx 0 22rpx;
+  border-top: 1rpx solid rgba(92, 81, 68, 0.06);
+}
+
+.input-wrap,
+.voice-hold {
   flex: 1;
   min-width: 0;
 }
 
 .chat-input {
   width: 100%;
-  height: 72rpx;
-  background: #f2f5fc;
-  border-radius: 999rpx;
-  padding: 0 28rpx;
-  font-size: 28rpx;
-  box-sizing: border-box;
+  height: 78rpx;
+  color: #3a3a3a;
+  background: transparent;
+  font-size: 30rpx;
 }
 
 .voice-hold {
-  flex: 1;
-  min-width: 0;
-  height: 72rpx;
-  line-height: 72rpx;
-  text-align: center;
-  background: #f2f5fc;
+  height: 68rpx;
   border-radius: 999rpx;
+  color: #555555;
+  background: #f2eee9;
   font-size: 28rpx;
-  color: #3d4350;
+  line-height: 68rpx;
+  text-align: center;
 }
 
 .voice-hold--recording {
-  background: linear-gradient(135deg, #ff8a3c, #eb5f1b);
   color: #ffffff;
+  background: linear-gradient(90deg, #ff6c2a, #ff884a);
 }
 
-/* ==================== 录音动效（参考 deepseek：盖住整个输入区） ==================== */
+.send-image-button,
+.voice-switch {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 70rpx;
+  height: 70rpx;
+}
 
-/* 2026-07-27 需求 4：动效**替换文本输入的位置**（4.1），且工具栏展开时要连工具栏一起盖住（4.2）。
-   做法就是 absolute inset:0 长在 .input-area 里 —— 输入区多高它就多高，缩略图条/工具栏一出现
-   自动跟着变高，不需要 JS 量任何高度。
-   ⚠️ pointer-events:none 必须留着：手指还按在下面的输入框/说话条上，动效层一旦吃掉触摸，
-      touchmove/touchend 就收不到 → 永远卡在录音态。
-   ⚠️ 这里**不显示识别文字**（需求 4.3），只有波形 + 手势提示。 */
+.send-image-button image {
+  width: 70rpx;
+  height: 70rpx;
+}
+
+.send-image-button--disabled {
+  opacity: 0.42;
+}
+
+.voice-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 15rpx;
+  color: #ffffff;
+  background: #7c7c7c;
+  font-size: 20rpx;
+}
+
+/* 方向/风格缺少完整图标资源，菜单内未提供的方向仍按约定以描边色块占位。 */
+.tool-popover {
+  position: absolute;
+  bottom: calc(100% + 18rpx);
+  z-index: 18;
+  border: 2rpx solid rgba(255, 255, 255, 0.92);
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18rpx 42rpx rgba(77, 62, 43, 0.18);
+}
+
+.orientation-popover {
+  left: 252rpx;
+  width: 250rpx;
+  padding: 12rpx;
+}
+
+.orientation-option {
+  display: grid;
+  grid-template-columns: 34rpx 1fr 26rpx;
+  align-items: center;
+  gap: 14rpx;
+  height: 72rpx;
+  padding: 0 16rpx;
+  border-radius: 22rpx;
+  color: #303030;
+  font-size: 28rpx;
+}
+
+.orientation-option--active {
+  color: #f26724;
+  background: #fff0e7;
+}
+
+.orientation-option__image {
+  width: 28rpx;
+  height: 28rpx;
+}
+
+.orientation-placeholder {
+  justify-self: center;
+  width: 27rpx;
+  height: 18rpx;
+  border: 3rpx solid currentColor;
+  border-radius: 4rpx;
+}
+
+.orientation-placeholder--square {
+  width: 22rpx;
+  height: 22rpx;
+}
+
+.orientation-check {
+  width: 15rpx;
+  height: 8rpx;
+  border-bottom: 4rpx solid currentColor;
+  border-left: 4rpx solid currentColor;
+  transform: rotate(-45deg);
+}
+
+.style-popover {
+  right: 0;
+  width: 310rpx;
+  padding: 22rpx 24rpx;
+}
+
+.style-popover__header {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  margin-bottom: 14rpx;
+}
+
+.style-popover__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 54rpx;
+  height: 54rpx;
+  border-radius: 50%;
+  background: #ff6d2c;
+}
+
+.style-popover__mark image {
+  width: 30rpx;
+  height: 30rpx;
+}
+
+.style-popover__title {
+  color: #2c2c2c;
+  font-size: 29rpx;
+  font-weight: 600;
+}
+
+.style-popover__desc {
+  margin-top: 2rpx;
+  color: #9b9691;
+  font-size: 20rpx;
+}
+
+.style-option {
+  display: grid;
+  grid-template-columns: 18rpx 1fr 18rpx;
+  align-items: center;
+  gap: 14rpx;
+  height: 64rpx;
+  color: #303030;
+  font-size: 27rpx;
+}
+
+.style-option__dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background: #ff7840;
+}
+
+.style-option__arrow {
+  width: 13rpx;
+  height: 13rpx;
+  border-top: 3rpx solid #aaa6a1;
+  border-right: 3rpx solid #aaa6a1;
+  transform: rotate(45deg);
+}
+
+/* ==================== 录音动效 ==================== */
 .voice-cover {
   position: absolute;
   inset: 0;
@@ -491,34 +795,29 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16rpx;
-  padding: 20rpx 32rpx calc(12rpx + var(--safe-bottom));
-  box-sizing: border-box;
-  background: #ffffff;
-  border-top-left-radius: 24rpx;
-  border-top-right-radius: 24rpx;
+  gap: 13rpx;
+  padding: 20rpx 32rpx;
+  border-radius: 42rpx;
+  background: rgba(255, 255, 255, 0.98);
   pointer-events: none;
 }
 
-/* 上滑到取消区：整块转红，与文案同步给出「这一松手就丢了」的信号 */
 .voice-cover--cancel {
   background: #fdecec;
 }
 
-/* 跳动的竖条：纯 CSS 录音动画，不依赖真实音量（getRecorderManager 不给实时分贝）。
-   只表示「正在听」，别理解成音量条。 */
 .voice-wave {
   display: flex;
   align-items: center;
-  gap: 10rpx;
-  height: 56rpx;
+  gap: 9rpx;
+  height: 52rpx;
 }
 
 .voice-wave__bar {
   width: 8rpx;
   height: 20rpx;
-  background: #eb5f1b;
   border-radius: 999rpx;
+  background: #ef641e;
   animation: voiceWave 0.9s ease-in-out infinite;
 }
 
@@ -534,13 +833,18 @@
 .voice-wave__bar:nth-child(7) { animation-delay: 0.72s; }
 
 @keyframes voiceWave {
-  0%, 100% { height: 20rpx; }
-  50% { height: 52rpx; }
+  0%,
+  100% {
+    height: 20rpx;
+  }
+  50% {
+    height: 50rpx;
+  }
 }
 
 .voice-tip {
-  font-size: 26rpx;
-  color: #8b9098;
+  color: #8b8681;
+  font-size: 24rpx;
   text-align: center;
 }
 
@@ -550,164 +854,150 @@
 
 .voice-tip--warn {
   color: #eb8f1b;
-  font-size: 22rpx;
+  font-size: 21rpx;
 }
 
-.send-btn {
-  flex-shrink: 0;
-  height: 72rpx;
-  line-height: 72rpx;
-  padding: 0 32rpx;
-  border-radius: 999rpx;
-  background: #e4e9f2;
-  color: #9aa3b0;
-  font-size: 28rpx;
-}
-
-.send-btn--active {
-  background: linear-gradient(135deg, #ff8a3c, #eb5f1b);
-  color: #ffffff;
-}
-
-.tools-panel {
-  border-top: 1rpx solid #f0f2f7;
-  padding: 24rpx 32rpx 8rpx;
-}
-
-.tools-grid {
-  display: flex;
-  gap: 56rpx;
-}
-
-.tool-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12rpx;
-  font-size: 24rpx;
-  color: #55606e;
-}
-
-.tool-item .icon-block {
-  width: 88rpx;
-  height: 88rpx;
-  border-radius: 24rpx;
-  font-size: 36rpx;
-}
-
-.ratio-row {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  padding: 24rpx 0 16rpx;
-}
-
-.ratio-label {
-  font-size: 24rpx;
-  color: #8b9098;
-  margin-right: 8rpx;
-}
-
-.ratio-chip {
-  padding: 10rpx 28rpx;
-  border-radius: 999rpx;
-  background: #f2f5fc;
-  font-size: 24rpx;
-  color: #55606e;
-}
-
-.ratio-chip--active {
-  background: rgba(235, 95, 27, 0.1);
-  color: #eb5f1b;
-  font-weight: 500;
-}
-
-.input-safe {
-  height: calc(12rpx + var(--safe-bottom));
-}
-
-/* ==================== 底部弹层（风格选择 / 设备选择） ==================== */
+/* ==================== 投屏设备选择 ==================== */
 .sheet-mask {
   position: fixed;
   inset: 0;
-  background: rgba(15, 20, 30, 0.45);
-  z-index: 20;
+  z-index: 40;
   display: flex;
   align-items: flex-end;
+  background: rgba(30, 29, 27, 0.42);
 }
 
-.sheet {
+.device-sheet {
   width: 100%;
-  background: #ffffff;
-  border-top-left-radius: 32rpx;
-  border-top-right-radius: 32rpx;
-  padding: 32rpx 32rpx calc(24rpx + var(--safe-bottom));
-  box-sizing: border-box;
+  max-height: 78vh;
+  padding: 32rpx 48rpx calc(26rpx + var(--safe-bottom));
+  border-top-left-radius: 42rpx;
+  border-top-right-radius: 42rpx;
+  background: #f8f6f1;
+  box-shadow: 0 -14rpx 40rpx rgba(50, 43, 34, 0.12);
+  animation: device-sheet-in 0.28s ease-out;
 }
 
-.sheet-title {
+@keyframes device-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.device-sheet__title {
+  color: #252525;
+  font-size: 38rpx;
+  font-weight: 600;
   text-align: center;
-  font-size: 30rpx;
-  font-weight: 500;
-  color: #1f2733;
-  margin-bottom: 32rpx;
+}
+
+.device-sheet__desc {
+  margin-top: 10rpx;
+  color: #8d8984;
+  font-size: 25rpx;
+  text-align: center;
+}
+
+.device-sheet__divider {
+  height: 2rpx;
+  margin: 25rpx 0 20rpx;
+  background: #dfdbd5;
 }
 
 .sheet-loading {
-  padding: 40rpx 0;
-}
-
-.style-grid {
-  display: flex;
-  justify-content: space-around;
-  margin-bottom: 24rpx;
-}
-
-.style-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16rpx;
-  font-size: 26rpx;
-  color: #3d4350;
+  min-height: 260rpx;
+  padding: 44rpx 0;
 }
 
 .device-list {
-  max-height: 480rpx;
+  max-height: 560rpx;
 }
 
 .device-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: 88rpx 1fr 48rpx;
   align-items: center;
-  gap: 20rpx;
-  padding: 24rpx 8rpx;
-  border-bottom: 1rpx solid #f0f2f7;
+  gap: 22rpx;
+  min-height: 120rpx;
+  margin-bottom: 16rpx;
+  padding: 16rpx 26rpx;
+  border: 2rpx solid rgba(255, 255, 255, 0.92);
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.84);
 }
 
-.device-copy {
-  flex: 1;
-  min-width: 0;
+.device-item--selected {
+  border-color: #df7654;
+  background: #fff8f4;
+}
+
+.device-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 22rpx;
+  color: #ff6e28;
+  background: #fff0e9;
+  font-size: 23rpx;
+}
+
+.device-placeholder--1 {
+  color: #2dad6f;
+  background: #eaf8f0;
+}
+
+.device-placeholder--2 {
+  color: #5794ef;
+  background: #eaf2ff;
 }
 
 .device-name {
-  font-size: 28rpx;
-  color: #1f2733;
+  overflow: hidden;
+  color: #2c2c2c;
+  font-size: 30rpx;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.device-desc {
-  font-size: 22rpx;
-  color: #8b9098;
-  margin-top: 4rpx;
+.device-radio {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42rpx;
+  height: 42rpx;
+  border: 3rpx solid #c5c2be;
+  border-radius: 50%;
 }
 
-.sheet-cancel {
-  margin-top: 16rpx;
-  text-align: center;
-  padding: 20rpx 0;
+.device-radio--selected {
+  border-color: #e87c5a;
+  background: #e87c5a;
+}
+
+.device-radio__check {
+  width: 18rpx;
+  height: 10rpx;
+  border-bottom: 5rpx solid #ffffff;
+  border-left: 5rpx solid #ffffff;
+  transform: rotate(-45deg);
+}
+
+.device-sheet__cancel {
+  height: 84rpx;
+  margin-top: 24rpx;
   border-radius: 999rpx;
-  background: #f2f5fc;
-  color: #55606e;
-  font-size: 28rpx;
+  color: #272727;
+  background: #eeeae5;
+  font-size: 31rpx;
+  font-weight: 500;
+  line-height: 84rpx;
+  text-align: center;
 }
 
 /* ==================== AI 服务协议确认框 ==================== */
@@ -719,7 +1009,6 @@
   align-items: center;
   justify-content: center;
   padding: 48rpx;
-  box-sizing: border-box;
   background: rgba(27, 31, 38, 0.5);
 }
 
@@ -727,7 +1016,6 @@
   width: 100%;
   max-width: 654rpx;
   padding: 44rpx 40rpx 36rpx;
-  box-sizing: border-box;
   border-radius: 32rpx;
   background: #ffffff;
   box-shadow: 0 24rpx 72rpx rgba(20, 28, 42, 0.2);

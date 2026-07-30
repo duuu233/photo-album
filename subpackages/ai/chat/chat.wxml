@@ -1,33 +1,29 @@
-<view class="ai-root" style="--safe-bottom: {{safeBottom}}px;">
-  <page-nav title="{{sessionTitle}}"></page-nav>
-
-  <!-- 标题栏下方工具行：左「会话历史」入口 / 右 Token 余额 + 新对话（需求：历史图标在左上角、Token 在标题栏下方） -->
-  <view class="ai-toolbar" bindtap="closeTools">
-    <view class="toolbar-btn" hover-class="none" bindtap="goSessions">
-      <view class="icon-block icon-block--orange">≡</view>
-      <text>会话</text>
-    </view>
-    <view class="toolbar-right">
-      <view class="token-pill">
-        <view class="icon-block icon-block--mini icon-block--gold">T</view>
-        <text>Token {{tokenBalance}}</text>
+<view
+  class="ai-root"
+  style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;"
+>
+  <view class="ai-header" bindtap="closeTools">
+    <view class="ai-header__row">
+      <view class="history-button" hover-class="header-button--pressed" bindtap="goSessions">
+        <view class="history-button__line"></view>
+        <view class="history-button__line"></view>
+        <view class="history-button__line"></view>
       </view>
-      <view class="toolbar-btn" hover-class="none" bindtap="startNewSession">
-        <view class="icon-block icon-block--blue">＋</view>
-        <text>新对话</text>
+
+      <view class="ai-header__title">{{sessionTitle || '新对话'}}</view>
+
+      <view class="token-pill">
+        <image
+          class="token-pill__icon"
+          src="/assets/images/ai-token-spark.png"
+          mode="aspectFit"
+        ></image>
+        <text class="token-pill__value">{{tokenBalance}}</text>
+        <text class="token-pill__unit">Token</text>
       </view>
     </view>
   </view>
 
-  <!-- 聊天区。
-       · scroll-top 交替大值贴底（见 chat.js stickToBottom），不再用 scroll-into-view 锚点；
-       · chat-scroll--warming：首屏「已渲染但透明」，等定位到底部再显形（需求 5.1），
-         否则用户会看见内容从最老一条一路滚到最新那一下；
-       · 加载中的 spinner 挪到 scroll-view **外面**盖着：内容必须一直在渲染树里才滚得动。 -->
-  <!-- bindtap="closeTools"：＋ 工具栏展开时，点聊天区任意位置就收起（2026-07-27 需求 2，仿底部弹框点外面关闭）。
-       为什么不做成撑满全屏的透明遮罩层：遮罩会把**拖动**也一起吃掉，工具栏开着时聊天记录就滑不动了、
-       手指划半天没反应；绑 tap 在容器上则只吃点击，滚动照常。气泡里的图自己 catchtap（要看大图），
-       所以点图不会顺手关掉工具栏，这是有意的。 -->
   <view class="chat-wrap" bindtap="closeTools">
     <scroll-view
       class="chat-scroll {{chatReady ? '' : 'chat-scroll--warming'}}"
@@ -37,59 +33,134 @@
       bindscroll="onChatScroll"
       enable-passive
     >
-      <!-- 默认状态：星宝招呼语居中（需求原文案） -->
       <view wx:if="{{!historyLoading && !messages.length}}" class="welcome">
-        <view class="welcome-avatar icon-block icon-block--xl icon-block--purple">✨</view>
-        <view class="welcome-text">你好！我是星宝✨，你的AI创作伙伴。有什么我可以帮你的吗？</view>
-        <view class="welcome-tip">试试：输入「画一只卡通猫」，或点 ＋ 一键生图</view>
+        <view class="welcome-mark">
+          <image src="/assets/images/ai-spark-white.png" mode="aspectFit"></image>
+        </view>
+        <view class="welcome-title">你好，我是星宝</view>
+        <view class="welcome-text">你的 AI 创作伙伴，有什么我可以帮你的吗？</view>
+        <view class="welcome-tip">试试输入「画一只卡通猫」</view>
       </view>
 
       <block wx:for="{{messages}}" wx:key="id">
-        <view id="msg-{{item.id}}" class="msg-row {{item.role === 'user' ? 'msg-row--user' : 'msg-row--ai'}}">
-          <!-- AI 回复气泡（需求 3/6）：文字与图片在**同一个气泡**里；不放头像；宽度按屏宽铺满。
-               气泡本体长按＝删除整条，气泡里某张图的长按/点击由图自己 catch 掉（见下） -->
+        <view wx:if="{{item.timeLabel}}" class="message-time">{{item.timeLabel}}</view>
+
+        <view
+          id="msg-{{item.id}}"
+          class="msg-row {{item.role === 'user' ? 'msg-row--user' : 'msg-row--ai'}}"
+        >
           <view
             wx:if="{{item.role !== 'user'}}"
-            class="bubble bubble--ai {{item.loading ? 'bubble--loading' : ''}}"
+            class="bubble bubble--ai {{item.loading ? 'bubble--loading' : ''}} {{item.failed ? 'bubble--failed' : ''}}"
             bindlongpress="onBubbleLongPress"
             data-id="{{item.id}}"
           >
-            <view wx:if="{{item.loading}}" class="dots">
-              <view class="dot"></view>
-              <view class="dot"></view>
-              <view class="dot"></view>
-            </view>
-            <text wx:elif="{{item.content}}" class="bubble-text" user-select>{{item.content}}<text wx:if="{{item.typing}}" class="caret">▍</text></text>
-
-            <view wx:if="{{item.images.length}}" class="bubble-imgs">
-              <!-- 占位盒：padding-bottom 先按已知比例把高度占住，图加载完不顶内容（需求 1.2/5.2）；
-                   bindload 回来再用真实尺寸校正 -->
+            <view wx:if="{{item.failed}}" class="failure-card">
               <view
-                wx:for="{{item.images}}"
-                wx:for-item="img"
-                wx:key="url"
-                class="img-box"
-                style="padding-bottom: {{img.pad}}%"
-                catchtap="onImageTap"
-                catchlongpress="onImageLongPress"
-                data-url="{{img.url}}"
+                class="failure-card__delete"
                 data-id="{{item.id}}"
-                data-index="{{index}}"
-              >
-                <image
-                  class="img-el"
-                  src="{{img.url}}"
-                  mode="aspectFit"
-                  lazy-load
-                  bindload="onImageLoad"
+                catchtap="onFailureDelete"
+              >删除</view>
+              <view class="failure-card__visual">
+                <view class="failure-card__title">{{item.failureTitle}}</view>
+                <view class="failure-card__desc">{{item.failureDesc}}</view>
+                <view
+                  class="failure-card__retry"
                   data-id="{{item.id}}"
-                  data-index="{{index}}"
-                ></image>
+                  catchtap="onRetryMessage"
+                >
+                  <view class="retry-placeholder">↻</view>
+                  <text>重新生成</text>
+                </view>
               </view>
             </view>
+
+            <image
+              wx:elif="{{item.loading}}"
+              class="loading-bubble"
+              src="/assets/images/ai-loading-bubble.png"
+              mode="widthFix"
+            ></image>
+
+            <block wx:else>
+              <text wx:if="{{item.content}}" class="bubble-text" user-select>
+                {{item.content}}
+                <text wx:if="{{item.typing}}" class="caret">▍</text>
+              </text>
+
+              <view wx:if="{{item.images.length}}" class="bubble-imgs">
+                <block
+                  wx:for="{{item.images}}"
+                  wx:for-item="img"
+                  wx:for-index="imgIndex"
+                  wx:key="url"
+                >
+                  <view
+                    class="img-box"
+                    style="padding-bottom: {{img.pad}}%"
+                    catchtap="onImageTap"
+                    catchlongpress="onImageLongPress"
+                    data-url="{{img.url}}"
+                    data-id="{{item.id}}"
+                    data-index="{{imgIndex}}"
+                  >
+                    <image
+                      class="img-el"
+                      src="{{img.url}}"
+                      mode="aspectFill"
+                      lazy-load
+                      bindload="onImageLoad"
+                      data-id="{{item.id}}"
+                      data-index="{{imgIndex}}"
+                    ></image>
+                  </view>
+
+                  <view
+                    wx:if="{{activeImageMessageId === item.id && activeImageIndex === imgIndex}}"
+                    class="image-actions"
+                    catchtap="noop"
+                  >
+                    <view
+                      class="image-action"
+                      data-action="download"
+                      data-url="{{img.url}}"
+                      data-id="{{item.id}}"
+                      data-index="{{imgIndex}}"
+                      bindtap="onImageActionTap"
+                    >
+                      <view class="action-placeholder action-placeholder--download"></view>
+                      <text>下载</text>
+                    </view>
+                    <view class="image-actions__divider"></view>
+                    <view
+                      class="image-action"
+                      data-action="project"
+                      data-url="{{img.url}}"
+                      data-id="{{item.id}}"
+                      data-index="{{imgIndex}}"
+                      bindtap="onImageActionTap"
+                    >
+                      <view class="action-placeholder action-placeholder--project"></view>
+                      <text>投屏</text>
+                    </view>
+                    <view class="image-actions__divider"></view>
+                    <view
+                      class="image-action image-action--danger"
+                      data-action="delete"
+                      data-url="{{img.url}}"
+                      data-id="{{item.id}}"
+                      data-index="{{imgIndex}}"
+                      bindtap="onImageActionTap"
+                    >
+                      <view class="action-placeholder action-placeholder--delete"></view>
+                      <text>删除</text>
+                    </view>
+                  </view>
+                </block>
+              </view>
+            </block>
           </view>
 
-          <!-- 用户文字气泡（需求 6.3：用户侧维持现状不变） -->
           <view
             wx:elif="{{item.kind === 'text'}}"
             class="bubble bubble--user"
@@ -99,7 +170,6 @@
             <text class="bubble-text" user-select>{{item.content}}</text>
           </view>
 
-          <!-- 用户图片气泡：点击预览，长按 下载/投屏/删除 -->
           <view
             wx:else
             class="bubble bubble--image"
@@ -112,7 +182,7 @@
               <image
                 class="img-el"
                 src="{{item.images[0].url}}"
-                mode="aspectFit"
+                mode="aspectFill"
                 lazy-load
                 bindload="onImageLoad"
                 data-id="{{item.id}}"
@@ -123,8 +193,6 @@
         </view>
       </block>
 
-      <!-- 底部留白。sending 期间加高：「停止生成」浮标是 fixed 在输入区上方的，
-           不留出这段高度它就会**盖住正在打出来的最后两行**（需求 2.2 的「被遮住」） -->
       <view class="bottom-anchor {{sending ? 'bottom-anchor--sending' : ''}}"></view>
     </scroll-view>
 
@@ -134,39 +202,77 @@
     </view>
   </view>
 
-  <!-- 生成中的「停止」浮标（终止 AI 回复，文档 §5.3.4） -->
   <view wx:if="{{sending}}" class="stop-pill" bindtap="onStopTap">
     <view class="stop-square"></view>
     <text>停止生成</text>
   </view>
 
-  <!-- 封禁横幅：22002/22003 后禁用输入 -->
   <view wx:if="{{banned}}" class="banned-bar">账号已被限制，暂时无法使用 AI 对话</view>
 
-  <!-- 底部输入区 -->
   <view class="input-area">
-    <!-- 待发送图片缩略图（v1.0.3 图文多模态 §5.1.4）：停在输入框内，每张可删、最多 4 张；
-         纯图片不可发，须配文字。上传中显示遮罩转圈，回填 URL 后可发送。 -->
     <scroll-view wx:if="{{pendingImages.length}}" class="pending-strip" scroll-x>
       <view wx:for="{{pendingImages}}" wx:key="id" class="pending-thumb">
-        <image class="pending-thumb__img" src="{{item.url || item.tempFilePath}}" mode="aspectFill"></image>
+        <image
+          class="pending-thumb__img"
+          src="{{item.url || item.tempFilePath}}"
+          mode="aspectFill"
+        ></image>
         <view wx:if="{{item.uploading}}" class="pending-thumb__mask">
           <view class="pending-thumb__spin"></view>
         </view>
-        <view class="pending-thumb__del" catchtap="removePendingImage" data-index="{{index}}">✕</view>
+        <view
+          class="pending-thumb__del"
+          catchtap="removePendingImage"
+          data-index="{{index}}"
+        >×</view>
       </view>
     </scroll-view>
 
-    <view class="input-bar">
-      <view class="round-btn" hover-class="none" bindtap="toggleVoice">
-        <view class="icon-block icon-block--grey">{{voiceMode ? '⌨' : '🎤'}}</view>
+    <view class="quick-tools">
+      <view class="quick-tool" hover-class="quick-tool--pressed" bindtap="chooseAlbum">
+        <image
+          class="quick-tool__icon"
+          src="/assets/images/ai-album.png"
+          mode="aspectFit"
+        ></image>
+        <text>相册</text>
       </view>
+      <view class="quick-tool" hover-class="quick-tool--pressed" bindtap="chooseCamera">
+        <image
+          class="quick-tool__icon"
+          src="/assets/images/ai-camera.png"
+          mode="aspectFit"
+        ></image>
+        <text>拍照</text>
+      </view>
+      <view
+        class="orientation-button {{showOrientationPicker ? 'orientation-button--active' : ''}}"
+        hover-class="quick-tool--pressed"
+        bindtap="toggleOrientationPicker"
+      >
+        <image
+          class="orientation-button__icon"
+          src="/assets/images/ai-orientation-vertical.png"
+          mode="aspectFit"
+        ></image>
+        <text>{{orientationLabel}}</text>
+        <view class="orientation-button__tail">{{showOrientationPicker ? '×' : '›'}}</view>
+      </view>
+      <view
+        class="generate-button {{showStylePicker ? 'generate-button--active' : ''}}"
+        hover-class="quick-tool--pressed"
+        bindtap="openStylePicker"
+      >
+        <image
+          class="generate-button__icon"
+          src="{{showStylePicker ? '/assets/images/ai-token-spark.png' : '/assets/images/ai-spark-white.png'}}"
+          mode="aspectFit"
+        ></image>
+        <text>一键生图</text>
+      </view>
+    </view>
 
-      <!-- 长按输入框区域直接唤起语音（需求「支持长按输入框区域或专属语音按钮」）。
-           手势绑在外层 view 且用 bind（不是 catch）：短按照常穿透给 <input> 聚焦打字，
-           按住超过 INPUT_HOLD_MS 且几乎没动才起录音，之后的移动/松手复用「按住说话」那套。
-           disabled 里带 recording：长按已唤起语音后，松手那一下仍会落在 <input> 上，
-           不禁用就会原生聚焦弹出键盘（js 侧另有 hideKeyboard 兜底已聚焦/机型差异两种情况）。 -->
+    <view class="input-line">
       <view
         wx:if="{{!voiceMode}}"
         class="input-wrap"
@@ -178,7 +284,7 @@
         <input
           class="chat-input"
           value="{{inputValue}}"
-          placeholder="{{banned ? '账号已被限制' : (pendingImages.length ? '描述你想对图片做什么…' : '和星宝说点什么…')}}"
+          placeholder="{{banned ? '账号已被限制' : (pendingImages.length ? '描述你想对图片做什么…' : '输入你的想法…')}}"
           disabled="{{banned || recording}}"
           confirm-type="send"
           bindinput="onInput"
@@ -186,6 +292,7 @@
           bindconfirm="onSendTap"
         />
       </view>
+
       <view
         wx:else
         class="voice-hold {{recording ? 'voice-hold--recording' : ''}}"
@@ -195,49 +302,73 @@
         bindtouchcancel="onVoiceEnd"
       >{{recording ? (voiceCancel ? '松开取消' : '松开发送') : '按住 说话'}}</view>
 
-      <view class="round-btn" hover-class="none" bindtap="toggleTools">
-        <view class="icon-block icon-block--grey">＋</view>
+      <view
+        wx:if="{{inputValue && !voiceMode}}"
+        class="send-image-button {{sending || submitting || banned ? 'send-image-button--disabled' : ''}}"
+        hover-class="quick-tool--pressed"
+        bindtap="onSendTap"
+      >
+        <image
+          src="/assets/images/ai-send.png"
+          mode="aspectFit"
+        ></image>
       </view>
-      <!-- submitting：已点发送但请求还没发出（建会话中）也要置灰，否则这段空窗能连点重复发送 -->
-      <view class="send-btn {{inputValue && !sending && !submitting && !banned ? 'send-btn--active' : ''}}" hover-class="none" bindtap="onSendTap">发送</view>
+      <view
+        wx:else
+        class="voice-switch"
+        hover-class="quick-tool--pressed"
+        bindtap="toggleVoice"
+      >
+        <view class="voice-placeholder">{{voiceMode ? '键' : '麦'}}</view>
+      </view>
     </view>
 
-    <!-- ＋ 工具面板：相册 / 拍照 / 一键生图 / 图片比例 -->
-    <view wx:if="{{showTools}}" class="tools-panel">
-      <view class="tools-grid">
-        <view class="tool-item" hover-class="none" bindtap="chooseAlbum">
-          <view class="icon-block icon-block--green">图</view>
-          <text>相册</text>
-        </view>
-        <view class="tool-item" hover-class="none" bindtap="chooseCamera">
-          <view class="icon-block icon-block--blue">拍</view>
-          <text>拍照</text>
-        </view>
-        <view class="tool-item" hover-class="none" bindtap="openStylePicker">
-          <view class="icon-block icon-block--orange">生</view>
-          <text>一键生图</text>
-        </view>
-      </view>
-      <view class="ratio-row">
-        <text class="ratio-label">图片比例</text>
+    <view wx:if="{{showOrientationPicker}}" class="tool-popover orientation-popover" catchtap="noop">
+      <view
+        wx:for="{{orientationOptions}}"
+        wx:key="key"
+        class="orientation-option {{orientation === item.key ? 'orientation-option--active' : ''}}"
+        data-key="{{item.key}}"
+        bindtap="onOrientationTap"
+      >
+        <image
+          wx:if="{{item.key === 'vertical'}}"
+          class="orientation-option__image"
+          src="/assets/images/ai-orientation-vertical.png"
+          mode="aspectFit"
+        ></image>
         <view
-          wx:for="{{orientationOptions}}"
-          wx:key="key"
-          class="ratio-chip {{orientation === item.key ? 'ratio-chip--active' : ''}}"
-          data-key="{{item.key}}"
-          bindtap="onOrientationTap"
-        >{{item.label}}</view>
+          wx:else
+          class="orientation-placeholder orientation-placeholder--{{item.key}}"
+        ></view>
+        <text>{{item.label}}</text>
+        <view wx:if="{{orientation === item.key}}" class="orientation-check"></view>
       </view>
     </view>
-    <view class="input-safe"></view>
 
-    <!-- 录音动效（2026-07-27 需求 4，参考 deepseek）：不再是屏幕居中的浮层，而是**盖住整个输入区**
-         —— 就长在 .input-area 里、absolute inset:0，所以工具栏一展开、待发图缩略图一出现，
-         它自动跟着变高把「输入框 + 工具栏」全遮住（需求 4.2），无需 JS 算高度。
-         ⚠️ pointer-events:none 必须留着：手指还按在下面的输入框/说话条上，动效层一旦吃掉触摸，
-            touchmove/touchend 就收不到，会永远卡在录音态。
-         ⚠️ 需求 4.3：这里**不显示任何识别文字**（连中间结果都不取，见 chat.js bindSpeechHandlers），
-            松手后识别结果直接作为一条用户消息发出去。 -->
+    <view wx:if="{{showStylePicker}}" class="tool-popover style-popover" catchtap="noop">
+      <view class="style-popover__header">
+        <view class="style-popover__mark">
+          <image src="/assets/images/ai-spark-white.png" mode="aspectFit"></image>
+        </view>
+        <view>
+          <view class="style-popover__title">一键生图</view>
+          <view class="style-popover__desc">选择后立即发送</view>
+        </view>
+      </view>
+      <view
+        wx:for="{{styleOptions}}"
+        wx:key="key"
+        class="style-option"
+        data-key="{{item.key}}"
+        bindtap="onStyleTap"
+      >
+        <view class="style-option__dot"></view>
+        <text>{{item.label}}</text>
+        <view class="style-option__arrow"></view>
+      </view>
+    </view>
+
     <view wx:if="{{recording}}" class="voice-cover {{voiceCancel ? 'voice-cover--cancel' : ''}}">
       <view class="voice-wave">
         <view class="voice-wave__bar"></view>
@@ -249,35 +380,18 @@
         <view class="voice-wave__bar"></view>
       </view>
       <view class="voice-tip">{{voiceCancel ? '松开手指，取消发送' : '上滑取消 · 松开直接发送'}}</view>
-      <!-- 插件没开通时只能录音、转不了字：这是**能力提示**不是识别结果，说一声免得用户白说一段 -->
       <view wx:if="{{!speechReady}}" class="voice-tip voice-tip--warn">未开通语音转文字插件</view>
     </view>
   </view>
 
-  <!-- 一键生图风格弹层：漫画/风景/肖像/动漫 -->
-  <view wx:if="{{showStylePicker}}" class="sheet-mask" bindtap="closeStylePicker">
-    <view class="sheet" catchtap="noop">
-      <view class="sheet-title">选择生图模式</view>
-      <view class="style-grid">
-        <view
-          wx:for="{{styleOptions}}"
-          wx:key="key"
-          class="style-item"
-          data-key="{{item.key}}"
-          bindtap="onStyleTap"
-        >
-          <view class="icon-block icon-block--xl icon-block--{{index % 2 ? 'blue' : 'orange'}}">{{item.label[0]}}</view>
-          <text>{{item.label}}</text>
-        </view>
-      </view>
-      <view class="sheet-cancel" bindtap="closeStylePicker">取消</view>
-    </view>
-  </view>
+  <custom-tabbar active="ai" safe-bottom="{{safeBottom}}"></custom-tabbar>
 
-  <!-- 投屏设备选择弹窗（未连接时）：已绑定设备列表，选择后自动连接进投屏 -->
   <view wx:if="{{devicePicker.show}}" class="sheet-mask" bindtap="closeDevicePicker">
-    <view class="sheet" catchtap="noop">
-      <view class="sheet-title">选择投屏设备</view>
+    <view class="device-sheet" catchtap="noop">
+      <view class="device-sheet__title">选择投屏设备</view>
+      <view class="device-sheet__desc">选择设备后，将自动连接并开始投屏</view>
+      <view class="device-sheet__divider"></view>
+
       <view wx:if="{{devicePicker.loading}}" class="page-loading sheet-loading">
         <view class="page-loading__spinner"></view>
         <view class="page-loading__text">加载中…</view>
@@ -285,23 +399,22 @@
       <scroll-view wx:else scroll-y class="device-list">
         <view
           wx:for="{{devicePicker.devices}}"
-          wx:key="id"
-          class="device-item"
+          wx:key="pickerId"
+          class="device-item {{item.pickerId === devicePicker.selectedId ? 'device-item--selected' : ''}}"
           data-index="{{index}}"
           bindtap="onDevicePickerSelect"
         >
-          <view class="icon-block icon-block--blue">屏</view>
-          <view class="device-copy">
-            <view class="device-name">{{item.name || item.productName || '智能相框'}}</view>
-            <view class="device-desc">{{item.connected ? '已连接' : '未连接，选择后自动连接'}}</view>
+          <view class="device-placeholder device-placeholder--{{index % 3}}">屏</view>
+          <view class="device-name">{{item.name || item.productName || '智能相框'}}</view>
+          <view class="device-radio {{item.pickerId === devicePicker.selectedId ? 'device-radio--selected' : ''}}">
+            <view wx:if="{{item.pickerId === devicePicker.selectedId}}" class="device-radio__check"></view>
           </view>
         </view>
       </scroll-view>
-      <view class="sheet-cancel" bindtap="closeDevicePicker">取消</view>
+      <view class="device-sheet__cancel" bindtap="closeDevicePicker">取消</view>
     </view>
   </view>
 
-  <!-- 原生 wx.showModal 无法控制正文对齐；AI 协议需要两段说明稳定居左，故使用页内确认框。 -->
   <view wx:if="{{consentDialogVisible}}" class="consent-mask" catchtouchmove="noop">
     <view class="consent-dialog" catchtap="noop">
       <view class="consent-dialog__title">{{consentDialogTitle}}</view>
@@ -310,8 +423,16 @@
         <view class="consent-dialog__paragraph">{{consentDataNotice}}</view>
       </view>
       <view class="consent-dialog__actions">
-        <view class="consent-dialog__button consent-dialog__button--cancel" hover-class="none" bindtap="onConsentDisagree">不同意</view>
-        <view class="consent-dialog__button consent-dialog__button--confirm" hover-class="none" bindtap="onConsentAgree">同意</view>
+        <view
+          class="consent-dialog__button consent-dialog__button--cancel"
+          hover-class="none"
+          bindtap="onConsentDisagree"
+        >不同意</view>
+        <view
+          class="consent-dialog__button consent-dialog__button--confirm"
+          hover-class="none"
+          bindtap="onConsentAgree"
+        >同意</view>
       </view>
     </view>
   </view>

@@ -2,7 +2,12 @@
   "compileType": "miniprogram",
   "libVersion": "3.16.1",
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      {
+        "value": "assets/ai/UI",
+        "type": "folder"
+      }
+    ],
     "include": [
       {
         "value": "docs/BR1601A02_260609_r8122_5139_5D89_V100_OTA.bin",

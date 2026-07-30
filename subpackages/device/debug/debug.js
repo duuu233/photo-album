@@ -17,10 +17,6 @@ const imageCodec = require('../../../utils/image-codec')
 const system = require('../../../utils/system')
 const api = require('../../../utils/api')
 
-// AI生图入口暗门口令：AI生图入口目前整体屏蔽（custom-tabbar 中间按钮已隐藏，后续再开放）。
-// 屏蔽期间在调试台底部隐藏输入框输入此口令，即临时显露入口按钮跳转 AI 页面，供内部验收用。
-const AI_ENTRY_GATE_CODE = '8866'
-
 // 第三方（seekink 抖动出帧接口）鉴权 token 的返回归一化：与 dithering.js normalizeAuthToken 保持一致
 // （那份未导出，调试台单独复制一份）。接口返回形态未定——可能直接是 token 串，也可能包在
 // token/xtyToken/userToken/accessToken/access_token 字段里；若带 Bearer 前缀则剥掉，只留纯 token 串
@@ -423,11 +419,7 @@ Page({
     uploadStatus: '', // 图传结果/失败原因（常驻显示，方便排查）
     uploadStatusType: '', // info / ok / err
 
-    logs: [], // 收发日志（最新在最上）
-
-    // AI生图入口暗门：入口目前整体屏蔽（见 custom-tabbar），底部隐藏输入框输对口令(8866)后显露入口
-    aiGateInput: '', // 暗门输入框内容
-    aiGateUnlocked: false // 输入正确口令后显示「进入 AI生图」按钮
+    logs: [] // 收发日志（最新在最上）
   },
 
   onLoad(options) {
@@ -510,26 +502,6 @@ Page({
 
   clearLogs() {
     this.setData({ logs: [] })
-  },
-
-  // ── AI生图入口暗门 ──────────────────────────────────────
-  // AI生图入口目前整体屏蔽（custom-tabbar 中间按钮已隐藏，后续再开放）。这里在调试台最底部
-  // 放一个不显眼的输入框：输入约定口令(AI_ENTRY_GATE_CODE) 即显露「进入 AI生图」按钮，
-  // 点按跳转 AI 页面，方便屏蔽期间内部走查/验收，无需改开关重新编译。
-  onAiGateInput(e) {
-    const value = e.detail.value
-    const unlocked = value.trim() === AI_ENTRY_GATE_CODE
-    const wasUnlocked = this.data.aiGateUnlocked
-    this.setData({ aiGateInput: value, aiGateUnlocked: unlocked })
-    // 仅在锁定→解锁的那一次提示，避免解锁后每次按键都弹
-    if (unlocked && !wasUnlocked) {
-      toast.show({ title: '已解锁 AI生图入口', icon: 'none' })
-    }
-  },
-
-  // 跳转 AI生图页面（与 custom-tabbar goAi 同一目标页，屏蔽期的临时入口）
-  goAiEntry() {
-    wx.navigateTo({ url: '/subpackages/ai/chat/chat' })
   },
 
   // ── 第三方 Token ────────────────────────────────────────

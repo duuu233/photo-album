@@ -299,17 +299,6 @@
       </scroll-view>
     </view>
 
-    <!-- AI生图入口暗门：AI生图入口目前整体屏蔽（tabbar 中间按钮已隐藏，后续再开放）。
-         这里放一个不显眼的输入框，输对约定口令(8866)才显露入口按钮，点按跳转 AI 页面，供屏蔽期内部走查用。 -->
-    <view class="card ai-gate-card">
-      <view class="row ai-gate-row">
-        <input class="input ai-gate-input" value="{{aiGateInput}}" bindinput="onAiGateInput" placeholder="" confirm-type="done" />
-      </view>
-      <block wx:if="{{aiGateUnlocked}}">
-        <button class="btn btn-primary ai-gate-btn" bindtap="goAiEntry">进入 AI生图</button>
-        <view class="row-tip">入口已临时解锁；正式开放前 tabbar 中间 AI生图 入口仍处屏蔽状态。</view>
-      </block>
-    </view>
   </view>
 
   <global-toast id="globalToast"></global-toast>

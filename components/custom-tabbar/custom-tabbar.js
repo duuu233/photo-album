@@ -15,9 +15,8 @@ Component({
   },
 
   data: {
-    // AI生图入口开关：当前需求为「暂时屏蔽入口，后续再开放」。false 时隐藏中间 AI 按钮
-    // （wx:else 空占位保住三栏布局），后续开放时置 true 即恢复。屏蔽期可走调试台底部暗门临时进入。
-    aiEntryEnabled: false
+    // AI 对话已正式开放。保留开关只用于后续灰度/应急下线，不再依赖调试台暗门。
+    aiEntryEnabled: true
   },
 
   methods: {
@@ -33,6 +32,9 @@ Component({
 
     // AI 对话不是 tab 页（分包页面），中间按钮 navigateTo 进入，返回即回当前 tab
     goAi() {
+      if (this.data.active === 'ai') {
+        return
+      }
       wx.navigateTo({
         url: '/subpackages/ai/chat/chat'
       })

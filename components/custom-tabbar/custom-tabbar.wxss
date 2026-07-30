@@ -13,7 +13,7 @@
 /* 底部胶囊背景改用带阴影的整图 home-bottom-btn.png（720×183，胶囊实体 + 投影已内置），替代原背景色 + box-shadow。
    实测胶囊实体 x[32,687] y[32,145]=656×114，四周投影留白 L32/R32/T32/B37。
    等比映射为 718×180rpx，使胶囊实体正好覆盖 tabbar 可视区(654×112rpx)；图向四周外扩到阴影范围、用负偏移定位，
-   从而保持可视宽高不变。z-index:-1 垫在两个 tab-item 之下。 */
+   从而保持可视宽高不变。z-index:-1 垫在三个 tab-item 之下。 */
 .tabbar-bg {
   position: absolute;
   left: -32rpx;
@@ -52,7 +52,6 @@ button {
 
 .tab-item.active {
   color: #ED6315;
-  
 }
 
 .tab-icon {
@@ -60,27 +59,14 @@ button {
   height: 48rpx;
 }
 
-/* 中间 AI 入口：凸起圆形色块占位（UI 出图后替换为正式图标） */
 .tab-item--ai {
-  gap: 2rpx;
+  gap: 4rpx;
 }
 
-.ai-fab {
-  width: 88rpx;
-  height: 88rpx;
-  margin-top: -44rpx;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #ff8a3c, #eb5f1b);
-  color: #ffffff;
-  font-size: 32rpx;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 8rpx 20rpx rgba(235, 95, 27, 0.35);
+.tab-icon--ai {
+  opacity: 0.58;
 }
 
-.ai-label {
-  font-size: 24rpx;
-  color: #777d86;
+.tab-item--ai.active .tab-icon--ai {
+  opacity: 1;
 }
