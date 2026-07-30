@@ -2,7 +2,7 @@
 
 > 状态：current  
 > 最后核对：2026-07-30  
-> 适用范围：微信小程序；Flutter 同步时以本口径为目标  
+> 适用范围：微信小程序 + Flutter（身份补齐链 2026-07-30 已双端同步）  
 > 当前实现：`utils/device-id.js`、`utils/active-device.js`、`utils/device-identity.js`、`utils/device-conn-cache.js`、`utils/device-ble.js`
 
 ## 目标
@@ -36,6 +36,12 @@
 
 登记时机：设备列表接口返回记录时、连接后 0x01 校验通过时。
 清除时机：解绑该设备 `forget(userProductId)`、退出登录 `clear()`。
+
+Flutter 对应实现：`flutter/lib/src/device/device_identity_registry.dart`（同语义，
+SharedPreferences 落盘）。**触发路径两端不同**：小程序是详情页 `selectedDevice` 继承落空；
+Flutter 是 `refreshDevices` 整体替换列表而 `_carryOverBleFields` 不搬 `serialNumber`，
+接口一次没下发 `deviceId` 就丢身份，之后 `connectBoundDevice` 的身份闸把好设备
+拦在扫描之前。同一类故障、不同触发点。
 
 ## 连接与认领流程
 
