@@ -30,7 +30,10 @@
          搜索中也能直接点「立即绑定」，confirmBind 会先停扫再连接。 -->
     <block wx:if="{{devices.length}}">
       <view class="nearby-head">
-        <text>{{scanning ? '正在搜索…已找到 ' + devices.length + ' 台' : '附近设备'}}</text>
+        <view class="nearby-head__summary">
+          <text class="nearby-count">已找到 {{devices.length}} 台</text>
+          <text wx:if="{{scanning}}" class="nearby-end-search" hover-class="none" aria-role="button" bindtap="stopScanForBind">，结束搜索</text>
+        </view>
         <image wx:if="{{!scanning}}" class="refresh-btn" src="/assets/images/refresh-icon.png" mode="aspectFit" aria-label="重新搜索" bindtap="scan"></image>
       </view>
       <!-- 单选列表：点选某台设备高亮，底部「立即绑定」绑定选中项；长按某行可进入该设备的硬件联调 -->
@@ -50,8 +53,6 @@
           <view wx:else class="select-circle select-circle--empty"></view>
         </view>
       </scroll-view>
-      <!-- 搜索中：仍可随时收手停扫（列表已搜到的保留），不必等满窗口 -->
-      <view wx:if="{{scanning}}" class="scan-help-link" hover-class="none" bindtap="stopScanForBind">停止搜索</view>
       <view class="primary-action bind-bottom" hover-class="none" bindtap="confirmBind">立即绑定</view>
     </block>
 
