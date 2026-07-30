@@ -1,9 +1,9 @@
 # 设备身份与 BLE 会话
 
 > 状态：current  
-> 最后核对：2026-07-28  
+> 最后核对：2026-07-30  
 > 适用范围：微信小程序；Flutter 同步时以本口径为目标  
-> 当前实现：`utils/device-id.js`、`utils/active-device.js`、`utils/device-conn-cache.js`、`utils/device-ble.js`
+> 当前实现：`utils/device-id.js`、`utils/active-device.js`、`utils/device-identity.js`、`utils/device-conn-cache.js`、`utils/device-ble.js`
 
 ## 目标
 
@@ -18,6 +18,24 @@
 | 广播 4 字节 Device ID | 厂商广播包中的短 ID | 否，只用于缩小扫描候选范围 |
 | 微信 BLE `deviceId` / `bleDeviceId` | 本次扫描/系统分配的连接句柄 | 否，只在当前 BLE 会话中有效 |
 | 设备名称、型号、屏幕尺寸 | 展示或候选筛选字段 | 否 |
+
+## 身份补齐来源（2026-07-30）
+
+后端「设备详情」`getUserProductDetail` 不返回设备 ID，详情页记录天生没有完整 6 字节身份，必须从别处补齐。
+补齐来源按固定顺序取，登记表只作最后兜底，永不反向覆盖后端最新值：
+
+```text
+记录自身的完整 ID  >  fallback（selectedDevice，仅确认是同一台时才传入）  >  身份登记表
+```
+
+`utils/device-identity.js` 是按后端记录主键存的身份登记表（`userProductId -> AA:BB:CC:DD:EE:FF`，本机 storage）。
+它的存在意义是让「这台设备的完整 ID」与「当前选中的是哪一台」解耦：`selectedDevice` 表示当前选中的那一台，
+首页滑轮播卡、在列表里连别的设备都会改写它，只靠它补齐会在「连了 A 再进 C 的详情」时落空，
+把一台没连接的好设备报成「请删除后重新绑定」（见
+[2026-07-30 变更记录](../changes/2026-07-30-设备身份登记表.md)）。
+
+登记时机：设备列表接口返回记录时、连接后 0x01 校验通过时。
+清除时机：解绑该设备 `forget(userProductId)`、退出登录 `clear()`。
 
 ## 连接与认领流程
 
@@ -38,6 +56,10 @@
 ## 不变量
 
 - 缺少合法完整 ID 时，绑定和自动重连必须终止，不能用短 ID、名称、尺寸或 BLE 句柄兜底。
+  但「记录一时缺 ID」不等于「这台设备没有身份」：必须先走完上面的补齐来源，再判定拦截，
+  否则会把没连接的正常设备报成需要删除重新绑定。
+- 身份登记表只收完整 6 字节 ID，且只按记录自己的主键登记；短广播 ID、BLE 句柄不得入表，
+  也不得借用另一条记录的主键登记，否则等于用缓存制造串台。
 - 直连缓存只能保存“完整 ID 已校验通过”的映射；身份不匹配时必须清除被污染的缓存。
 - 页面跳转传递后端记录主键；执行投屏、轮播、清空、删除、OTA 等物理操作前再次确认目标会话。
 - `selectedDevice.connected` 只是缓存状态，不能单独证明真实连接；应以活动 BLE 会话和完整 ID 校验为准。

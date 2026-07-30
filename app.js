@@ -2,6 +2,7 @@ const api = require('./utils/api')
 const system = require('./utils/system')
 const deviceBle = require('./utils/device-ble')
 const aiServiceConsent = require('./utils/ai-service-consent')
+const deviceIdentity = require('./utils/device-identity')
 
 // 将回调式的 wx.login 封装为 Promise，便于在 async 流程中 await
 function wxLogin() {
@@ -259,6 +260,8 @@ App({
     this.globalData.jwtToken = ''
     this.globalData.userInfo = null
     this.setSelectedDevice(null)
+    // 设备身份登记表按 userProductId 存完整设备 ID，换账号后这批主键与新用户无关，一并清空
+    deviceIdentity.clear()
     wx.removeStorageSync('token')
     wx.removeStorageSync('jwtToken')
     wx.removeStorageSync('userInfo')

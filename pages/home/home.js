@@ -4,6 +4,7 @@ const media = require('../../utils/media')
 const batteryUtil = require('../../utils/battery')
 const deviceBle = require('../../utils/device-ble')
 const activeDevice = require('../../utils/active-device')
+const deviceIdentity = require('../../utils/device-identity')
 
 const app = getApp()
 
@@ -415,6 +416,9 @@ Page({
 
       // 同一台相框可能被重复绑定出多条记录：按硬件序列号去重，避免轮播重复出现同一台
       const uniqueDevices = this.dedupeDevices(devices, cached)
+      // 设备列表接口是完整 6 字节 ID 的可靠来源（详情接口不返回），趁这次刷新按 userProductId 全部登记：
+      // 之后进任何一台的详情，都不再要求「它恰好是当前选中设备」才认得出身份。
+      deviceIdentity.rememberMany(uniqueDevices)
       // 后端不存 BLE deviceId，只有 selectedDevice(自动重连/手动连上时写入)带着它。把它回填到
       // 列表里对应的那台（id 或序列号匹配），连接状态才判得对——否则即便蓝牙仍连着，列表项因缺
       // deviceId 也会被 normalizeDevice 错判成「未连接」（之前轮播卡片就是这么一直显示未连接的）。

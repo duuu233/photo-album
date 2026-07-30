@@ -13,6 +13,7 @@ const protocol = require('./frame-protocol')
 const connCache = require('./device-conn-cache')
 const batteryUtil = require('./battery')
 const deviceIdUtil = require('./device-id')
+const identityStore = require('./device-identity')
 
 // 连接前的信号闸（2026-07-20，治「信号正常档经常连不上」）：
 // 扫描命中目标时若 RSSI 弱于此值，不立刻发起连接，先等一个短窗口看有没有更强的一帧。
@@ -204,13 +205,26 @@ function deviceSerials(device) {
   ]).filter(deviceIdUtil.isComplete)
 }
 
-// 页面重新拉接口时可能只返回部分字段：保持当前记录为主，仅从 fallback 继承同一设备的完整 ID。
+// 页面重新拉接口时可能只返回部分字段：保持当前记录为主，依次从 fallback、身份登记表继承同一设备的完整 ID。
+//
+// 为什么不能只靠 fallback（历来传的都是 app.globalData.selectedDevice）：设备详情接口不返回设备 ID，
+// 而 selectedDevice 是「当前选中的那一台」——首页滑轮播卡、在列表里连了别的设备都会改写它。
+// 一旦它不是本记录这台，继承就落空，页面拿着没有完整 ID 的记录去连接，会被身份闸报
+// 「当前设备记录缺少完整的6字节设备ID，请删除后重新绑定」，把一台好设备说成要重新绑定。
+// 身份登记表(device-identity)按 userProductId 记住每台设备的完整 ID，与「当前选中谁」无关，
+// 补上的正是这一段。顺序固定：记录自身 > fallback > 登记表，任何时候都以记录自己带的为准。
 function inheritStableIdentity(device, fallback) {
   const target = Object.assign({}, device || {})
-  const completeId = stableDeviceId(target) || stableDeviceId(fallback)
+  // 登记键只认本记录自己的主键，绝不退到 fallback 的：一旦调用方传进来的 fallback 不是同一台，
+  // 用它的主键去登记就是把这台的完整 ID 写到另一台名下，正是这张表要防的串台。
+  // 无主键的记录（扫描结果等）不参与登记表，只走「记录自身 > fallback」。
+  const key = identityStore.keyOf(target)
+  const completeId =
+    stableDeviceId(target) || stableDeviceId(fallback) || identityStore.recall(key)
   if (!completeId) {
     return target
   }
+  identityStore.remember(key, completeId) // 顺手登记，供下次进详情/换选中设备后继续认得这台
   return Object.assign(target, {
     productDeviceId: completeId,
     deviceNo: completeId,
@@ -240,6 +254,9 @@ function applyConnectedIdentity(device, bleDeviceId, info) {
   if (!completeId) {
     return updated
   }
+  // 0x01 校验通过的完整 ID 是最权威的一手来源，登记下来：即便后端详情接口不返回设备 ID，
+  // 之后进这台设备的详情也能取回身份（不再要求它恰好是当前选中设备）。
+  identityStore.remember(identityStore.keyOf(updated), completeId)
   return Object.assign(updated, {
     productDeviceId: completeId,
     deviceNo: completeId,

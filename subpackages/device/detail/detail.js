@@ -10,6 +10,7 @@ const media = require('../../../utils/media')
 const activeDevice = require('../../../utils/active-device')
 const deviceName = require('../../../utils/device-name')
 const deviceIdUtil = require('../../../utils/device-id')
+const deviceIdentity = require('../../../utils/device-identity')
 
 const app = getApp()
 
@@ -363,20 +364,22 @@ Page({
       activeDevice.devicesMatch(device, selected)
 
     if (isSelected) {
-      device = activeDevice.inheritStableIdentity(
-        Object.assign({}, device, {
-          deviceId: device.deviceId || selected.deviceId,
-          bleDeviceId:
-            device.bleDeviceId || selected.bleDeviceId || selected.deviceId,
-          battery:
-            batteryUtil.normalizeBattery(device.battery) === null
-              ? selected.battery
-              : device.battery,
-          batteryAt: device.batteryAt || selected.batteryAt || null
-        }),
-        selected
-      )
+      device = Object.assign({}, device, {
+        deviceId: device.deviceId || selected.deviceId,
+        bleDeviceId:
+          device.bleDeviceId || selected.bleDeviceId || selected.deviceId,
+        battery:
+          batteryUtil.normalizeBattery(device.battery) === null
+            ? selected.battery
+            : device.battery,
+        batteryAt: device.batteryAt || selected.batteryAt || null
+      })
     }
+    // 完整 6 字节身份的继承与「当前选中的是不是这台」解耦：详情接口不返回设备 ID，
+    // 只在 isSelected 时继承的话，用户先连了别的设备（selectedDevice 被改写）再进这台详情，
+    // 记录就没有完整 ID，点「连接/投屏」会被身份闸误报「记录缺少完整设备ID，请删除后重新绑定」。
+    // inheritStableIdentity 在 fallback 之外还会查身份登记表（device-identity），照样认得这台。
+    device = activeDevice.inheritStableIdentity(device, isSelected ? selected : null)
 
     // 判连接用「deviceId 直连 + 设备ID×广播ID 序列号交叉匹配」：详情记录从接口重拉后常不带 BLE deviceId，
     // 只按 deviceId 判断会把还连着的设备错显示成「未连接」（假断联）；命中后把当下有效 deviceId 回填给记录，
@@ -418,8 +421,13 @@ Page({
         device = Object.assign({}, device, batteryState)
       }
       // 无论 0x01 其它信息是否成功，最近一次有效电量都回写 selectedDevice/Storage。
+      // 只有「选中的就是这台」才允许在旧选中对象上合并——否则是把本设备的字段盖到另一台的记录上，
+      // 本设备没有的字段会留着上一台的值（宽高/屏型/版本…），拼出一台并不存在的设备。
+      const current = app.globalData.selectedDevice
       app.setSelectedDevice(
-        Object.assign({}, app.globalData.selectedDevice || {}, device)
+        current && activeDevice.devicesMatch(device, current)
+          ? Object.assign({}, current, device)
+          : device
       )
     }
     // 把当前间隔小时数映射到选择器下标，缺省落到第 1 项（2 小时）
@@ -680,20 +688,27 @@ Page({
     if (!device || !device.connected) {
       return
     }
-    if (device.deviceId) {
-      deviceBle.disconnect(device.deviceId)
+    // 断的是「这台设备当下真实的那条会话」：页面记录里的 deviceId 可能是上一轮扫描的旧句柄
+    // （接口刷新后被回填/继承进来），拿它去 disconnect 等于没断，会话继续占着设备（单连接、不再广播）。
+    const liveId = activeDevice.findConnectedDeviceId(device) || device.deviceId
+    if (liveId) {
+      deviceBle.disconnect(liveId)
     }
     // 断开后这些「连接才可信」的实时数据不再有效：清掉固件读到的设备ID(0x01)与内存占用，
     // 让 device 与显示一致回落。注意保留 deviceNo(后端序列号)——重连时 matchScannedDevice 靠它匹配本机。
+    // BLE 句柄一并清空：它的含义是「当前已核实属于本记录的活动会话」，会话都断了还留着，
+    // 下游只按 isConnected(句柄) 判断的代码会被这条死记录骗过去（与 reconcileConnectionFlags 同口径）。
     const updated = Object.assign({}, device, {
       connected: false,
+      deviceId: '',
+      bleDeviceId: '',
       firmwareDeviceId: '',
       usedMemory: 0,
       totalMemory: 0
     })
     if (
       app.globalData.selectedDevice &&
-      app.globalData.selectedDevice.id === updated.id
+      String(app.globalData.selectedDevice.id) === String(updated.id)
     ) {
       app.setSelectedDevice(updated)
     }
@@ -1397,6 +1412,7 @@ Page({
       this._deleting = false
       return // 失败已由接口层统一提示，确认弹窗保留供重试
     }
+    deviceIdentity.forget(this.data.id) // 解绑后清掉身份登记，避免主键复用时把旧设备的完整 ID 带回来
     if (
       app.globalData.selectedDevice &&
       app.globalData.selectedDevice.id === this.data.id

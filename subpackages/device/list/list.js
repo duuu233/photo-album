@@ -6,6 +6,7 @@ const deviceBle = require('../../../utils/device-ble')
 const media = require('../../../utils/media')
 const activeDevice = require('../../../utils/active-device')
 const deviceName = require('../../../utils/device-name')
+const deviceIdentity = require('../../../utils/device-identity')
 
 const app = getApp()
 
@@ -487,6 +488,7 @@ Page({
         }
 
         await api.deleteDevice(id)
+        deviceIdentity.forget(id) // 解绑后清掉身份登记，避免主键复用时把旧设备的完整 ID 带回来
 
         // 删除的是当前已连接的设备：解绑成功后顺手断开 BLE，释放被占用的单连接。
         // 否则设备会一直被这条会话占着、不再广播，删除后既搜不到也无法重新绑定连接。
