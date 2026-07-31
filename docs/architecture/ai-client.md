@@ -65,6 +65,13 @@
 - 聊天页按 `assets/ai/UI` 重写为顶部会话入口与 Token、常驻工具输入卡、图片内联操作条和投屏设备底部弹层。
 - 会话页按日期分组，顶部复用全局 `page-nav` 统一标题与返回样式；左滑时卡片实时跟随手指并在松手后吸附到删除位，删除操作使用 `assets/images/ai-del-btn-bg.png` 作为背景，同时保留长按删除兜底。
 - 对话页与会话页统一使用 2026-07-31 指定的 OSS 全屏背景；新增设计稿中实际使用的图标已以英文名迁移到 `assets/images`。
+- **（2026-07-31）这张 AI 背景图已推到全站**：`https://oss.boltfox.cn/prodFile/202607310920402821453.png`
+  （750×1624，比原来的 `...202607071032177373571.png` 淡约 1/255），直接按网络地址引用，未落本地。
+  18 处旧地址原样换新（各页仍是 `.mock-bg > image[mode=aspectFill]` 的老结构，`pages/home/home.js`
+  的 `getHomeBgImage()` 也在其中）；协议/隐私/AI协议/更新/调试台这 5 页原本一张背景图都没有，
+  它们正文是不定位的普通块、加 `fixed+z-index:0` 图层会盖住内容，所以改走 CSS `background`
+  （`subpackages/settings/shared.wxss` 的 `.settings-shell`、`subpackages/device/debug/debug.wxss`
+  的 `.debug-page` 各一行）。首页本地占位图 `home-bg-placeholder.jpg` 与新图均值差 2/255，未重做。
 - Token 胶囊读取微信原生胶囊位置，固定放在其左侧并垂直居中，避免自定义导航内容重叠；高度直接取
   `getMenuButtonBoundingClientRect().height`，与原生胶囊严格等高同轴，勿改成写死值。
 - 圆角方块类图标（`ai-back-button.png`、`ai-history-button.png`，136×136）**不是画满的**：看得见的白块只占

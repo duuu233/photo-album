@@ -95,7 +95,7 @@ function normalizeScene(scene) {
 
 // 首页大背景图统一用 OSS 线上图，不再按场景区分本地 bg01/bg02
 function getHomeBgImage() {
-  return 'https://oss.boltfox.cn/prodFile/202607071032177373571.png'
+  return 'https://oss.boltfox.cn/prodFile/202607310920402821453.png'
 }
 
 // 首页前景图：与大背景图一起做「加载完成再展示首页」的门控，未加载完先展示 loading

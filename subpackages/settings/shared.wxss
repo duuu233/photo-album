@@ -1,8 +1,14 @@
+/* 全站统一背景：和 AI 页 / 各页 .mock-bg 用的是同一张 OSS 图（750×1624，正好 2× 屏宽）。
+   协议类、更新页没有 .mock-bg 图层，正文又是不定位的普通块（fixed+z-index:0 的图层会盖住它们），
+   所以这里走 CSS background —— 背景永远画在内容之下，不用给每块正文补 z-index。
+   已经有 .mock-bg 的页面（设置/语种/指南/个人信息）叠的是同一张图，视觉无差别。
+   底色 #f8f5ef 是图没加载出来前的兜底，取自 AI 页根底色。*/
 .settings-shell {
   position: relative;
   min-height: 100vh;
   overflow: hidden;
   color: #2a2d32;
+  background: #f8f5ef url(https://oss.boltfox.cn/prodFile/202607310920402821453.png) center / cover no-repeat;
 }
 
 .nav-bar {
