@@ -3,7 +3,10 @@
 > 状态：current  
 > 最后核对：2026-07-31
 > 适用范围：`subpackages/projection/preview/preview.*`  
-> 权威实现：`subpackages/projection/preview/preview.js`
+> 权威实现：`subpackages/projection/preview/preview.js`  
+> Flutter 对应实现：`flutter/lib/src/features/cast/presentation/cast_preview_page.dart`
+>（2026-07-31 已追平本文的交互模型：自由缩小 0.02、白底所见即所得、长按 0.5s 单指平移、
+> 360ms Banner 切图；导出铁律与本文一致）
 
 ## 交互模型
 

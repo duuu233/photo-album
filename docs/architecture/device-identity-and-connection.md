@@ -3,6 +3,12 @@
 > 状态：current  
 > 最后核对：2026-07-31
 > 适用范围：微信小程序 + Flutter（身份补齐链 2026-07-30 已双端同步）  
+> 2026-07-31 补充（Flutter）：`refreshDevices` 里「按会话回填 connected」原本排在
+> `_carryOverBleFields`（本地上一版身份）与 `_completeDeviceIdentities`（登记表）**之前**，
+> 身份还没补齐就先判连接，刷新一次列表正连着的设备会整体掉成「未连接」——
+> 轮播设置/一键清空等入口据此拦人，就是「明明连着却提示请先连接设备」。已把判连接移到补齐之后；
+> 入口门禁另加 `PhotoFrameState.resolveDeviceConnected`（先查登记表补完整 ID 再判），
+> 等价小程序的 `activeDevice.inheritStableIdentity`。  
 > 当前实现：`utils/device-id.js`、`utils/active-device.js`、`utils/device-identity.js`、`utils/device-conn-cache.js`、`utils/device-ble.js`
 
 ## 目标
