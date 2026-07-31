@@ -2,7 +2,8 @@
   "navigationStyle": "custom",
   "navigationBarTitleText": "设备详情",
   "usingComponents": {
-    "page-nav": "/components/page-nav/page-nav"
+    "page-nav": "/components/page-nav/page-nav",
+    "device-name-dialog": "/components/device-name-dialog/device-name-dialog"
   },
   "backgroundColor": "#edf6ff"
 }

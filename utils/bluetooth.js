@@ -94,7 +94,7 @@ function describeAdapterError(error) {
 
   // 10001：系统蓝牙不可用，绝大多数是没开手机蓝牙开关
   if (errCode === 10001 || errMsg.indexOf('not available') > -1) {
-    return { code: 'UNAVAILABLE', message: '请先打开手机蓝牙开关' }
+    return { code: 'UNAVAILABLE', message: '请检查并打开手机或小程序蓝牙开关' }
   }
 
   // 系统级权限被拒：permission not grant / system permission denied / errno:3

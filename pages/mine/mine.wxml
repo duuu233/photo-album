@@ -30,7 +30,7 @@
       src="/assets/images/mine-header.jpg"
       mode="aspectFill" />
     <view class="profile-copy">
-      <view class="profile-name">{{nickName}}</view>
+      <text class="profile-name" decode="{{true}}">{{nickName}}</text>
       <view class="profile-id">ID：{{userId}}</view>
     </view>
     <image
@@ -65,7 +65,7 @@
           src="/assets/images/mine-icon06.png"
           mode="aspectFit" />
       </view>
-      <view class="quick-title">我的图库</view>
+      <view class="quick-title">设备照片</view>
       <view class="quick-desc">{{photoCount}}张照片</view>
     </view>
     <view

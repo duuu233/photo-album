@@ -143,6 +143,13 @@ function countSelected(map) {
   return selectedIds(map).length
 }
 
+function isMissingDevicePhotoError(error) {
+  const message = String((error && error.message) || error || '').toLowerCase()
+  return /照片.*(不存在|异常)|图片.*(不存在|异常)|not[\s_-]*(found|exist)|无此图片|索引.*(无效|不存在)/i.test(
+    message
+  )
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -300,7 +307,7 @@ Page({
     this.clearImgModalShowing = true
     wx.showModal({
       title: '提示',
-      content: "当前设备近期执行过'一键清空'操作，请留意",
+      content: '照片在此设备异常，请删除重新上传',
       showCancel: false,
       confirmText: '确认',
       success: res => {
@@ -481,6 +488,7 @@ Page({
 
     wx.showLoading({ title: '删除中', mask: true })
     let refreshWarn = '' // 「设备已删成功但刷屏失败」的提示文案，成功删除后带给用户
+    let devicePhotoAbnormal = false
     try {
       // 读固件已占用槽位（升序），用同一份快照把每张选中照片解析成对应槽位；
       // 不在本设备上的（解析为 -1）跳过，只删能对上的。curImgIndex 用于判断是否删到屏显图。
@@ -490,6 +498,7 @@ Page({
       const slotIndexes = ids
         .map(id => this.resolveDeviceImageIndex(id, device, occupied))
         .filter(index => index >= 0)
+      devicePhotoAbnormal = slotIndexes.length < ids.length
 
       // 2) 一条 0x12 批量删这些槽位（deleteImage 内部把索引数组转成掩码）
       if (slotIndexes.length) {
@@ -504,12 +513,18 @@ Page({
         )
       }
     } catch (error) {
-      wx.hideLoading()
-      toast.warn({
-        title: (error && error.message) || '设备删除失败',
-        icon: 'none'
-      })
-      return // 设备没删成功就不动本地/后端，避免三处不一致
+      // 设备已经没有这张照片/槽位时，后端记录仍必须允许删除，否则异常记录会永久卡在图库。
+      // 仅放行明确的“照片不存在”类结果；连接中断、设备繁忙等真实链路错误仍按原规则中止。
+      if (isMissingDevicePhotoError(error)) {
+        devicePhotoAbnormal = true
+      } else {
+        wx.hideLoading()
+        toast.warn({
+          title: (error && error.message) || '设备删除失败',
+          icon: 'none'
+        })
+        return
+      }
     }
     wx.hideLoading()
 
@@ -524,7 +539,9 @@ Page({
       return
     }
 
-    if (refreshWarn) {
+    if (devicePhotoAbnormal) {
+      toast.warn({ title: '照片在此设备异常，请删除重新上传', icon: 'none' })
+    } else if (refreshWarn) {
       toast.warn({ title: refreshWarn, icon: 'none' })
     } else {
       toast.show({ title: '已删除', icon: 'none' })

@@ -2,6 +2,23 @@ const api = require('../../utils/api')
 
 const app = getApp()
 
+// 后端历史数据可能把 emoji 存成 Unicode/HTML 转义串；统一解码为真实码点后交给文本节点展示。
+function displayNickname(value) {
+  return String(value || '')
+    .replace(/\\u\{([0-9a-fA-F]+)\}/g, (_, hex) =>
+      String.fromCodePoint(parseInt(hex, 16))
+    )
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
+      String.fromCharCode(parseInt(hex, 16))
+    )
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) =>
+      String.fromCodePoint(parseInt(hex, 16))
+    )
+    .replace(/&#([0-9]+);/g, (_, num) =>
+      String.fromCodePoint(parseInt(num, 10))
+    )
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -67,7 +84,7 @@ Page({
         api.getDevices()
       ])
       const displayUserId = userInfo.id || userInfo.userNo || '--'
-      const displayName = userInfo.nickName || '微信用户'
+      const displayName = displayNickname(userInfo.nickName) || '微信用户'
       this._mineLoaded = true
       this.setData({
         avatarUrl: userInfo.avatarUrl || '',

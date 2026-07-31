@@ -1,5 +1,93 @@
 .records-content {
-  padding-top: 78rpx;
+  padding-top: 48rpx;
+}
+
+.records-device-filter {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 26rpx;
+}
+
+.records-device-filter__label {
+  color: #3b4149;
+  font-size: 27rpx;
+  font-weight: 600;
+}
+
+.device-filter-wrap {
+  position: relative;
+}
+
+.device-filter-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  width: 370rpx;
+  height: 64rpx;
+  padding: 0 24rpx;
+  color: #727b87;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1rpx solid rgba(255, 255, 255, 0.92);
+  border-radius: 999rpx;
+  box-shadow: 0 10rpx 28rpx rgba(126, 150, 184, 0.08);
+  font-size: 25rpx;
+}
+
+.device-filter-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-filter-arrow {
+  flex: 0 0 auto;
+  width: 14rpx;
+  height: 14rpx;
+  border-right: 2rpx solid #777e88;
+  border-bottom: 2rpx solid #777e88;
+  transform: rotate(45deg) translateY(-3rpx);
+}
+
+.device-filter-arrow.is-open {
+  transform: rotate(225deg) translateY(-3rpx);
+}
+
+.device-filter-menu {
+  position: absolute;
+  top: 72rpx;
+  right: 0;
+  z-index: 8;
+  width: 420rpx;
+  padding: 10rpx;
+  background: rgba(255, 255, 255, 0.96);
+  border: 2rpx solid rgba(255, 255, 255, 0.98);
+  border-radius: 18rpx;
+  box-shadow: 0 18rpx 40rpx rgba(126, 116, 106, 0.18);
+}
+
+.device-filter-option {
+  height: 62rpx;
+  overflow: hidden;
+  padding: 0 18rpx;
+  color: #727b87;
+  border-radius: 12rpx;
+  font-size: 25rpx;
+  line-height: 62rpx;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-filter-option.is-active {
+  color: #ff5f1f;
+  background: rgba(255, 116, 54, 0.12);
 }
 
 .filter-success .records-tint {

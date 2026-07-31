@@ -1,0 +1,127 @@
+.name-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 990;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48rpx;
+  background: rgba(19, 29, 43, 0.42);
+  backdrop-filter: blur(10rpx);
+}
+
+.name-dialog {
+  width: 100%;
+  padding: 48rpx 40rpx 36rpx;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(246, 251, 255, 0.96));
+  border: 2rpx solid rgba(255, 255, 255, 0.94);
+  border-radius: 40rpx;
+  box-shadow: 0 32rpx 80rpx rgba(78, 104, 141, 0.22);
+}
+
+.name-dialog__mark {
+  position: relative;
+  width: 88rpx;
+  height: 88rpx;
+  margin: 0 auto 22rpx;
+  background: linear-gradient(145deg, #fff1e8, #ffe0d0);
+  border-radius: 28rpx;
+  box-shadow: 0 14rpx 28rpx rgba(255, 101, 34, 0.15);
+}
+
+.name-dialog__screen {
+  position: absolute;
+  left: 20rpx;
+  top: 22rpx;
+  width: 46rpx;
+  height: 36rpx;
+  border: 4rpx solid #ff6725;
+  border-radius: 7rpx;
+}
+
+.name-dialog__pen {
+  position: absolute;
+  right: 8rpx;
+  bottom: 7rpx;
+  color: #ff6725;
+  font-size: 38rpx;
+  font-weight: 700;
+  transform: rotate(-12deg);
+}
+
+.name-dialog__title {
+  color: #252b33;
+  font-size: 36rpx;
+  font-weight: 650;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.name-dialog__tip {
+  margin-top: 12rpx;
+  color: #89919d;
+  font-size: 24rpx;
+  text-align: center;
+}
+
+.name-field {
+  display: flex;
+  align-items: center;
+  height: 104rpx;
+  margin-top: 34rpx;
+  padding: 0 28rpx;
+  background: rgba(236, 244, 252, 0.86);
+  border: 2rpx solid rgba(156, 179, 209, 0.22);
+  border-radius: 24rpx;
+}
+
+.name-field__input {
+  flex: 1;
+  min-width: 0;
+  color: #252b33;
+  font-size: 30rpx;
+}
+
+.name-field__count {
+  flex-shrink: 0;
+  margin-left: 18rpx;
+  color: #98a0ab;
+  font-size: 22rpx;
+}
+
+.name-dialog__actions {
+  display: flex;
+  gap: 20rpx;
+  margin-top: 36rpx;
+}
+
+.name-dialog__button {
+  flex: 1;
+  height: 88rpx;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999rpx;
+  font-size: 29rpx;
+  font-weight: 600;
+  line-height: 88rpx;
+}
+
+.name-dialog__button::after {
+  border: 0;
+}
+
+.name-dialog__button--cancel {
+  color: #6d7682;
+  background: #edf2f7;
+}
+
+.name-dialog__button--confirm {
+  color: #fff;
+  background: linear-gradient(100deg, #ff8b42, #ff6122);
+  box-shadow: 0 14rpx 28rpx rgba(255, 97, 34, 0.22);
+}
+
+.name-dialog__button[disabled] {
+  opacity: 0.62;
+}

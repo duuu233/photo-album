@@ -243,12 +243,17 @@ Page({
     intervalIndex: 1,
     showClearConfirm: false,
     showClearConfirm2: false, // 一键清空二级确认弹窗
-    showDeleteConfirm: false,
-    showDisconnectConfirm: false, // 删除前置确认弹窗（设备连接中需先断开）
+    showDeleteConfirm: false, // 仅解除绑定确认
+    showPermanentDeleteConfirm: false, // 清空照片并解除绑定一级确认
+    showPermanentDeleteConfirm2: false, // 清空照片并解除绑定二级确认
     clearClosing: false, // 清空确认弹窗是否正在播放退场动画
     clearClosing2: false, // 二级清空确认弹窗是否正在播放退场动画
-    deleteClosing: false, // 删除确认弹窗是否正在播放退场动画
-    disconnectClosing: false, // 删除前置确认弹窗是否正在播放退场动画
+    deleteClosing: false, // 解除绑定确认弹窗是否正在播放退场动画
+    permanentDeleteClosing: false,
+    permanentDeleteClosing2: false,
+    renameVisible: false,
+    renameValue: '',
+    renameSaving: false,
     showMediaSheet: false, // 「拍照/相册」选择弹层是否展示
     mediaSheetClosing: false, // 选择弹层是否正在播放退场动画
     otaTesting: false, // OTA 测试按钮是否正在跑（跑时禁止重复点击）
@@ -452,10 +457,7 @@ Page({
       batteryText: batteryUtil.batteryText(device),
       deviceCode,
       resolutionText: resolutionText(device),
-      memoryText:
-        device && device.totalMemory
-          ? `${device.usedMemory}/${device.totalMemory}`
-          : '--',
+      memoryText: device && device.totalMemory ? String(device.totalMemory) : '--',
       macAddress: device && device.macAddress ? device.macAddress : '--',
       newVersionNo: connected
         ? device.newVersionNo || device.firmwareVersion || '--'
@@ -467,56 +469,53 @@ Page({
     })
   },
 
-  // 通过可输入的系统弹窗重命名设备，重命名后若是当前选中设备需同步更新全局
-  async renameDevice() {
+  renameDevice() {
     if (!this.data.device) {
       return
     }
-
-    wx.showModal({
-      title: '编辑设备名称',
-      editable: true,
-      placeholderText: `请输入设备名称（1-${deviceName.DEVICE_NAME_MAX_LEN}个字符）`,
-      content: this.data.device.name,
-      success: async res => {
-        if (!res.confirm) {
-          return // 取消则不处理
-        }
-
-        // 弹窗自身无法限制输入长度，只能在确定后校验；不合法则提示并放弃本次保存
-        const checked = deviceName.validateDeviceName(res.content)
-        if (!checked.ok) {
-          toast.warn(checked.message)
-          return
-        }
-
-        const newName = checked.name
-        try {
-          await api.renameDevice(this.data.id, newName)
-        } catch (error) {
-          return // 失败已由接口层统一提示；本地不改名，避免界面与后端不一致
-        }
-        // 改名是纯后端存储（名称以用户为维度，不写设备、不动蓝牙连接/广播）：
-        // 只把新名字合并回现有 device，绝不能用接口的精简返回整体替换——
-        // 那会丢 deviceId/deviceNo，页面误判断联；此时会话仍占着设备（单连接、不再广播），
-        // 点「连接」重扫必然搜不到，形成「改名后断联且搜不到」的假象。
-        const updated = Object.assign({}, this.data.device, {
-          name: newName,
-          productName: newName
-        })
-        const selected = app.globalData.selectedDevice
-        if (selected && selected.id === updated.id) {
-          // 全局选中设备同理：只改名字，保留它自己的 deviceId 等连接字段
-          app.setSelectedDevice(
-            Object.assign({}, selected, { name: newName, productName: newName })
-          )
-        }
-        this.setData({
-          device: updated,
-          memoryPercent: memoryPercent(updated)
-        })
-      }
+    this.setData({
+      renameVisible: true,
+      renameValue: this.data.device.name || '',
+      renameSaving: false
     })
+  },
+
+  cancelRename() {
+    if (!this.data.renameSaving) {
+      this.setData({ renameVisible: false })
+    }
+  },
+
+  async confirmRename(e) {
+    const checked = deviceName.validateDeviceName(e.detail.value)
+    if (!checked.ok) {
+      toast.warn(checked.message)
+      return
+    }
+    this.setData({ renameSaving: true })
+    try {
+      await api.renameDevice(this.data.id, checked.name)
+      const updated = Object.assign({}, this.data.device, {
+        name: checked.name,
+        productName: checked.name
+      })
+      const selected = app.globalData.selectedDevice
+      if (selected && String(selected.id) === String(updated.id)) {
+        app.setSelectedDevice(
+          Object.assign({}, selected, {
+            name: checked.name,
+            productName: checked.name
+          })
+        )
+      }
+      this.setData({
+        device: updated,
+        renameVisible: false
+      })
+      toast.show({ title: '名称已保存', icon: 'none' })
+    } finally {
+      this.setData({ renameSaving: false })
+    }
   },
 
   async toggleCarousel(e) {
@@ -816,9 +815,7 @@ Page({
       memoryPercent: memoryPercent(updated),
       batteryIcon: batteryUtil.batteryIconOf(updated),
       batteryText: batteryUtil.batteryText(updated),
-      memoryText: updated.totalMemory
-        ? `${updated.usedMemory}/${updated.totalMemory}`
-        : '--',
+      memoryText: updated.totalMemory ? String(updated.totalMemory) : '--',
       // 连上后 0x01 的 screenType 才到手，分辨率这时才可能从「后端宽高/--」升级为权威值
       resolutionText: resolutionText(updated),
       playbackLabel: getPlaybackLabel(updated),
@@ -1159,16 +1156,17 @@ Page({
     this.showClearConfirm()
   },
 
-  async confirmClearCopies() {
+  async confirmClearCopies(options) {
+    const forPermanentDelete = !!(options && options.forPermanentDelete)
     if (!this.data.device) {
-      return
+      return false
     }
 
     // 一键清空需已连接：未连接不自动重连(点击时已拦一次，这里作二次保护)，直接提示「请先连接设备」。
     const deviceId = activeDevice.findConnectedDeviceId(this.data.device)
     if (!deviceId) {
       toast.warn({ title: '请先连接设备', icon: 'none' })
-      return
+      return false
     }
 
     const traceId = Date.now().toString(36)
@@ -1285,12 +1283,17 @@ Page({
           : rawMsg || '清空失败',
         icon: 'none'
       })
-      return
+      return false
     } finally {
       wx.hideLoading()
       if (!clearSucceeded) {
         deviceBle.setMonitor(null)
       }
+    }
+
+    if (forPermanentDelete) {
+      deviceBle.setMonitor(null)
+      return true
     }
 
     this.hideClearConfirm2() // 带退场动画关闭二级确认弹窗
@@ -1306,6 +1309,7 @@ Page({
       logClearDeviceData(traceId, '一键清空设备指令打印结束')
       deviceBle.setMonitor(null)
     }
+    return true
   },
 
   // 一键清空成功后立刻回读设备信息(0x01)及电量(0x04)，不等 loadDetail 的接口往返，
@@ -1341,9 +1345,7 @@ Page({
     this.setData({
       device,
       memoryPercent: memoryPercent(device),
-      memoryText: device.totalMemory
-        ? `${device.usedMemory}/${device.totalMemory}`
-        : '--',
+      memoryText: device.totalMemory ? String(device.totalMemory) : '--',
       resolutionText: resolutionText(device),
       batteryIcon: batteryUtil.batteryIconOf(device),
       batteryText: batteryUtil.batteryText(device)
@@ -1351,41 +1353,7 @@ Page({
   },
 
   showDeleteConfirm() {
-    // 设备连接中：先弹「需先断开」前置确认，断开后再进入删除确认
-    const device = this.data.device
-    if (device && device.connected) {
-      this.setData({ showDisconnectConfirm: true })
-      return
-    }
-    this.setData({
-      showDeleteConfirm: true
-    })
-  },
-
-  hideDisconnectConfirm() {
-    if (this.data.disconnectClosing) {
-      return
-    }
-    this.setData({ disconnectClosing: true })
-    setTimeout(() => {
-      this.setData({ showDisconnectConfirm: false, disconnectClosing: false })
-    }, 220)
-  },
-
-  // 删除前置弹窗点「断开」：执行与顶部一致的断开交互，退场后接着弹删除确认框
-  confirmDisconnectForDelete() {
-    if (this.data.disconnectClosing) {
-      return
-    }
-    this.performDisconnect()
-    this.setData({ disconnectClosing: true })
-    setTimeout(() => {
-      this.setData({
-        showDisconnectConfirm: false,
-        disconnectClosing: false,
-        showDeleteConfirm: true
-      })
-    }, 220)
+    this.setData({ showDeleteConfirm: true })
   },
 
   hideDeleteConfirm() {
@@ -1398,7 +1366,7 @@ Page({
     }, 220)
   },
 
-  // 删除设备：若删除的是当前选中设备，需清空全局选中状态
+  // 解除绑定：只解除账号关系并断开当前会话，不清空设备或图库照片。
   async confirmDeleteDevice() {
     // _deleting 锁防连点：成功后到 navigateBack 有 500ms 窗口，期间再点会对已删设备重复请求、
     // 弹一条误导性的报错；成功路径不释放锁（页面马上销毁），仅失败释放供重试
@@ -1413,6 +1381,10 @@ Page({
       return // 失败已由接口层统一提示，确认弹窗保留供重试
     }
     deviceIdentity.forget(this.data.id) // 解绑后清掉身份登记，避免主键复用时把旧设备的完整 ID 带回来
+    const liveId = activeDevice.findConnectedDeviceId(this.data.device)
+    if (liveId) {
+      deviceBle.disconnect(liveId)
+    }
     if (
       app.globalData.selectedDevice &&
       app.globalData.selectedDevice.id === this.data.id
@@ -1421,6 +1393,91 @@ Page({
     }
     // 删除成功立即收起确认弹窗（否则 500ms 窗口内弹窗还停在屏上），再返回上一页（列表刷新即为反馈）
     this.hideDeleteConfirm()
+    setTimeout(() => wx.navigateBack(), 500)
+  },
+
+  // 「删除设备」= 一键清空设备与图库 + 断开连接 + 解除绑定。该动作必须在连接态发起。
+  showPermanentDeleteConfirm() {
+    if (!activeDevice.findConnectedDeviceId(this.data.device)) {
+      toast.warn({ title: '请先连接设备', icon: 'none' })
+      return
+    }
+    this.setData({
+      showPermanentDeleteConfirm: true,
+      permanentDeleteClosing: false
+    })
+  },
+
+  hidePermanentDeleteConfirm() {
+    if (this.data.permanentDeleteClosing) {
+      return
+    }
+    this.setData({ permanentDeleteClosing: true })
+    setTimeout(() => {
+      this.setData({
+        showPermanentDeleteConfirm: false,
+        permanentDeleteClosing: false
+      })
+    }, 220)
+  },
+
+  openPermanentDeleteStep2() {
+    this.setData({
+      showPermanentDeleteConfirm: false,
+      permanentDeleteClosing: false,
+      showPermanentDeleteConfirm2: true,
+      permanentDeleteClosing2: false
+    })
+  },
+
+  hidePermanentDeleteConfirm2() {
+    if (this.data.permanentDeleteClosing2) {
+      return
+    }
+    this.setData({ permanentDeleteClosing2: true })
+    setTimeout(() => {
+      this.setData({
+        showPermanentDeleteConfirm2: false,
+        permanentDeleteClosing2: false
+      })
+    }, 220)
+  },
+
+  async confirmPermanentDeleteDevice() {
+    if (!this.data.device || this._permanentDeleting) {
+      return
+    }
+    const deviceId = activeDevice.findConnectedDeviceId(this.data.device)
+    if (!deviceId) {
+      toast.warn({ title: '请先连接设备', icon: 'none' })
+      return
+    }
+    this._permanentDeleting = true
+    const cleared = await this.confirmClearCopies({ forPermanentDelete: true })
+    if (!cleared) {
+      this._permanentDeleting = false
+      return
+    }
+
+    wx.showLoading({ title: '删除设备中', mask: true })
+    try {
+      deviceBle.disconnect(deviceId)
+      await api.deleteDevice(this.data.id)
+      deviceIdentity.forget(this.data.id)
+      if (
+        app.globalData.selectedDevice &&
+        String(app.globalData.selectedDevice.id) === String(this.data.id)
+      ) {
+        app.setSelectedDevice(null)
+      }
+    } catch (error) {
+      this._permanentDeleting = false
+      return
+    } finally {
+      wx.hideLoading()
+    }
+    this.setData({ showPermanentDeleteConfirm2: false })
+    toast.show({ title: '设备已删除', icon: 'none' })
     setTimeout(() => wx.navigateBack(), 500)
   },
 

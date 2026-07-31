@@ -7,6 +7,24 @@
   <page-nav title="投屏管理"></page-nav>
 
   <view class="mock-content records-content">
+    <view wx:if="{{deviceFilters.length}}" class="records-device-filter">
+      <view class="records-device-filter__label">投屏设备</view>
+      <view class="device-filter-wrap">
+        <view class="device-filter-btn" hover-class="none" bindtap="toggleDeviceFilter">
+          <text class="device-filter-name">{{currentDeviceFilterLabel}}</text>
+          <view class="device-filter-arrow {{showDeviceFilter ? 'is-open' : ''}}"></view>
+        </view>
+        <view wx:if="{{showDeviceFilter}}" class="device-filter-menu">
+          <view
+            wx:for="{{deviceFilters}}"
+            wx:key="value"
+            class="device-filter-option {{currentDeviceFilter === item.value ? 'is-active' : ''}}"
+            data-value="{{item.value}}"
+            bindtap="selectDeviceFilter"
+          >{{item.label}}</view>
+        </view>
+      </view>
+    </view>
     <view class="record-tabs">
       <view class="record-tabs__indicator"></view>
       <view class="record-tab {{filter === 'success' ? 'is-active' : ''}}" hover-class="none" data-filter="success" bindtap="switchFilter">投屏成功</view>

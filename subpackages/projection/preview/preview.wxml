@@ -19,7 +19,7 @@
       wx:if="{{imageCount}}"
       class="preview-swiper {{editing && !sliding && editReady ? 'is-hidden' : ''}}"
       current="{{activeIndex}}"
-      duration="300"
+      duration="360"
       bindchange="onSwiperChange"
     >
       <swiper-item wx:for="{{images}}" wx:key="index">
@@ -35,7 +35,7 @@
       </swiper-item>
     </swiper>
     <view wx:else class="photo-wrap empty-photo">暂无待投屏照片</view>
-    <!-- 常驻编辑层（catch 全部触摸，在 JS 里分流）： · 单指快速左右滑 → 切图（swiper 过场）； · 单指长按 1s（伴放大回弹 + 震动，仿苹果相册）→ 进入拖拽，之后单指平移图片； · 双指 → 缩放 + 旋转（随时可用，不需长按）。 2026-07-25 修「来回切图闪一下」：本层**不再用 wx:if 销毁重建**——一销毁，里面的 <image> 节点跟着没了，切回来必须重新下载解码，就是用户看到的「像重新加载」。改为整层常驻， 切图过场(sliding)/新图还没解码完(!editReady) 时只加 is-hidden（透明 + 不吃触摸）， 让底层 swiper 顶着画面；等 bindload 到了再显形。 -->
+    <!-- 常驻编辑层：单指左右滑走 Banner 过场；单指长按 0.5s 后才可平移；双指自由缩放与旋转。 -->
     <view
       wx:if="{{imageCount && editSrc}}"
       class="edit-layer {{editing && !sliding && editReady ? '' : 'is-hidden'}}"
@@ -117,8 +117,7 @@
       <text>原图</text>
     </view>
   </view>
-  <!-- 手势说明（2026-07-24 新增，放竖/横/原下方；2026-07-25 长按阈值 2s→1s，文案同步） -->
-  <view class="gesture-tip" wx:if="{{imageCount}}">长按1秒后可拖拽图片、双指可缩放与旋转图片</view>
+  <view class="gesture-tip" wx:if="{{imageCount}}">长按0.5秒后可拖拽图片，双指可自由缩放与旋转</view>
   <view
     class="preview-submit {{projecting ? 'is-disabled' : ''}}"
     hover-class="none"

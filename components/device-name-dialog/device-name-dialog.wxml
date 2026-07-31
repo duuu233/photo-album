@@ -1,0 +1,36 @@
+<view wx:if="{{visible}}" class="name-mask" catchtouchmove="noop" bindtap="onCancel">
+  <view class="name-dialog" catchtap="noop">
+    <view class="name-dialog__mark">
+      <view class="name-dialog__screen"></view>
+      <view class="name-dialog__pen">✎</view>
+    </view>
+    <view class="name-dialog__title">{{title}}</view>
+    <view class="name-dialog__tip">为设备设置一个容易识别的名称</view>
+    <view class="name-field">
+      <input
+        class="name-field__input"
+        value="{{inputValue}}"
+        maxlength="{{maxLength}}"
+        focus="{{visible}}"
+        cursor-spacing="30"
+        confirm-type="done"
+        bindinput="onInput"
+        bindconfirm="onConfirm"
+        placeholder="请输入设备名称" />
+      <text class="name-field__count">{{inputLength}}/{{maxLength}}</text>
+    </view>
+    <view class="name-dialog__actions">
+      <button
+        class="name-dialog__button name-dialog__button--cancel"
+        disabled="{{saving}}"
+        bindtap="onCancel"
+      >{{cancelText}}</button>
+      <button
+        class="name-dialog__button name-dialog__button--confirm"
+        loading="{{saving}}"
+        disabled="{{saving}}"
+        bindtap="onConfirm"
+      >{{saving ? '保存中' : confirmText}}</button>
+    </view>
+  </view>
+</view>

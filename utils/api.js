@@ -906,7 +906,7 @@ module.exports = {
     })
   },
 
-  // 投屏记录列表。可传 deviceUploadState 过滤设备上传状态：1=成功 / 0=失败；不传则取全部。
+  // 投屏记录列表。可按上传状态与绑定设备筛选。
   getProjectionRecords(params = {}) {
     const query = {
       pageIndex: 1,
@@ -915,6 +915,9 @@ module.exports = {
     // 仅在明确传 0/1 时带上该参数，避免把 undefined 发给后端
     if (params.deviceUploadState === 0 || params.deviceUploadState === 1) {
       query.deviceUploadState = params.deviceUploadState
+    }
+    if (params.userProductId) {
+      query.userProductId = params.userProductId
     }
 
     return module.exports

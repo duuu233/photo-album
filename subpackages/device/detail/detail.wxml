@@ -114,14 +114,14 @@
         </view>
         <view class="thin-divider">
         </view>
-        <!-- 屏幕物理分辨率（如 680*960）：产品静态属性，不随连接状态置 --（见 detail.js resolutionText） -->
+        <!-- 屏幕物理尺寸（像素，如 680*960）：产品静态属性，不随连接状态置 -- -->
         <view class="detail-row">
           <view class="row-left">
             <image
               class="row-icon"
-              src="/assets/images/device-detail-icon02.png"
+              src="/assets/images/device-detail-screen-size.svg"
               mode="aspectFit" />
-            <text>分辨率</text>
+            <text>屏幕尺寸</text>
           </view>
           <view class="row-value">{{resolutionText}}</view>
         </view>
@@ -133,7 +133,7 @@
               class="row-icon"
               src="/assets/images/device-detail-icon03.png"
               mode="aspectFit" />
-            <text>设备内存</text>
+            <text>最大照片数量</text>
           </view>
           <view class="row-value">{{memoryText}}</view>
         </view>
@@ -159,7 +159,7 @@
             <text>一键清空</text>
           </view>
           <view class="row-right">
-            <text>清空设备本地所有照片</text>
+            <text>清空设备及设备照片记录</text>
             <view class="ui-chevron">
             </view>
           </view>
@@ -176,53 +176,37 @@
               class="row-icon"
               src="/assets/images/device-detail-icon06.png"
               mode="aspectFit" />
+            <text>解除绑定</text>
+          </view>
+          <view class="row-right">
+            <text>保留设备上的照片</text>
+            <view class="ui-chevron">
+            </view>
+          </view>
+        </view>
+        <view class="thin-divider">
+        </view>
+        <view
+          class="detail-row action-row delete-row permanent-delete-row"
+          hover-class="none"
+          bindtap="showPermanentDeleteConfirm"
+        >
+          <view class="row-left">
+            <image
+              class="row-icon"
+              src="/assets/images/device-detail-icon06.png"
+              mode="aspectFit" />
             <text>删除设备</text>
           </view>
           <view class="row-right">
-            <text>隐私安全，请清空数据</text>
+            <text>清空照片并解除绑定</text>
             <view class="ui-chevron">
             </view>
           </view>
         </view>
       </view>
     </view>
-    <!-- 删除前置确认弹窗：设备连接中时先弹此框，点「断开」执行断开交互后接着弹删除确认框 -->
-    <view
-      class="confirm-mask"
-      wx:if="{{showDisconnectConfirm}}"
-      catchtouchmove="noop"
-      bindtap="hideDisconnectConfirm"
-    >
-      <view class="confirm-dialog {{disconnectClosing ? 'pop-closing-dialog' : ''}}" catchtap="noop">
-        <view class="confirm-icon danger-icon">
-          <image
-            class="trash-icon"
-            src="/assets/images/device-detail-icon06.png"
-            mode="aspectFit" />
-        </view>
-        <view class="confirm-copy">
-          <view class="confirm-title">删除设备</view>
-          <view class="confirm-desc">删除设备需要先断开此设备</view>
-        </view>
-        <view class="confirm-actions">
-          <view
-            class="confirm-cancel"
-            hover-class="none"
-            bindtap="hideDisconnectConfirm"
-          >
-            取消
-          </view>
-          <view
-            class="confirm-primary"
-            hover-class="none"
-            bindtap="confirmDisconnectForDelete"
-          >
-            断开
-          </view>
-        </view>
-      </view>
-    </view>
-    <!-- 删除确认弹窗：点遮罩关闭，点弹窗内部用 catchtap="noop" 阻止冒泡，避免误关 -->
+    <!-- 解除绑定确认：照片保留，只解除账号关系 -->
     <view
       class="confirm-mask"
       wx:if="{{showDeleteConfirm}}"
@@ -237,8 +221,8 @@
             mode="aspectFit" />
         </view>
         <view class="confirm-copy">
-          <view class="confirm-title">删除设备</view>
-          <view class="confirm-desc">删除设备后，设备上的照片将保留，如不再使用此设备，建议先清空所有照片</view>
+          <view class="confirm-title">解除绑定</view>
+          <view class="confirm-desc">解除绑定后，设备上的照片将保留，您可以稍后重新绑定设备。</view>
         </view>
         <view class="confirm-actions">
           <view
@@ -246,7 +230,7 @@
             hover-class="none"
             bindtap="hideDeleteConfirm"
           >
-            再想想
+            取消
           </view>
           <view
             class="confirm-primary"
@@ -255,6 +239,48 @@
           >
             确认
           </view>
+        </view>
+      </view>
+    </view>
+    <!-- 删除设备一级确认：建议先清空照片防止隐私泄露 -->
+    <view
+      class="confirm-mask"
+      wx:if="{{showPermanentDeleteConfirm}}"
+      catchtouchmove="noop"
+      bindtap="hidePermanentDeleteConfirm"
+    >
+      <view class="confirm-dialog {{permanentDeleteClosing ? 'pop-closing-dialog' : ''}}" catchtap="noop">
+        <view class="confirm-icon danger-icon">
+          <image class="trash-icon" src="/assets/images/device-detail-icon06.png" mode="aspectFit" />
+        </view>
+        <view class="confirm-copy">
+          <view class="confirm-title">删除设备</view>
+          <view class="confirm-desc">如果您不再使用设备，建议执行一键清空设备照片，防止隐私泄露</view>
+        </view>
+        <view class="confirm-actions">
+          <view class="confirm-cancel" hover-class="none" bindtap="hidePermanentDeleteConfirm">取消</view>
+          <view class="confirm-primary" hover-class="none" bindtap="openPermanentDeleteStep2">继续</view>
+        </view>
+      </view>
+    </view>
+    <!-- 删除设备二级确认：执行清空、断开、解除绑定 -->
+    <view
+      class="confirm-mask"
+      wx:if="{{showPermanentDeleteConfirm2}}"
+      catchtouchmove="noop"
+      bindtap="hidePermanentDeleteConfirm2"
+    >
+      <view class="confirm-dialog {{permanentDeleteClosing2 ? 'pop-closing-dialog' : ''}}" catchtap="noop">
+        <view class="confirm-icon danger-icon">
+          <image class="trash-icon" src="/assets/images/device-detail-icon06.png" mode="aspectFit" />
+        </view>
+        <view class="confirm-copy">
+          <view class="confirm-title">确认删除设备</view>
+          <view class="confirm-desc">我已知晓删除设备相关内容，确认删除</view>
+        </view>
+        <view class="confirm-actions">
+          <view class="confirm-cancel" hover-class="none" bindtap="hidePermanentDeleteConfirm2">取消</view>
+          <view class="confirm-primary" hover-class="none" bindtap="confirmPermanentDeleteDevice">确认</view>
         </view>
       </view>
     </view>
@@ -274,7 +300,7 @@
         </view>
         <view class="confirm-copy">
           <view class="confirm-title">一键清空</view>
-          <view class="confirm-desc">将清空设备内所有照片，同时清空图库，请谨慎选择是否继续。</view>
+          <view class="confirm-desc">将清空彩色墨水屏设备内所有照片，同时清空小程序/APP的图库，请谨慎选择是否继续。</view>
         </view>
         <view class="confirm-actions">
           <view
@@ -414,6 +440,13 @@
       </view>
     </view>
   </view>
+  <device-name-dialog
+    visible="{{renameVisible}}"
+    value="{{renameValue}}"
+    saving="{{renameSaving}}"
+    bindcancel="cancelRename"
+    bindconfirm="confirmRename"
+  ></device-name-dialog>
   <global-toast id="globalToast">
   </global-toast>
 </view>

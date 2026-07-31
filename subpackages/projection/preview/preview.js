@@ -23,13 +23,15 @@ const STAGE_MIN_H_RPX = 680
 const EXPORT_FILE_TYPE = 'jpg'
 const EXPORT_QUALITY = 0.92
 
-// 编辑态里图片相对「铺满取景框(cover)」还能再放大的上限倍数（防止无限放大成马赛克）
+// 编辑态缩放范围：允许把图片自由缩小、露出白色画布，导出时与预览保持所见即所得。
+// 0.02 已接近“任意缩小”且避免 scale=0 导致手势无法恢复；放大仍保留像素保护上限。
+const MIN_ZOOM_FACTOR = 0.02
 const MAX_ZOOM_FACTOR = 8
 
 // 长按拖拽（2026-07-24，仿苹果相册长按取图）：单指按住 LONG_PRESS_MS 毫秒且几乎不动 →
 // 进入拖拽态（伴随图片放大回弹 + 震动反馈），此后单指移动才平移图片，松手即结束。
-// 2026-07-25：2s 太久（用户反馈按着像没反应），改 1s；改这里记得同步 wxml 的手势说明文案。
-const LONG_PRESS_MS = 1000
+// 2026-07-31：产品要求 0.5s 后进入单指移动；改这里需同步 wxml 手势说明。
+const LONG_PRESS_MS = 500
 // 长按判定的位移容差(px)：按住期间移动超过它，即认定用户在「左右滑动切图」，取消长按计时。
 const MOVE_CANCEL_PX = 12
 // 左右滑动切图的提交阈值(px)：单指横向滑动累计超过它，松手切到上一张/下一张。
@@ -232,12 +234,12 @@ Page({
     if (this._slideTimer) {
       clearTimeout(this._slideTimer)
     }
-    // 略大于 swiper duration(300ms)，等滑动动画走完再对新图重建编辑层
+    // 略大于 swiper duration(360ms)，等 Banner 式滑动动画走完再对新图重建编辑层
     this._slideTimer = setTimeout(() => {
       this._slideTimer = null
       this.setData({ sliding: false })
       this.enterEdit()
-    }, 320)
+    }, 390)
   },
 
   // 把当前图的编辑数值快照进 _states（整个 _edit 存下来：烘焙要用 frame/baseScale 等几何量）
@@ -569,41 +571,13 @@ Page({
     this._schedulePrebake()
   },
 
-  // 约束一组变换：① zoom 不小于「当前角度下铺满取景框」所需最小值（旋转后也不露白边），且不超过上限；
-  // ② 平移不让取景框越出图片（把屏幕平移量转到图片本地坐标再夹取）。返回夹取后的 {zoom,tx,ty}。
+  // 约束一组变换：只限制极小/极大的缩放值，不再强制 cover，也不再把平移夹在图片边缘内。
+  // 因而图片可任意缩小、可在白色画布中自由构图；离屏画布同样铺白底，预览与输出所见即所得。
   _clampTransform(zoom, tx, ty, angle) {
-    const g = this._edit
-    const rad = (angle * Math.PI) / 180
-    const cosT = Math.cos(rad)
-    const sinT = Math.sin(rad)
-    const c = Math.abs(cosT)
-    const s = Math.abs(sinT)
-    const fw = g.frameW
-    const fh = g.frameH
-    // 旋转 angle 后，图片(baseW×baseH×zoom)要包住轴对齐的取景框(fw×fh)所需的最小 zoom
-    const minZoom = Math.max(
-      (fw * c + fh * s) / g.baseW,
-      (fw * s + fh * c) / g.baseH
-    )
-    let z = Math.max(zoom, minZoom)
-    z = Math.min(z, minZoom * MAX_ZOOM_FACTOR)
-    const W = g.baseW * z
-    const H = g.baseH * z
-    // 取景框旋转到图片本地坐标后的半宽/半高
-    const hx = (fw / 2) * c + (fh / 2) * s
-    const hy = (fw / 2) * s + (fh / 2) * c
-    // 屏幕平移(tx,ty) → 图片本地平移(lox,loy)
-    let lox = tx * cosT + ty * sinT
-    let loy = -tx * sinT + ty * cosT
-    const maxLox = Math.max(0, W / 2 - hx)
-    const maxLoy = Math.max(0, H / 2 - hy)
-    lox = Math.max(-maxLox, Math.min(lox, maxLox))
-    loy = Math.max(-maxLoy, Math.min(loy, maxLoy))
-    // 本地平移 → 屏幕平移
     return {
-      zoom: z,
-      tx: lox * cosT - loy * sinT,
-      ty: lox * sinT + loy * cosT
+      zoom: Math.max(MIN_ZOOM_FACTOR, Math.min(Number(zoom) || 1, MAX_ZOOM_FACTOR)),
+      tx: Number(tx) || 0,
+      ty: Number(ty) || 0
     }
   },
 
@@ -686,6 +660,7 @@ Page({
       return
     }
     const t = touches[0]
+    this._singleAfterPinch = false
     this._mode = 'idle'
     this._touch = { startX: t.clientX, startY: t.clientY }
     this._swipeDx = 0
@@ -723,16 +698,13 @@ Page({
     }
 
     const t = touches[0]
-    // 双指抬起一指后仍在移动（touchmove 先于 touchend 到）：以剩余指改记拖拽基准，延续编辑，
-    // 同时避免读到未初始化的 _touch（本次触摸以双指起手时 _touch 为空）
+    // 双指抬起一指后重新进入 0.5s 长按判定，不允许剩余单指直接平移。
     if (this._mode === 'pinch' || !this._touch) {
-      const g = this._edit
-      this._mode = 'drag'
-      this._dragAnchor = {
-        x: t.clientX,
-        y: t.clientY,
-        base: { zoom: g.zoom, tx: g.tx, ty: g.ty, angle: g.angle }
-      }
+      this._mode = 'idle'
+      this._touch = { startX: t.clientX, startY: t.clientY }
+      this._singleAfterPinch = true
+      this._clearLongPress()
+      this._lpTimer = setTimeout(() => this._armDrag(), LONG_PRESS_MS)
       return
     }
     const dx = t.clientX - this._touch.startX
@@ -742,7 +714,8 @@ Page({
       // 长按还没满就移动了 → 认定为「左右滑动切图」，取消长按计时
       if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
         this._clearLongPress()
-        this._mode = 'swipe'
+        // 从双指缩放落成单指后，移动只取消长按，不触发平移/切图；重新触摸才恢复左右切图。
+        this._mode = this._singleAfterPinch ? 'none' : 'swipe'
       } else {
         return // 仍在原地按住，继续等长按
       }
@@ -767,16 +740,13 @@ Page({
   onEditTouchEnd(e) {
     this._clearLongPress()
     const touches = e.touches
-    // 还有手指没抬（双指松掉一指）：以剩余单指继续拖拽（已在主动编辑中，不再要求长按）
+    // 还有手指没抬（双指松掉一指）：重新等待 0.5s 长按，不能直接拖动。
     if (touches && touches.length >= 1 && this._edit) {
-      const g = this._edit
       const t = touches[0]
-      this._mode = 'drag'
-      this._dragAnchor = {
-        x: t.clientX,
-        y: t.clientY,
-        base: { zoom: g.zoom, tx: g.tx, ty: g.ty, angle: g.angle }
-      }
+      this._mode = 'idle'
+      this._touch = { startX: t.clientX, startY: t.clientY }
+      this._singleAfterPinch = true
+      this._lpTimer = setTimeout(() => this._armDrag(), LONG_PRESS_MS)
       return
     }
     const mode = this._mode
@@ -791,6 +761,7 @@ Page({
       this._schedulePrebake() // 构图刚改完：空闲期先把预览缓存出好，下次切图就不用等
     }
     this._swipeDx = 0
+    this._singleAfterPinch = false
   },
 
   // 兜底：正常编辑态由 .edit-layer 独占触摸，swiper 不会因用户触摸而 change（切图都走 _commitSwipe）。
@@ -836,8 +807,7 @@ Page({
     this.switchImage(index)
   },
 
-  // 图右上角悬浮按钮：在当前角度基础上顺时针 +90°。
-  // 夹取会自动把 zoom 提到「转 90° 后仍铺满取景框」所需值，不露白边。
+  // 图右上角悬浮按钮：在当前角度基础上顺时针 +90°，保留当前自由缩放与位置。
   rotate90() {
     const g = this._edit
     if (!g) {

@@ -99,11 +99,11 @@
 .edit-clip {
   position: absolute;
   overflow: hidden;
-  background: #e6ecf4;
+  background: #ffffff;
   border-radius: 40rpx;
 }
 
-/* 长按 2s 触发拖拽时的「拿起」反馈：轻微放大再回弹（配合 wx.vibrateShort 震动），仿苹果相册长按取图 */
+/* 长按 0.5s 触发拖拽时的「拿起」反馈 */
 .edit-clip.is-pickup {
   animation: clipPickup 0.34s ease;
 }

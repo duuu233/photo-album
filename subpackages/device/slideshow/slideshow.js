@@ -67,7 +67,8 @@ Page({
 
     const selected = app.globalData.selectedDevice
 
-    if (selected && String(selected.id) === String(device && device.id)) {
+    const isSelected = !!selected && activeDevice.devicesMatch(device, selected)
+    if (isSelected) {
       device = Object.assign({}, device, {
         deviceId: device.deviceId || selected.deviceId,
         bleDeviceId: device.bleDeviceId || selected.bleDeviceId || selected.deviceId,
@@ -76,6 +77,9 @@ Page({
         intervalHours: selected.intervalHours || device.intervalHours
       })
     }
+    // 详情接口可能不回完整硬件 ID，绑定刚完成时 userProductId 形态也可能不同；
+    // 继承全局选中设备的稳定身份后再找 live session，避免明明连接 A 却误报“请先连接设备”。
+    device = activeDevice.inheritStableIdentity(device, isSelected ? selected : null)
 
     const liveId = activeDevice.findConnectedDeviceId(device)
     device = Object.assign({}, device, {

@@ -297,10 +297,14 @@ button {
 }
 
 .device-title {
+  max-width: 320rpx;
+  overflow: hidden;
   margin-bottom: 18rpx;
   color: #2a2d32;
   font-size: 40rpx;
   font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .device-status,

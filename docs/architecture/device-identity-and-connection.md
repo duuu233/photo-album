@@ -1,7 +1,7 @@
 # 设备身份与 BLE 会话
 
 > 状态：current  
-> 最后核对：2026-07-30  
+> 最后核对：2026-07-31
 > 适用范围：微信小程序 + Flutter（身份补齐链 2026-07-30 已双端同步）  
 > 当前实现：`utils/device-id.js`、`utils/active-device.js`、`utils/device-identity.js`、`utils/device-conn-cache.js`、`utils/device-ble.js`
 
@@ -70,6 +70,9 @@ Flutter 是 `refreshDevices` 整体替换列表而 `_carryOverBleFields` 不搬 
 - 页面跳转传递后端记录主键；执行投屏、轮播、清空、删除、OTA 等物理操作前再次确认目标会话。
 - `selectedDevice.connected` 只是缓存状态，不能单独证明真实连接；应以活动 BLE 会话和完整 ID 校验为准。
 - 一个页面成功连接后，应把有效句柄和完整身份同步到全局选中设备，使首页、列表、详情和后续操作共享同一会话。
+- 设备名称只用于展示，最长 20 个 Unicode 码点；改名不得写入或替换 BLE 身份字段。
+- 新设备绑定落库并回填 `userProductId` 后，在绑定页带出默认名称进行一次“可跳过”的命名引导；确认保存后再按原路径返回。
+- 设备列表展示顺序为“真实连接中的设备 > 最近绑定设备 > 接口原顺序”。排序与上移动画只影响 UI，不参与身份匹配。
 
 ## 失败处理
 

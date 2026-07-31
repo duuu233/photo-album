@@ -63,10 +63,15 @@
 }
 
 .profile-name {
+  display: block;
+  overflow: hidden;
   color: #2a2d2d;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Segoe UI Emoji", "Apple Color Emoji", sans-serif;
   font-size: 40rpx;
   font-weight: 500;
   line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .profile-id {

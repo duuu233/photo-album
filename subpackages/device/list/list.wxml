@@ -29,7 +29,7 @@
     </view>
 
     <view wx:elif="{{devices.length}}" class="device-list">
-      <view class="device-card glass-panel {{item.connected ? '' : 'is-offline'}}" wx:for="{{devices}}" wx:key="id" wx:for-index="index" data-id="{{item.id}}" bindtap="selectDevice">
+      <view class="device-card glass-panel {{item.connected ? '' : 'is-offline'}} {{reorderingDeviceId === '' + item.id ? 'device-card--promoted' : ''}}" wx:for="{{devices}}" wx:key="id" wx:for-index="index" data-id="{{item.id}}" bindtap="selectDevice">
         <view class="device-card__main">
           <!-- 2026-07-19 产品要求：设备图统一用首页那张 home-icon02（首页/列表/详情三处同图），
                且不区分连接状态；连接状态由蓝牙角标和状态文案表达。
@@ -118,6 +118,14 @@
       <view class="cancel-action" hover-class="none" bindtap="hideMediaSheet">取消</view>
     </view>
   </view>
+
+  <device-name-dialog
+    visible="{{renameVisible}}"
+    value="{{renameValue}}"
+    saving="{{renameSaving}}"
+    bindcancel="cancelRename"
+    bindconfirm="confirmRename"
+  ></device-name-dialog>
 
   <global-toast id="globalToast"></global-toast>
 </view>

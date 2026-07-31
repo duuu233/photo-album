@@ -3,7 +3,7 @@
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" mode="aspectFill"></image>
   </view>
 
-  <page-nav title="我的图库"></page-nav>
+  <page-nav title="设备照片"></page-nav>
 
   <!-- 加载中：等接口返回再决定展示照片网格还是空态，避免空态先闪一下 -->
   <view wx:if="{{loading}}" class="page-loading">
@@ -45,6 +45,10 @@
           </block>
         </view>
       </view>
+    </view>
+    <view wx:if="{{filters.length}}" class="album-hint">
+      <view class="album-hint__dot"></view>
+      <text>当前屏幕照片，可指定显示或删除当前屏幕照片</text>
     </view>
 
     <!-- 有照片：照片网格（选中时加 has-bottom-bar 留出底部栏空间）+ 底部操作栏 -->

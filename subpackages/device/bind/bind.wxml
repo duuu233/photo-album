@@ -84,11 +84,22 @@
       <view class="check-list">
         <text>1.设备是否有电?</text>
         <text>2.当前设备是否被占用?</text>
-        <text>3.设备蓝牙是否工作正常，手机蓝牙是否打开</text>
+        <text>3.设备蓝牙是否工作正常，手机或小程序蓝牙开关是否打开</text>
         <text>4.设备是否与手机距离过远，隔离或有其他遮挡物</text>
       </view>
     </view>
   </view>
+
+  <device-name-dialog
+    visible="{{renameVisible}}"
+    value="{{renameValue}}"
+    saving="{{renameSaving}}"
+    title="给设备取个名字"
+    cancel-text="暂不修改"
+    confirm-text="确定"
+    bindcancel="cancelRename"
+    bindconfirm="confirmRename"
+  ></device-name-dialog>
 
   <global-toast id="globalToast"></global-toast>
 </view>

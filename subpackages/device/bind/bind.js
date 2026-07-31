@@ -5,9 +5,11 @@ const bluetooth = require('../../../utils/bluetooth')
 const deviceBle = require('../../../utils/device-ble')
 const activeDevice = require('../../../utils/active-device')
 const deviceIdUtil = require('../../../utils/device-id')
+const deviceName = require('../../../utils/device-name')
 const system = require('../../../utils/system')
 
 const app = getApp()
+const RECENTLY_BOUND_DEVICE_KEY = 'recentlyBoundDeviceId'
 
 // 扫描窗口（2026-07-29 由 12s 放宽到 20s）。
 // 依据：设备广播间隔约 3s，7 台同时在场时 12s 实测经常搜不全（少 1~2 台）——每台设备一个窗口内
@@ -27,7 +29,10 @@ Page({
     binding: false, // 是否正在绑定，避免重复点击「立即绑定」造成重复绑定
     location: null,
     showHelp: false,
-    helpClosing: false // 「扫描帮助」弹层是否正在播放退场动画
+    helpClosing: false, // 「扫描帮助」弹层是否正在播放退场动画
+    renameVisible: false,
+    renameValue: '',
+    renameSaving: false
   },
 
   onLoad() {
@@ -470,6 +475,58 @@ Page({
     app.setSelectedDevice(device)
 
     wx.hideLoading()
+    // 新绑定完成后先在当前页引导命名。允许暂不修改（弱强制），确认保存后再按原逻辑返回。
+    // 已绑定设备的复用路径不进入这里，避免每次重连都要求改名。
+    this._pendingBoundDevice = device
+    this.setData({
+      renameVisible: true,
+      renameValue: device.name || scanDevice.name || '',
+      renameSaving: false
+    })
+  },
+
+  cancelRename() {
+    if (this.data.renameSaving) {
+      return
+    }
+    this.setData({ renameVisible: false })
+    this.finishNewBinding(this._pendingBoundDevice)
+  },
+
+  async confirmRename(e) {
+    const device = this._pendingBoundDevice
+    const checked = deviceName.validateDeviceName(e.detail.value)
+    if (!device || !device.id || !checked.ok) {
+      toast.warn({
+        title: checked.message || '设备信息异常，请稍后在设备页修改',
+        icon: 'none'
+      })
+      return
+    }
+    this.setData({ renameSaving: true })
+    try {
+      await api.renameDevice(device.id, checked.name)
+      const updated = Object.assign({}, device, {
+        name: checked.name,
+        productName: checked.name
+      })
+      this._pendingBoundDevice = updated
+      app.setSelectedDevice(updated)
+      this.setData({ renameVisible: false })
+      this.finishNewBinding(updated)
+    } finally {
+      this.setData({ renameSaving: false })
+    }
+  },
+
+  finishNewBinding(device) {
+    if (this._bindingFinished) {
+      return
+    }
+    this._bindingFinished = true
+    if (device && device.id) {
+      wx.setStorageSync(RECENTLY_BOUND_DEVICE_KEY, String(device.id))
+    }
     toast.show({
       title: '绑定成功',
       icon: 'none'

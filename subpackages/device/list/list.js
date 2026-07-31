@@ -9,6 +9,7 @@ const deviceName = require('../../../utils/device-name')
 const deviceIdentity = require('../../../utils/device-identity')
 
 const app = getApp()
+const RECENTLY_BOUND_DEVICE_KEY = 'recentlyBoundDeviceId'
 
 // 计算设备存储使用百分比，用于列表项进度条
 function memoryPercent(device) {
@@ -28,7 +29,12 @@ Page({
     loading: true,
     loadError: false, // 接口失败标记：走「加载失败+重新加载」，不再伪装成「暂无设备」
     showMediaSheet: false, // 「拍照/相册」选择弹层是否展示（点某台设备的「投屏」后弹出）
-    mediaSheetClosing: false // 选择弹层是否正在播放退场动画
+    mediaSheetClosing: false, // 选择弹层是否正在播放退场动画
+    reorderingDeviceId: '',
+    renameVisible: false,
+    renameDeviceId: '',
+    renameValue: '',
+    renameSaving: false
   },
 
   noop() {},
@@ -106,9 +112,10 @@ Page({
       })
     }))
 
+    const sortedDevices = this.sortDevices(devices)
     this.setData({
       // 先算内存百分比，再标记“可删除提示”仅显示在最后一个离线设备上（引导用户清理）
-      devices: devices.map(item => Object.assign({}, item, {
+      devices: sortedDevices.map(item => Object.assign({}, item, {
         memoryPercent: memoryPercent(item),
         // 先展示最近缓存；下面 refreshConnectedBattery 仅在 15 秒过期后读 0x04。
         batteryIcon: batteryUtil.batteryIconOf(item),
@@ -121,6 +128,28 @@ Page({
       loadError: false
     })
     await this.refreshConnectedBattery()
+  },
+
+  // 产品排序：真实连接中的设备永远置顶，其次是刚绑定的设备，其余保持接口原有顺序。
+  // 连接态只认 active-device 校验后的 live session，不能用后端 connected 字段。
+  sortDevices(devices) {
+    const recentId = String(wx.getStorageSync(RECENTLY_BOUND_DEVICE_KEY) || '')
+    return (devices || [])
+      .map((item, index) => ({ item, index }))
+      .sort((a, b) => {
+        const aConnected = a.item.connected ? 1 : 0
+        const bConnected = b.item.connected ? 1 : 0
+        if (aConnected !== bConnected) {
+          return bConnected - aConnected
+        }
+        const aRecent = recentId && String(a.item.id) === recentId ? 1 : 0
+        const bRecent = recentId && String(b.item.id) === recentId ? 1 : 0
+        if (aRecent !== bRecent) {
+          return bRecent - aRecent
+        }
+        return a.index - b.index
+      })
+      .map(entry => entry.item)
   },
 
   async refreshConnectedBattery() {
@@ -418,8 +447,8 @@ Page({
 
     // 整张列表按真实会话重算连接态，而不是只刷被点的这一行：单连接下连 B 会先释放 A 的会话
     // （device-ble.disconnectOthers），只改 B 那行的话 A 会一直挂着「已连接」和「投屏/断开」按钮。
-    this.setData({
-      devices: activeDevice
+    const nextDevices = this.sortDevices(
+      activeDevice
         .reconcileConnectionFlags(
           this.data.devices.map(item => item.id === device.id ? updated : item)
         )
@@ -428,7 +457,18 @@ Page({
           batteryIcon: batteryUtil.batteryIconOf(item),
           batteryText: batteryUtil.batteryText(item)
         }))
+    )
+    this.setData({
+      devices: nextDevices,
+      reorderingDeviceId: String(device.id)
     })
+    if (this._reorderTimer) {
+      clearTimeout(this._reorderTimer)
+    }
+    this._reorderTimer = setTimeout(() => {
+      this._reorderTimer = null
+      this.setData({ reorderingDeviceId: '' })
+    }, 560)
     return updated
   },
 
@@ -440,36 +480,44 @@ Page({
       return
     }
 
-    wx.showModal({
-      title: '编辑设备名称',
-      editable: true,
-      placeholderText: `请输入设备名称（1-${deviceName.DEVICE_NAME_MAX_LEN}个字符）`,
-      content: device.name,
-      success: async res => {
-        if (!res.confirm) {
-          return
-        }
-
-        // 弹窗自身无法限制输入长度，只能在确定后校验；不合法则提示并放弃本次保存
-        const checked = deviceName.validateDeviceName(res.content)
-        if (!checked.ok) {
-          toast.warn(checked.message)
-          return
-        }
-
-        const newName = checked.name
-        await api.renameDevice(id, newName)
-        // 改名只做后端存储：全局选中设备只合并新名字，保留 deviceId 等连接字段。
-        // 不能用接口精简返回整体替换——会丢 deviceId 造成假断联且重扫搜不到（设备被会话占线不广播）。
-        const selected = app.globalData.selectedDevice
-        if (selected && String(selected.id) === String(id)) {
-          app.setSelectedDevice(
-            Object.assign({}, selected, { name: newName, productName: newName })
-          )
-        }
-        this.loadDevices()
-      }
+    this.setData({
+      renameVisible: true,
+      renameDeviceId: String(id),
+      renameValue: device.name || '',
+      renameSaving: false
     })
+  },
+
+  cancelRename() {
+    if (!this.data.renameSaving) {
+      this.setData({ renameVisible: false })
+    }
+  },
+
+  async confirmRename(e) {
+    const id = this.data.renameDeviceId
+    const checked = deviceName.validateDeviceName(e.detail.value)
+    if (!checked.ok || !id) {
+      toast.warn(checked.message || '设备信息异常')
+      return
+    }
+    this.setData({ renameSaving: true })
+    try {
+      const newName = checked.name
+      await api.renameDevice(id, newName)
+      // 改名只合并名称，保留当前 BLE 会话身份。
+      const selected = app.globalData.selectedDevice
+      if (selected && String(selected.id) === String(id)) {
+        app.setSelectedDevice(
+          Object.assign({}, selected, { name: newName, productName: newName })
+        )
+      }
+      this.setData({ renameVisible: false })
+      await this.loadDevices()
+      toast.show({ title: '名称已保存', icon: 'none' })
+    } finally {
+      this.setData({ renameSaving: false })
+    }
   },
 
   deleteDevice(e) {

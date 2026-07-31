@@ -12,6 +12,10 @@ Page({
     // 查找用），不进 data 省一份 setData 序列化传输
     filteredRecords: [],
     filter: 'success',
+    deviceFilters: [],
+    currentDeviceFilter: '',
+    currentDeviceFilterLabel: '',
+    showDeviceFilter: false,
     loading: true,
     loadError: false // 接口失败标记：走「加载失败+重新加载」，不再伪装成「暂无记录」
   },
@@ -20,7 +24,8 @@ Page({
     this.setSystemMetrics()
   },
 
-  onShow() {
+  async onShow() {
+    await this.loadDeviceFilters()
     this.loadRecords()
   },
 
@@ -51,9 +56,80 @@ Page({
     return filter === 'success' ? 1 : 0
   },
 
+  async loadDeviceFilters() {
+    let devices = []
+    try {
+      devices = await api.getDevices()
+    } catch (error) {
+      devices = []
+    }
+    const filters = (devices || [])
+      .map((device, index) => {
+        const value = String(device.userProductId || device.id || '')
+        const serial = String(device.deviceNo || device.productDeviceId || '')
+          .replace(/[:\-\s]/g, '')
+        return {
+          value,
+          label: device.name || `设备${index + 1}`,
+          serialTail: serial ? serial.slice(-4) : '',
+          connected: !!activeDevice.findConnectedDeviceId(device)
+        }
+      })
+      .filter(item => item.value)
+      .sort((a, b) => Number(b.connected) - Number(a.connected))
+
+    // 同名设备补序列号尾号，避免下拉里无法区分。
+    const counts = {}
+    filters.forEach(item => {
+      counts[item.label] = (counts[item.label] || 0) + 1
+    })
+    filters.forEach((item, index) => {
+      if (counts[item.label] > 1) {
+        item.label = `${item.label} (${item.serialTail || index + 1})`
+      }
+    })
+
+    const old = String(this.data.currentDeviceFilter || '')
+    const current =
+      filters.find(item => item.value === old) ||
+      filters.find(item => item.connected) ||
+      filters[0] ||
+      null
+    this.setData({
+      deviceFilters: filters,
+      currentDeviceFilter: current ? current.value : '',
+      currentDeviceFilterLabel: current ? current.label : '',
+      showDeviceFilter: false
+    })
+  },
+
+  toggleDeviceFilter() {
+    if (this.data.deviceFilters.length) {
+      this.setData({ showDeviceFilter: !this.data.showDeviceFilter })
+    }
+  },
+
+  selectDeviceFilter(e) {
+    const value = String(e.currentTarget.dataset.value || '')
+    const item = this.data.deviceFilters.find(filter => filter.value === value)
+    if (!item || value === this.data.currentDeviceFilter) {
+      this.setData({ showDeviceFilter: false })
+      return
+    }
+    this.setData({
+      currentDeviceFilter: value,
+      currentDeviceFilterLabel: item.label,
+      showDeviceFilter: false
+    })
+    this.loadRecords(this.data.filter, value)
+  },
+
   // 按当前标签向后端请求对应状态的投屏记录（成功 deviceUploadState=1 / 失败=0），
   // 不再一次性拉全部再本地筛。数据已在 api 层归一化。
-  async loadRecords(filter = this.data.filter) {
+  async loadRecords(
+    filter = this.data.filter,
+    userProductId = this.data.currentDeviceFilter
+  ) {
     // 点击 tab 时先同步切换选中态，再把列表区域换成局部 loading；不能继续展示上一个
     // tab 的记录，也不能等慢接口回包后才移动 tab 指示器。
     const seq = (this.loadSeq || 0) + 1
@@ -68,10 +144,15 @@ Page({
 
     try {
       const records = await api.getProjectionRecords({
-        deviceUploadState: this.filterToUploadState(filter)
+        deviceUploadState: this.filterToUploadState(filter),
+        userProductId: userProductId || undefined
       })
       // 用户可能在慢请求期间又切了 tab：只允许最新一轮回写，防止旧响应倒灌。
-      if (seq !== this.loadSeq || filter !== this.data.filter) {
+      if (
+        seq !== this.loadSeq ||
+        filter !== this.data.filter ||
+        userProductId !== this.data.currentDeviceFilter
+      ) {
         return
       }
       this.records = records
@@ -82,7 +163,11 @@ Page({
         loadError: false
       })
     } catch (error) {
-      if (seq !== this.loadSeq || filter !== this.data.filter) {
+      if (
+        seq !== this.loadSeq ||
+        filter !== this.data.filter ||
+        userProductId !== this.data.currentDeviceFilter
+      ) {
         return
       }
       // 接口失败时 api 层已 toast 提示；标记 loadError 展示「加载失败+重新加载」——
