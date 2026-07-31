@@ -248,6 +248,8 @@
 }
 
 .bubble--ai {
+  width: 100%;
+  max-width: 100%;
   color: #555555;
   border: 2rpx solid rgba(255, 255, 255, 0.9);
   background: rgba(255, 255, 255, 0.78);
