@@ -222,6 +222,11 @@
   margin-top: 2rpx;
 }
 
+/* 「删除设备」单独成卡：在 .detail-content 的 24rpx 间距上再加一段，和上面的操作卡拉开距离 */
+.danger-list {
+  margin-top: 24rpx;
+}
+
 .action-row .row-left text {
   font-weight: 500;
 }

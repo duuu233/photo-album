@@ -12,41 +12,19 @@
 
 .name-dialog {
   width: 100%;
-  padding: 48rpx 40rpx 36rpx;
+  padding: 40rpx 40rpx 36rpx;
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(246, 251, 255, 0.96));
   border: 2rpx solid rgba(255, 255, 255, 0.94);
   border-radius: 40rpx;
   box-shadow: 0 32rpx 80rpx rgba(78, 104, 141, 0.22);
 }
 
-.name-dialog__mark {
-  position: relative;
-  width: 88rpx;
-  height: 88rpx;
-  margin: 0 auto 22rpx;
-  background: linear-gradient(145deg, #fff1e8, #ffe0d0);
-  border-radius: 28rpx;
-  box-shadow: 0 14rpx 28rpx rgba(255, 101, 34, 0.15);
-}
-
-.name-dialog__screen {
-  position: absolute;
-  left: 20rpx;
-  top: 22rpx;
-  width: 46rpx;
-  height: 36rpx;
-  border: 4rpx solid #ff6725;
-  border-radius: 7rpx;
-}
-
-.name-dialog__pen {
-  position: absolute;
-  right: 8rpx;
-  bottom: 7rpx;
-  color: #ff6725;
-  font-size: 38rpx;
-  font-weight: 700;
-  transform: rotate(-12deg);
+/* 设备图：图片本身四角透明、自带圆环底，不要再加背景色块或圆角，否则会露出方底 */
+.name-dialog__device {
+  display: block;
+  width: 152rpx;
+  height: 152rpx;
+  margin: 0 auto 20rpx;
 }
 
 .name-dialog__title {
@@ -82,6 +60,11 @@
   font-size: 30rpx;
 }
 
+.name-field__placeholder {
+  color: #a9b1bc;
+  font-size: 30rpx;
+}
+
 .name-field__count {
   flex-shrink: 0;
   margin-left: 18rpx;
@@ -95,7 +78,12 @@
   margin-top: 36rpx;
 }
 
+/* 文案居中（2026-07-31）：原来只靠 line-height 撑高，button 自带的左右 padding 与
+   loading 态插入的 spinner 都会把文字顶偏。改成 flex 居中，两态、两行文案长度都稳定在正中。 */
 .name-dialog__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex: 1;
   height: 88rpx;
   margin: 0;
@@ -104,7 +92,8 @@
   border-radius: 999rpx;
   font-size: 29rpx;
   font-weight: 600;
-  line-height: 88rpx;
+  line-height: 1;
+  text-align: center;
 }
 
 .name-dialog__button::after {

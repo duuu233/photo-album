@@ -1,9 +1,11 @@
 <view wx:if="{{visible}}" class="name-mask" catchtouchmove="noop" bindtap="onCancel">
   <view class="name-dialog" catchtap="noop">
-    <view class="name-dialog__mark">
-      <view class="name-dialog__screen"></view>
-      <view class="name-dialog__pen">✎</view>
-    </view>
+    <!-- 顶部改用设备图（2026-07-31）：与首页/设备列表/设备详情统一的 home-icon02，
+         替掉原先 CSS 画的「相框 + ✎」抽象图形。该图四角透明自带圆角，不再加底色方块。 -->
+    <image
+      class="name-dialog__device"
+      src="/assets/images/home-icon02.png"
+      mode="aspectFit" />
     <view class="name-dialog__title">{{title}}</view>
     <view class="name-dialog__tip">为设备设置一个容易识别的名称</view>
     <view class="name-field">
@@ -16,6 +18,7 @@
         confirm-type="done"
         bindinput="onInput"
         bindconfirm="onConfirm"
+        placeholder-class="name-field__placeholder"
         placeholder="请输入设备名称" />
       <text class="name-field__count">{{inputLength}}/{{maxLength}}</text>
     </view>

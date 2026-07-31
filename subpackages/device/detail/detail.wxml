@@ -184,8 +184,10 @@
             </view>
           </view>
         </view>
-        <view class="thin-divider">
-        </view>
+      </view>
+      <!-- 「删除设备」是最重的破坏性操作（清空照片 + 解除绑定），2026-07-31 产品要求单独成卡、
+           与上面一组操作留出更大间隔，避免和「一键清空 / 解除绑定」连成一片被误点 -->
+      <view class="detail-list action-list danger-list glass-panel">
         <view
           class="detail-row action-row delete-row permanent-delete-row"
           hover-class="none"
