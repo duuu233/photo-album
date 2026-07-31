@@ -1,6 +1,6 @@
 <view
   class="sessions-root"
-  style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;"
+  style="--safe-bottom: {{safeBottom}}px;"
 >
   <image
     class="ai-page-background"
@@ -8,26 +8,7 @@
     mode="aspectFill"
   ></image>
 
-  <view class="sessions-header">
-    <view class="sessions-nav">
-      <view class="nav-back" hover-class="nav-back--pressed" bindtap="goBack">
-        <image
-          class="nav-back__image"
-          src="/assets/images/ai-back-button.png"
-          mode="aspectFit"
-        ></image>
-      </view>
-      <view class="nav-title">历史会话</view>
-      <view class="new-action" hover-class="new-action--pressed" bindtap="createNew">
-        <image
-          class="new-action__icon"
-          src="/assets/images/ai-new-chat.png"
-          mode="aspectFit"
-        ></image>
-        <text>新建</text>
-      </view>
-    </view>
-  </view>
+  <page-nav title="历史会话" right-text="新建" bind:righttap="createNew"></page-nav>
 
   <view wx:if="{{!loading && sessions.length}}" class="keep-tip">
     <image
@@ -72,9 +53,17 @@
           class="session-delete"
           data-id="{{item.sessionId}}"
           catchtap="onSessionDeleteTap"
-        >删除</view>
+        >
+          <image
+            class="session-delete__background"
+            src="/assets/images/ai-del-btn-bg.png"
+            mode="scaleToFill"
+          ></image>
+          <text class="session-delete__label">删除</text>
+        </view>
         <view
-          class="session-card {{openedSessionId === item.sessionId ? 'session-card--open' : ''}} {{item.sessionId === currentId ? 'session-card--current' : ''}}"
+          class="session-card {{openedSessionId === item.sessionId ? 'session-card--open' : ''}} {{swipingSessionId === item.sessionId ? 'session-card--dragging' : ''}} {{item.sessionId === currentId ? 'session-card--current' : ''}}"
+          style="{{swipingSessionId === item.sessionId ? swipeTransform : ''}}"
           data-id="{{item.sessionId}}"
           bindtap="onSessionTap"
           bindlongpress="onSessionLongPress"

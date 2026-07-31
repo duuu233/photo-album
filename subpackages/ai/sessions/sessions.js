@@ -21,6 +21,8 @@ const system = require('../../../utils/system')
 const toast = require('../../../utils/toast')
 
 const PAGE_SIZE = 20
+// 删除图是 136×112 的完整圆角按钮；多留 16rpx 间距，让它像 APP 一样与滑开的卡片分离。
+const DELETE_REVEAL_RPX = 152
 
 const CHAT_ROUTE = 'subpackages/ai/chat/chat'
 
@@ -96,6 +98,15 @@ function decorateGroups(list) {
   })
 }
 
+function getDeleteRevealWidth() {
+  try {
+    const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
+    return Math.round(((info.windowWidth || 375) * DELETE_REVEAL_RPX) / 750)
+  } catch (error) {
+    return 76
+  }
+}
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -104,7 +115,9 @@ Page({
     sessions: [], // 当前已展示（分页追加）
     hasMore: false,
     currentId: '', // 聊天页当前会话，高亮标记
-    openedSessionId: '' // 左滑后当前露出删除按钮的会话
+    openedSessionId: '', // 左滑后当前露出删除按钮的会话
+    swipingSessionId: '', // 正随手指移动的会话
+    swipeTransform: ''
   },
 
   onLoad(options) {
@@ -113,8 +126,11 @@ Page({
     this._counted = {} // sessionId → 已试过补数（不论成败只试一次，防翻页来回反复打接口）
     this._navigating = false // 在途的跳转，防连点叠出两页聊天页
     this._lastOpened = '' // 上次从本页打开的会话：退回本页时只重新补它的条数（它才刚变过）
+    this._deleteActionWidth = getDeleteRevealWidth()
     this._swipeStart = null
     this._swipeDelta = null
+    this._swipeAxis = ''
+    this._swipeOffset = 0
     this._suppressTapUntil = 0
     this.loadSessions()
   },
@@ -123,8 +139,12 @@ Page({
   // 都可能变了，所以每次重新可见都静默刷一遍。首次 onShow 紧跟 onLoad，跳过以免重复请求。
   onShow() {
     this._navigating = false
-    if (this.data.openedSessionId) {
-      this.setData({ openedSessionId: '' })
+    if (this.data.openedSessionId || this.data.swipingSessionId) {
+      this.setData({
+        openedSessionId: '',
+        swipingSessionId: '',
+        swipeTransform: ''
+      })
     }
     if (!this._shownOnce) {
       this._shownOnce = true
@@ -265,10 +285,6 @@ Page({
     })
   },
 
-  goBack() {
-    wx.navigateBack()
-  },
-
   sessionFromEvent(event) {
     const id = event.currentTarget.dataset.id
     return this.data.sessions.find(item => item.sessionId === id)
@@ -303,7 +319,7 @@ Page({
     )
   },
 
-  // 左滑露出删除按钮。只在手势以横向为主且超过 36px 时提交，纵向滚动列表不会被误判。
+  // 左滑露出删除按钮：横向手势实时跟随，松手按距离/速度吸附；纵向滚动不接管。
   onSessionTouchStart(event) {
     const touch = event.touches && event.touches[0]
     if (!touch) {
@@ -312,9 +328,16 @@ Page({
     this._swipeStart = {
       id: event.currentTarget.dataset.id,
       x: touch.clientX,
-      y: touch.clientY
+      y: touch.clientY,
+      offset:
+        this.data.openedSessionId === event.currentTarget.dataset.id
+          ? -this._deleteActionWidth
+          : 0,
+      time: Date.now()
     }
     this._swipeDelta = { x: 0, y: 0 }
+    this._swipeAxis = ''
+    this._swipeOffset = this._swipeStart.offset
   },
 
   onSessionTouchMove(event) {
@@ -326,6 +349,28 @@ Page({
       x: touch.clientX - this._swipeStart.x,
       y: touch.clientY - this._swipeStart.y
     }
+    if (!this._swipeAxis) {
+      if (Math.max(Math.abs(this._swipeDelta.x), Math.abs(this._swipeDelta.y)) < 6) {
+        return
+      }
+      this._swipeAxis =
+        Math.abs(this._swipeDelta.x) > Math.abs(this._swipeDelta.y) ? 'horizontal' : 'vertical'
+    }
+    if (this._swipeAxis !== 'horizontal') {
+      return
+    }
+
+    const offset = Math.max(
+      -this._deleteActionWidth,
+      Math.min(0, this._swipeStart.offset + this._swipeDelta.x)
+    )
+    this._swipeOffset = offset
+    this._suppressTapUntil = Date.now() + 260
+    this.setData({
+      openedSessionId: '',
+      swipingSessionId: this._swipeStart.id,
+      swipeTransform: `transform: translate3d(${Math.round(offset)}px, 0, 0);`
+    })
   },
 
   onSessionTouchEnd(event) {
@@ -340,12 +385,22 @@ Page({
     }
     this._swipeStart = null
     this._swipeDelta = null
-    if (!start || Math.abs(delta.x) < 36 || Math.abs(delta.x) <= Math.abs(delta.y)) {
+    const axis = this._swipeAxis
+    this._swipeAxis = ''
+    if (!start || axis !== 'horizontal') {
       return
     }
+
+    const elapsed = Math.max(1, Date.now() - start.time)
+    const velocity = delta.x / elapsed
+    const shouldOpen =
+      velocity < -0.35 ||
+      (velocity <= 0.35 && this._swipeOffset <= -this._deleteActionWidth * 0.42)
     this._suppressTapUntil = Date.now() + 260
     this.setData({
-      openedSessionId: delta.x < 0 ? start.id : ''
+      openedSessionId: shouldOpen ? start.id : '',
+      swipingSessionId: '',
+      swipeTransform: ''
     })
   },
 
@@ -379,7 +434,9 @@ Page({
       this.setData({
         sessions: this._all.slice(0, shown),
         hasMore: this._all.length > shown,
-        openedSessionId: ''
+        openedSessionId: '',
+        swipingSessionId: '',
+        swipeTransform: ''
       })
       toast.show({ title: '已删除', icon: 'none' })
       // 删的是某个聊天页正打开的会话：只通知那一页退回空态，避免用户继续往已删会话发消息。

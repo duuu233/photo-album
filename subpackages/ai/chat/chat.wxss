@@ -66,8 +66,8 @@
   justify-content: center;
   overflow: hidden;
   color: #111111;
-  font-size: 36rpx;
-  font-weight: 600;
+  font-size: 34rpx;
+  font-weight: 700;
   line-height: 1.2;
   text-align: center;
   text-overflow: ellipsis;

@@ -18,64 +18,6 @@
   pointer-events: none;
 }
 
-.sessions-header {
-  position: relative;
-  z-index: 1;
-  padding-top: var(--status-bar);
-}
-
-.sessions-nav {
-  display: grid;
-  grid-template-columns: 176rpx 1fr 176rpx;
-  align-items: center;
-  height: 112rpx;
-  padding: 0 40rpx;
-}
-
-.nav-back {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 92rpx;
-  height: 92rpx;
-}
-
-.nav-back--pressed,
-.new-action--pressed {
-  opacity: 0.68;
-}
-
-.nav-back__image {
-  width: 92rpx;
-  height: 92rpx;
-}
-
-.nav-title {
-  overflow: hidden;
-  color: #111111;
-  font-size: 36rpx;
-  font-weight: 600;
-  line-height: 1.2;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.new-action {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12rpx;
-  color: #ef641e;
-  font-size: 32rpx;
-  font-weight: 500;
-}
-
-.new-action__icon {
-  width: 34rpx;
-  height: 34rpx;
-}
-
 .keep-tip {
   position: relative;
   z-index: 1;
@@ -165,11 +107,25 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 134rpx;
+  width: 136rpx;
+  overflow: hidden;
   color: #ffffff;
-  background: #e75d51;
+  border-radius: 28rpx;
+  background: #d9755f;
   font-size: 28rpx;
   font-weight: 500;
+}
+
+.session-delete__background {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.session-delete__label {
+  position: relative;
+  z-index: 1;
 }
 
 .session-card {
@@ -186,12 +142,17 @@
   border-radius: 28rpx;
   background: rgba(255, 255, 255, 0.74);
   box-shadow: 0 10rpx 26rpx rgba(92, 79, 61, 0.07);
-  transform: translateX(0);
-  transition: transform 0.22s ease;
+  transform: translate3d(0, 0, 0);
+  transition: transform 0.26s cubic-bezier(0.22, 0.72, 0.26, 1);
+  will-change: transform;
 }
 
 .session-card--open {
-  transform: translateX(-134rpx);
+  transform: translate3d(-152rpx, 0, 0);
+}
+
+.session-card--dragging {
+  transition: none;
 }
 
 .session-card--current {
