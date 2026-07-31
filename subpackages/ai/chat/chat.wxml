@@ -295,18 +295,25 @@
           mode="aspectFit"
         ></image>
         <text>{{orientationLabel}}</text>
-        <view class="orientation-button__tail">{{showOrientationPicker ? '×' : '›'}}</view>
+        <!-- 箭头/关闭都用等大的方图，切换时按钮里内容宽度不变，也不会像字符 ›/× 那样偏上偏左 -->
+        <image
+          class="orientation-button__tail"
+          src="{{showOrientationPicker ? '/assets/images/ai-close-orange.png' : '/assets/images/ai-chevron-right.png'}}"
+          mode="aspectFit"
+        ></image>
       </view>
       <view
         class="generate-button {{showStylePicker ? 'generate-button--active' : ''}}"
         hover-class="quick-tool--pressed"
         bindtap="openStylePicker"
       >
-        <image
-          class="generate-button__icon"
-          src="{{showStylePicker ? '/assets/images/ai-close-orange.png' : '/assets/images/ai-magic-white.png'}}"
-          mode="aspectFit"
-        ></image>
+        <view class="generate-button__icon">
+          <image
+            class="generate-button__icon-img {{showStylePicker ? 'generate-button__icon-img--close' : ''}}"
+            src="{{showStylePicker ? '/assets/images/ai-close-orange.png' : '/assets/images/ai-magic-white.png'}}"
+            mode="aspectFit"
+          ></image>
+        </view>
         <text>一键生图</text>
       </view>
     </view>

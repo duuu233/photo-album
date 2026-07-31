@@ -65,7 +65,12 @@
 - 聊天页按 `assets/ai/UI` 重写为顶部会话入口与 Token、常驻工具输入卡、图片内联操作条和投屏设备底部弹层。
 - 会话页按日期分组，顶部复用全局 `page-nav` 统一标题与返回样式；左滑时卡片实时跟随手指并在松手后吸附到删除位，删除操作使用 `assets/images/ai-del-btn-bg.png` 作为背景，同时保留长按删除兜底。
 - 对话页与会话页统一使用 2026-07-31 指定的 OSS 全屏背景；新增设计稿中实际使用的图标已以英文名迁移到 `assets/images`。
-- Token 胶囊读取微信原生胶囊位置，固定放在其左侧并垂直居中，避免自定义导航内容重叠。
+- Token 胶囊读取微信原生胶囊位置，固定放在其左侧并垂直居中，避免自定义导航内容重叠；高度直接取
+  `getMenuButtonBoundingClientRect().height`，与原生胶囊严格等高同轴，勿改成写死值。
+- 圆角方块类图标（`ai-back-button.png`、`ai-history-button.png`，136×136）**不是画满的**：看得见的白块只占
+  画布 48.5%，且投影往下糊导致白块在画布里偏上 5.15%。用它们时要 ①按目标视觉尺寸的约 2 倍给盒子
+  （行高 32px → 图 64px，白块才 31px）②再 `transform: translateY(5.15%)` 让白块而不是「图+投影」上下居中
+  ③溢出点击盒的部分 `pointer-events:none`。全局返回键（`components/page-nav`）与 AI 聊天页历史入口同此一套。
 - `assets/images/ai-*.png` 是运行时资源；仅供设计对照或尚未启用的 `assets/ai/UI`、`assets/ai/图标` 已在 `project.config.json` 中排除打包。
 - 调试台暗门已移除，正式入口不再依赖口令。
 

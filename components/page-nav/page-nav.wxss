@@ -67,23 +67,24 @@
   opacity: 0.58;
 }
 
-/* 返回按钮：圆形底图 + 箭头叠加居中 */
+/* 返回按钮：整颗按钮就是一张 ai-back-button.png(136×136)，注意这张图不是「画满」的：
+   ① 看得见的白色圆角方块只占画布 48.5%（35..100 / 28..93），四周是透明投影留白 ——
+      所以图要放到行高的 2 倍(64px)，白块才 31px、和右侧原生胶囊(32px)等高；
+      左右方向图是对称的，居中放进 32px 的 .nav-btn 后白块正好铺满这个盒子，无需补偿；
+   ② 投影是往下糊的，白块在画布里偏上 7px = 画布高的 5.15%，直接居中会看着偏高 ——
+      所以整张图再往下推 5.15% 自身高度，让「白块」而不是「图+投影」上下居中。
+   ③ 图比 32px 的点击盒大一圈会溢出到页面内容上，pointer-events 关掉它自己的命中，
+      只让 .nav-btn 收点击，免得吃掉导航下方内容的触摸。*/
 .nav-back {
   position: relative;
 }
 
-.nav-back-round {
-  width: 56rpx;
-  height: 56rpx;
-}
-
-.nav-back-arrow {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 24rpx;
-  height: 24rpx;
-  transform: translate(-50%, -50%);
+.nav-back-image {
+  flex: 0 0 auto;
+  width: calc(var(--nav-row-height, 32px) * 2);
+  height: calc(var(--nav-row-height, 32px) * 2);
+  transform: translateY(5.15%);
+  pointer-events: none;
 }
 
 .nav-title {

@@ -4,8 +4,7 @@
 >
   <view class="nav-row">
     <view wx:if="{{showBack}}" class="nav-btn nav-back" hover-class="nav-btn--hover" aria-label="返回" bindtap="handleBack">
-      <image class="nav-back-round" src="/assets/images/return-round-icon.png" mode="aspectFit"></image>
-      <image class="nav-back-arrow" src="/assets/images/return-arrow-icon.png" mode="aspectFit"></image>
+      <image class="nav-back-image" src="/assets/images/ai-back-button.png" mode="aspectFit"></image>
     </view>
     <view wx:else class="nav-btn nav-placeholder"></view>
 

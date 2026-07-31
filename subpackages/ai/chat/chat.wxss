@@ -33,21 +33,30 @@
   height: var(--navigation-height);
 }
 
+/* 历史记录入口：图标 PNG(136×136) 里「看得见的白色圆角方块」只占 48.5%，四周是透明投影留白，
+   所以按 44px 画出来实际只有 ~21px，比右侧胶囊(32px)小一大截 —— 图放到 64px，
+   白块才 31px 与胶囊等高；left:4px 让白块左边缘落在 20px = 聊天区左内边距上。
+   投影往下糊，白块在画布里偏上 5.15%，所以图再下推 5.15% 自身高度，让白块（而不是图+投影）居中。
+   点击盒保持 44px 高，溢出的图 pointer-events:none，免得吃掉聊天区顶部的触摸。
+   —— 与 components/page-nav 的返回按钮同款处理，两张图几何完全一致。*/
 .history-button {
   position: absolute;
   top: 50%;
-  left: 20px;
+  left: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
+  width: 64px;
   height: 44px;
   transform: translateY(-50%);
 }
 
 .history-button__image {
-  width: 44px;
-  height: 44px;
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  transform: translateY(5.15%);
+  pointer-events: none;
 }
 
 .header-button--pressed,
@@ -74,6 +83,10 @@
   white-space: nowrap;
 }
 
+/* 高度/垂直位置 1:1 取自原生胶囊 getMenuButtonBoundingClientRect()：
+   top = 胶囊 top、height = 胶囊 height，两者严格同高同轴。
+   之前看着比胶囊「矮一截」是因为底色只有 0.76 太透 + 投影往下糊了 14px，
+   这里提高填充、收紧投影，让它读起来就是胶囊那个高度。*/
 .token-pill {
   position: absolute;
   top: var(--menu-offset-top);
@@ -84,11 +97,12 @@
   gap: 4px;
   width: 106px;
   height: var(--menu-height);
+  min-height: var(--menu-height);
   padding: 0 9px;
-  border: 2rpx solid rgba(255, 255, 255, 0.88);
+  border: 2rpx solid rgba(255, 255, 255, 0.94);
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.76);
-  box-shadow: 0 10rpx 28rpx rgba(83, 73, 60, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 4rpx 14rpx rgba(83, 73, 60, 0.1);
   box-sizing: border-box;
 }
 
@@ -101,11 +115,13 @@
   color: #ff6f25;
   font-size: 28rpx;
   font-weight: 600;
+  line-height: 1;
 }
 
 .token-pill__unit {
   color: #777777;
   font-size: 22rpx;
+  line-height: 1;
 }
 
 /* ==================== 聊天区 ==================== */
@@ -306,6 +322,12 @@
   width: 510rpx;
 }
 
+/* 用户发的图气泡宽 430rpx、内边距 10rpx → 内容区 410rpx，而 .img-box 默认 400rpx，
+   图会靠左、右边多留 10rpx 白边。这里让它铺满内容区，四周留白才对称。*/
+.bubble--image .img-box {
+  width: 100%;
+}
+
 .img-el {
   position: absolute;
   inset: 0;
@@ -444,7 +466,12 @@
 }
 
 .retry-placeholder {
-  font-size: 39rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36rpx;
+  height: 36rpx;
+  font-size: 36rpx;
   line-height: 1;
 }
 
@@ -552,12 +579,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34rpx;
-  height: 34rpx;
+  width: 36rpx;
+  height: 36rpx;
   color: #ffffff;
   background: rgba(15, 20, 30, 0.55);
   border-bottom-left-radius: 14rpx;
-  font-size: 23rpx;
+  font-size: 26rpx;
+  line-height: 1;
 }
 
 .quick-tools {
@@ -605,10 +633,13 @@
   opacity: 0.75;
 }
 
+/* 原来是 ›/× 两个字符：字形本身在行盒里偏上、两者字宽还不一样，
+   一开合就把按钮里的图标+文字整体顶偏。换成固定 34rpx 的方图，
+   两态同盒同大小、图源自身居中 —— 切换时零位移。*/
 .orientation-button__tail {
-  color: inherit;
-  font-size: 34rpx;
-  line-height: 1;
+  flex: 0 0 auto;
+  width: 34rpx;
+  height: 34rpx;
 }
 
 .generate-button {
@@ -626,9 +657,25 @@
   box-shadow: none;
 }
 
+/* 外层固定 36rpx，魔杖/关闭切换不改宽度；× 的图源四周留白多(实际笔画只占 64%)，
+   所以关闭态把图放大到 36rpx，才和魔杖看着一样大。*/
 .generate-button__icon {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36rpx;
+  height: 36rpx;
+}
+
+.generate-button__icon-img {
   width: 29rpx;
   height: 29rpx;
+}
+
+.generate-button__icon-img--close {
+  width: 36rpx;
+  height: 36rpx;
 }
 
 .input-line {
@@ -637,7 +684,8 @@
   gap: 14rpx;
   min-height: 82rpx;
   margin-top: 16rpx;
-  padding: 0 5rpx 0 24rpx;
+  /* 右侧是 70rpx 的圆按钮，上下各留 6rpx，右边也给 6rpx 才是四周等距 */
+  padding: 0 6rpx 0 24rpx;
   border: 2rpx solid rgba(108, 108, 108, 0.14);
   border-radius: 999rpx;
   background: rgba(255, 255, 255, 0.34);
@@ -722,15 +770,18 @@
   box-shadow: 0 18rpx 42rpx rgba(77, 62, 43, 0.18);
 }
 
+/* 居中对齐到方向按钮：quick-tools 是 1fr 1fr 1.35fr 1.75fr + 8rpx 间距，
+   算下来第 3 格中心在距 .input-area padding box 左边 360rpx 处，
+   弹层宽 250rpx → left = 360 - 125 = 235rpx（原来写 252rpx，整体偏右 17rpx）。*/
 .orientation-popover {
-  left: 252rpx;
+  left: 235rpx;
   width: 250rpx;
   padding: 12rpx;
 }
 
 .orientation-option {
   display: grid;
-  grid-template-columns: 34rpx 1fr 26rpx;
+  grid-template-columns: 28rpx 1fr 24rpx;
   align-items: center;
   gap: 14rpx;
   height: 72rpx;
@@ -755,8 +806,9 @@
   height: 24rpx;
 }
 
+/* 右边缘对齐「一键生图」按钮：第 4 格右边缘距 padding box 右侧正好 20rpx（原写 0，多探出 20rpx）*/
 .style-popover {
-  right: 0;
+  right: 20rpx;
   width: 310rpx;
   padding: 22rpx 24rpx;
 }
@@ -796,7 +848,7 @@
 
 .style-option {
   display: grid;
-  grid-template-columns: 18rpx 1fr 28rpx;
+  grid-template-columns: 14rpx 1fr 28rpx;
   align-items: center;
   gap: 14rpx;
   height: 64rpx;
