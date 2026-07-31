@@ -616,12 +616,21 @@ input {
    两页此前各写一套（图库 224rpx 胶囊 / 投屏 370rpx 胶囊，宽度对不上，App 也跟着不一致），
    这里收成一份全局样式：两页共用，改一处两页同步，Flutter 侧按同样尺寸对齐。
    ─────────────────────────────────────────────────────────────────────────── */
+/* 导航栏里的设备下拉（设备照片 / 投屏管理两页共用，两页必须一模一样宽）。
+ *
+ * 2026-08-02：由「靠右、370rpx」改为「居中、330rpx」。
+ * ① 370rpx 靠右排时右边缘正好落在微信胶囊左边缘上（page-nav 的 --nav-capsule-space
+ *    就是 windowWidth − menu.left），加上按钮自带的投影，看起来就是压着胶囊；
+ * ② 缩到 330rpx 且居中后，375pt 屏上右边缘约在 270，胶囊左边缘约 281，留出 ~11pt 间距；
+ * ③ 胶囊更宽 / 屏幕更窄的机型由 page-nav 的 .nav-center 夹住（--nav-center-max），
+ *    本元素 `flex: 0 1` + `min-width: 0` 保证被夹到时能跟着收窄，永远不会顶上去。
+ * 父级 .nav-center 是 pointer-events:none（让开返回键），这里必须显式打开。 */
 .nav-device-filter {
   position: relative;
   min-width: 0;
-  /* 拉长到 370rpx（与投屏管理原有宽度一致）；空间不足时可收缩，不越过微信胶囊 */
-  flex: 0 1 370rpx;
-  width: 370rpx;
+  flex: 0 1 330rpx;
+  width: 330rpx;
+  pointer-events: auto;
 }
 
 .nav-device-filter__btn {
@@ -667,13 +676,15 @@ input {
   transform: rotate(225deg) translateY(-3rpx);
 }
 
+/* 菜单宽度 = 按钮宽度：left/right 都钉在 0，跟着 .nav-device-filter 走，
+   两者永远同宽同边（原来按钮 370rpx、菜单 420rpx，展开时右对齐、左边多出一截）。
+   长设备名由 .nav-device-filter__option 的单行省略号收尾，绝不靠加宽菜单来兜。 */
 .nav-device-filter__menu {
   position: absolute;
   top: 70rpx;
   right: 0;
+  left: 0;
   z-index: 20;
-  width: 420rpx;
-  max-width: 70vw;
   padding: 10rpx;
   box-sizing: border-box;
   background: rgba(255, 255, 255, 0.96);

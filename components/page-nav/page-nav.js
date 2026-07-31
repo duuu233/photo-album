@@ -29,7 +29,8 @@ Component({
     navHeight: 64,
     rowTop: 6,
     rowHeight: 32,
-    capsuleSpace: 96
+    capsuleSpace: 96,
+    centerMaxWidth: 160
   },
 
   lifetimes: {
@@ -48,7 +49,8 @@ Component({
           navHeight: statusBarHeight + rowTop * 2 + rowHeight,
           rowTop,
           rowHeight,
-          capsuleSpace
+          capsuleSpace,
+          centerMaxWidth: this.computeCenterMaxWidth(info.windowWidth, capsuleSpace)
         })
       } catch (error) {
         this.setData({
@@ -56,13 +58,34 @@ Component({
           navHeight: 64,
           rowTop: 6,
           rowHeight: 32,
-          capsuleSpace: 96
+          capsuleSpace: 96,
+          centerMaxWidth: 160
         })
       }
     }
   },
 
   methods: {
+    /**
+     * 居中内容（.nav-center）的最大宽度，px。
+     *
+     * 居中元素左右各留 (屏宽 − 自身宽)/2，所以「不碰胶囊」的条件是
+     * 自身宽 ≤ 屏宽 − 2×胶囊占用宽 − 2×间距。右边让开胶囊的同时左边也自动让开了返回键
+     * （返回键占的宽度比胶囊小）。
+     *
+     * 为什么在 JS 里算而不是写 calc()：胶囊宽度是 px 变量、页面里的尺寸是 rpx，
+     * 混进 calc 在部分基础库上会整条失效（.nav-center 的 left 当年就为此写死 110rpx）。
+     *
+     * ⚠️ 必须放在 methods 里：`Component()` 只认它那几个固定字段，
+     * 写在顶层的函数不会挂到组件实例上，`this.computeCenterMaxWidth` 会是 undefined。
+     */
+    computeCenterMaxWidth(windowWidth, capsuleSpace) {
+      const GAP = 10 // 与胶囊之间至少留 10px，视觉上「有间距」而不是贴着
+      const width = (windowWidth || 375) - capsuleSpace * 2 - GAP * 2
+      // 下限 120：极窄屏 / 异常胶囊数据下也别把下拉压成一条缝，宁可挨近一点。
+      return Math.max(120, Math.round(width))
+    },
+
     handleBack() {
       if (this.data.customBack) {
         this.triggerEvent('backtap')

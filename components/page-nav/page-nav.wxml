@@ -1,6 +1,6 @@
 <view
   class="page-nav custom-class {{immersive ? 'page-nav--immersive' : ''}}"
-  style="--nav-status: {{statusBarHeight}}px; --nav-height: {{navHeight}}px; --nav-row-top: {{rowTop}}px; --nav-row-height: {{rowHeight}}px; --nav-capsule-space: {{capsuleSpace}}px;"
+  style="--nav-status: {{statusBarHeight}}px; --nav-height: {{navHeight}}px; --nav-row-top: {{rowTop}}px; --nav-row-height: {{rowHeight}}px; --nav-capsule-space: {{capsuleSpace}}px; --nav-center-max: {{centerMaxWidth}}px;"
 >
   <view class="nav-row">
     <view wx:if="{{showBack}}" class="nav-btn nav-back" hover-class="nav-btn--hover" aria-label="返回" bindtap="handleBack">
