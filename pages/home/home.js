@@ -154,6 +154,9 @@ function normalizeDevice(device) {
     // 屏幕分辨率：投屏预览页裁剪按此 width/height 锁定比例，透传给下游（接口就绪后即生效）
     width: device.width,
     height: device.height,
+    // 横向构图写入竖向物理画布时的顺时针旋转角。必须随首页选中设备透传到预览页；
+    // 字段缺失时由预览页按历史行为回退 270°。
+    rotationDegree: device.rotationDegree,
     // 先沿用最近一次有效电量；15 秒窗口外由 loadHomeState 收尾后台刷新，
     // 不在刷新前清空，避免「-- → 真值」闪烁。
     battery: batteryUtil.normalizeBattery(device.battery),

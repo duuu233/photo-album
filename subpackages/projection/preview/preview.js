@@ -2,6 +2,7 @@ const system = require('../../../utils/system')
 const toast = require('../../../utils/toast')
 const activeDevice = require('../../../utils/active-device')
 const dithering = require('../../../utils/dithering')
+const deviceRotation = require('../../../utils/device-rotation')
 
 // 设备屏幕分辨率（width×height）：列表/详情接口都会返回，取景框据此锁定宽高比（如 500x500 → 1:1）。
 // 接口暂未返回该字段，这里先给默认值便于联调测试（如需 1:1 改成 { width: 500, height: 500 }）。
@@ -47,27 +48,20 @@ const PREBAKE_IDLE_MS = 800
 //（见 prepareProjectionImages / bakeEditedImage）。
 //   · 竖向 portrait —— 取景框 = 设备物理比例（竖向），导出直接画进设备分辨率画布，不旋转；
 //   · 横向 landscape —— 取景框 = 设备宽高对调后的横向比例（相框躺着摆），展示照旧横向，
-//     仅导出时整幅转 EXPORT_ROTATE_DEG 画进**竖向设备分辨率**画布（2026-07-22 用户拍板恢复：
+//     仅导出时整幅按设备 rotationDegree 旋转后画进**竖向设备分辨率**画布（2026-07-22 用户拍板恢复：
 //     曾短暂改为「对调分辨率直出、方向交给接口侧」，接口侧不适配横向图，已回到本方案）。
 const ORIENT_PORTRAIT = 'portrait'
 const ORIENT_LANDSCAPE = 'landscape'
 const DEFAULT_ORIENTATION = ORIENT_PORTRAIT
 
-// 横向导出时整幅构图的旋转量（度，顺时针）：
-//   90°  —— 把横向取景转进竖向画布所必需的量；
-//   +180° —— 2026-07-20 真机校正：只转 90° 时画面在设备上是倒的，故再补半圈。
-// 合计 270°。这个值是**唯一真源**，预览的反向转正由它推出（见 PREVIEW_COUNTER_ROTATE_DEG），
-// 改这里两边自动同步——绝不要在两处各写各的角度，否则「设备上正了、手机预览里倒了」这类问题会反复出现。
+// 横向导出时整幅构图的旋转量（度，顺时针）由设备接口字段 rotationDegree 决定。
+// 历史设备/旧缓存拿不到该字段时继续按 270° 处理，保持既有真机方向不变。
+// 同一角度同时用于画布导出与手机端反向预览，绝不能在两处分别取值，否则会出现
+// 「设备上正了、手机预览里倒了」。
 //
 // ⚠️ 横向取景的导出绝不能直接输出横向尺寸（如 960×680）：像素总数与竖向相同、帧字节数(宽×高÷2)
 // 也相同，所以**转换接口不会报错**——但设备按 680px 一行解析，拿到 960px 一行的数据会整幅错位/斜切，
 // 表现为花屏且无任何报错，极难排查。务必保持「取景横、导出竖 + 旋转」这个组合。
-const EXPORT_ROTATE_DEG = 270
-const EXPORT_ROTATE_RAD = (EXPORT_ROTATE_DEG * Math.PI) / 180
-// 预览把横向成图反向转正的角度：与导出角互为相反数，保证「手机上看到的」永远是用户构图时的样子。
-// 用户所见 = 构图 + 导出角 + 本角 ≡ 构图。CSS 接受负角/超过 360°，无需归一化。
-const PREVIEW_COUNTER_ROTATE_DEG = -EXPORT_ROTATE_DEG
-
 // 在画布上铺一层白底（jpg 无 alpha 通道，不铺底的话透明像素会被压成黑色）
 function fillWhite(ctx, width, height) {
   ctx.fillStyle = '#ffffff'
@@ -99,6 +93,7 @@ Page({
     activeIndex: 0,
     imageCount: 0,
     projecting: false,
+    exportRotationDegree: deviceRotation.DEFAULT_ROTATION_DEG,
 
     // 常驻编辑态（2026-07-22）：进入页面/切换图片即自动对当前图开启编辑——单指平移、
     // 双指缩放+旋转、右上角按钮转90°。没有「保存」按钮，点「开始投屏」自动按框内所见烘焙上传。
@@ -202,6 +197,7 @@ Page({
     const size = this.getDeviceCropSize(device)
     this.setData({
       device,
+      exportRotationDegree: deviceRotation.degreeFor(device),
       images,
       activeIndex: safeIndex,
       activeImage: images[safeIndex] || null,
@@ -315,7 +311,7 @@ Page({
     return `width:${size.dispW.toFixed(2)}rpx;height:${size.dispH.toFixed(2)}rpx;`
   },
 
-  // 已按设备缓冲区转过 EXPORT_ROTATE_DEG 的横向成图（导出结果），在预览里要**反向转回来**展示，
+  // 已按设备 rotationDegree 转过的横向成图（导出结果），在预览里要**反向转回来**展示，
   // 否则用户看到的是躺倒/颠倒的照片——文件本身是竖向（如 680×960）、内容是横的，直接铺进横向
   // photo-wrap 会又转又裁。做法：图片元素用「对调后的尺寸」(竖向 dispH×dispW)，绕中心反向旋转，
   // 转完正好铺满横向的 wrap。photo-wrap 已是 position:relative + overflow:hidden（见 wxss）。
@@ -327,7 +323,7 @@ Page({
     return (
       `position:absolute;left:50%;top:50%;` +
       `width:${size.dispH.toFixed(2)}rpx;height:${size.dispW.toFixed(2)}rpx;` +
-      `transform:translate(-50%,-50%) rotate(${PREVIEW_COUNTER_ROTATE_DEG}deg);`
+      `transform:translate(-50%,-50%) rotate(${-this.data.exportRotationDegree}deg);`
     )
   },
 
@@ -939,7 +935,7 @@ Page({
   // canvas 尺寸=设备物理分辨率（竖向）：转换方（seekink 抖动接口）按上传图像素量化六色帧
   //（帧字节数=宽×高÷2），上传图必须正好是设备尺寸，这是硬约束。
   //   · 竖向：画布坐标系直接对应取景框，放大系数 k = outW / frameW；
-  //   · 横向：先把整幅构图转 EXPORT_ROTATE_DEG 再画（见常量注释），k 按「取景框宽 → 画布高」算。
+  //   · 横向：先把整幅构图按设备 rotationDegree 旋转再画，k 按「取景框宽 → 画布高」算。
   // 失败 resolve 原图（不阻断投屏），console.warn 留痕。
   bakeEditedImage(image, g) {
     return this._bakeToFile(g)
@@ -961,13 +957,14 @@ Page({
     // 原图 px → canvas px：baseScale(显示/原图) × zoom × k
     const s = g.baseScale * g.zoom * k
     const rad = (g.angle * Math.PI) / 180
+    const exportRotateRad = (this.data.exportRotationDegree * Math.PI) / 180
     return this._exportCanvas(outW, outH, g.src, (ctx, img) => {
       ctx.save()
-      // 先落到画布中心（横向再把整幅构图转 270°）：此后坐标系就等价于取景框，
+      // 先落到画布中心（横向再按设备 rotationDegree 旋转整幅构图）：此后坐标系就等价于取景框，
       // 图片相对取景框中心的平移(tx,ty)、用户自己的旋转(rad)、缩放(s) 都能原样套用。
       ctx.translate(outW / 2, outH / 2)
       if (landscape) {
-        ctx.rotate(EXPORT_ROTATE_RAD)
+        ctx.rotate(exportRotateRad)
       }
       ctx.translate(g.tx * k, g.ty * k)
       ctx.rotate(rad)
@@ -988,7 +985,7 @@ Page({
     }
     updated.tempFilePath = tempFilePath
     // cropW/cropH 记的是**文件真实像素**（设备物理分辨率，竖向），别改成可视区域尺寸。
-    // 展示按取景方向铺；横向成图是转过 270° 的竖向文件，要再给图片元素一个反向旋转
+    // 展示按取景方向铺；横向成图是按设备角度转过的竖向文件，要再给图片元素一个反向旋转
     // 把它摆正（见 computeRotatedImgStyle），保证 fallback 展示仍是用户构图的样子。
     updated.cropW = dev.width
     updated.cropH = dev.height

@@ -99,9 +99,30 @@ const STYLE_OPTIONS = [
 // 图片比例（需求：竖向/横向/方形；API img_orientation 必传）。
 // pad = 高/宽×100，直接当占位盒的 padding-bottom 百分比用（见 IMAGE_PAD_DEFAULT 上方注释）。
 const ORIENTATION_OPTIONS = [
-  { key: 'vertical', label: '竖向', size: '1104×1472', pad: 133.33 },
-  { key: 'horizontal', label: '横向', size: '1472×1104', pad: 75 },
-  { key: 'square', label: '方形', size: '1328×1328', pad: 100 }
+  {
+    key: 'vertical',
+    label: '竖向',
+    size: '1104×1472',
+    pad: 133.33,
+    icon: '/assets/images/ai-orientation-vertical-default.png',
+    activeIcon: '/assets/images/ai-orientation-vertical-active.png'
+  },
+  {
+    key: 'horizontal',
+    label: '横向',
+    size: '1472×1104',
+    pad: 75,
+    icon: '/assets/images/ai-orientation-horizontal.png',
+    activeIcon: '/assets/images/ai-orientation-horizontal-active.png'
+  },
+  {
+    key: 'square',
+    label: '方形',
+    size: '1328×1328',
+    pad: 100,
+    icon: '/assets/images/ai-orientation-square.png',
+    activeIcon: '/assets/images/ai-orientation-square-active.png'
+  }
 ]
 
 // 用户可能按「landscape/portrait」这套叫法传/说方向，但接口只认 horizontal/square/vertical
@@ -126,6 +147,37 @@ const ORIENTATION_ALIAS = {
 const IMAGE_PAD_DEFAULT = 133.33 // 历史消息取不到方向时按默认的竖向占位
 const IMAGE_PAD_MIN = 40 // 过于扁/长的图钳一下，免得占位盒把整屏撑没了
 const IMAGE_PAD_MAX = 240
+
+// AI 页右上 Token 必须避开微信原生胶囊。把原生胶囊的实际 top/height/right 换成页面变量，
+// Token 固定放在它左侧 8px，并与它垂直居中；取不到 API 时回退到普通自定义导航尺寸。
+function getAiLayoutMetrics() {
+  const metrics = system.getLayoutMetrics()
+  const fallback = Object.assign({}, metrics, {
+    menuButtonOffsetTop: 6,
+    menuButtonHeight: 32,
+    tokenRight: 16,
+    navigationHeight: 44
+  })
+  if (!wx.getMenuButtonBoundingClientRect) {
+    return fallback
+  }
+  try {
+    const rect = wx.getMenuButtonBoundingClientRect()
+    const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
+    if (!rect || !(rect.left >= 0) || !(rect.height > 0)) {
+      return fallback
+    }
+    const offsetTop = Math.max(0, rect.top - metrics.statusBarHeight)
+    return Object.assign({}, metrics, {
+      menuButtonOffsetTop: offsetTop,
+      menuButtonHeight: rect.height,
+      tokenRight: Math.max(12, (info.windowWidth || rect.right) - rect.left + 8),
+      navigationHeight: Math.max(44, offsetTop * 2 + rect.height)
+    })
+  } catch (error) {
+    return fallback
+  }
+}
 
 function clampPad(pad) {
   const value = Number(pad)
@@ -231,6 +283,10 @@ Page({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
+    menuButtonOffsetTop: 6,
+    menuButtonHeight: 32,
+    tokenRight: 16,
+    navigationHeight: 44,
 
     sessionId: '',
     sessionTitle: '新对话',
@@ -293,7 +349,7 @@ Page({
   },
 
   onLoad(options) {
-    this.setData(Object.assign({ tokenBalance: readTokenBalance() }, system.getLayoutMetrics()))
+    this.setData(Object.assign({ tokenBalance: readTokenBalance() }, getAiLayoutMetrics()))
     this._uid = 0 // 本地消息自增 id
     this._pid = 0 // 待发送图片自增 id
     this._typeTimer = null
@@ -672,6 +728,12 @@ Page({
 
   onInput(event) {
     this.setData({ inputValue: event.detail.value })
+  },
+
+  // 欢迎页灵感词只负责填入草稿，不自动发送，避免误触后直接创建会话或触发生图计费。
+  useSuggestion(event) {
+    const prompt = event.currentTarget.dataset.prompt || ''
+    this.setData({ inputValue: prompt })
   },
 
   // 发送入口的**同步**闸（2026-07-29）。

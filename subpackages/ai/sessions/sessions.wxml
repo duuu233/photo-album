@@ -2,10 +2,20 @@
   class="sessions-root"
   style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;"
 >
+  <image
+    class="ai-page-background"
+    src="https://oss.boltfox.cn/prodFile/202607310920402821453.png"
+    mode="aspectFill"
+  ></image>
+
   <view class="sessions-header">
     <view class="sessions-nav">
       <view class="nav-back" hover-class="nav-back--pressed" bindtap="goBack">
-        <view class="nav-back__arrow"></view>
+        <image
+          class="nav-back__image"
+          src="/assets/images/ai-back-button.png"
+          mode="aspectFit"
+        ></image>
       </view>
       <view class="nav-title">历史会话</view>
       <view class="new-action" hover-class="new-action--pressed" bindtap="createNew">
@@ -20,7 +30,11 @@
   </view>
 
   <view wx:if="{{!loading && sessions.length}}" class="keep-tip">
-    <view class="keep-tip__icon">i</view>
+    <image
+      class="keep-tip__icon"
+      src="/assets/images/ai-info.png"
+      mode="aspectFit"
+    ></image>
     <text>仅保留最近7天会话记录</text>
   </view>
 
@@ -32,7 +46,7 @@
   <view wx:elif="{{!sessions.length}}" class="empty-state">
     <image
       class="empty-state__image"
-      src="/assets/images/ai-empty-sessions.png"
+      src="/assets/images/ai-empty-sessions-art.png"
       mode="aspectFit"
     ></image>
     <view class="empty-state__title">暂时没有历史会话</view>
@@ -67,7 +81,11 @@
         >
           <view class="session-title">{{item.title}}</view>
           <view class="session-time">{{item.timeText}}</view>
-          <view class="session-chevron"></view>
+          <image
+            class="session-chevron"
+            src="/assets/images/ai-chevron-right.png"
+            mode="aspectFit"
+          ></image>
         </view>
       </view>
     </block>

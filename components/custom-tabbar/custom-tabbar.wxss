@@ -64,7 +64,7 @@ button {
 }
 
 .tab-icon--ai {
-  opacity: 0.58;
+  opacity: 1;
 }
 
 .tab-item--ai.active .tab-icon--ai {

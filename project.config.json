@@ -6,6 +6,10 @@
       {
         "value": "assets/ai/UI",
         "type": "folder"
+      },
+      {
+        "value": "assets/ai/图标",
+        "type": "folder"
       }
     ],
     "include": [

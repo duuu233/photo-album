@@ -6,7 +6,11 @@
   </view>
   <!-- AI 对话已开放；官方图库暂不接入，因此底栏保持「首页 / AI 对话 / 我的」三栏。 -->
   <view wx:if="{{aiEntryEnabled}}" class="tab-item tab-item--ai {{active === 'ai' ? 'active' : ''}}" hover-class="none" bindtap="goAi">
-    <image class="tab-icon tab-icon--ai" src="/assets/images/ai-chat.png" mode="aspectFit"></image>
+    <image
+      class="tab-icon tab-icon--ai"
+      src="{{active === 'ai' ? '/assets/images/ai-tab-active.png' : '/assets/images/ai-tab.png'}}"
+      mode="aspectFit"
+    ></image>
     <view>AI对话</view>
   </view>
   <view wx:else class="tab-item tab-item--ai-placeholder"></view>

@@ -1,7 +1,7 @@
 # 项目知识地图
 
-> 状态：current  
-> 最后核对：2026-07-30  
+> 状态：current
+> 最后核对：2026-07-31
 > 适用范围：`photo-album` 微信小程序及直接相关的接口、BLE/OTA 协议和跨端协作
 
 本目录保存所有项目文档型 Markdown。仓库根目录只保留 `AGENTS.md`，因为它是代理工具自动发现的项目指令文件，不属于普通项目文档。
@@ -14,7 +14,7 @@
 | --- | --- |
 | [设备身份与 BLE 会话](architecture/device-identity-and-connection.md) | 完整 6 字节设备 ID、广播候选、BLE 临时句柄、会话认领和重连不变量 |
 | [图片投屏流水线](architecture/image-projection-pipeline.md) | 预览、seekink 出帧、后端建记录、BLE 图传、记账与性能并行 |
-| [照片预览与非破坏性编辑](architecture/photo-preview-editing.md) | 常驻编辑、按张状态、横竖向取景、270° 导出和缓存策略 |
+| [照片预览与非破坏性编辑](architecture/photo-preview-editing.md) | 常驻编辑、按张状态、横竖向取景、设备动态角度导出和缓存策略 |
 | [AI 客户端架构](architecture/ai-client.md) | BoltStar 客户端边界、会话、消息图片、错误处理和未完成能力 |
 
 ### Protocols
@@ -39,6 +39,7 @@
 
 ## 变更记录
 
+- [2026-07-31 设备动态旋转角与 AI 视觉补全](changes/2026-07-31-设备旋转角与AI视觉补全.md)
 - [2026-07-30 设备身份登记表（未连接设备被误报「请删除后重新绑定」）](changes/2026-07-30-设备身份登记表.md) — **双端已同步**（Flutter 见 `flutter/docs/history/2026-07/2026-07-30-FBP连接优化与身份登记表.md`）
 - [2026-07-29 AI 接口 JWT 鉴权请求头](changes/2026-07-29-AI接口JWT鉴权头.md)
 - [2026-07-29 图库设备筛选从设备名改为设备 ID](changes/2026-07-29-图库设备筛选按设备ID.md)

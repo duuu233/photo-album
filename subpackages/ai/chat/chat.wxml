@@ -1,13 +1,21 @@
 <view
   class="ai-root"
-  style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;"
+  style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px; --menu-offset-top: {{menuButtonOffsetTop}}px; --menu-height: {{menuButtonHeight}}px; --token-right: {{tokenRight}}px; --navigation-height: {{navigationHeight}}px;"
 >
+  <image
+    class="ai-page-background"
+    src="https://oss.boltfox.cn/prodFile/202607310920402821453.png"
+    mode="aspectFill"
+  ></image>
+
   <view class="ai-header" bindtap="closeTools">
     <view class="ai-header__row">
       <view class="history-button" hover-class="header-button--pressed" bindtap="goSessions">
-        <view class="history-button__line"></view>
-        <view class="history-button__line"></view>
-        <view class="history-button__line"></view>
+        <image
+          class="history-button__image"
+          src="/assets/images/ai-history-button.png"
+          mode="aspectFit"
+        ></image>
       </view>
 
       <view class="ai-header__title">{{sessionTitle || '新对话'}}</view>
@@ -35,11 +43,27 @@
     >
       <view wx:if="{{!historyLoading && !messages.length}}" class="welcome">
         <view class="welcome-mark">
-          <image src="/assets/images/ai-spark-white.png" mode="aspectFit"></image>
+          <image src="/assets/images/ai-welcome-star.png" mode="aspectFit"></image>
         </view>
-        <view class="welcome-title">你好，我是星宝</view>
+        <view class="welcome-title">
+          <text>你好！我是星宝</text>
+          <image src="/assets/images/ai-spark-orange.png" mode="aspectFit"></image>
+        </view>
         <view class="welcome-text">你的 AI 创作伙伴，有什么我可以帮你的吗？</view>
-        <view class="welcome-tip">试试输入「画一只卡通猫」</view>
+        <view class="welcome-suggestions">
+          <view class="welcome-suggestion" data-prompt="生成一张温馨的客厅插画" bindtap="useSuggestion">
+            <image src="/assets/images/ai-suggestion-home.png" mode="aspectFit"></image>
+            <text>生成一张温馨的客厅插画</text>
+          </view>
+          <view class="welcome-suggestion" data-prompt="帮我写一句早安文案" bindtap="useSuggestion">
+            <image src="/assets/images/ai-suggestion-sunrise.png" mode="aspectFit"></image>
+            <text>帮我写一句早安文案</text>
+          </view>
+          <view class="welcome-suggestion" data-prompt="把照片变成漫画风" bindtap="useSuggestion">
+            <image src="/assets/images/ai-suggestion-palette.png" mode="aspectFit"></image>
+            <text>把照片变成漫画风</text>
+          </view>
+        </view>
       </view>
 
       <block wx:for="{{messages}}" wx:key="id">
@@ -60,7 +84,10 @@
                 class="failure-card__delete"
                 data-id="{{item.id}}"
                 catchtap="onFailureDelete"
-              >删除</view>
+              >
+                <image src="/assets/images/ai-delete-red.png" mode="aspectFit"></image>
+                <text>删除</text>
+              </view>
               <view class="failure-card__visual">
                 <view class="failure-card__title">{{item.failureTitle}}</view>
                 <view class="failure-card__desc">{{item.failureDesc}}</view>
@@ -128,7 +155,11 @@
                       data-index="{{imgIndex}}"
                       bindtap="onImageActionTap"
                     >
-                      <view class="action-placeholder action-placeholder--download"></view>
+                      <image
+                        class="image-action__icon"
+                        src="/assets/images/ai-download.png"
+                        mode="aspectFit"
+                      ></image>
                       <text>下载</text>
                     </view>
                     <view class="image-actions__divider"></view>
@@ -140,7 +171,11 @@
                       data-index="{{imgIndex}}"
                       bindtap="onImageActionTap"
                     >
-                      <view class="action-placeholder action-placeholder--project"></view>
+                      <image
+                        class="image-action__icon"
+                        src="/assets/images/ai-project.png"
+                        mode="aspectFit"
+                      ></image>
                       <text>投屏</text>
                     </view>
                     <view class="image-actions__divider"></view>
@@ -152,7 +187,11 @@
                       data-index="{{imgIndex}}"
                       bindtap="onImageActionTap"
                     >
-                      <view class="action-placeholder action-placeholder--delete"></view>
+                      <image
+                        class="image-action__icon"
+                        src="/assets/images/ai-delete-red.png"
+                        mode="aspectFit"
+                      ></image>
                       <text>删除</text>
                     </view>
                   </view>
@@ -232,7 +271,7 @@
       <view class="quick-tool" hover-class="quick-tool--pressed" bindtap="chooseAlbum">
         <image
           class="quick-tool__icon"
-          src="/assets/images/ai-album.png"
+          src="/assets/images/ai-album-outline.png"
           mode="aspectFit"
         ></image>
         <text>相册</text>
@@ -240,7 +279,7 @@
       <view class="quick-tool" hover-class="quick-tool--pressed" bindtap="chooseCamera">
         <image
           class="quick-tool__icon"
-          src="/assets/images/ai-camera.png"
+          src="/assets/images/ai-camera-outline.png"
           mode="aspectFit"
         ></image>
         <text>拍照</text>
@@ -252,7 +291,7 @@
       >
         <image
           class="orientation-button__icon"
-          src="/assets/images/ai-orientation-vertical.png"
+          src="/assets/images/ai-orientation-{{orientation}}-active.png"
           mode="aspectFit"
         ></image>
         <text>{{orientationLabel}}</text>
@@ -265,7 +304,7 @@
       >
         <image
           class="generate-button__icon"
-          src="{{showStylePicker ? '/assets/images/ai-token-spark.png' : '/assets/images/ai-spark-white.png'}}"
+          src="{{showStylePicker ? '/assets/images/ai-close-orange.png' : '/assets/images/ai-magic-white.png'}}"
           mode="aspectFit"
         ></image>
         <text>一键生图</text>
@@ -309,7 +348,7 @@
         bindtap="onSendTap"
       >
         <image
-          src="/assets/images/ai-send.png"
+          src="/assets/images/ai-send-active.png"
           mode="aspectFit"
         ></image>
       </view>
@@ -319,7 +358,13 @@
         hover-class="quick-tool--pressed"
         bindtap="toggleVoice"
       >
-        <view class="voice-placeholder">{{voiceMode ? '键' : '麦'}}</view>
+        <view wx:if="{{voiceMode}}" class="voice-placeholder voice-placeholder--keyboard">键</view>
+        <image
+          wx:else
+          class="voice-placeholder__image"
+          src="/assets/images/ai-microphone.png"
+          mode="aspectFit"
+        ></image>
       </view>
     </view>
 
@@ -332,24 +377,24 @@
         bindtap="onOrientationTap"
       >
         <image
-          wx:if="{{item.key === 'vertical'}}"
           class="orientation-option__image"
-          src="/assets/images/ai-orientation-vertical.png"
+          src="{{orientation === item.key ? item.activeIcon : item.icon}}"
           mode="aspectFit"
         ></image>
-        <view
-          wx:else
-          class="orientation-placeholder orientation-placeholder--{{item.key}}"
-        ></view>
         <text>{{item.label}}</text>
-        <view wx:if="{{orientation === item.key}}" class="orientation-check"></view>
+        <image
+          wx:if="{{orientation === item.key}}"
+          class="orientation-check"
+          src="/assets/images/ai-check-orange.png"
+          mode="aspectFit"
+        ></image>
       </view>
     </view>
 
     <view wx:if="{{showStylePicker}}" class="tool-popover style-popover" catchtap="noop">
       <view class="style-popover__header">
         <view class="style-popover__mark">
-          <image src="/assets/images/ai-spark-white.png" mode="aspectFit"></image>
+          <image src="/assets/images/ai-generate.png" mode="aspectFit"></image>
         </view>
         <view>
           <view class="style-popover__title">一键生图</view>
@@ -365,7 +410,11 @@
       >
         <view class="style-option__dot"></view>
         <text>{{item.label}}</text>
-        <view class="style-option__arrow"></view>
+        <image
+          class="style-option__arrow"
+          src="/assets/images/ai-send-outline.png"
+          mode="aspectFit"
+        ></image>
       </view>
     </view>
 
