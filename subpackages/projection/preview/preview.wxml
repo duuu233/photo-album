@@ -14,55 +14,92 @@
     <view class="preview-imageCount">{{activeIndex + 1}}/{{imageCount}}</view>
   </view>
   <view class="preview-stage">
-    <!-- 多图轮播（2026-07-24 恢复 swiper）：左右滑动切换图片，下方小圆点指示当前索引。 触摸交由上层 .edit-layer 的手势分流驱动（swiper 只负责切图时的滑动过场）。 2026-07-25 三处修正： ① 编辑层起来时整条 swiper 隐藏（is-hidden，visibility 而非 wx:if，避免销毁重建导致 current 复位/闪烁）——否则横向取景时取景框上下会露出底层那张竖向图（用户反馈①）； ② 图片源优先取 previewSrc（切图前烘焙的「所见即所得」缓存），过场里不再闪回未裁剪原图； ③ 隐藏时机改为「编辑层图片已解码(editReady)」而不是「编辑层已挂载(editing)」——原先两者 同一次 setData 完成，swiper 已经藏了、编辑层的 <image> 还没画出来，中间就露出 .edit-clip 的灰底，看着就是「闪一下像重新加载」。现在交接期间底层 swiper 一直顶着。 -->
-    <swiper
+    <!-- Banner 轨道（2026-08-01 自绘，替掉原来的 swiper）
+         为什么不用 swiper：swiper 的触摸被上层 .edit-layer 的 catch 手势独占，它只能在松手后
+         被动播一段 360ms 过场——手指划的时候画面纹丝不动，松手才「啪」地跳一下，既不像 banner，
+         交接瞬间还会闪。这里改成自己画轨道：
+           · 轨道里横排「上一张 / 当前 / 下一张」三格，slideDx 跟手实时平移，边界给三分之一阻尼；
+           · 当前格上叠着常驻编辑层，滑走的就是用户此刻看到的构图本身，起手不闪；
+           · 松手补完 300ms 过场后原地把 activeIndex 换掉、轨道无动画归零，
+             此时进场那张已经解码好（过场中一直在屏上），换过去看不出接缝。 -->
+    <view
       wx:if="{{imageCount}}"
-      class="preview-swiper {{editing && !sliding && editReady ? 'is-hidden' : ''}}"
-      current="{{activeIndex}}"
-      duration="360"
-      bindchange="onSwiperChange"
+      class="slide-track {{slideAnimating ? 'is-animating' : ''}}"
+      style="transform: translateX({{slideDx}}px);"
     >
-      <swiper-item wx:for="{{images}}" wx:key="index">
-        <view class="photo-wrap" style="{{item.wrapStyle || deviceWrapStyle}}">
+      <!-- 上一张：位于当前格左侧一屏，手指右滑时从左边露出来 -->
+      <view wx:if="{{prevImage}}" class="slide-cell slide-cell--prev">
+        <view class="photo-wrap" style="{{prevImage.wrapStyle || deviceWrapStyle}}">
           <image
-            wx:if="{{item.previewSrc || item.tempFilePath || item.url}}"
+            wx:if="{{prevImage.previewSrc || prevImage.tempFilePath || prevImage.url}}"
             class="photo-img"
-            style="{{item.imgStyle || ''}}"
-            src="{{item.previewSrc || item.tempFilePath || item.url}}"
+            style="{{prevImage.imgStyle || ''}}"
+            src="{{prevImage.previewSrc || prevImage.tempFilePath || prevImage.url}}"
+            mode="aspectFill" />
+        </view>
+      </view>
+
+      <!-- 当前格底图：编辑层没就绪（换图/解码中）时由它顶着画面，绝不会露出白底或占位灰。
+           编辑层一就绪就藏起来——否则横向取景时取景框上下会露出这张竖向比例的底图。
+           图源优先 previewSrc（构图烘焙缓存），滑回来看到的就是上次构好的画面，不会闪回原图。 -->
+      <view class="slide-cell slide-cell--current {{editing && editReady ? 'is-hidden' : ''}}">
+        <view class="photo-wrap" style="{{activeImage.wrapStyle || deviceWrapStyle}}">
+          <image
+            wx:if="{{activeImage.previewSrc || activeImage.tempFilePath || activeImage.url}}"
+            class="photo-img"
+            style="{{activeImage.imgStyle || ''}}"
+            src="{{activeImage.previewSrc || activeImage.tempFilePath || activeImage.url}}"
             mode="aspectFill" />
           <view wx:else class="photo-img photo-placeholder">图片占位</view>
         </view>
-      </swiper-item>
-    </swiper>
-    <view wx:else class="photo-wrap empty-photo">暂无待投屏照片</view>
-    <!-- 常驻编辑层：单指左右滑走 Banner 过场；单指长按 0.5s 后才可平移；双指自由缩放与旋转。 -->
-    <view
-      wx:if="{{imageCount && editSrc}}"
-      class="edit-layer {{editing && !sliding && editReady ? '' : 'is-hidden'}}"
-      catchtouchstart="onEditTouchStart"
-      catchtouchmove="onEditTouchMove"
-      catchtouchend="onEditTouchEnd"
-      catchtouchcancel="onEditTouchEnd"
-    >
-      <view class="edit-clip {{editPickup ? 'is-pickup' : ''}} {{dragging ? 'is-dragging' : ''}}" style="left:{{frame.left}}px; top:{{frame.top}}px; width:{{frame.width}}px; height:{{frame.height}}px;">
-        <image
-          class="edit-image"
-          src="{{editSrc}}"
-          mode="scaleToFill"
-          bindload="onEditImageLoad"
-          binderror="onEditImageError"
-          style="left:{{editImgLeft}}px; top:{{editImgTop}}px; width:{{editBaseW}}px; height:{{editBaseH}}px; transform:{{editTransform}};" />
+      </view>
+
+      <!-- 下一张：位于当前格右侧一屏，手指左滑时从右边露出来 -->
+      <view wx:if="{{nextImage}}" class="slide-cell slide-cell--next">
+        <view class="photo-wrap" style="{{nextImage.wrapStyle || deviceWrapStyle}}">
+          <image
+            wx:if="{{nextImage.previewSrc || nextImage.tempFilePath || nextImage.url}}"
+            class="photo-img"
+            style="{{nextImage.imgStyle || ''}}"
+            src="{{nextImage.previewSrc || nextImage.tempFilePath || nextImage.url}}"
+            mode="aspectFill" />
+        </view>
+      </view>
+
+      <!-- 常驻编辑层：单指左右滑走 Banner 过场；单指长按 0.5s 后才可平移；双指自由缩放与旋转。
+           放在轨道内 → 过场时跟着一起滑出去，滑的就是用户此刻所见（不再先切成静态图再动）。
+           用 opacity 而不是 wx:if 切换，避免 <image> 被拆掉后切回来重新下载解码。 -->
+      <view
+        wx:if="{{imageCount && editSrc}}"
+        class="edit-layer {{editing && editReady ? '' : 'is-hidden'}}"
+        catchtouchstart="onEditTouchStart"
+        catchtouchmove="onEditTouchMove"
+        catchtouchend="onEditTouchEnd"
+        catchtouchcancel="onEditTouchEnd"
+      >
+        <view class="edit-clip {{editPickup ? 'is-pickup' : ''}} {{dragging ? 'is-dragging' : ''}}" style="left:{{frame.left}}px; top:{{frame.top}}px; width:{{frame.width}}px; height:{{frame.height}}px;">
+          <image
+            class="edit-image"
+            src="{{editSrc}}"
+            mode="scaleToFill"
+            bindload="onEditImageLoad"
+            binderror="onEditImageError"
+            style="left:{{editImgLeft}}px; top:{{editImgTop}}px; width:{{editBaseW}}px; height:{{editBaseH}}px; transform:{{editTransform}};" />
+        </view>
+      </view>
+
+      <!-- 图右上角悬浮：顺时针转90°（跟随取景框右上角定位，样式里再往左平移自身宽度）。
+           同样放在轨道内，过场时与图一起滑走，不会孤零零停在原地。 -->
+      <view
+        wx:if="{{editing && editReady && frame}}"
+        class="rotate-fab"
+        style="left:{{frame.left + frame.width - 12}}px; top:{{frame.top + 12}}px;"
+        catchtap="rotate90"
+      >
+        ↻ 90°
       </view>
     </view>
-    <!-- 图右上角悬浮：顺时针转90°（跟随取景框右上角定位，样式里再往左平移自身宽度） -->
-    <view
-      wx:if="{{editing && !sliding && editReady && frame}}"
-      class="rotate-fab"
-      style="left:{{frame.left + frame.width - 12}}px; top:{{frame.top + 12}}px;"
-      catchtap="rotate90"
-    >
-      ↻ 90°
-    </view>
+    <view wx:else class="photo-wrap empty-photo">暂无待投屏照片</view>
   </view>
   <!-- 轮播小圆点（多图才显示，样式仿首页设备列表、尺寸略小） -->
   <view class="carousel-dots" wx:if="{{imageCount > 1}}">

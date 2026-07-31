@@ -127,9 +127,13 @@ Page({
       // 系统级「附近设备」权限被拒：弹引导去系统设置，而非一句模糊的 toast
       if (error.code === 'PERMISSION_DENIED') {
         bluetooth.showPermissionGuide()
+      } else if (error.code === 'MP_BLUETOOTH_DENIED') {
+        // 小程序自身的蓝牙授权没开：可用 wx.openSetting 一键修好，给「去设置」引导（2026-08-01）
+        bluetooth.showBluetoothSwitchGuide()
       } else {
         toast.warn({
-          title: error.message || '设备搜索失败',
+          // 搜索/连接超时统一走中文可操作文案，不把 "operate time out" 这类英文原文抛给用户
+          title: activeDevice.friendlyConnectMessage(error.message || '设备搜索失败'),
           icon: 'none'
         })
       }
@@ -396,7 +400,9 @@ Page({
         deviceBle.disconnect(scanDevice.deviceId)
         wx.hideLoading()
         toast.warn({
-          title: error.message || '设备连接失败',
+          // 绑定时的连接超时同样要中文可操作（2026-08-01）：微信原文
+          //「createBLEConnection:fail connect time out」用户看不懂，统一成「连接超时，稍后再试」
+          title: activeDevice.friendlyConnectMessage(error.message || '设备连接失败'),
           icon: 'none'
         })
         this.setData({ binding: false })

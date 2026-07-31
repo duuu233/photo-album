@@ -36,6 +36,12 @@ const LONG_PRESS_MS = 500
 const MOVE_CANCEL_PX = 12
 // 左右滑动切图的提交阈值(px)：单指横向滑动累计超过它，松手切到上一张/下一张。
 const SWIPE_COMMIT_PX = 50
+// Banner 过场时长(ms)：松手后轨道补完剩下那段路要花的时间。
+// ⚠️ 必须与 preview.wxss 里 .slide-track.is-animating 的 transition 时长同值——
+//    JS 靠定时器等它走完才把 activeIndex 换掉，两边不一致就会出现「还没滑完就换图」或多等一截。
+const SLIDE_MS = 300
+// 已经是第一张还往右滑 / 最后一张还往左滑时的阻尼系数：滑得动（有反馈），但明显滑不过去。
+const SLIDE_RUBBER = 3
 
 // 切图后等待编辑层图片解码完成的兜底超时(ms)：正常由 <image> 的 bindload 回调放行，
 // 但「新旧 src 恰好相同」等情况小程序不会再抛 load 事件，没有兜底就会永远停在过场态。
@@ -92,6 +98,10 @@ Page({
     device: null,
     images: [],
     activeImage: null,
+    // Banner 轨道左右两格要渲染的图（没有上一张/下一张时为 null，对应格子不渲染）。
+    // 与 activeIndex 同步维护，统一走 _neighborPatch。
+    prevImage: null,
+    nextImage: null,
     activeIndex: 0,
     imageCount: 0,
     projecting: false,
@@ -101,11 +111,13 @@ Page({
     // 双指缩放+旋转、右上角按钮转90°。没有「保存」按钮，点「开始投屏」自动按框内所见烘焙上传。
     editing: false,
     // 编辑层的图片是否已解码可见（2026-07-25 修「来回切图闪一下」）：切图后编辑层先挂着但透明，
-    // 等 <image> 的 bindload 到了才显形、同时藏掉底层 swiper。二者交接期间始终有一层在画，不再露白。
+    // 等 <image> 的 bindload 到了才显形、同时藏掉当前格底图。二者交接期间始终有一层在画，不再露白。
     editReady: false,
     orientation: DEFAULT_ORIENTATION, // 当前图的取景方向（竖向/横向工具按钮，高亮对应图标）
     dragging: false, // 长按已进入拖拽态（.edit-clip 加浮起阴影）
-    sliding: false, // 切图滑动过场中：隐藏编辑层、露出 swiper 做轮播动画
+    sliding: false, // Banner 过场进行中：期间不接新手势，等落位后才换 activeIndex 并重建编辑层
+    slideDx: 0, // 轨道横向平移量(px)：跟手时逐帧下发，松手时置成 ±舞台宽补完过场
+    slideAnimating: false, // 轨道是否挂着 CSS 过渡（跟手时必须 false，逐帧跟指头才不粘滞）
     editPickup: false, // 拖拽起手的一次性「放大回弹」动画标记（340ms 后自动清）
     editSrc: '', // 正在编辑的图片源
     editBaseW: 0, // 图片「铺满取景框(cover)」时的显示宽(px)，作为 zoom=1 基准
@@ -197,20 +209,35 @@ Page({
     const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1)) // 防止下标越界
     // fallback（编辑层没起来时）的展示比例 = 设备物理（竖向）比例
     const size = this.getDeviceCropSize(device)
-    this.setData({
-      device,
-      exportRotationDegree: deviceRotation.degreeFor(device),
-      images,
-      activeIndex: safeIndex,
-      activeImage: images[safeIndex] || null,
-      imageCount: images.length,
-      deviceWrapStyle: this.computeWrapStyle(size.width, size.height)
-    })
+    this.setData(
+      Object.assign(
+        {
+          device,
+          exportRotationDegree: deviceRotation.degreeFor(device),
+          images,
+          activeIndex: safeIndex,
+          activeImage: images[safeIndex] || null,
+          imageCount: images.length,
+          deviceWrapStyle: this.computeWrapStyle(size.width, size.height)
+        },
+        this._neighborPatch(images, safeIndex)
+      )
+    )
   },
 
-  // 切换到某张图（2026-07-24：由 .edit-layer 的左右滑动手势触发，替代翻页按钮）。
+  // Banner 轨道左右两格的数据源。没有上一张/下一张时给 null，模板里对应格子整块不渲染
+  //（不能渲染成空格子：那样滑到边界会先露出一块灰底再弹回来）。
+  _neighborPatch(images, index) {
+    const list = images || []
+    return {
+      prevImage: list[index - 1] || null,
+      nextImage: list[index + 1] || null
+    }
+  },
+
+  // 直接换到某张图（无过场）。Banner 轨道量不到舞台宽等极端情况下的兜底路径；
+  // 正常的左右滑动切图走 _slideToNeighbor（跟手 + 补完过场）后再落到这里收尾。
   // 切图前先把当前图的编辑状态存进 _states（只记变换+方向，不落文件），切回来时原样恢复。
-  // 过场：编辑层淡出（editReady=false）+ 更新 activeIndex → swiper 自动滑动做轮播动画，动画结束再对新图布局。
   // 2026-07-25：这里**不再置 editing=false**——编辑层用 wx:if 销毁重建会连带把 <image> 拆掉，
   // 切回来必然重新下载解码（用户看到的「闪一下像重新加载」）。改为整层常驻、只切透明度。
   switchImage(index) {
@@ -223,23 +250,103 @@ Page({
     this._mode = 'none'
     this._clearLongPress()
     this._clearPrebake()
-    this.setData({
-      activeIndex: index,
-      activeImage: images[index] || null,
-      editReady: false, // 过场期间编辑层透明，露出 swiper 滑动
-      sliding: true,
-      dragging: false,
-      editPickup: false
-    })
+    if (this._slideTimer) {
+      clearTimeout(this._slideTimer)
+      this._slideTimer = null
+    }
+    this.setData(
+      Object.assign(
+        {
+          activeIndex: index,
+          activeImage: images[index] || null,
+          // 编辑层让位，露出当前格底图（静态、已解码）；交接期间始终有一层在画，不露白
+          editReady: false,
+          sliding: false,
+          // 先摘过渡再把轨道归零，否则会看到轨道又「滑回来」一趟
+          slideAnimating: false,
+          slideDx: 0,
+          dragging: false,
+          editPickup: false
+        },
+        this._neighborPatch(images, index)
+      )
+    )
+    this.enterEdit()
+  },
+
+  // 跟手平移轨道：滑到头（第一张再往右 / 最后一张再往左）时给阻尼，滑得动但明显滑不过去。
+  _applySlideOffset(dx) {
+    const { activeIndex, images } = this.data
+    const atHead = dx > 0 && activeIndex <= 0
+    const atTail = dx < 0 && activeIndex >= images.length - 1
+    const offset = Math.round(atHead || atTail ? dx / SLIDE_RUBBER : dx)
+    if (offset === this.data.slideDx && !this.data.slideAnimating) {
+      return // 同一像素不重复 setData：手势期每帧都会调到这里
+    }
+    // 跟手期间绝不能挂着过渡，否则画面会拖在指头后面一截
+    this.setData({ slideDx: offset, slideAnimating: false })
+  },
+
+  // 轨道弹回原位（没滑够阈值 / 已经滑到头）：挂上过渡平滑归零，走完再摘掉过渡标记。
+  _springBackSlide() {
+    if (!this.data.slideDx) {
+      return
+    }
+    this.setData({ slideDx: 0, slideAnimating: true })
     if (this._slideTimer) {
       clearTimeout(this._slideTimer)
     }
-    // 略大于 swiper duration(360ms)，等 Banner 式滑动动画走完再对新图重建编辑层
     this._slideTimer = setTimeout(() => {
       this._slideTimer = null
-      this.setData({ sliding: false })
-      this.enterEdit()
-    }, 390)
+      this.setData({ slideAnimating: false })
+    }, SLIDE_MS)
+  },
+
+  // 松手后补完 Banner 过场并落到相邻那张。
+  //
+  // 关键顺序（这三步就是「切换不闪」的全部）：
+  //   ① 轨道带过渡滑到 ∓一屏：滑走的是**编辑层此刻正显示的画面**，起手零跳变；
+  //      进场那张由邻格承担，它整段过场都在屏上，落位时早已解码完毕；
+  //   ② 过场同时静默烘焙当前构图（不弹「处理中」——那层蒙层本身就是一次闪）；
+  //      烘焙只改当前格底图的 src，而底图此刻被编辑层盖着，看不见；
+  //   ③ 过场走完后原地换 activeIndex、轨道无动画归零：进场那张从邻格变成当前格底图，
+  //      同一个 src、同一套 wrapStyle、同一个位置，肉眼看不出接缝。
+  async _slideToNeighbor(target, dir) {
+    if (this._switching) {
+      return
+    }
+    const stage = this._stageRect || (await this._measureStage())
+    const width = (stage && stage.width) || 0
+    if (!width) {
+      this.switchImage(target) // 量不到舞台宽：退回无过场直切，功能不受影响
+      return
+    }
+    this._switching = true
+    // 过场期间不再接新手势：_edit 还留着（烘焙要用），靠 sliding 挡住 touch 分流
+    this._mode = 'none'
+    this._clearLongPress()
+    this._clearPrebake()
+    this.setData({
+      sliding: true,
+      slideAnimating: true,
+      slideDx: -dir * width,
+      dragging: false,
+      editPickup: false
+    })
+    // 与过场并行：把当前构图烘焙进 previewSrc，滑回来时底图就是刚构好的画面而不是原图
+    const baking = this.bakePreviewForActive({ silent: true }).catch((error) => {
+      console.warn('[预览] 过场中的构图烘焙失败，滑回来会退回原图', error)
+    })
+    await new Promise((resolve) => {
+      if (this._slideTimer) {
+        clearTimeout(this._slideTimer)
+      }
+      this._slideTimer = setTimeout(resolve, SLIDE_MS)
+    })
+    this._slideTimer = null
+    await baking // 正常已在过场期间做完；没做完就多等一下，别让 _saveEditState 抢在它前面
+    this._switching = false
+    this.switchImage(target)
   },
 
   // 把当前图的编辑数值快照进 _states（整个 _edit 存下来：烘焙要用 frame/baseScale 等几何量）
@@ -375,7 +482,7 @@ Page({
 
   // 读一张图的原始像素宽高，带进程内缓存（src → {width,height}）。
   // 同一个 src 的尺寸恒定，缓存后「来回切图」第二次起是同步命中，省掉一次 getImageInfo 往返
-  //（远程 url 更是省掉一次下载），编辑层几乎能与 swiper 过场无缝接上。失败 resolve(null)，调用方回退。
+  //（远程 url 更是省掉一次下载），编辑层几乎能与 Banner 过场无缝接上。失败 resolve(null)，调用方回退。
   _getImageInfo(src) {
     return new Promise((resolve) => {
       const cached = this._infoCache[src]
@@ -411,8 +518,8 @@ Page({
     })
   },
 
-  // 编辑层图片解码完成：此刻才让编辑层显形、底层 swiper 隐去（交接期间始终有一层在画，不露白底）。
-  // 失败也照样放行，否则会永远停在过场态（编辑层透明 + swiper 显示原图，等于没进编辑）。
+  // 编辑层图片解码完成：此刻才让编辑层显形、当前格底图隐去（交接期间始终有一层在画，不露白底）。
+  // 失败也照样放行，否则会永远停在过场态（编辑层透明 + 底图显示原图，等于没进编辑）。
   _markEditReady() {
     if (this._readyTimer) {
       clearTimeout(this._readyTimer)
@@ -613,6 +720,10 @@ Page({
     const g = this._edit
     const a = touches[0]
     const b = touches[1]
+    // 单指横滑到一半又落下第二指：这一路不会再走 _commitSwipe，轨道得自己弹回原位，
+    // 否则会歪着停在偏移位置上（2026-08-01）
+    this._swipeDx = 0
+    this._springBackSlide()
     this._mode = 'pinch'
     this._pinch = {
       dist: Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY) || 1,
@@ -650,7 +761,8 @@ Page({
   },
 
   onEditTouchStart(e) {
-    if (!this._edit) {
+    // 过场进行中不接新手势：此刻 _edit 还指着「正在滑走的那张」，接下去只会把状态搅乱
+    if (!this._edit || this.data.sliding) {
       return
     }
     const touches = e.touches
@@ -670,7 +782,7 @@ Page({
   },
 
   onEditTouchMove(e) {
-    if (!this._edit) {
+    if (!this._edit || this.data.sliding) {
       return
     }
     const touches = e.touches
@@ -733,7 +845,10 @@ Page({
     }
 
     if (this._mode === 'swipe') {
-      this._swipeDx = dx // 只记录，松手时按方向切图（swiper 负责滑动过场动画）
+      this._swipeDx = dx
+      // 跟手：整条 Banner 轨道随指头平移（2026-08-01）。此前只记录 dx、画面纹丝不动，
+      // 松手才「啪」地播一段过场——那不是 banner，是跳帧。
+      this._applySlideOffset(dx)
     }
   },
 
@@ -764,47 +879,22 @@ Page({
     this._singleAfterPinch = false
   },
 
-  // 兜底：正常编辑态由 .edit-layer 独占触摸，swiper 不会因用户触摸而 change（切图都走 _commitSwipe）。
-  // 仅当编辑层没起来（读图失败等 fallback）用户直接滑了原生 swiper 时，同步 activeIndex 并重建编辑层。
-  // 只认 source==='touch'，避开我们自己改 current 触发的程序化 change，防止递归。
-  onSwiperChange(e) {
-    if (!e.detail || e.detail.source !== 'touch') {
-      return
-    }
-    const idx = e.detail.current
-    if (typeof idx !== 'number' || idx === this.data.activeIndex) {
-      return
-    }
-    this.switchImage(idx)
-  },
-
-  // 松手时按横向滑动量切到上/下一张（swiper 做滑动过场）；向右滑 → 上一张，向左滑 → 下一张。
-  // 2026-07-25：切之前先把当前图烘焙进预览缓存（bakePreviewForActive），过场里显示的就是
-  // 用户刚构好的图，不再闪回未裁剪的原图；没编辑过的图不烘焙、直接无缝切。
+  // 松手结算：滑够阈值且方向上还有图 → 补完 Banner 过场切过去；否则轨道弹回原位。
+  // 向右滑 → 上一张，向左滑 → 下一张。
   _commitSwipe(dx) {
-    if (this.data.imageCount <= 1 || Math.abs(dx) < SWIPE_COMMIT_PX) {
-      return
-    }
+    const { imageCount, activeIndex, images } = this.data
     const dir = dx > 0 ? -1 : 1
-    const target = this.data.activeIndex + dir
-    if (target < 0 || target >= this.data.images.length) {
+    const target = activeIndex + dir
+    const canSwitch =
+      imageCount > 1 &&
+      Math.abs(dx) >= SWIPE_COMMIT_PX &&
+      target >= 0 &&
+      target < images.length
+    if (!canSwitch) {
+      this._springBackSlide() // 没滑够 / 到头了：平滑弹回，不要「啪」地跳回原位
       return
     }
-    this._switchWithBake(target)
-  },
-
-  // 烘焙（如需要）后再切图。烘焙期间加在途锁，避免连续快滑排队出图。
-  async _switchWithBake(index) {
-    if (this._switching) {
-      return
-    }
-    this._switching = true
-    try {
-      await this.bakePreviewForActive()
-    } finally {
-      this._switching = false
-    }
-    this.switchImage(index)
+    this._slideToNeighbor(target, dir)
   },
 
   // 图右上角悬浮按钮：在当前角度基础上顺时针 +90°，保留当前自由缩放与位置。
@@ -983,9 +1073,9 @@ Page({
     ].join('|')
   },
 
-  // 切图前把当前图「按取景框内所见」烘焙成预览缓存（previewSrc），让 swiper 过场里显示的
+  // 切图前把当前图「按取景框内所见」烘焙成预览缓存（previewSrc），让 Banner 轨道里显示的
   // 就是用户刚刚构好的图（2026-07-25 修「左右滑动会闪回未裁剪原图」）。
-  //   · 没编辑/没动过 → 不烘焙（swiper 显示原图，与编辑层所见本就一致），顺手清掉过期缓存；
+  //   · 没编辑/没动过 → 不烘焙（底图显示原图，与编辑层所见本就一致），顺手清掉过期缓存；
   //   · 编辑过且指纹变了 → showLoading 后烘焙一次，结果存 previewSrc（**不动 tempFilePath**，
   //     原图仍是编辑的基准，切回来能继续拖，也避免横向成图被当原图再转一次）。
   // 缓存指纹与投屏出图共用，prepareProjectionImages 命中即直接复用，不再重复出图。
@@ -1059,17 +1149,25 @@ Page({
     }
   },
 
-  // 局部更新某张图片并同步回 Storage（保持 images/activeImage 一致）
+  // 局部更新某张图片并同步回 Storage（保持 images/activeImage/邻格 一致）
   _updateImageAt(index, patch) {
     const next = this.data.images.slice()
     if (!next[index]) {
       return
     }
     next[index] = Object.assign({}, next[index], patch)
-    this.setData({
-      images: next,
-      activeImage: index === this.data.activeIndex ? next[index] : this.data.activeImage
-    })
+    this.setData(
+      Object.assign(
+        {
+          images: next,
+          activeImage:
+            index === this.data.activeIndex ? next[index] : this.data.activeImage
+        },
+        // 邻格渲染的是快照对象，不跟着 images 自动更新：改的正好是左右那张时必须一起刷，
+        // 否则轨道里露出的还是它更新前的旧图
+        this._neighborPatch(next, this.data.activeIndex)
+      )
+    )
     this.persistPending(next)
   },
 

@@ -609,3 +609,100 @@ input {
     transform: rotate(360deg);
   }
 }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   导航栏内的设备选择下拉框（2026-08-01）
+   设备照片页与投屏管理页都去掉了页面标题，改由导航栏右上角的设备下拉承担标题作用。
+   两页此前各写一套（图库 224rpx 胶囊 / 投屏 370rpx 胶囊，宽度对不上，App 也跟着不一致），
+   这里收成一份全局样式：两页共用，改一处两页同步，Flutter 侧按同样尺寸对齐。
+   ─────────────────────────────────────────────────────────────────────────── */
+.nav-device-filter {
+  position: relative;
+  min-width: 0;
+  /* 拉长到 370rpx（与投屏管理原有宽度一致）；空间不足时可收缩，不越过微信胶囊 */
+  flex: 0 1 370rpx;
+  width: 370rpx;
+}
+
+.nav-device-filter__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  width: 100%;
+  height: 60rpx;
+  padding: 0 24rpx;
+  box-sizing: border-box;
+  color: #3b4149;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1rpx solid rgba(255, 255, 255, 0.94);
+  border-radius: 999rpx;
+  box-shadow: 0 10rpx 28rpx rgba(126, 150, 184, 0.1);
+  font-size: 25rpx;
+  font-weight: 600;
+}
+
+/* 设备名单行省略号。min-width:0 不可省：flex 子项默认 min-width:auto，
+   不归零时 overflow:hidden 不生效，长名字照样把胶囊顶宽/顶成两行。 */
+.nav-device-filter__name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-device-filter__arrow {
+  /* 箭头不许被长名字压缩掉 */
+  flex: 0 0 auto;
+  width: 14rpx;
+  height: 14rpx;
+  border-right: 2rpx solid #777e88;
+  border-bottom: 2rpx solid #777e88;
+  transform: rotate(45deg) translateY(-3rpx);
+}
+
+.nav-device-filter__arrow.is-open {
+  transform: rotate(225deg) translateY(-3rpx);
+}
+
+.nav-device-filter__menu {
+  position: absolute;
+  top: 70rpx;
+  right: 0;
+  z-index: 20;
+  width: 420rpx;
+  max-width: 70vw;
+  padding: 10rpx;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.96);
+  border: 2rpx solid rgba(255, 255, 255, 0.98);
+  border-radius: 18rpx;
+  box-shadow: 0 18rpx 40rpx rgba(126, 116, 106, 0.18);
+}
+
+/* 单行省略号（不用 flex 居中：flex 容器上的 text-overflow 不生效，
+   长设备名会直接换行把菜单撑成两行高）。改用 block + line-height 垂直居中。 */
+.nav-device-filter__option {
+  display: block;
+  height: 62rpx;
+  overflow: hidden;
+  padding: 0 18rpx;
+  color: #727b87;
+  border-radius: 12rpx;
+  font-size: 25rpx;
+  line-height: 62rpx;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-device-filter__option.is-active {
+  color: #ff5f1f;
+  background: rgba(255, 116, 54, 0.12);
+}
+
+.nav-device-filter__option--loading {
+  color: #9ba2ad;
+}

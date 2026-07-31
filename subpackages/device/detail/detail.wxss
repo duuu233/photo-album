@@ -222,9 +222,23 @@
   margin-top: 2rpx;
 }
 
-/* 「删除设备」单独成卡：在 .detail-content 的 24rpx 间距上再加一段，和上面的操作卡拉开距离 */
-.danger-list {
-  margin-top: 24rpx;
+/* 「删除设备」底部描边按钮（2026-08-01）：复用设置页「退出登录」(.outline-logout) 的形状/尺寸，
+   按产品要求去掉实心底色、只保留边框色，并用危险色(#ff3045)与「退出登录」的橙色区分开。
+   不用 position:absolute（设置页那颗是钉在固定页面上的）：详情页内容是可滚动的长列表，
+   钉住会盖住底部行；这里跟在内容流末尾，margin-top 拉开距离，底部再留出安全区。 */
+.outline-delete-device {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 112rpx;
+  /* 底部安全区已由 .mock-content 的 padding-bottom 负责，这里只加与上方卡片的间距 */
+  margin: 32rpx 0 0;
+  color: #ff3045;
+  background: transparent;
+  border: 1px solid #ff3045;
+  border-radius: 62px;
+  font-size: 34rpx;
+  font-weight: 700;
 }
 
 .action-row .row-left text {

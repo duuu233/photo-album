@@ -1,12 +1,24 @@
 <view wx:if="{{visible}}" class="name-mask" catchtouchmove="noop" bindtap="onCancel">
-  <view class="name-dialog" catchtap="noop">
-    <!-- 顶部改用设备图（2026-07-31）：与首页/设备列表/设备详情统一的 home-icon02，
-         替掉原先 CSS 画的「相框 + ✎」抽象图形。该图四角透明自带圆角，不再加底色方块。 -->
-    <image
-      class="name-dialog__device"
-      src="/assets/images/home-icon02.png"
-      mode="aspectFit" />
-    <view class="name-dialog__title">{{title}}</view>
+  <!-- 键盘避让（2026-08-01）：弹窗是 fixed 定位，微信的 adjust-position 只顶页面、顶不动它，
+       结果键盘弹起后把底部「取消/保存」两个按钮盖住。改成自己接管：
+       input 关掉 adjust-position，改用 bindkeyboardheightchange 拿到键盘高度，
+       把弹窗整体上移「键盘高度的一半」——可视区从 H 缩到 H-kb，居中弹窗上移 kb/2 即重新落在
+       剩余空间正中，只要弹窗高度不超过 H-kb 就整块可见（含两个按钮）。 -->
+  <view
+    class="name-dialog"
+    style="transform: translateY(-{{dialogOffset}}px);"
+    catchtap="noop"
+  >
+    <!-- 图标与标题同行（2026-08-01 产品要求）：原先 152rpx 的大图单独占一行，
+         把弹窗撑得很高、键盘一弹就没地方放按钮。缩到 64rpx 并与标题并排。 -->
+    <view class="name-dialog__head">
+      <!-- 设备图：与首页/设备列表/设备详情统一的 home-icon02，该图四角透明自带圆角，不加底色方块。 -->
+      <image
+        class="name-dialog__device"
+        src="/assets/images/home-icon02.png"
+        mode="aspectFit" />
+      <view class="name-dialog__title">{{title}}</view>
+    </view>
     <view class="name-dialog__tip">为设备设置一个容易识别的名称</view>
     <view class="name-field">
       <input
@@ -14,10 +26,11 @@
         value="{{inputValue}}"
         maxlength="{{maxLength}}"
         focus="{{visible}}"
-        cursor-spacing="30"
+        adjust-position="{{false}}"
         confirm-type="done"
         bindinput="onInput"
         bindconfirm="onConfirm"
+        bindkeyboardheightchange="onKeyboardHeightChange"
         placeholder-class="name-field__placeholder"
         placeholder="请输入设备名称" />
       <text class="name-field__count">{{inputLength}}/{{maxLength}}</text>

@@ -28,6 +28,19 @@ function resolutionText(device) {
   return width && height ? `${width}*${height}` : '--'
 }
 
+// 「最大照片数量-已使用」行的展示值（2026-08-01 产品要求：原来只显示最大数量，看不出还能放几张）。
+// 形如 `51-8`：前者是固件回报的容量(0x01 capacity)，后者是当前已占用的槽位数(0x01 imgCount)。
+// 容量未知（未连接/未读到 0x01）时整行回落 '--'，与设备ID/内存同口径——绝不用 0 冒充真实值。
+// 已用数拿不到时按 0 计：容量已经读到了，只是这次 imgCount 缺省，显示 `51-0` 比整行变 '--' 更有信息量。
+function memoryText(device) {
+  const total = Number(device && device.totalMemory) || 0
+  if (!total) {
+    return '--'
+  }
+  const used = Number(device && device.usedMemory) || 0
+  return `${total}-${used}`
+}
+
 // 计算设备存储使用百分比（已用/总量），上限 100，用于进度条展示
 function memoryPercent(device) {
   if (!device || !device.totalMemory) {
@@ -121,6 +134,19 @@ function prefixDeviceError(error) {
     e.message = '设备-' + msg
   }
   return e
+}
+
+// 「不影响删除结果」的设备结果码（2026-08-01 产品要求）：
+//   0x05 图片不存在、0x07 掩码不一致(该位置已有图/索引越界)，以及各种「索引越界 / out of range」。
+// 这几类的共同点是——要删的那张图设备上本来就没有，对「把图删掉」这个目标而言已经达成，
+// 抛出来只会让用户在一个其实成功了的操作上看到红字。
+// ⚠️ 只放行这一类：设备忙(0x0B)、Flash 写入失败(0x04)、传输中断(0x09)、连接断开/应答超时
+//    仍必须如实中止，它们代表设备可能真的没删干净。与图库页 isMissingDevicePhotoError 同口径。
+function isBenignDeleteError(error) {
+  const message = String((error && error.message) || error || '')
+  return /图片不存在|照片.*(不存在|异常)|掩码不一致|越界|索引.*(无效|不存在)|not[\s_-]*(found|exist)|out[\s_-]*of[\s_-]*(range|bounds|index)/i.test(
+    message
+  )
 }
 
 function isUpdateFlag(device) {
@@ -457,7 +483,7 @@ Page({
       batteryText: batteryUtil.batteryText(device),
       deviceCode,
       resolutionText: resolutionText(device),
-      memoryText: device && device.totalMemory ? String(device.totalMemory) : '--',
+      memoryText: memoryText(device),
       macAddress: device && device.macAddress ? device.macAddress : '--',
       newVersionNo: connected
         ? device.newVersionNo || device.firmwareVersion || '--'
@@ -815,7 +841,7 @@ Page({
       memoryPercent: memoryPercent(updated),
       batteryIcon: batteryUtil.batteryIconOf(updated),
       batteryText: batteryUtil.batteryText(updated),
-      memoryText: updated.totalMemory ? String(updated.totalMemory) : '--',
+      memoryText: memoryText(updated),
       // 连上后 0x01 的 screenType 才到手，分辨率这时才可能从「后端宽高/--」升级为权威值
       resolutionText: resolutionText(updated),
       playbackLabel: getPlaybackLabel(updated),
@@ -1190,7 +1216,9 @@ Page({
         existingIndexes: indexes
       }))
 
-      if (indexes.length) {
+      // 带标签：catch 里判定为「越界/不存在」这类良性结果码时 break 出整段删图逻辑，
+      // 直接进入下面的「清后端记录」，不再做回读核对（见 isBenignDeleteError）。
+      deleteImages: if (indexes.length) {
         const deleteMask = protocol.indexesToMask(indexes)
         logClearDeviceData(traceId, '准备发送删除全部图片指令(0x12)', {
           indexes,
@@ -1203,6 +1231,15 @@ Page({
             imgMaskHex: protocol.bytesToHex(deleteResult.imgMask)
           }))
         } catch (deleteError) {
+          // 「槽位越界 / 图片不存在 / 掩码不一致」这类结果码：要删的图设备上本来就没有，
+          // 对「清空」这个目标而言等价于已完成，不该中断流程（2026-08-01 产品要求：
+          // 凡是不影响真正删掉设备与图片的异常都别抛出来）。直接按成功继续，连回读核对都免了。
+          if (isBenignDeleteError(deleteError)) {
+            logClearDeviceData(traceId, '删除指令(0x12)回了「越界/不存在」类结果码，按已清空继续', {
+              deviceError: (deleteError && deleteError.message) || String(deleteError)
+            })
+            break deleteImages
+          }
           // 设备对 0x12 回了非 0 结果码或应答超时——但不少固件其实已经把图删干净了，
           // 只是应答异常/迟到。这里回读一次设备状态核对：真清空了就按成功继续（记一条日志说明），
           // 只有确实还留着图才把这个「设备-」错误抛给用户，避免「已清空却报错误码」误导。
@@ -1345,7 +1382,7 @@ Page({
     this.setData({
       device,
       memoryPercent: memoryPercent(device),
-      memoryText: device.totalMemory ? String(device.totalMemory) : '--',
+      memoryText: memoryText(device),
       resolutionText: resolutionText(device),
       batteryIcon: batteryUtil.batteryIconOf(device),
       batteryText: batteryUtil.batteryText(device)

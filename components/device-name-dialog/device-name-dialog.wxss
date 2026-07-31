@@ -12,24 +12,33 @@
 
 .name-dialog {
   width: 100%;
-  padding: 40rpx 40rpx 36rpx;
+  padding: 36rpx 40rpx 32rpx;
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(246, 251, 255, 0.96));
   border: 2rpx solid rgba(255, 255, 255, 0.94);
   border-radius: 40rpx;
   box-shadow: 0 32rpx 80rpx rgba(78, 104, 141, 0.22);
+  /* 键盘弹起时整体上移（见 wxml 注释）。用 transform 而不是改 margin：不触发重排、动画更稳 */
+  transition: transform 0.22s ease;
+}
+
+/* 图标 + 标题同一行（2026-08-01）：横向居中排布，图标缩小让弹窗整体变矮 */
+.name-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* 设备图：图片本身四角透明、自带圆环底，不要再加背景色块或圆角，否则会露出方底 */
 .name-dialog__device {
-  display: block;
-  width: 152rpx;
-  height: 152rpx;
-  margin: 0 auto 20rpx;
+  flex-shrink: 0;
+  width: 64rpx;
+  height: 64rpx;
+  margin-right: 16rpx;
 }
 
 .name-dialog__title {
   color: #252b33;
-  font-size: 36rpx;
+  font-size: 34rpx;
   font-weight: 650;
   line-height: 1.25;
   text-align: center;
@@ -45,8 +54,8 @@
 .name-field {
   display: flex;
   align-items: center;
-  height: 104rpx;
-  margin-top: 34rpx;
+  height: 96rpx;
+  margin-top: 28rpx;
   padding: 0 28rpx;
   background: rgba(236, 244, 252, 0.86);
   border: 2rpx solid rgba(156, 179, 209, 0.22);
@@ -75,7 +84,7 @@
 .name-dialog__actions {
   display: flex;
   gap: 20rpx;
-  margin-top: 36rpx;
+  margin-top: 30rpx;
 }
 
 /* 文案居中（2026-07-31）：原来只靠 line-height 撑高，button 自带的左右 padding 与

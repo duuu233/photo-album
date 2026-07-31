@@ -86,7 +86,7 @@ function firstFilterValueWithPhotos(filters, photos) {
 }
 
 // 由设备接口(getDevices)列表生成筛选项(按后端设备ID userProductId 去重)。图库为空但用户有设备时用它——
-// filter-wrap 是设备展示载体，只要设备接口有数据就该显示设备并默认选中第一台。
+// 导航栏设备下拉是设备展示载体，只要设备接口有数据就该显示设备并默认选中第一台。
 // value=userProductId(兜底 id)即后端查询参数本身(见 checkDeviceClearStatus)；label 仅作展示。
 function buildDeviceFiltersFromDevices(devices) {
   const filters = []
@@ -143,9 +143,13 @@ function countSelected(map) {
   return selectedIds(map).length
 }
 
+// 「设备上本来就没有这张图 / 槽位对不上」这一类错误：删记录必须放行，否则异常记录会永久卡在图库。
+// 2026-08-01 扩充：0x07「掩码不一致(该位置已有图/索引越界)」以及各种「索引越界 / out of range」
+// 也归到这里——产品明确要求，凡是不影响真正删掉设备与图片的异常都不要抛给用户中断流程。
+// ⚠️ 只放行这一类；连接中断、设备繁忙(0x0B)、Flash 写失败等真实链路/硬件错误仍按原规则中止。
 function isMissingDevicePhotoError(error) {
   const message = String((error && error.message) || error || '').toLowerCase()
-  return /照片.*(不存在|异常)|图片.*(不存在|异常)|not[\s_-]*(found|exist)|无此图片|索引.*(无效|不存在)/i.test(
+  return /照片.*(不存在|异常)|图片.*(不存在|异常)|not[\s_-]*(found|exist)|无此图片|索引.*(无效|不存在|越界)|越界|掩码不一致|out[\s_-]*of[\s_-]*(range|bounds|index)/i.test(
     message
   )
 }
@@ -214,7 +218,7 @@ Page({
     //（旧的软隐藏是永久的，会把后端仍返回的图一直藏起来，导致「接口有 N 条却只显示 1 条」）
     const photos = buildDisplayPhotos(sourcePhotos, devices)
 
-    // 筛选项(filter-wrap/下拉是设备展示载体)：完全以「设备接口全量绑定设备」为准，返回几台展示几台——
+    // 筛选项(导航栏设备下拉是设备展示载体)：完全以「设备接口全量绑定设备」为准，返回几台展示几台——
     // 含刚绑定、还没有照片的设备；按设备ID(userProductId)去重，设备改名后老照片按 ID 仍归到改名后的设备项下。
     // (2026-07-30)已删「照片里带的设备ID、但设备列表里没有的(已解绑设备老照片)并入下拉」的兜底：
     // 这类照片不再单独成筛选项，也不会出现在任何设备的筛选结果里。
@@ -520,7 +524,10 @@ Page({
       } else {
         wx.hideLoading()
         toast.warn({
-          title: (error && error.message) || '设备删除失败',
+          // 超时统一走中文可操作文案（2026-08-01），不把微信/固件的英文原文抛给用户
+          title: activeDevice.friendlyConnectMessage(
+            (error && error.message) || '设备删除失败'
+          ),
           icon: 'none'
         })
         return
@@ -633,7 +640,10 @@ Page({
     } catch (error) {
       wx.hideLoading()
       toast.warn({
-        title: (error && error.message) || '刷新失败',
+        // 刷新屏幕要先扫描/连上设备，超时是这里最常见的失败；统一中文提示（2026-08-01）
+        title: activeDevice.friendlyConnectMessage(
+          (error && error.message) || '刷新失败'
+        ),
         icon: 'none'
       })
     }

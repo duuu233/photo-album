@@ -83,18 +83,43 @@ function systemSettingsPath() {
     : '设置 → 应用 → 微信 → 权限'
 }
 
-// openBluetoothAdapter 失败原因归一化：区分「蓝牙没开」「系统权限没给」「其它」，
-// 给「系统权限没给」打上 PERMISSION_DENIED 标记，让页面层弹出系统设置引导。
-// 注意：permission not grant / system permission denied(errno:3) 指的是「微信本体」缺少
-// 系统级「附近设备」权限(安卓12+/鸿蒙把蓝牙扫描权限独立出来)，小程序没有蓝牙 scope，
-// 无法弹窗申请，只能引导用户去系统设置手动开。
+// 「小程序自己的蓝牙开关没开」的统一文案（2026-08-01 产品拍板）。
+// 场景：手机蓝牙是开着的，但微信里这个小程序的「蓝牙」授权被关/未授予（iOS 尤其常见，
+// 微信 → 设置 → 小程序 → 蓝牙）。这一类和「手机蓝牙没开」用户分不清，用同一句覆盖两种可能。
+const BLUETOOTH_SWITCH_MESSAGE = '请检查并打开手机或小程序蓝牙开关'
+
+// 是否是「小程序蓝牙授权被拒」类错误（区别于微信本体缺系统级「附近设备」权限）。
+// 微信在这类失败上回的 errMsg 形态不统一：auth deny / auth denied / authorize:fail /
+// unauthorized / require authorization / scope.bluetooth 都出现过，一并识别。
+function isMiniProgramBluetoothDenied(errMsg) {
+  return (
+    errMsg.indexOf('auth deny') > -1 ||
+    errMsg.indexOf('auth denied') > -1 ||
+    errMsg.indexOf('authorize') > -1 ||
+    errMsg.indexOf('unauthorized') > -1 ||
+    errMsg.indexOf('scope.bluetooth') > -1
+  )
+}
+
+// openBluetoothAdapter 失败原因归一化：区分「小程序蓝牙授权没开」「蓝牙没开」「系统权限没给」「其它」。
+// - MP_BLUETOOTH_DENIED：小程序自身的蓝牙授权被拒。这是可以用 wx.openSetting 拉起小程序设置页
+//   自助修复的一类，单独打标记（2026-08-01 新增，此前会被下面的 permission denied 分支误判成
+//   「微信缺少附近设备权限」，把用户引到系统设置里白转一圈）。
+// - PERMISSION_DENIED：微信本体缺少系统级「附近设备」权限(安卓12+/鸿蒙把蓝牙扫描权限独立出来)，
+//   小程序无法弹窗申请，只能引导用户去系统设置手动开。
 function describeAdapterError(error) {
   const errMsg = ((error && error.errMsg) || '').toLowerCase()
   const errCode = error && error.errCode
 
+  // 小程序蓝牙授权被拒：必须排在下面两条之前——微信有时同时带 10001 和 auth deny，
+  // 先判 10001 会把它归成「手机蓝牙没开」，用户去开手机蓝牙也修不好。
+  if (isMiniProgramBluetoothDenied(errMsg)) {
+    return { code: 'MP_BLUETOOTH_DENIED', message: BLUETOOTH_SWITCH_MESSAGE }
+  }
+
   // 10001：系统蓝牙不可用，绝大多数是没开手机蓝牙开关
   if (errCode === 10001 || errMsg.indexOf('not available') > -1) {
-    return { code: 'UNAVAILABLE', message: '请检查并打开手机或小程序蓝牙开关' }
+    return { code: 'UNAVAILABLE', message: BLUETOOTH_SWITCH_MESSAGE }
   }
 
   // 系统级权限被拒：permission not grant / system permission denied / errno:3
@@ -139,6 +164,23 @@ function showPermissionGuide() {
     content: `请前往：\n${systemSettingsPath()}\n开启「附近设备」与「位置信息」后重试。${harmonyTip}`,
     confirmText: '我知道了',
     showCancel: false
+  })
+}
+
+// 小程序蓝牙授权被拒的引导（2026-08-01）：这一类和系统级「附近设备」权限不同，
+// wx.openSetting 能直接拉起本小程序的设置页，用户一键就能把「蓝牙」打开，故给「去设置」按钮。
+// 手机蓝牙本身没开时 openSetting 里看不到蓝牙项，所以文案仍按产品口径两种可能一起提。
+function showBluetoothSwitchGuide() {
+  wx.showModal({
+    title: '蓝牙未开启',
+    content: `${BLUETOOTH_SWITCH_MESSAGE}。\n\n若手机蓝牙已开启，请点「去设置」打开本小程序的蓝牙权限。`,
+    confirmText: '去设置',
+    cancelText: '我知道了',
+    success(res) {
+      if (res.confirm && wx.openSetting) {
+        wx.openSetting({})
+      }
+    }
   })
 }
 
@@ -440,8 +482,16 @@ async function discoverDevices(options) {
         subscribeScan(scan, subscriberOptions).then(resolve, reject)
       },
       fail(error) {
-        failScan(scan, new Error(error.errMsg || '蓝牙搜索失败'))
-        reject(new Error(error.errMsg || '蓝牙搜索失败'))
+        // 起扫失败与 openBluetoothAdapter 失败是同一批原因（蓝牙关了 / 小程序蓝牙授权被拒 /
+        // 系统「附近设备」权限没给），走同一套归一化，别把 "startBluetoothDevicesDiscovery:fail
+        // auth deny" 这种英文原文直接抛到 toast 上（2026-08-01）。
+        const detail = describeAdapterError(error)
+        const scanError = new Error(
+          detail.code === 'UNKNOWN' ? error.errMsg || '蓝牙搜索失败' : detail.message
+        )
+        scanError.code = detail.code
+        failScan(scan, scanError)
+        reject(scanError)
       }
     })
   })
@@ -477,5 +527,7 @@ module.exports = {
   whenScanStopped,
   isDiscovering,
   showPermissionGuide,
-  showEmptyResultGuide
+  showBluetoothSwitchGuide,
+  showEmptyResultGuide,
+  BLUETOOTH_SWITCH_MESSAGE
 }

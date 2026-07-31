@@ -1,3 +1,5 @@
+const uploadLimit = require('./upload-limit')
+
 // 旧版微信无 wx.chooseMedia 时的降级方案，使用已废弃的 wx.chooseImage
 function chooseImageByLegacy(sourceType, count) {
   return new Promise((resolve, reject) => {
@@ -159,9 +161,11 @@ module.exports = {
     return chooseMedia(['camera'], 1)
   },
 
-  // 从相册选择：默认一次最多 5 张（投屏批量上限）；AI 图文多模态传 4（BoltStar image_urls 上限）
-  chooseFromAlbum(count = 5) {
-    return chooseMedia(['album'], count > 0 ? count : 1)
+  // 从相册选择：不传张数时用「当前用户的投屏批量上限」（常规 5 张，白名单用户 100 张，
+  // 见 utils/upload-limit.js）；AI 图文多模态显式传 4（BoltStar image_urls 上限），不受白名单影响。
+  chooseFromAlbum(count) {
+    const limit = count === undefined ? uploadLimit.albumPickLimit() : count
+    return chooseMedia(['album'], limit > 0 ? limit : 1)
   },
 
   TARGET_BYTES_DEFAULT,

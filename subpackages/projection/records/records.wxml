@@ -4,27 +4,27 @@
     <view class="records-tint"></view>
   </view>
 
-  <page-nav title="投屏管理"></page-nav>
-
-  <view class="mock-content records-content">
-    <view wx:if="{{deviceFilters.length}}" class="records-device-filter">
-      <view class="records-device-filter__label">投屏设备</view>
-      <view class="device-filter-wrap">
-        <view class="device-filter-btn" hover-class="none" bindtap="toggleDeviceFilter">
-          <text class="device-filter-name">{{currentDeviceFilterLabel}}</text>
-          <view class="device-filter-arrow {{showDeviceFilter ? 'is-open' : ''}}"></view>
-        </view>
-        <view wx:if="{{showDeviceFilter}}" class="device-filter-menu">
-          <view
-            wx:for="{{deviceFilters}}"
-            wx:key="value"
-            class="device-filter-option {{currentDeviceFilter === item.value ? 'is-active' : ''}}"
-            data-value="{{item.value}}"
-            bindtap="selectDeviceFilter"
-          >{{item.label}}</view>
-        </view>
+  <!-- 去掉「投屏管理」标题（2026-08-01 产品要求），改由导航栏右上角的设备下拉承担标题作用。
+       与设备照片页共用 app.wxss 的 .nav-device-filter，两页宽度与观感完全一致。 -->
+  <page-nav>
+    <view wx:if="{{deviceFilters.length}}" class="nav-device-filter">
+      <view class="nav-device-filter__btn" hover-class="none" bindtap="toggleDeviceFilter">
+        <text class="nav-device-filter__name">{{currentDeviceFilterLabel}}</text>
+        <view class="nav-device-filter__arrow {{showDeviceFilter ? 'is-open' : ''}}"></view>
+      </view>
+      <view wx:if="{{showDeviceFilter}}" class="nav-device-filter__menu">
+        <view
+          wx:for="{{deviceFilters}}"
+          wx:key="value"
+          class="nav-device-filter__option {{currentDeviceFilter === item.value ? 'is-active' : ''}}"
+          data-value="{{item.value}}"
+          bindtap="selectDeviceFilter"
+        >{{item.label}}</view>
       </view>
     </view>
+  </page-nav>
+
+  <view class="mock-content records-content">
     <view class="record-tabs">
       <view class="record-tabs__indicator"></view>
       <view class="record-tab {{filter === 'success' ? 'is-active' : ''}}" hover-class="none" data-filter="success" bindtap="switchFilter">投屏成功</view>

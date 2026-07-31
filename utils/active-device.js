@@ -794,21 +794,40 @@ async function connectBoundDevice(device, options = {}) {
 function showConnectError(error) {
   if (error && error.code === 'PERMISSION_DENIED') {
     bluetooth.showPermissionGuide()
+  } else if (error && error.code === 'MP_BLUETOOTH_DENIED') {
+    // 小程序自身的蓝牙授权被拒：可用 wx.openSetting 自助修复，给「去设置」引导而不是干巴巴一条 toast
+    bluetooth.showBluetoothSwitchGuide()
   } else {
     toast.warn({ title: friendlyConnectMessage((error && error.message) || ''), icon: 'none' })
   }
 }
 
-// 连接超时对用户毫无信息量：「设备-createBLEConnection:fail connect time out」既看不懂也不知道该做什么，
-// 而它恰恰是弱信号下最常见的失败。换成可操作的说法，并保留「设备-」来源前缀（见 toast 前缀约定）。
-// 只替换这一类；其余原因（未搜索到/权限/蓝牙未开…）照旧如实展示，不要笼统化。
+// 连接/搜索失败的原始报错对用户毫无信息量：「设备-createBLEConnection:fail connect time out」
+//「discoverDevices:fail operate time out」既看不懂也不知道该做什么，而它们恰恰是弱信号下最常见的失败。
+// 统一换成可操作的中文说法（2026-08-01 产品口径：连接超时，稍后再试），保留「设备-」来源前缀
+//（见 toast 前缀约定）。
+// 只替换超时这一类；其余原因（未搜索到/权限/蓝牙未开…）照旧如实展示，不要笼统化。
 // 注意：只改展示，不动 error 本身——console 里仍是原始报错，排查时看得到真实原因。
 function friendlyConnectMessage(message) {
   const text = String(message || '')
-  if (/connect\s*time\s*out|createBLEConnection/i.test(text)) {
-    return '设备-连接超时，请靠近设备后重试'
+  if (isConnectTimeoutMessage(text)) {
+    return '设备-连接超时，稍后再试'
   }
   return text || '连接失败'
+}
+
+// 是否属于「连接/指令超时」类失败。覆盖微信原文的多种写法：
+//   createBLEConnection:fail connect time out / operate time out / errCode 10012(连接超时)
+//   以及代码侧自造的「指令 0x.. 应答超时」。
+// 用一个函数收口，避免各页面各写一套正则（此前只认 connect time out，
+// 搜索阶段的 operate time out 会把英文原文直接抛给用户）。
+function isConnectTimeoutMessage(message) {
+  const text = String(message || '')
+  return (
+    /time\s*out|timeout/i.test(text) ||
+    /createBLEConnection/i.test(text) ||
+    text.indexOf('超时') > -1
+  )
 }
 
 // 操作前确保已连接（未连接自动重连）。成功返回有效 deviceId；失败按标准 UI 提示并返回 ''（调用方据此 return）。
@@ -869,6 +888,8 @@ module.exports = {
   ensureDeviceConnected,
   connectBoundDevice,
   showConnectError,
+  friendlyConnectMessage,
+  isConnectTimeoutMessage,
   ensureConnectedForAction,
   ensureActiveDeviceConnection,
   promptSwitchDevice

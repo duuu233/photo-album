@@ -33,12 +33,13 @@
   text-align: left;
 }
 
+/* 设备下拉已上移进导航栏（2026-08-01，见 list.wxml + app.wxss .nav-device-filter），
+   这条工具栏只剩左侧的「全选 / 共 n 张」。 */
 .album-toolbar {
   position: relative;
   z-index: 3;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 18rpx;
   padding: 14rpx 46rpx 22rpx;
 }
@@ -59,93 +60,8 @@
   line-height: 1;
 }
 
-.filter-wrap {
-  position: relative;
-}
-
-.filter-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 18rpx;
-  min-width: 224rpx;
-  /* 上限挡住长设备名：超出部分交给 .filter-label 的省略号，胶囊本身不再被撑大 */
-  max-width: 400rpx;
-  height: 62rpx;
-  padding: 0 24rpx;
-  color: #777e88;
-  background: rgba(255, 255, 255, 0.78);
-  border-radius: 999rpx;
-  box-shadow: 0 10rpx 28rpx rgba(126, 150, 184, 0.08);
-  font-size: 26rpx;
-}
-
-/* 设备名单行省略号。min-width:0 不可省：flex 子项默认 min-width:auto，
-   不归零时 overflow:hidden 不生效，长名字照样把胶囊顶宽/顶成两行。 */
-.filter-label {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.filter-arrow {
-  /* 箭头不许被长名字压缩掉 */
-  flex: 0 0 auto;
-  width: 14rpx;
-  height: 14rpx;
-  border-right: 2rpx solid #777e88;
-  border-bottom: 2rpx solid #777e88;
-  transform: rotate(45deg) translateY(-3rpx);
-}
-
-.filter-arrow.is-open {
-  transform: rotate(225deg) translateY(-3rpx);
-}
-
-.filter-menu {
-  position: absolute;
-  top: 70rpx;
-  right: 0;
-  z-index: 6;
-  /* 宽度随最长设备名自适应，但夹在 210~420rpx 之间：
-     窄了长名字全被省略号吃掉，宽了会盖住半屏照片。超出上限的名字由 .filter-option 省略号收尾。 */
-  width: max-content;
-  min-width: 280rpx;
-  max-width: 480rpx;
-  padding: 8rpx 0 12rpx;
-  background: rgba(255, 255, 255, 0.9);
-  border: 2rpx solid rgba(255, 255, 255, 0.95);
-  border-radius: 12rpx;
-  box-shadow: 0 18rpx 40rpx rgba(126, 116, 106, 0.18);
-}
-
-/* 单行省略号（不用 flex 居中：flex 容器上的 text-overflow 不生效，
-   长设备名会直接换行把菜单撑成两行高）。改用 block + line-height 垂直居中。 */
-.filter-option {
-  display: block;
-  height: 56rpx;
-  line-height: 56rpx;
-  margin: 0 12rpx;
-  padding: 0 12rpx;
-  color: #777e88;
-  border-radius: 8rpx;
-  font-size: 26rpx;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.filter-option.is-active {
-  color: #ff5f1f;
-  background: rgba(255, 116, 54, 0.12);
-}
-
-.filter-option--loading {
-  color: #9ba2ad;
-}
+/* .filter-wrap / .filter-btn / .filter-menu 等设备下拉样式已于 2026-08-01 删除：
+   设备下拉整体上移到导航栏，改用 app.wxss 的 .nav-device-filter 一套（与投屏管理页共用）。 */
 
 .album-hint {
   position: relative;

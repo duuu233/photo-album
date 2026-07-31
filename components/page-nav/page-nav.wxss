@@ -87,6 +87,22 @@
   pointer-events: none;
 }
 
+/* 导航栏自定义内容位：与 .nav-title 占同一条带，但左边界让开返回按钮、右边界让开微信胶囊，
+   内容靠右（产品口径「右上角的设备选择下拉框」）。宽度由内容自己定，最宽不越界。
+   left 用固定 110rpx 而不是 calc(返回键宽度…)：返回键宽度是 px 变量、左内边距是 rpx，
+   混进 calc 在部分基础库上会失效；内容本就靠右排，这里只需保证不压到返回键。 */
+.nav-center {
+  position: absolute;
+  top: 50%;
+  right: var(--nav-capsule-space, 96px);
+  left: 110rpx;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  transform: translateY(-50%);
+}
+
 .nav-title {
   position: absolute;
   top: 50%;

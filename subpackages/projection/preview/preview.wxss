@@ -35,25 +35,52 @@
   justify-content: center;
   min-height: 680rpx;
   margin: 48rpx 46rpx 24rpx;
+  /* Banner 轨道的左右邻格就停在舞台外各一屏处，必须由舞台裁掉（2026-08-01）——
+     否则静止时页面左右 46rpx 的留白里会露出邻图的一条边。裁剪只能加在舞台上，
+     不能加在轨道上：轨道要靠自身平移把邻格送进可视区，自己裁自己就永远露不出来。 */
+  overflow: hidden;
 }
 
-/* 多图轮播 swiper：铺满舞台；每个 item 内居中放 photo-wrap */
-.preview-swiper {
-  width: 100%;
-  height: 100%;
+/* Banner 轨道（2026-08-01 自绘，替掉 swiper）：铺满舞台，横向平移带动三格一起走。
+   平移量由 JS 的 slideDx 下发；跟手期间不加过渡（逐帧跟指头），松手补完过场时才挂上 is-animating。
+   ⚠️ 轨道不能 overflow:hidden——邻格就在轨道左右各一屏外，裁掉就永远露不出来；
+      邻格超出的部分被舞台外的页面内容遮挡即可，视觉上就是从屏幕边缘滑进来。 */
+.slide-track {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
 }
 
-/* 编辑层起来时把底层轮播整条藏掉（2026-07-25）：横向取景的取景框比竖向矮，
-   不藏的话框上下会露出底层那张竖向比例的图。用 visibility 而不是 wx:if/display，
-   保留布局与已加载的图，切图过场时直接显形，不会重建 swiper（重建会复位 current 并闪一下）。 */
-.preview-swiper.is-hidden {
-  visibility: hidden;
+/* 松手后的补完过场：300ms 与 JS 的 SLIDE_MS 同值，改要一起改（JS 靠定时器等它走完再换索引）。
+   ease-out：起手快、落位缓，和微信原生 swiper 的手感一致。 */
+.slide-track.is-animating {
+  transition: transform 300ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-.preview-swiper swiper-item {
+/* 三格：每格一屏宽，内部把 photo-wrap 居中 */
+.slide-cell {
+  position: absolute;
+  top: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+}
+
+.slide-cell--prev {
+  right: 100%;
+}
+
+.slide-cell--next {
+  left: 100%;
+}
+
+/* 编辑层就绪后把当前格底图藏掉：横向取景的取景框比竖向矮，不藏的话框上下会露出这张竖向比例的底图
+   （2026-07-25 的老问题，换轨道后规则不变）。用 visibility 而不是 wx:if/display——
+   保留布局与已解码的位图，换图那一刻直接显形，不必重新下载解码（那正是「闪一下」的来源）。 */
+.slide-cell--current.is-hidden {
+  visibility: hidden;
 }
 
 .photo-wrap {
@@ -86,10 +113,10 @@
   z-index: 5;
 }
 
-/* 切图过场中 / 新图还没解码完：整层透明并让出触摸，底层 swiper 顶着画面（2026-07-25）。
+/* 切图过场中 / 新图还没解码完：整层透明并让出触摸，当前格底图顶着画面（2026-07-25）。
    用 opacity 而不是 visibility/display——后两者在部分机型上会让 <image> 推迟甚至不发起加载，
    那样 bindload 永远不来，编辑层就再也显不出来了。opacity:0 仍然参与绘制，加载照常。
-   pointer-events:none 保证透明期间手势落到下面的 swiper 上，不被本层 catch 吞掉。 */
+   pointer-events:none 保证透明期间手势不被本层 catch 吞掉。 */
 .edit-layer.is-hidden {
   opacity: 0;
   pointer-events: none;

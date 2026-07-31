@@ -8,7 +8,12 @@
     </view>
     <view wx:else class="nav-btn nav-placeholder"></view>
 
-    <view class="nav-title">{{title}}</view>
+    <!-- 标题位（2026-08-01）：传了 title 就是普通标题；不传则把这块让给默认 slot，
+         供「设备照片 / 投屏管理」把设备选择下拉框放进导航栏（产品要求去掉页面标题）。
+         .nav-title 关掉了 pointer-events（避免吃掉下方内容触摸），slot 容器必须打开，
+         否则下拉框点不动。 -->
+    <view class="nav-title" wx:if="{{title}}">{{title}}</view>
+    <view wx:else class="nav-center"><slot></slot></view>
 
     <view wx:if="{{rightText}}" class="nav-right {{rightText === '+' ? 'nav-right--icon' : ''}}" hover-class="nav-btn--hover" bindtap="handleRight">{{rightText}}</view>
     <view wx:else class="nav-right nav-placeholder"></view>

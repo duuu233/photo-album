@@ -133,7 +133,9 @@
               class="row-icon"
               src="/assets/images/device-detail-icon03.png"
               mode="aspectFit" />
-            <text>最大照片数量</text>
+            <!-- 2026-08-01：只显示最大数量看不出还能放几张，改为「最大照片数量-已使用」，
+                 值形如 51-8（见 detail.js memoryText） -->
+            <text>最大照片数量-已使用</text>
           </view>
           <view class="row-value">{{memoryText}}</view>
         </view>
@@ -185,28 +187,14 @@
           </view>
         </view>
       </view>
-      <!-- 「删除设备」是最重的破坏性操作（清空照片 + 解除绑定），2026-07-31 产品要求单独成卡、
-           与上面一组操作留出更大间隔，避免和「一键清空 / 解除绑定」连成一片被误点 -->
-      <view class="detail-list action-list danger-list glass-panel">
-        <view
-          class="detail-row action-row delete-row permanent-delete-row"
-          hover-class="none"
-          bindtap="showPermanentDeleteConfirm"
-        >
-          <view class="row-left">
-            <image
-              class="row-icon"
-              src="/assets/images/device-detail-icon06.png"
-              mode="aspectFit" />
-            <text>删除设备</text>
-          </view>
-          <view class="row-right">
-            <text>清空照片并解除绑定</text>
-            <view class="ui-chevron">
-            </view>
-          </view>
-        </view>
-      </view>
+      <!-- 「删除设备」是最重的破坏性操作（一键清空 + 断开连接 + 解除绑定）。
+           2026-08-01 产品要求：从卡片行改成页面最底部的独立按钮，复用「退出登录」那颗描边按钮的
+           形状与尺寸，但去掉实心底色、只保留边框色（见 detail.wxss .outline-delete-device）。 -->
+      <view
+        class="outline-delete-device"
+        hover-class="none"
+        bindtap="showPermanentDeleteConfirm"
+      >删除设备</view>
     </view>
     <!-- 解除绑定确认：照片保留，只解除账号关系 -->
     <view
