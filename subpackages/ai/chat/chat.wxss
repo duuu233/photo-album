@@ -638,8 +638,8 @@
    两态同盒同大小、图源自身居中 —— 切换时零位移。*/
 .orientation-button__tail {
   flex: 0 0 auto;
-  width: 34rpx;
-  height: 34rpx;
+  width: 22rpx;
+  height: 22rpx;
 }
 
 .generate-button {
