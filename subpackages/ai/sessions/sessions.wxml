@@ -49,32 +49,40 @@
         bindtouchend="onSessionTouchEnd"
         bindtouchcancel="onSessionTouchEnd"
       >
+        <!-- 卡片和删除按钮同在一条 flex 轨道上一起位移：删除按钮排在卡片右侧的轨道外，
+             由 .session-swipe 的 overflow:hidden 裁掉，没左滑就看不见。
+             ⚠️ 别改回「删除按钮绝对定位垫在卡片底下」——卡片是半透明毛玻璃(0.74)，垫在
+             底下的红色会直接透出来，等于没滑就露出删除按钮。 -->
         <view
-          class="session-delete"
-          data-id="{{item.sessionId}}"
-          catchtap="onSessionDeleteTap"
-        >
-          <image
-            class="session-delete__background"
-            src="/assets/images/ai-del-btn-bg.png"
-            mode="scaleToFill"
-          ></image>
-          <text class="session-delete__label">删除</text>
-        </view>
-        <view
-          class="session-card {{openedSessionId === item.sessionId ? 'session-card--open' : ''}} {{swipingSessionId === item.sessionId ? 'session-card--dragging' : ''}} {{item.sessionId === currentId ? 'session-card--current' : ''}}"
+          class="session-track {{openedSessionId === item.sessionId ? 'session-track--open' : ''}} {{swipingSessionId === item.sessionId ? 'session-track--dragging' : ''}}"
           style="{{swipingSessionId === item.sessionId ? swipeTransform : ''}}"
-          data-id="{{item.sessionId}}"
-          bindtap="onSessionTap"
-          bindlongpress="onSessionLongPress"
         >
-          <view class="session-title">{{item.title}}</view>
-          <view class="session-time">{{item.timeText}}</view>
-          <image
-            class="session-chevron"
-            src="/assets/images/ai-chevron-right.png"
-            mode="aspectFit"
-          ></image>
+          <view
+            class="session-card {{item.sessionId === currentId ? 'session-card--current' : ''}}"
+            data-id="{{item.sessionId}}"
+            bindtap="onSessionTap"
+            bindlongpress="onSessionLongPress"
+          >
+            <view class="session-title">{{item.title}}</view>
+            <view class="session-time">{{item.timeText}}</view>
+            <image
+              class="session-chevron"
+              src="/assets/images/ai-chevron-right.png"
+              mode="aspectFit"
+            ></image>
+          </view>
+          <view
+            class="session-delete"
+            data-id="{{item.sessionId}}"
+            catchtap="onSessionDeleteTap"
+          >
+            <image
+              class="session-delete__background"
+              src="/assets/images/ai-del-btn-bg.png"
+              mode="scaleToFill"
+            ></image>
+            <text class="session-delete__label">删除</text>
+          </view>
         </view>
       </view>
     </block>
