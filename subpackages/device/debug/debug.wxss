@@ -1,6 +1,8 @@
+/* 背景与全站统一（同一张 OSS 图）；调试台正文是普通块，走 CSS background 不用补 z-index。
+   #f8f5ef 是图未加载完的兜底底色。*/
 .debug-page {
   min-height: 100vh;
-  background: #f2f5fc;
+  background: #f8f5ef url(https://oss.boltfox.cn/prodFile/202607310920402821453.png) center / cover no-repeat;
 }
 
 .debug-body {
