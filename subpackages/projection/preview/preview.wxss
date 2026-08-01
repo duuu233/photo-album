@@ -57,9 +57,12 @@
   transition: transform 300ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-/* 三格：每格一屏宽，内部把 photo-wrap 居中 */
+/* 三格：每格一屏宽，内部把 photo-wrap 居中。
+   横向站位由 wxml 内联 transform: translateX(offset * 100%) 下发（offset = 该格下标 - 当前下标），
+   不再用 left/right:100% 的固定槽位类——格子要能跟着图片走（见 wxml 的 wx:key 说明）。 */
 .slide-cell {
   position: absolute;
+  left: 0;
   top: 0;
   bottom: 0;
   display: flex;
@@ -68,18 +71,10 @@
   width: 100%;
 }
 
-.slide-cell--prev {
-  right: 100%;
-}
-
-.slide-cell--next {
-  left: 100%;
-}
-
 /* 编辑层就绪后把当前格底图藏掉：横向取景的取景框比竖向矮，不藏的话框上下会露出这张竖向比例的底图
    （2026-07-25 的老问题，换轨道后规则不变）。用 visibility 而不是 wx:if/display——
    保留布局与已解码的位图，换图那一刻直接显形，不必重新下载解码（那正是「闪一下」的来源）。 */
-.slide-cell--current.is-hidden {
+.slide-cell.is-hidden {
   visibility: hidden;
 }
 

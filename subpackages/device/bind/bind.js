@@ -481,7 +481,7 @@ Page({
     app.setSelectedDevice(device)
 
     wx.hideLoading()
-    // 新绑定完成后先在当前页引导命名。允许暂不修改（弱强制），确认保存后再按原逻辑返回。
+    // 新绑定完成后先在当前页引导命名。允许点「稍后」跳过（弱强制），确认保存后再按原逻辑返回。
     // 已绑定设备的复用路径不进入这里，避免每次重连都要求改名。
     this._pendingBoundDevice = device
     this.setData({

@@ -133,9 +133,9 @@
               class="row-icon"
               src="/assets/images/device-detail-icon03.png"
               mode="aspectFit" />
-            <!-- 2026-08-01：只显示最大数量看不出还能放几张，改为「最大照片数量-已使用」，
-                 值形如 51-8（见 detail.js memoryText） -->
-            <text>最大照片数量-已使用</text>
+            <!-- 2026-08-02：行名回到「最大照片数量」，已用/上限全部挪进右侧值里，
+                 形如 8/51（见 detail.js memoryText） -->
+            <text>最大照片数量</text>
           </view>
           <view class="row-value">{{memoryText}}</view>
         </view>

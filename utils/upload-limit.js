@@ -1,6 +1,6 @@
 // 一次投屏可选照片张数的上限。
 //
-// 常规用户 5 张（产品既定的投屏批量上限）；白名单用户放宽到 100 张——
+// 常规用户 10 张（2026-08-02 产品要求由 5 张放宽）；白名单用户放宽到 100 张——
 // 2026-08-01 产品要求：登录接口返回的 userInfo.userNo 命中 WHITELIST 时，
 // 该账号用于内部批量压测/展会演示，需要一次投几十上百张。
 //
@@ -9,8 +9,8 @@
 //    与后端账号一一对应；换白名单账号只改下面这一处数组。
 const WHITELIST = ['EF7293235']
 
-// 常规上限：与产品「一次最多投 5 张」口径一致
-const DEFAULT_LIMIT = 5
+// 常规上限：与产品「一次最多投 10 张」口径一致（2026-08-02 由 5 张调整）
+const DEFAULT_LIMIT = 10
 
 // 白名单上限
 const WHITELIST_LIMIT = 100
@@ -23,7 +23,7 @@ function currentUserNo() {
     if (user && user.userNo) {
       return String(user.userNo).trim()
     }
-    // globalData 还没灌上时（冷启动首帧）回落本地缓存，避免白名单用户开屏第一次选图被按 5 张限
+    // globalData 还没灌上时（冷启动首帧）回落本地缓存，避免白名单用户开屏第一次选图被按常规上限限
     const cached = wx.getStorageSync('userInfo')
     return cached && cached.userNo ? String(cached.userNo).trim() : ''
   } catch (error) {

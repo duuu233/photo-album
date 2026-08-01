@@ -97,11 +97,8 @@ Page({
     safeBottom: 0,
     device: null,
     images: [],
-    activeImage: null,
-    // Banner 轨道左右两格要渲染的图（没有上一张/下一张时为 null，对应格子不渲染）。
-    // 与 activeIndex 同步维护，统一走 _neighborPatch。
-    prevImage: null,
-    nextImage: null,
+    // Banner 轨道要渲染的三格（上一张/当前/下一张），与 activeIndex 同步维护，统一走 _trackPatch。
+    trackCells: [],
     activeIndex: 0,
     imageCount: 0,
     projecting: false,
@@ -216,23 +213,41 @@ Page({
           exportRotationDegree: deviceRotation.degreeFor(device),
           images,
           activeIndex: safeIndex,
-          activeImage: images[safeIndex] || null,
           imageCount: images.length,
           deviceWrapStyle: this.computeWrapStyle(size.width, size.height)
         },
-        this._neighborPatch(images, safeIndex)
+        this._trackPatch(images, safeIndex)
       )
     )
   },
 
-  // Banner 轨道左右两格的数据源。没有上一张/下一张时给 null，模板里对应格子整块不渲染
-  //（不能渲染成空格子：那样滑到边界会先露出一块灰底再弹回来）。
-  _neighborPatch(images, index) {
+  // Banner 轨道三格（上一张/当前/下一张）的数据源：每格自带横向偏移（-1/0/1 屏）与图源。
+  // 到头时那一格整块不渲染（不能渲染成空格子：滑到边界会先露出一块灰底再弹回来）。
+  //
+  // ⚠️ key 取「图片在 images 中的下标」，模板里 wx:key="idx"：切图后列表由 [n-1,n,n+1] 变成
+  //    [n,n+1,n+2]，微信按 key 复用节点——过场里已经解码好的那张原地留在屏上，只改自身偏移量。
+  //    2026-08-02 修「每次切图都先闪一遍上一张、再换成目标图」：老写法是三个固定槽位各绑一个
+  //    <image>，切图只换 src。节点被按位置复用，而微信的 <image> 在新图解码完成之前会继续显示
+  //    旧位图，于是落位瞬间露出的是刚滑走那张（从第一张切走时就是「第一张图片」），
+  //    要等新图解码完才跳成目标图。改成带 key 的列表后，节点跟着图走，落位零解码。
+  _trackPatch(images, index) {
     const list = images || []
-    return {
-      prevImage: list[index - 1] || null,
-      nextImage: list[index + 1] || null
+    const cells = []
+    for (let i = index - 1; i <= index + 1; i++) {
+      const image = list[i]
+      if (!image) {
+        continue
+      }
+      cells.push({
+        idx: i,
+        offset: i - index,
+        // 图源优先 previewSrc（构图烘焙缓存），滑回来看到的就是上次构好的画面，不会闪回原图
+        src: image.previewSrc || image.tempFilePath || image.url || '',
+        wrapStyle: image.wrapStyle || '',
+        imgStyle: image.imgStyle || ''
+      })
     }
+    return { trackCells: cells }
   },
 
   // 直接换到某张图（无过场）。Banner 轨道量不到舞台宽等极端情况下的兜底路径；
@@ -258,7 +273,6 @@ Page({
       Object.assign(
         {
           activeIndex: index,
-          activeImage: images[index] || null,
           // 编辑层让位，露出当前格底图（静态、已解码）；交接期间始终有一层在画，不露白
           editReady: false,
           sliding: false,
@@ -268,7 +282,7 @@ Page({
           dragging: false,
           editPickup: false
         },
-        this._neighborPatch(images, index)
+        this._trackPatch(images, index)
       )
     )
     this.enterEdit()
@@ -943,15 +957,19 @@ Page({
         this._mode = 'none'
         this._clearLongPress()
         this._clearPrebake()
-        this.setData({
-          images: next,
-          activeImage: updated,
-          orientation: DEFAULT_ORIENTATION,
-          dragging: false,
-          editPickup: false,
-          editing: false,
-          editReady: false
-        })
+        this.setData(
+          Object.assign(
+            {
+              images: next,
+              orientation: DEFAULT_ORIENTATION,
+              dragging: false,
+              editPickup: false,
+              editing: false,
+              editReady: false
+            },
+            this._trackPatch(next, activeIndex)
+          )
+        )
         this.persistPending(next)
         this.enterEdit() // 还原后立刻对原图重新开启常驻编辑
       }
@@ -1149,7 +1167,7 @@ Page({
     }
   },
 
-  // 局部更新某张图片并同步回 Storage（保持 images/activeImage/邻格 一致）
+  // 局部更新某张图片并同步回 Storage（保持 images 与轨道三格一致）
   _updateImageAt(index, patch) {
     const next = this.data.images.slice()
     if (!next[index]) {
@@ -1158,14 +1176,10 @@ Page({
     next[index] = Object.assign({}, next[index], patch)
     this.setData(
       Object.assign(
-        {
-          images: next,
-          activeImage:
-            index === this.data.activeIndex ? next[index] : this.data.activeImage
-        },
-        // 邻格渲染的是快照对象，不跟着 images 自动更新：改的正好是左右那张时必须一起刷，
+        { images: next },
+        // 轨道三格渲染的是快照数据，不跟着 images 自动更新：改的正好是这三张之一时必须一起刷，
         // 否则轨道里露出的还是它更新前的旧图
-        this._neighborPatch(next, this.data.activeIndex)
+        this._trackPatch(next, this.data.activeIndex)
       )
     )
     this.persistPending(next)

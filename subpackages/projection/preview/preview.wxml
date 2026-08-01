@@ -27,42 +27,28 @@
       class="slide-track {{slideAnimating ? 'is-animating' : ''}}"
       style="transform: translateX({{slideDx}}px);"
     >
-      <!-- 上一张：位于当前格左侧一屏，手指右滑时从左边露出来 -->
-      <view wx:if="{{prevImage}}" class="slide-cell slide-cell--prev">
-        <view class="photo-wrap" style="{{prevImage.wrapStyle || deviceWrapStyle}}">
+      <!-- 三格「上一张 / 当前 / 下一张」：由 JS 的 trackCells 下发，各自按 offset 横排
+           （-1 = 当前格左侧一屏，手指右滑时从左边露出来；+1 同理在右）。
+           ⚠️ wx:key="idx"（图片下标）不能去掉，也不能换成位置槽位：切图后列表整体右移一位，
+              微信按 key 复用节点，过场里已解码好的那张原地留下，只改自身偏移量；
+              一旦按位置复用就会变回「换 src」——落位瞬间露出上一张的旧位图，
+              等新图解码完才跳成目标图（2026-08-02 修复的正是这个）。
+           当前格底图在编辑层没就绪（换图/解码中）时顶着画面，绝不会露出白底或占位灰；
+           编辑层一就绪就藏起来——否则横向取景时取景框上下会露出这张竖向比例的底图。 -->
+      <view
+        wx:for="{{trackCells}}"
+        wx:key="idx"
+        class="slide-cell {{item.offset === 0 && editing && editReady ? 'is-hidden' : ''}}"
+        style="transform: translateX({{item.offset * 100}}%);"
+      >
+        <view class="photo-wrap" style="{{item.wrapStyle || deviceWrapStyle}}">
           <image
-            wx:if="{{prevImage.previewSrc || prevImage.tempFilePath || prevImage.url}}"
+            wx:if="{{item.src}}"
             class="photo-img"
-            style="{{prevImage.imgStyle || ''}}"
-            src="{{prevImage.previewSrc || prevImage.tempFilePath || prevImage.url}}"
+            style="{{item.imgStyle}}"
+            src="{{item.src}}"
             mode="aspectFill" />
-        </view>
-      </view>
-
-      <!-- 当前格底图：编辑层没就绪（换图/解码中）时由它顶着画面，绝不会露出白底或占位灰。
-           编辑层一就绪就藏起来——否则横向取景时取景框上下会露出这张竖向比例的底图。
-           图源优先 previewSrc（构图烘焙缓存），滑回来看到的就是上次构好的画面，不会闪回原图。 -->
-      <view class="slide-cell slide-cell--current {{editing && editReady ? 'is-hidden' : ''}}">
-        <view class="photo-wrap" style="{{activeImage.wrapStyle || deviceWrapStyle}}">
-          <image
-            wx:if="{{activeImage.previewSrc || activeImage.tempFilePath || activeImage.url}}"
-            class="photo-img"
-            style="{{activeImage.imgStyle || ''}}"
-            src="{{activeImage.previewSrc || activeImage.tempFilePath || activeImage.url}}"
-            mode="aspectFill" />
-          <view wx:else class="photo-img photo-placeholder">图片占位</view>
-        </view>
-      </view>
-
-      <!-- 下一张：位于当前格右侧一屏，手指左滑时从右边露出来 -->
-      <view wx:if="{{nextImage}}" class="slide-cell slide-cell--next">
-        <view class="photo-wrap" style="{{nextImage.wrapStyle || deviceWrapStyle}}">
-          <image
-            wx:if="{{nextImage.previewSrc || nextImage.tempFilePath || nextImage.url}}"
-            class="photo-img"
-            style="{{nextImage.imgStyle || ''}}"
-            src="{{nextImage.previewSrc || nextImage.tempFilePath || nextImage.url}}"
-            mode="aspectFill" />
+          <view wx:elif="{{item.offset === 0}}" class="photo-img photo-placeholder">图片占位</view>
         </view>
       </view>
 

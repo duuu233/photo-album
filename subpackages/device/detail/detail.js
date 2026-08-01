@@ -28,17 +28,17 @@ function resolutionText(device) {
   return width && height ? `${width}*${height}` : '--'
 }
 
-// 「最大照片数量-已使用」行的展示值（2026-08-01 产品要求：原来只显示最大数量，看不出还能放几张）。
-// 形如 `51-8`：前者是固件回报的容量(0x01 capacity)，后者是当前已占用的槽位数(0x01 imgCount)。
+// 「最大照片数量」行的展示值（2026-08-01 起显示已用，2026-08-02 产品改为 `已用/上限` 分数式）。
+// 形如 `8/51`：分子是当前已占用的槽位数(0x01 imgCount)，分母是固件回报的容量(0x01 capacity)。
 // 容量未知（未连接/未读到 0x01）时整行回落 '--'，与设备ID/内存同口径——绝不用 0 冒充真实值。
-// 已用数拿不到时按 0 计：容量已经读到了，只是这次 imgCount 缺省，显示 `51-0` 比整行变 '--' 更有信息量。
+// 已用数拿不到时按 0 计：容量已经读到了，只是这次 imgCount 缺省，显示 `0/51` 比整行变 '--' 更有信息量。
 function memoryText(device) {
   const total = Number(device && device.totalMemory) || 0
   if (!total) {
     return '--'
   }
   const used = Number(device && device.usedMemory) || 0
-  return `${total}-${used}`
+  return `${used}/${total}`
 }
 
 // 计算设备存储使用百分比（已用/总量），上限 100，用于进度条展示

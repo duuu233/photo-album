@@ -95,7 +95,7 @@
     value="{{renameValue}}"
     saving="{{renameSaving}}"
     title="给设备取个名字"
-    cancel-text="暂不修改"
+    cancel-text="稍后"
     confirm-text="确定"
     bindcancel="cancelRename"
     bindconfirm="confirmRename"
