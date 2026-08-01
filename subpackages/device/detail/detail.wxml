@@ -188,8 +188,9 @@
         </view>
       </view>
       <!-- 「删除设备」是最重的破坏性操作（一键清空 + 断开连接 + 解除绑定）。
-           2026-08-01 产品要求：从卡片行改成页面最底部的独立按钮，复用「退出登录」那颗描边按钮的
-           形状与尺寸，但去掉实心底色、只保留边框色（见 detail.wxss .outline-delete-device）。 -->
+           2026-08-01 产品要求：从卡片行改成页面最底部的独立入口；同日二次调整——去掉描边、
+           字号字重与上面各行 label 拉平、再往下移，避免像主按钮一样引导用户去删除
+           （见 detail.wxss .outline-delete-device）。 -->
       <view
         class="outline-delete-device"
         hover-class="none"
