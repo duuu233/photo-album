@@ -7,7 +7,8 @@
 // ⚠️ 这是**端上放宽选图张数**，不是后端额度：后端若另有单账号图片总数限制，仍以后端为准。
 // ⚠️ userNo 由登录接口下发（见 utils/api.js normalizeUserProfile / app.js normalizeUserInfo），
 //    与后端账号一一对应；换白名单账号只改下面这一处数组。
-const WHITELIST = ['EF7293235']
+// 2026-08-03 追加 GA6473224
+const WHITELIST = ['EF7293235', 'GA6473224']
 
 // 常规上限：与产品「一次最多投 10 张」口径一致（2026-08-02 由 5 张调整）
 const DEFAULT_LIMIT = 10
