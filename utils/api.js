@@ -108,7 +108,20 @@ function normalizeDevice(device = {}) {
     firstValue(device.totalMemory, device.capacity),
     0
   )
-  const intervalSeconds = normalizeNumber(device.intervalSeconds, 0)
+  // 轮播间隔：后端 carouselInterval 的单位 2026-08-03 起由「小时」改为「分钟」。
+  // 端上一律换算成秒存 intervalSeconds —— 下发固件的 0x12 本来就是秒，中间绝不能再经过
+  // 「整数小时」这一层：5 分钟按小时取整会变成 1 小时甚至 0，用户点一下开关就把设备改了。
+  // 列表接口不下发 carouselInterval，回落到 intervalSeconds（BLE 0x01 读回的真实值）；
+  // 再兜底历史 intervalHours，兼容本地缓存里已归一化过的旧设备记录。
+  const carouselMinutes = normalizeNumber(device.carouselInterval, 0)
+  const legacyIntervalHours = normalizeNumber(device.intervalHours, 0)
+  const intervalSeconds =
+    carouselMinutes > 0
+      ? Math.max(1, Math.round(carouselMinutes * 60))
+      : normalizeNumber(device.intervalSeconds, 0) ||
+        (legacyIntervalHours > 0
+          ? Math.max(1, Math.round(legacyIntervalHours * 3600))
+          : 0)
   const isUpdate = normalizeNumber(device.isUpdate, 0)
   // 升级方式：后端 updateType 约定 1=强制升级 / 其它(含 2=提醒)=提醒升级（字段名/取值待后端最终确认，仅改此一处即可）。
   // 归一为 upgradeMode: 'force'(强制) | 'remind'(提醒) | ''(无更新)，供启动全局检测与升级入口判断。
@@ -161,10 +174,9 @@ function normalizeDevice(device = {}) {
     totalMemory,
     playbackMode: firstValue(device.playbackMode, device.playMode, 'order'),
     intervalSeconds,
-    intervalHours: normalizeNumber(
-      device.intervalHours,
-      intervalSeconds ? Math.max(1, Math.round(intervalSeconds / 3600)) : 2
-    ),
+    // 仅供展示/选择器下标派生，不参与下发：必须保留小数（5 分钟 = 0.0833 小时），
+    // 一旦在这里 Math.round 成整数小时，分钟级间隔就再也回不来了。
+    intervalHours: intervalSeconds ? intervalSeconds / 3600 : 2,
     isUpdate,
     hasUpdate: isUpdate === 1,
     updateType,

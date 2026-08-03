@@ -6,6 +6,10 @@ const activeDevice = require('../../../utils/active-device')
 
 const app = getApp()
 
+// 从没读到过间隔时的兜底（秒）。后端 carouselInterval 单位是分钟、固件 0x12 收的是秒，
+// 页面内一律按秒传递，只有这里才允许出现「小时」。
+const DEFAULT_INTERVAL_SECONDS = 2 * 3600
+
 Page({
   data: {
     statusBarHeight: 20,
@@ -74,6 +78,7 @@ Page({
         bleDeviceId: device.bleDeviceId || selected.bleDeviceId || selected.deviceId,
         // 复用连接时读到的真实播放设置（连接设备时已 setSelectedDevice 写入真实 playMode/间隔）
         playbackMode: selected.playbackMode || device.playbackMode,
+        intervalSeconds: selected.intervalSeconds || device.intervalSeconds,
         intervalHours: selected.intervalHours || device.intervalHours
       })
     }
@@ -131,18 +136,23 @@ Page({
     const mode = turningOn
       ? (device && device.playbackMode && device.playbackMode !== 'manual' ? device.playbackMode : 'order')
       : 'manual'
-    const ok = await this.applyPlayback(mode, device && device.intervalHours, turningOn)
+    // 沿用设备当前间隔（秒）原样下发：这里只改模式，不该顺手把设备上的间隔改掉。
+    const ok = await this.applyPlayback(mode, device && device.intervalSeconds, turningOn)
     // 成功按目标态显示；失败还原到操作前的态
     this.setData({ carouselOn: ok ? turningOn : !turningOn })
   },
 
-  // 切换轮播间隔：picker 返回下标，转成实际小时数后保存
+  // 切换轮播间隔：picker 返回下标，intervalOptions 是小时，转成秒后保存
   async changeInterval(e) {
     if (!this.data.carouselOn) {
       return
     }
     const intervalHours = this.data.intervalOptions[Number(e.detail.value)]
-    await this.applyPlayback(this.data.device.playbackMode || 'order', intervalHours, true)
+    await this.applyPlayback(
+      this.data.device.playbackMode || 'order',
+      Math.round(Number(intervalHours) * 3600),
+      true
+    )
   },
 
   // 切换播放模式（顺序/随机）。未开启轮播时不可选择，直接忽略。
@@ -150,11 +160,13 @@ Page({
     if (!this.data.carouselOn) {
       return
     }
-    await this.applyPlayback(e.currentTarget.dataset.mode, this.data.device.intervalHours, true)
+    // 同 toggleCarousel：只改模式，间隔按设备当前值（秒）原样带过去。
+    await this.applyPlayback(e.currentTarget.dataset.mode, this.data.device.intervalSeconds, true)
   },
 
   // 下发播放设置到设备。成功返回 true，失败/未连接返回 false（供开关判断是否还原）。
-  async applyPlayback(mode, intervalHours, carouselEnabled) {
+  // intervalSeconds 单位为秒（后端 carouselInterval 的分钟已在 api.js 换算），传空才回落默认 2 小时。
+  async applyPlayback(mode, intervalSeconds, carouselEnabled) {
     const device = this.data.device
     if (!device) {
       return false
@@ -165,22 +177,24 @@ Page({
       return false
     }
 
-    const hours = Number(intervalHours) || 2
-    const intervalSeconds = Math.max(1, Math.round(hours * 3600))
+    const seconds = Math.max(
+      1,
+      Math.round(Number(intervalSeconds) || DEFAULT_INTERVAL_SECONDS)
+    )
 
     wx.showLoading({ title: '保存中', mask: true })
     try {
-      await deviceBle.setPlayback(deviceId, mode, intervalSeconds)
+      await deviceBle.setPlayback(deviceId, mode, seconds)
       const updated = Object.assign({}, device, {
         deviceId,
         bleDeviceId: deviceId,
         connected: true,
         playbackMode: mode,
-        intervalSeconds,
-        intervalHours: hours,
+        intervalSeconds: seconds,
+        intervalHours: seconds / 3600,
         carouselEnabled
       })
-      const intervalIndex = this.data.intervalOptions.indexOf(hours)
+      const intervalIndex = this.data.intervalOptions.indexOf(seconds / 3600)
 
       if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === updated.id) {
         app.setSelectedDevice(updated)

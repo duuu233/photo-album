@@ -328,7 +328,8 @@ function realDeviceFields(scan) {
     connectionIntervalMs: Number(scan.connectionIntervalMs) || 0,
     playbackMode: scan.playMode || 'order',
     intervalSeconds,
-    intervalHours: intervalSeconds ? Math.max(1, Math.round(intervalSeconds / 3600)) : 2,
+    // 换算不取整，保住分钟级间隔（同 api.js normalizeDevice）
+    intervalHours: intervalSeconds ? intervalSeconds / 3600 : 2,
     carouselEnabled: true,
     // 内存按张数：已用=设备已有图片数(IMG_MASK 置位数)，总量=该尺寸最大可存张数
     usedMemory: scan.imgCount || 0,

@@ -14,6 +14,10 @@ const deviceIdentity = require('../../../utils/device-identity')
 
 const app = getApp()
 
+// 从没读到过间隔时的兜底（秒）。后端 carouselInterval 单位是分钟、固件 0x12 收的是秒，
+// 页面内一律按秒传递，只有这里才允许出现「小时」。
+const DEFAULT_INTERVAL_SECONDS = 2 * 3600
+
 // 屏幕物理分辨率文案（展示在「设备ID」下方），如 `680*960`。
 // 取值优先级：0x01 读到的 screenType 查表 → 后端记录的 width/height → '--'。
 // 与设备ID/内存不同，分辨率是**产品静态属性**而非实时数据，所以**不跟随连接状态置 --**：
@@ -439,8 +443,9 @@ Page({
             totalMemory: info.capacity,
             playbackMode: info.playMode,
             intervalSeconds: info.intervalSeconds,
+            // 真机回的是秒，换算不取整：300s(5 分钟) 取整会变成 1 小时，保存时再写回就把设备改了。
             intervalHours: info.intervalSeconds
-              ? Math.max(1, Math.round(info.intervalSeconds / 3600))
+              ? info.intervalSeconds / 3600
               : device.intervalHours,
             firmwareVersion: info.firmwareVersion || device.firmwareVersion,
             // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
@@ -553,9 +558,10 @@ Page({
       this.data.device.playbackMode === 'manual'
         ? 'order'
         : this.data.device.playbackMode
+    // 只改模式，间隔按设备当前值（秒）原样带过去，不能顺手把设备上的间隔改掉。
     await this.applyPlayback(
       e.detail.value ? currentMode || 'order' : 'manual',
-      this.data.device.intervalHours,
+      this.data.device.intervalSeconds,
       e.detail.value
     )
   },
@@ -567,10 +573,10 @@ Page({
     }
 
     const mode = e.detail.value === '0' ? 'order' : 'random'
-    await this.applyPlayback(mode, this.data.device.intervalHours, true)
+    await this.applyPlayback(mode, this.data.device.intervalSeconds, true)
   },
 
-  // 切换轮播间隔：picker 返回的是 intervalOptions 的下标，需转换为实际小时数
+  // 切换轮播间隔：picker 返回的是 intervalOptions 的下标，intervalOptions 是小时，需转换成秒
   async changeInterval(e) {
     if (!this.data.device) {
       return
@@ -579,12 +585,13 @@ Page({
     const intervalHours = this.data.intervalOptions[Number(e.detail.value)]
     await this.applyPlayback(
       this.data.device.playbackMode || 'order',
-      intervalHours,
+      Math.round(Number(intervalHours) * 3600),
       this.data.device.carouselEnabled !== false
     )
   },
 
-  async applyPlayback(mode, intervalHours, carouselEnabled) {
+  // intervalSeconds 单位为秒（后端 carouselInterval 的分钟已在 api.js 换算），传空才回落默认 2 小时。
+  async applyPlayback(mode, intervalSeconds, carouselEnabled) {
     const device = this.data.device
     if (!device) {
       return
@@ -595,23 +602,25 @@ Page({
       return
     }
 
-    const hours = Number(intervalHours) || 2
-    const intervalSeconds = Math.max(1, Math.round(hours * 3600))
+    const seconds = Math.max(
+      1,
+      Math.round(Number(intervalSeconds) || DEFAULT_INTERVAL_SECONDS)
+    )
 
     wx.showLoading({ title: '保存中', mask: true })
     try {
-      await deviceBle.setPlayback(deviceId, mode, intervalSeconds)
+      await deviceBle.setPlayback(deviceId, mode, seconds)
       this.invalidateBleInfo() // 播放配置已变，清掉最近结果；下次 loadDetail 仍会真实重读
       const updated = Object.assign({}, device, {
         deviceId,
         bleDeviceId: deviceId,
         connected: true,
         playbackMode: mode,
-        intervalSeconds,
-        intervalHours: hours,
+        intervalSeconds: seconds,
+        intervalHours: seconds / 3600,
         carouselEnabled
       })
-      const intervalIndex = this.data.intervalOptions.indexOf(hours)
+      const intervalIndex = this.data.intervalOptions.indexOf(seconds / 3600)
 
       if (
         app.globalData.selectedDevice &&
@@ -816,8 +825,9 @@ Page({
                 info.intervalSeconds === undefined
                   ? device.intervalSeconds
                   : info.intervalSeconds,
+              // 同上：真机秒数换算不取整，保住分钟级间隔
               intervalHours: info.intervalSeconds
-                ? Math.max(1, Math.round(info.intervalSeconds / 3600))
+                ? info.intervalSeconds / 3600
                 : device.intervalHours,
               firmwareVersion: info.firmwareVersion || device.firmwareVersion,
               // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
