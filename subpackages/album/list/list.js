@@ -430,11 +430,51 @@ Page({
 
   // 删除前的连接校验：删除要同时删设备(0x12)与后端，二者必须一致，所以必须先连上设备。
   // 已连接返回 device；未连接则提示「无法删除」并返回 null。
-  async ensureConnectedDevice() {
-    const device = activeDevice.getActiveDevice()
+  // 取「选中照片所属设备」并确保已连接（删除 0x12 / 刷新屏幕 0x24 共用）。
+  //
+  // ⚠️ 2026-08-03：必须按照片自己的 deviceId(=后端 userProductId) 找设备，不能一律用首页选中的
+  //    那台（旧行为）。图库按设备筛选后，选中的是 B 设备的照片，却对 A 设备下 0x12/0x24 ——
+  //    等于拿 B 的槽位号去删 / 刷 A 上的图，删错刷错。Flutter 侧（state.dart deleteAlbumPhotos /
+  //    refreshGalleryPhotoOnScreen）一直是连「照片所属设备」的，本次两端对齐：同一张照片不管在
+  //    哪端操作，都指向同一台设备的同一个物理槽位。
+  //  · 选中照片跨设备 → 直接拦下（同一份掩码解析出的槽位只对一台设备成立）；
+  //  · 照片没有 deviceId（后端未回的老照片）→ 退回当前选中设备，保持旧行为。
+  async ensureConnectedDevice(photoIds) {
+    const owners = []
+    ;(photoIds || []).forEach(id => {
+      const photo = (this.photos || []).filter(item => item.id === id)[0]
+      const owner = String((photo && photo.deviceId) || '')
+      if (owners.indexOf(owner) === -1) {
+        owners.push(owner)
+      }
+    })
+    if (owners.length > 1) {
+      toast.warn({
+        title: '只能操作同一台设备的照片',
+        icon: 'none'
+      })
+      return null
+    }
+
+    const ownerId = owners[0] || ''
+    let device = ownerId
+      ? (this.devices || []).filter(
+          item => String(item.userProductId || item.id || '') === ownerId
+        )[0]
+      : null
+    if (ownerId && !device) {
+      toast.warn({
+        title: '未找到照片所属设备，请刷新后重试',
+        icon: 'none'
+      })
+      return null
+    }
+    if (!device) {
+      device = activeDevice.getActiveDevice()
+    }
     if (!device || !(device.deviceId || device.bleDeviceId || device.deviceNo || device.name)) {
       toast.warn({
-        title: '设备未连接，无法删除',
+        title: '设备未连接，请先连接设备',
         icon: 'none'
       })
       return null
@@ -483,8 +523,9 @@ Page({
       return
     }
 
-    // 1) 删除前确保已连接：断联则自动重连，连不上才提示（防止弹确认框期间设备断开导致设备/后端不一致）
-    const device = await this.ensureConnectedDevice()
+    // 1) 删除前确保已连接：断联则自动重连，连不上才提示（防止弹确认框期间设备断开导致设备/后端不一致）。
+    //    连的是「这些照片所属的设备」，不是首页选中的那台（见 ensureConnectedDevice）。
+    const device = await this.ensureConnectedDevice(ids)
     if (!device) {
       this.hideDeleteDialog()
       return
@@ -605,12 +646,11 @@ Page({
 
     const photoId = ids[0]
 
-    // 统一与「当前选中设备(首页轮播选中的那台)」建立蓝牙连接；连不上会弹窗引导去首页切换/绑定设备
-    let device
-    try {
-      device = await activeDevice.ensureActiveDeviceConnection()
-    } catch (error) {
-      return // 提示已由 ensureActiveDeviceConnection 弹出
+    // 与「这张照片所属设备」建立蓝牙连接（2026-08-03 由「首页轮播选中的那台」改过来，
+    // 与删除、与 Flutter 同一口径：槽位号只在它自己的设备上成立，连错设备就是刷错图）
+    const device = await this.ensureConnectedDevice([photoId])
+    if (!device) {
+      return // 提示已由 ensureConnectedDevice / ensureConnectedForAction 弹出
     }
 
     wx.showLoading({ title: '刷新中', mask: true })
@@ -657,14 +697,23 @@ Page({
   //    即最早上传的图落在最小槽位；所以把本设备照片按「上传先后」排好，第 N 张对应升序槽位里的第 N 个。
   //    直接用后端列表顺序(常见最新在前)去对 occupied[pos] 会刷错图 —— 这是「指定刷新图片不对」的旧根因。
   //    ⚠️ 推算前必须剔除「已被其它照片的 imgIndex 钉住」的槽位，否则推算结果会撞上别人的位置。
+  //
+  // 2026-08-03 与 Flutter（state.dart _resolveDeviceImageIndex）逐条对齐——两端各自算槽位，
+  // 规则不一致时同一张照片在两端会解析到不同的物理位置（「小程序和 App 各投几张后索引就乱了」）：
+  //   · 真实 imgIndex 必须在固件掩码里确实有图才采用（下方 ①），否则返回 -1；
+  //   · claimed 只统计同一台设备的照片（跨设备槽位号互不相干，混进来会误剔除本机候选）；
+  //   · candidates 为空且设备上确实有图时返回 -1，不再硬套位置号去删/刷别人的图。
   resolveDeviceImageIndex(photoId, device, occupied) {
     const onDevicePhotos = (this.photos || []).filter(item => item.onDevice !== false)
+    const occupiedSlots = occupied || []
 
-    // ① 有真实索引直接用
+    // ① 有真实索引直接用，但要求该槽位在固件掩码里确实有图：记录指向空位说明设备侧这张早被删掉
+    //    （在另一端删过 / 一键清空过 / 删除半成功），此时跳过而不是回退推算——推算只会撞上别人的图。
+    //    顺带避免把空槽位塞进 0x12，被固件按「图片不存在」整批拒掉。
     const target = onDevicePhotos.filter(item => item.id === photoId)[0]
     const known = parseImgIndex(target && target.imgIndex)
     if (known >= 0) {
-      return known
+      return occupiedSlots.indexOf(known) > -1 ? known : -1
     }
 
     const deviceKey = String((device && (device.userProductId || device.id)) || '')
@@ -691,13 +740,26 @@ Page({
 
     // ② 回退推算：候选槽位 = 固件已占用槽位 − 已被真实索引占用的槽位；
     //    参与排队的也只剩「同样没有索引」的照片，两边一一对应才不会错位。
-    const claimed = onDevicePhotos
+    //    claimed 只看**同一台设备**的照片：槽位号是每台设备自己的物理位置，
+    //    把别的设备的 imgIndex 算进来会白白剔掉本机的候选槽位 → 推算错位（对齐 Flutter）。
+    const claimed = devicePhotos
       .map(item => parseImgIndex(item.imgIndex))
       .filter(index => index >= 0)
-    const candidates = (occupied || []).filter(index => claimed.indexOf(index) === -1)
+    const candidates = occupiedSlots.filter(index => claimed.indexOf(index) === -1)
 
     // 按上传先后升序排列，使「第 N 张」与升序候选槽位 candidates[N] 对齐：
     // 主键 uProductImgId 自增，越小越早上传；取不到时退回按上传时间(createdAt)升序。
+    //
+    // 最后一道兜底 = 「后端列表顺序的倒序」：图库列表接口目前**不下发任何时间字段**
+    //（createdAt 恒为空串），主键也取不到时两条记录就分不出先后，而 Array.sort 稳定排序会原样
+    // 保留后端顺序（最新在前）→ 最新那张排到第 0 位、对上最小槽位，正好反了。
+    // Flutter 侧用「固定基准 − 下标秒」的合成时间达到同一效果（state.dart `uploadedAt`），
+    // 两端必须同向，否则同一张照片在两端排到不同位次 → 解析到不同槽位。
+    const backendOrder = {}
+    onDevicePhotos.forEach((item, index) => {
+      backendOrder[item.id] = index
+    })
+    const orderOf = id => (backendOrder[id] === undefined ? 0 : backendOrder[id])
     const orderedPhotos = devicePhotos
       .filter(item => parseImgIndex(item.imgIndex) < 0)
       .sort((a, b) => {
@@ -706,7 +768,11 @@ Page({
         if (Number.isFinite(ai) && Number.isFinite(bi) && ai !== bi) {
           return ai - bi
         }
-        return String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
+        const byTime = String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
+        if (byTime !== 0) {
+          return byTime
+        }
+        return orderOf(b.id) - orderOf(a.id)
       })
 
     const pos = orderedPhotos.findIndex(item => item.id === photoId)
@@ -717,7 +783,10 @@ Page({
     if (candidates.length) {
       return pos < candidates.length ? candidates[pos] : -1
     }
-    return pos
+    // 候选为空：设备真无图(occupied 空)时回退到位置本身（保持旧行为，多为空设备的兜底路径）；
+    // 有图但全被真实索引钉住，说明本张在设备上没有立足之处 —— 返回 -1，绝不硬套一个别人的槽位
+    // 去删/去刷（对齐 Flutter state.dart：`occupied.isEmpty ? pos : -1`）。
+    return occupiedSlots.length ? -1 : pos
   },
 
   async chooseForProjection() {

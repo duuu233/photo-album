@@ -2,11 +2,16 @@
 
 > 状态：current  
 > 决策日期：2026-07-18  
-> 最后核对：2026-07-28  
+> 最后核对：2026-08-03  
 > 相关架构：[图片投屏流水线](../architecture/image-projection-pipeline.md)
 
 ## 操作日志（最新在上）
 
+- **2026-08-03**：小程序与 Flutter 的槽位解析**逐条对齐**（起因：两端交替给同一台设备投图后「索引混乱」）。
+  详见下方「六、双端一致性」。小程序侧改 `subpackages/album/list/list.js`
+  （`resolveDeviceImageIndex` 三条规则 + 删除/刷屏改连「照片所属设备」），
+  Flutter 侧改 `lib/src/state.dart`（`devicePhotoAbnormal` 触发条件）。
+  新增回归用例 `tests/album-slot-index.test.js`。
 - **2026-07-18**：接入 imgIndex。投屏成功时上报设备物理槽位索引，图库「删除图片」「刷新屏幕」改为按该索引定位。
   - `utils/api.js`：新增 `imgIndexParam()`；`editUserProductImgRecord` / `addUserProductImgRecord` 增加 `imgIndex` 入参；`normalizePhoto` / `normalizeProjectionRecord` 透传 `imgIndex` 出参。
   - `subpackages/projection/result/result.js`：三条投屏链路（正常 / 再次 / 重新）图传成功后都上报本张的槽位 `index`；图传失败的补记不带索引。
@@ -126,3 +131,68 @@
 规范 §6.7.2 原则 4 给的「APP 和设备通过对比 IMG_MASK 比特位确保一致」只能检测**数量/位置分歧**（本子说 5 张、柜子只有 3 个位置亮灯），检测不到内容被替换。
 
 若要真正可校验，需固件侧支持「读指定槽位的图片标识」（CRC32 即可，图传时本就已计算）。**当前不做**——问题 A 修好后，残留幽灵指向的都是空位置，删它们只会收到「图片不存在」，无破坏性。
+
+---
+
+## 六、双端一致性（小程序 ↔ Flutter，2026-08-03）
+
+同一个账号同一台设备，用户会**两端交替**投图/删图。设备侧只有一份 12 字节掩码、后端只有一份记录，
+所以「照片 → 槽位」的解析规则**必须两端逐字一致**：规则不一致时，同一张照片在小程序解析成 2 号位、
+在 App 解析成 3 号位，用户看到的就是「删错图 / 刷错图 / 索引乱了」。
+
+### 上传侧：本来就是一致的（不是混乱的源头）
+
+| 环节 | 小程序 | Flutter |
+|---|---|---|
+| 批次开始读掩码 | `deviceBle.readTransferInfo`（无缓存） | `client.readTransferInfo()`（无缓存） |
+| 选槽位 | `firstFreeIndex(indexesToMask(usedIndexes), capacity)` | 同 |
+| 批内累计 | 每张成功后 `usedIndexes += index` | 同 |
+| 上报 | `editUserProductImgRecord({imgIndex})` | 同 |
+
+两端都在批次开始真实回读 0x01、都从最小空闲槽位起填、都上报真实槽位；BLE 又是独占连接，
+两端不可能同时写同一台设备。**所以上传本身不会撞槽位。**
+
+### Flutter 侧逐点复核（2026-08-03）
+
+| 检查点 | 位置 | 结论 |
+|---|---|---|
+| 批次读掩码 / 选槽位 / 上报 | `features/cast/projection_service.dart:223 / 289 / 365` | 与小程序一致，无缓存、无预检 |
+| `firstFreeIndex(mask, capacity)` | `device/ble/frame_protocol.dart:426` | 与小程序 `frame-protocol.js` 同实现（含容量上限） |
+| 刷新屏幕的目标设备 | `state.dart refreshGalleryPhotoOnScreen:1916` | 用 `photo.deviceId`，本就正确 |
+| 删除的目标设备 + 跨设备拦截 | `state.dart deleteAlbumPhotos:1732` | 本就正确，另有「只能删同一台设备」拦截 |
+| 槽位解析三条规则 | `state.dart _resolveDeviceImageIndex:1991` | 本就是严格版（小程序照它改） |
+| 删后刷屏 | `state.dart:1795` | 只在删到屏显图时刷，取删除后最小占用槽位，与小程序一致 |
+| `addUserProductImgRecord` | 全仓 | **无调用方**（与小程序同样已废弃，勿再接回） |
+| 一键清空 | `state.dart clearDeviceMemory:2560` | 设备 0x12 全删 + `clearUserProductImg` 清后端，与小程序 `detail.js` 一致 |
+
+App 侧本轮只改两处：`devicePhotoAbnormal` 触发条件（第 5 条）、以及新增 `resolvedCount` 计数
+（`slotIndexes` 去过重，直接比长度会误报）。
+
+### 图库侧：原来有 6 处不一致，已全部对齐（以 Flutter 的严格口径为准）
+
+| # | 点 | 原小程序 | 原 Flutter | 现口径 |
+|---|---|---|---|---|
+| 1 | 真实 imgIndex 是否校验掩码 | 直接返回 | 要求该槽位在掩码里有图，否则 -1 | **要求命中掩码** |
+| 2 | `claimed`（已被真实索引钉住的槽位） | 取全部在库照片（跨设备） | 只取同一 `deviceId` | **只取同设备** |
+| 3 | 候选为空时 | 硬套位置号 `pos` | `occupied` 为空才 `pos`，否则 -1 | **设备有图就 -1** |
+| 4 | 删除/刷屏的目标设备 | 首页轮播「当前选中设备」 | 照片所属设备 `photo.deviceId` | **照片所属设备** |
+| 5 | 「照片在此设备异常」提示 | 有一张对不上就提示 | 一张都对不上才提示 | **有一张对不上就提示** |
+| 6 | 排队兜底（主键与时间都取不到） | 稳定排序＝保留后端顺序（最新在前）→ 方向反了 | 合成时间「固定基准 − 下标秒」→ 后端列表倒序 | **后端列表倒序**（小程序补 `orderOf` 兜底） |
+
+第 6 条平时不触发（`uProductImgId` 是主键，恒存在且自增），但图库列表接口**不下发任何时间字段**，
+一旦主键也取不到，两端就会排出相反的顺序——留着就是一颗哑弹，本轮一并对齐。
+
+第 1 条是双端并用时最关键的护栏：另一端删过图/一键清空过之后，本端列表里的记录还带着旧
+`imgIndex`，那个槽位在设备上可能**已经换人**了——照着旧索引下 0x12/0x24 就是删错、刷错。
+现在两端都要求「后端说的槽位必须在固件掩码里确实有图」才采用，否则返回 -1（跳过该张，
+删除仍会删掉后端记录并提示「照片在此设备异常，请删除重新上传」）。
+
+第 4 条是小程序独有的老问题：图库按设备筛选后，用户选的是 B 设备的照片，指令却发给了首页选中的
+A 设备——拿 B 的槽位号去删/刷 A 的图。
+
+### 仍然存在的结构性隐患
+
+上面对齐的是**规则**，不是**数据**。只要记录缺 `imgIndex`（问题 B：记账失败；或后端图库列表不回该字段），
+两端都会退回「第 N 张 ↔ 第 N 个占用槽位」的推算，而这个假设在「删过中间槽位后再上传」时必然错位——
+两端交替使用只会更快踩到。根治仍然依赖上方「三、待后端确认」的第 1 条（唯一性规则）与
+图库列表稳定回传 `imgIndex`。排查时先看一条：图库列表接口返回的 `imgIndex` 是否非空。
