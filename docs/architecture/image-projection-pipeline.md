@@ -1,7 +1,7 @@
 # 图片投屏流水线
 
 > 状态：current  
-> 最后核对：2026-07-28  
+> 最后核对：2026-08-03  
 > 适用范围：微信小程序投屏、再次投屏、AI 图片投屏  
 > 当前实现：`subpackages/projection/preview/preview.js`、`subpackages/projection/result/result.js`、`utils/dithering.js`、`utils/device-ble.js`
 
@@ -43,6 +43,14 @@
 - 不再下载或直传历史 `imgBle`；
 - 不再用 `addUserProductImgRecord` 补记旧 `.bin` 直传结果。
 
+失败页「重新投屏」额外一条不变量（2026-08-03）：**跳回预览页前必须把图还原成原图**
+（`result.js restorePendingOriginals`，口径同预览页「原图」按钮），构图由
+`pendingProjection.editStates` 恢复。原因是投屏时预览页已把成品图写回 `tempFilePath`，
+拿它当编辑底图会造成竖向二次裁剪、横向二次旋转（设备上错位）。
+
+每重投一次就多一条 `deviceUploadState=0` 的记录：接口没有「复用 `upirId` 重传」入口，
+连续重试会在记录页失败页累积同一张图，待与后端确认口径。
+
 ## 关键约束
 
 - 发送前必须按[设备身份与 BLE 会话](device-identity-and-connection.md)确认目标物理设备。
@@ -60,6 +68,17 @@
 - CRC16/CRC32 使用查表实现。
 - 进度 UI 节流，后端记账不阻塞下一张 BLE 传输。
 - 任何预取结果都必须在使用前重新校验设备尺寸、帧长度和分包参数。
+
+## 常见故障判读
+
+| 报错 | 含义 | 判读 |
+| --- | --- | --- |
+| `接口-抖动bin转换失败：request:fail errcode:-118 error_msg:net::ERR_CONNECTION_TIMED_OUT` | Chromium `ERR_CONNECTION_TIMED_OUT`，**建连阶段** SYN 无应答 | 请求没到服务器。首查非标准端口 `8443` 是否被本地网络（运营商/公司 WiFi/路由器策略）丢包——切 4G 能恢复即可确认；其次查 seekink 单 IP 线路是否异常。详见 [2026-08-03 记录](../changes/2026-08-03-结果页按钮间距与抖动接口连接超时.md) |
+| `request:fail timeout` | 命中 `dithering.js` 的 20s 超时 | 连上了但服务端迟迟不返回，属出帧服务处理慢/卡住 |
+| `url not in domain list` | 域名白名单未配 | 管理后台 request 合法域名需含 `https://cloud.seekink.cn:8443` |
+| `-102 ERR_CONNECTION_REFUSED` / `-105` / `-107` | 拒绝连接 / DNS 解析失败 / 证书链问题 | 与 `-118` 是不同故障，勿混为一谈 |
+
+网络类失败（`timeout|connect|网络|ERR_`）由 `dithering.js` 退避重试 3 次；用户看到报错即表示三次都失败，不是瞬时抖动。
 
 ## 历史来源
 

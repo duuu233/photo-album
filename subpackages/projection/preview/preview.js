@@ -160,6 +160,11 @@ Page({
     const pending = wx.getStorageSync('pendingProjection') || {}
     const images = pending.images || []
     const device = pending.device || null
+    // 接回上一轮的编辑状态（结果页「重新投屏」会先把图还原成原图再跳回本页，见 result.js
+    // restorePendingOriginals）：底图是原图、构图还是用户上次构好的那个，不用重新拖一遍。
+    // 状态按 src 认领——enterEdit 与 prepareProjectionImages 都会校验 state.src === 当前图源，
+    // 对不上（新选的图、还原过的图）自动作废，所以首次进页面带着旧状态也不会串。
+    this._states = pending.editStates || {}
     this.updateImageState(images, device, 0)
 
     // 压缩图片：产品要求恒为开启，页面已隐藏开关入口，故不再读取 Storage 覆盖（保持 data 默认 true）
@@ -1286,9 +1291,14 @@ Page({
 
   // 把当前 images 写回 Storage(pendingProjection)，保证结果页拿到的是处理后的图
   persistPending(images, performance) {
+    // 当前图的实时手势只活在 _edit 里，先快照进 _states 再落盘，否则「重新投屏」接回来的
+    // 是这张图上一次切图时的旧构图（_edit 为空时是空操作）
+    this._saveEditState()
     const pending = wx.getStorageSync('pendingProjection') || {}
     pending.images = images
     pending.device = this.data.device || pending.device
+    // 构图状态随图一起落盘：投屏失败后「重新投屏」把图还原成原图跳回本页，靠它恢复上次的构图
+    pending.editStates = this._states || {}
     if (performance) {
       pending.performance = Object.assign({}, pending.performance, performance)
     }

@@ -973,10 +973,52 @@ Page({
     })
   },
 
+  // 「重新投屏」：回投屏预览页重新构图后再投（链路与首次投屏完全一致：抖动接口出帧 +
+  // setUserProductUpload 建记录 + BLE 图传，旧「imgBle(.bin) 直传」分支已删除）。
+  // ⚠️ 跳之前必须把 pendingProjection 里的图**还原成原图**：投屏时预览页已把「取景框内所见」
+  // 烘焙成设备物理分辨率文件写回 tempFilePath（preview.js _applyBakedFile），直接跳回去会把这张
+  // **成品图**当成新的编辑底图：
+  //   · 竖向 → 在已裁过的图上二次裁剪，越编越糊，原始画面再也回不来；
+  //   · 横向 → 成品是转过 rotationDegree(默认 270°) 进竖向画布的文件，而编辑层按竖向重新起
+  //     （_states 随页面重建已清空），用户看到的是躺倒的画面，再导出还会再转一次 → 设备上必然错位。
   retry() {
+    this.restorePendingOriginals()
     wx.redirectTo({
       url: '/subpackages/projection/preview/preview'
     })
+  },
+
+  // 把 pendingProjection.images 逐张还原成「进预览页前的原图」，口径与预览页「原图」按钮
+  //（preview.js restoreOrigin）保持一致：图源回 _origSrc、清掉裁剪尺寸与展示样式、作废预览缓存。
+  // 上一轮的构图（缩放/平移/旋转/横竖向）不丢——预览页会按 pendingProjection.editStates 原样恢复，
+  // 用户不用重新构图，但底图已经是原图，随手一改就是从原图重新出图。
+  // 失败静默：还原不了也要让「重新投屏」跳得过去（大不了是回到旧行为）。
+  restorePendingOriginals() {
+    try {
+      const pending = wx.getStorageSync('pendingProjection') || {}
+      const images = pending.images || []
+      if (!images.length) {
+        return
+      }
+      pending.images = images.map(image => {
+        const updated = Object.assign({}, image)
+        // 原图是远程地址（再次投屏的云端图）时清空 tempFilePath 回落到 url：
+        // 把 https 地址塞进 tempFilePath，本页会当本地文件上传（必失败）
+        if (updated._origSrc) {
+          updated.tempFilePath = /^https?:\/\//i.test(updated._origSrc) ? '' : updated._origSrc
+        }
+        updated.cropW = 0
+        updated.cropH = 0
+        updated.wrapStyle = ''
+        updated.imgStyle = ''
+        updated.previewSrc = ''
+        updated._bakedKey = ''
+        return updated
+      })
+      wx.setStorageSync('pendingProjection', pending)
+    } catch (error) {
+      console.warn('[投屏] 重新投屏还原原图失败，按原样跳预览页：', error)
+    }
   },
 
   // 「继续投屏」：不跳首页，在当前结果页弹出「拍照/相册」二选一弹层，选图后走投屏预览页。
