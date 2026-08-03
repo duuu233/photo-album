@@ -620,7 +620,7 @@ module.exports = {
 
   // 添加投屏记录。⚠️ 2026-07-23 起小程序已无调用方：再次/重新投屏改走正常链路
   //（setUserProductUpload 建记录 + editUserProductImgRecord 记账），旧「imgBle 直传后补记」
-  // 场景随 .bin 链路删除。方法保留（后端接口仍在，Flutter 侧同步前还在用）。
+  // 场景随 .bin 链路删除。方法保留（后端接口仍在；Flutter 侧同名封装同样保留、同样无调用方）。
   // body 只传业务字段（undefined 会被序列化丢弃）；imgIndex 语义同 editUserProductImgRecord。
   // device/language/terminal/userToken 由 request.js 经 header/query 注入。
   addUserProductImgRecord(data = {}) {

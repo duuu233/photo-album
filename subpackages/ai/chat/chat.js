@@ -62,6 +62,11 @@ const INPUT_HOLD_MOVE_PX = 10
 // 接入真实接口后把 readTokenBalance/spendToken 换成后端调用即可。
 const TOKEN_STORAGE_KEY = 'aiTokenBalanceDemo'
 const TOKEN_DEFAULT = 100
+// 2026-08-03 起先屏蔽这套限制：余额是本地假的，支付又没上线，扣满 100 次就再也发不出消息，
+// 纯粹卡住体验/测试。开关关掉后 —— 不扣费、不拦截，右上角 Token 恒显示 TOKEN_DEFAULT
+// （storage 里可能留着历史扣到 0 的旧值，一并忽略，否则会显示 0 Token 像坏了）。
+// 接后端时把它改回 true，readTokenBalance/spendToken 换成接口调用即可，其余逻辑原样还在。
+const TOKEN_LIMIT_ENABLED = false
 
 // 打字机（2026-07-27 优化顺滑度）。原实现是 setInterval(30ms) 每帧追 3 字 —— 30ms 一跳、
 // 一跳 3 字，肉眼能看出「一顿一顿」。现在按 ~60fps 出字、每帧尽量只追 1 字，视觉上连续得多：
@@ -221,6 +226,9 @@ function describeDownloadFail(err) {
 }
 
 function readTokenBalance() {
+  if (!TOKEN_LIMIT_ENABLED) {
+    return TOKEN_DEFAULT
+  }
   const value = wx.getStorageSync(TOKEN_STORAGE_KEY)
   return typeof value === 'number' ? value : TOKEN_DEFAULT
 }
@@ -1049,8 +1057,9 @@ Page({
   },
 
   // Token 权限控制 demo（文档 §5.5）：不足时弹窗引导购买并拦截 AI 调用
+  // TOKEN_LIMIT_ENABLED=false 时整条限制屏蔽，一律放行（见常量处注释）
   guardToken() {
-    if (this.data.tokenBalance > 0) {
+    if (!TOKEN_LIMIT_ENABLED || this.data.tokenBalance > 0) {
       return true
     }
     wx.showModal({
@@ -1063,6 +1072,9 @@ Page({
   },
 
   spendToken() {
+    if (!TOKEN_LIMIT_ENABLED) {
+      return
+    }
     const balance = Math.max(0, this.data.tokenBalance - 1)
     wx.setStorageSync(TOKEN_STORAGE_KEY, balance)
     this.setData({ tokenBalance: balance })
