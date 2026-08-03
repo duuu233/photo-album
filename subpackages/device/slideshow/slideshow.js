@@ -6,7 +6,7 @@ const activeDevice = require('../../../utils/active-device')
 
 const app = getApp()
 
-// 从没读到过间隔时的兜底（秒）。后端 carouselInterval 单位是分钟、固件 0x12 收的是秒，
+// 从没读到过间隔时的兜底（秒）。后端 carouselInterval 单位是分钟、固件 0x10 收的是秒，
 // 页面内一律按秒传递，只有这里才允许出现「小时」。
 const DEFAULT_INTERVAL_SECONDS = 2 * 3600
 
@@ -136,8 +136,15 @@ Page({
     const mode = turningOn
       ? (device && device.playbackMode && device.playbackMode !== 'manual' ? device.playbackMode : 'order')
       : 'manual'
-    // 沿用设备当前间隔（秒）原样下发：这里只改模式，不该顺手把设备上的间隔改掉。
-    const ok = await this.applyPlayback(mode, device && device.intervalSeconds, turningOn)
+    // 只改模式；间隔以后端 carouselInterval（分钟→秒）为准，后端缺字段才回退设备读回值。
+    const ok = await this.applyPlayback(
+      mode,
+      api.resolveCarouselIntervalSeconds(
+        device,
+        device && device.intervalSeconds
+      ),
+      turningOn
+    )
     // 成功按目标态显示；失败还原到操作前的态
     this.setData({ carouselOn: ok ? turningOn : !turningOn })
   },
@@ -160,8 +167,15 @@ Page({
     if (!this.data.carouselOn) {
       return
     }
-    // 同 toggleCarousel：只改模式，间隔按设备当前值（秒）原样带过去。
-    await this.applyPlayback(e.currentTarget.dataset.mode, this.data.device.intervalSeconds, true)
+    // 同 toggleCarousel：只改模式，轮播间隔以后端 carouselInterval 为准。
+    await this.applyPlayback(
+      e.currentTarget.dataset.mode,
+      api.resolveCarouselIntervalSeconds(
+        this.data.device,
+        this.data.device.intervalSeconds
+      ),
+      true
+    )
   },
 
   // 下发播放设置到设备。成功返回 true，失败/未连接返回 false（供开关判断是否还原）。

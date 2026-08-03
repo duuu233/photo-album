@@ -14,7 +14,7 @@ const deviceIdentity = require('../../../utils/device-identity')
 
 const app = getApp()
 
-// 从没读到过间隔时的兜底（秒）。后端 carouselInterval 单位是分钟、固件 0x12 收的是秒，
+// 从没读到过间隔时的兜底（秒）。后端 carouselInterval 单位是分钟、固件 0x10 收的是秒，
 // 页面内一律按秒传递，只有这里才允许出现「小时」。
 const DEFAULT_INTERVAL_SECONDS = 2 * 3600
 
@@ -558,10 +558,13 @@ Page({
       this.data.device.playbackMode === 'manual'
         ? 'order'
         : this.data.device.playbackMode
-    // 只改模式，间隔按设备当前值（秒）原样带过去，不能顺手把设备上的间隔改掉。
+    // 只改模式；间隔以后端 carouselInterval（分钟→秒）为准，后端缺字段才回退设备读回值。
     await this.applyPlayback(
       e.detail.value ? currentMode || 'order' : 'manual',
-      this.data.device.intervalSeconds,
+      api.resolveCarouselIntervalSeconds(
+        this.data.device,
+        this.data.device.intervalSeconds
+      ),
       e.detail.value
     )
   },
@@ -573,7 +576,14 @@ Page({
     }
 
     const mode = e.detail.value === '0' ? 'order' : 'random'
-    await this.applyPlayback(mode, this.data.device.intervalSeconds, true)
+    await this.applyPlayback(
+      mode,
+      api.resolveCarouselIntervalSeconds(
+        this.data.device,
+        this.data.device.intervalSeconds
+      ),
+      true
+    )
   },
 
   // 切换轮播间隔：picker 返回的是 intervalOptions 的下标，intervalOptions 是小时，需转换成秒

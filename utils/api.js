@@ -53,6 +53,18 @@ function normalizeNumber(value, fallback) {
   return Number.isFinite(number) ? number : fallback
 }
 
+// 轮播设置的权威来源是后端 carouselInterval（分钟）。设备 0x01 读回值、本地缓存值只作
+// 后端缺字段时的兜底；真正下发 0x10 前统一在这里换算成秒，避免连接后被设备旧值反向覆盖。
+function resolveCarouselIntervalSeconds(device = {}, fallbackSeconds = 0) {
+  const carouselMinutes = normalizeNumber(device.carouselInterval, 0)
+  if (carouselMinutes > 0) {
+    return Math.max(1, Math.round(carouselMinutes * 60))
+  }
+
+  const fallback = normalizeNumber(fallbackSeconds, 0)
+  return fallback > 0 ? Math.max(1, Math.round(fallback)) : 0
+}
+
 // 设备图片槽位索引 → 接口入参：后端约定 String 类型。
 // ⚠️ 0 是合法槽位（相框第一个位置），不能当空值丢掉；只有「本次没有索引可上报」才返回
 // undefined（序列化时被丢弃，后端按不传处理）。
@@ -109,19 +121,20 @@ function normalizeDevice(device = {}) {
     0
   )
   // 轮播间隔：后端 carouselInterval 的单位 2026-08-03 起由「小时」改为「分钟」。
-  // 端上一律换算成秒存 intervalSeconds —— 下发固件的 0x12 本来就是秒，中间绝不能再经过
+  // 端上一律换算成秒存 intervalSeconds —— 下发固件的 0x10 本来就是秒，中间绝不能再经过
   // 「整数小时」这一层：5 分钟按小时取整会变成 1 小时甚至 0，用户点一下开关就把设备改了。
   // 列表接口不下发 carouselInterval，回落到 intervalSeconds（BLE 0x01 读回的真实值）；
   // 再兜底历史 intervalHours，兼容本地缓存里已归一化过的旧设备记录。
-  const carouselMinutes = normalizeNumber(device.carouselInterval, 0)
   const legacyIntervalHours = normalizeNumber(device.intervalHours, 0)
-  const intervalSeconds =
-    carouselMinutes > 0
-      ? Math.max(1, Math.round(carouselMinutes * 60))
-      : normalizeNumber(device.intervalSeconds, 0) ||
-        (legacyIntervalHours > 0
-          ? Math.max(1, Math.round(legacyIntervalHours * 3600))
-          : 0)
+  const fallbackIntervalSeconds =
+    normalizeNumber(device.intervalSeconds, 0) ||
+    (legacyIntervalHours > 0
+      ? Math.max(1, Math.round(legacyIntervalHours * 3600))
+      : 0)
+  const intervalSeconds = resolveCarouselIntervalSeconds(
+    device,
+    fallbackIntervalSeconds
+  )
   const isUpdate = normalizeNumber(device.isUpdate, 0)
   // 升级方式：后端 updateType 约定 1=强制升级 / 其它(含 2=提醒)=提醒升级（字段名/取值待后端最终确认，仅改此一处即可）。
   // 归一为 upgradeMode: 'force'(强制) | 'remind'(提醒) | ''(无更新)，供启动全局检测与升级入口判断。
@@ -298,6 +311,7 @@ function productScore(product, scan) {
 }
 
 module.exports = {
+  resolveCarouselIntervalSeconds,
   getProductList(params = {}) {
     return http.get('/Client/Product/getProductList', params, {
       mock: false
