@@ -23,6 +23,8 @@ Page({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
+    // 折叠屏/分屏适配（2026-08-04）：实测窗口高度，滚动区据此定高（见 mine.wxss .mine-root）
+    windowHeight: 0,
     avatarUrl: '',
     nickName: '微信用户',
     userId: '--',
@@ -56,14 +58,22 @@ Page({
       const safeBottom = Math.max(0, (info.screenHeight || 0) - (info.safeArea ? info.safeArea.bottom : info.windowHeight || 0))
       this.setData({
         statusBarHeight: info.statusBarHeight || 20,
-        safeBottom
+        safeBottom,
+        // 窗口高度取实测值而非 100vh：折叠屏折叠/展开、分屏后 vh 可能是旧值，页面会被撑出可视区
+        windowHeight: info.windowHeight || 0
       })
     } catch (error) {
       this.setData({
         statusBarHeight: 20,
-        safeBottom: 0
+        safeBottom: 0,
+        windowHeight: 0 // 取不到时 wxss 回落 100vh
       })
     }
+  },
+
+  // 折叠屏展开/折叠、旋转、分屏都会触发：重新测量窗口，滚动区随之重算
+  onResize() {
+    this.setSystemMetrics()
   },
 
   // 并行拉取用户信息、相册照片、设备列表，组装“我的”页头部展示数据
@@ -129,6 +139,8 @@ Page({
     })
   },
 
+  // 「我的相册」：2026-08-04 由原「设备照片」+「投屏管理」两个模块合并而成，
+  // 页面仍是 subpackages/album/list（沿用其 UI），数据改用「投屏成功记录」（见该页注释）。
   goAlbum() {
     if (!app.requireLogin()) {
       return
@@ -147,14 +159,8 @@ Page({
     })
   },
 
-  goRecords() {
-    if (!app.requireLogin()) {
-      return
-    }
-    wx.navigateTo({
-      url: '/subpackages/projection/records/records'
-    })
-  },
+  // goRecords（投屏管理入口）已于 2026-08-04 随模块合并移除：投屏成功的照片进「我的相册」，
+  // 投屏记录页（含失败记录/重新投屏）仍保留，由投屏结果页的「投屏明细」进入。
 
   goGuide() {
     if (!app.requireLogin()) {

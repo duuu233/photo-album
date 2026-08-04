@@ -44,14 +44,18 @@ Component({
         const rowHeight = hasMenu ? menu.height : 32
         const capsuleSpace = hasMenu ? Math.max(72, (info.windowWidth || 375) - menu.left) : 96
 
+        const navHeight = statusBarHeight + rowTop * 2 + rowHeight
         this.setData({
           statusBarHeight,
-          navHeight: statusBarHeight + rowTop * 2 + rowHeight,
+          navHeight,
           rowTop,
           rowHeight,
           capsuleSpace,
           centerMaxWidth: this.computeCenterMaxWidth(info.windowWidth, capsuleSpace)
         })
+        // 把实测导航高度回抛给页面：需要「窗口高度 − 导航高度」算滚动区的页面（首页折叠屏适配）
+        // 直接用这份值，不再各自复算一遍状态栏 + 胶囊，避免两处算法漂移。不监听的页面无副作用。
+        this.triggerEvent('measure', { navHeight, statusBarHeight })
       } catch (error) {
         this.setData({
           statusBarHeight: 20,
@@ -61,6 +65,7 @@ Component({
           capsuleSpace: 96,
           centerMaxWidth: 160
         })
+        this.triggerEvent('measure', { navHeight: 64, statusBarHeight: 20 })
       }
     }
   },

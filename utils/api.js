@@ -953,5 +953,32 @@ module.exports = {
 
   deleteProjectionRecord(recordId) {
     return module.exports.delUserProductImgRecord(recordId)
+  },
+
+  // 批量删除投屏记录（「我的相册」删照片时连同来源记录一并删，否则删掉的照片还会留在列表里）。
+  // 后端没有批量删接口，这里串行逐条调用；单条关掉 loading 与自动错误提示——
+  // 批量删 10 张会闪 10 次「删除中」、失败时弹 10 条 toast，统一由调用方一次 loading + 一次提示。
+  // 返回 { total, failed }：允许部分失败（设备与相册记录已删成功时不能整体回滚），由调用方决定文案。
+  deleteProjectionRecords(ids) {
+    const list = (Array.isArray(ids) ? ids : [ids]).filter(
+      id => id !== undefined && id !== null && id !== ''
+    )
+
+    return list.reduce(
+      (chain, id) =>
+        chain.then(result =>
+          http
+            .post(
+              '/Client/UserProduct/delUserProductImgRecord',
+              { id },
+              { mock: false, showError: false }
+            )
+            .then(
+              () => result,
+              () => Object.assign(result, { failed: result.failed + 1 })
+            )
+        ),
+      Promise.resolve({ total: list.length, failed: 0 })
+    )
   }
 }

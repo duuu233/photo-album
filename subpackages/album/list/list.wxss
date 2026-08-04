@@ -421,7 +421,7 @@
   /* box-shadow: 0 -12rpx 34rpx rgba(126, 150, 184, 0.14); */
 }
 
-/* 底部三枚圆形操作按钮：刷新屏幕（橙）/删除（红）/取消（深色） */
+/* 底部三枚圆形操作按钮：再次投屏（橙，2026-08-04 由「刷新屏幕」改）/删除（红）/取消（深色） */
 .bottom-action {
   display: flex;
   align-items: center;
@@ -441,7 +441,7 @@
   height: 40rpx;
 }
 
-.action-refresh {
+.action-retry {
   background: linear-gradient(180deg, #ff8b3d 0%, #ff641f 100%);
   box-shadow: 0 12rpx 26rpx rgba(255, 100, 31, 0.32);
 }

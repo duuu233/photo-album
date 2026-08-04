@@ -134,7 +134,7 @@
 | 个人信息 | 忘记密码（未登录） | `POST /Client/User/resetPassword` | ⛔ | - | 邮箱账号找回密码 |
 | 个人信息 | 修改密码 | `POST /Client/User/changePassword` | ⛔ | - | 邮箱账号密码体系 |
 | 个人信息 | 用户注销 PC 版 | `POST /Client/User/userOffPC` | ⛔ | - | PC 版接口 |
-| 我的相册 | 相册列表/删除（支持多选） | `GET /Client/UserProduct/getUserProductImgList`、`POST /Client/UserProduct/delUserProductImg` | ✅ | `getUserProductImgList`、`delUserProductImg` | 仅显示成功上传至设备的照片；删除仅删本人上传，不删云照片 |
+| 我的相册 | 相册列表/删除（支持多选） | `GET /Client/UserProduct/getUserProductImgRecordList`、`GET /Client/UserProduct/getUserProductImgList`、`POST /Client/UserProduct/delUserProductImg`、`POST /Client/UserProduct/delUserProductImgRecord` | ✅ | `getProjectionRecords`、`getAlbumPhotos`、`deleteAlbumPhotos`、`deleteProjectionRecords` | **2026-08-04 起**：列表数据源改为「投屏成功记录」(`deviceUploadState=1`，按 `userProductId` 分类)，相册列表只作为槽位账本与原图来源；删除 = 设备 `0x12` + 删相册记录 + 删来源投屏记录三步 |
 | 我的设备 | 设备连接流程 | ➖ | ✅ | - | 稳定设备身份一律为 `0x01` 返回的完整 6 字节 ID；广播 4 字节短 ID + 尺寸仅用于筛选候选。连接后必须用完整 ID 严格确认，校验通过后才认领会话并写直连缓存。身份不一致时断开、排除错误候选并重扫，同时清理被污染的缓存。设备自定义名称不作为物理身份依据（2026-07-27） |
 | 我的设备 | 设备列表（设备图、名称、设备 ID） | `GET /Client/UserProduct/getUserProductList` | ✅ | `getUserProductList` | 接口 `deviceId` 非空且为完整 6 字节时展示，空值不显示；页面字段为 `productDeviceId`，避免与微信 BLE 临时句柄混淆 |
 | 我的设备 | 设备详情 | `GET /Client/UserProduct/getUserProductDetail` | ✅ | `getUserProductDetail` | - |
@@ -143,11 +143,11 @@
 | 我的设备 | 删除设备 | `POST /Client/UserProduct/delUserProduct` | ✅ | `delUserProduct` | id=userProductId |
 | 我的设备 | 一键清空（格式化设备） | `POST /Client/UserProduct/clearUserProductImg` | ✅ | `clearUserProductImg` | 同步删除“我的相册”和设备内照片 |
 | 我的设备 | 开启\关闭轮播模式 | ➖ | ✅ | - | 顺序/随机轮播、关闭轮播；纯设备控制 |
-| 我的图库 | 列表 | `GET /Client/UserProduct/getUserProductImgList` | ✅ | `getUserProductImgList` | 出参含 `imgIndex`(String，设备槽位索引，0 合法)：图库删除/刷新屏幕据此定位设备位置 |
+| 我的图库 | 列表 | `GET /Client/UserProduct/getUserProductImgList` | ✅ | `getUserProductImgList` | 出参含 `imgIndex`(String，设备槽位索引，0 合法)：删除照片据此定位设备位置。2026-08-04 起该列表不再直接渲染，只作为「我的相册」的槽位账本与原图来源 |
 | 我的图库 | 删除 | `POST /Client/UserProduct/delUserProductImg` | ✅ | `delUserProductImg` | id=uProductImgId，支持多选。删除前先按 `imgIndex` 发 BLE `0x12` 删掉设备对应槽位 |
-| 投屏管理 | 投屏记录图片列表（成功/失败） | `GET /Client/UserProduct/getUserProductImgRecordList` | ✅ | `getUserProductImgRecordList` | **Swagger 新增**。出参含 `imgIndex`(String)，记录页本身不消费，仅排查用 |
+| 投屏管理 | 投屏记录图片列表（成功/失败） | `GET /Client/UserProduct/getUserProductImgRecordList` | ✅ | `getUserProductImgRecordList` | **Swagger 新增**。出参含 `imgIndex`(String)，记录页本身不消费，仅排查用。2026-08-04 起「我的相册」也用它（只取成功、按 `userProductId` 分类）；投屏记录页保留，入口改为投屏结果页「投屏明细」 |
 | 投屏管理 | 新增投屏记录（历史接口） | `POST /Client/UserProduct/addUserProductImgRecord` | ➖ | `addUserProductImgRecord`（无调用方） | 小程序已删除 `imgBle` 直传和补记链路；再次/重新投屏统一走正常投屏流程，由 `setUserProductUpload` 建立新记录 |
-| 投屏管理 | 操作：投屏\删除 | `POST /Client/UserProduct/delUserProductImgRecord` | ✅ | `delUserProductImgRecord` | id=upirId，**Swagger 新增** |
+| 投屏管理 | 操作：投屏\删除 | `POST /Client/UserProduct/delUserProductImgRecord` | ✅ | `delUserProductImgRecord`、`deleteProjectionRecords` | id=upirId，**Swagger 新增**。批量版 `deleteProjectionRecords` 串行逐条调用（后端无批量接口），供「我的相册」删照片时连同来源记录一并删。⚠️ `clearUserProductImg` / `delUserProductImg` 是否级联删除投屏记录：**待后端确认** |
 | 操作指南 | 查看帮助文档（**不分设备，全局**） | `GET /Client/Product/getProductFaqList` | ✅ | `getProductFaqList` | 详情 `getProductFaqDetail`；按 `pageCount`/`recordCount` 翻页**全量**读取；Client 侧接口无 productId 参数，不做设备过滤；权重 `grade` 只在后台 DTO，排序由后端负责，前端不重排；随 `language` 走（2026-07-19） |
 | 设置 | 关于我们/联系方式/隐私政策/用户协议 | ➖ | ✅ | - | 静态页面 |
 | 设置 | 语种设置（简中\繁中\英\日） | ➖ | ✅ | - | 小程序默认中文；App 跟随手机语言（其他默认英语） |

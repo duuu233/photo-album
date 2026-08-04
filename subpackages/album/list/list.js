@@ -1,3 +1,17 @@
+// 「我的相册」（2026-08-04 由原「设备照片」+「投屏管理」两个模块合并而来）。
+//
+// 口径：
+//   · 列表 = **投屏成功**的记录（getProjectionRecords + deviceUploadState=1），按电子纸设备分类
+//     （设备下拉即分类器），展示的缩略图就是当次投屏的那张，与设备上的画面一致；
+//   · 沿用原「设备照片」页的整套 UI（网格 + 全选 + 底部三枚圆钮）；
+//   · 底部第一枚由原「刷新屏幕」改为投屏记录页的「再次投屏」：单选=再投这一张（可在预览页重新构图），
+//     多选/全选=按批量传输走同一条链路（一次最多 utils/upload-limit 张）；
+//   · 底部第二枚沿用图库的删除：先删设备槽位(0x12)，再删相册记录，最后删来源投屏记录，
+//     三处一致，删完不会「还在列表里」。
+//
+// ⚠️ 相册记录(uProductImgId)仍是设备槽位(imgIndex)的账本：删除/槽位解析一律按记录的
+//    uProductImgId 回到图库照片上取（见 resolveDeviceImageIndex），不要改成按投屏记录自己的
+//    imgIndex —— 记录里的 imgIndex 只是当次投屏的历史值，之后设备侧被删/被清空都不会回写。
 const api = require('../../../utils/api')
 const media = require('../../../utils/media')
 const system = require('../../../utils/system')
@@ -5,6 +19,7 @@ const deviceBle = require('../../../utils/device-ble')
 const deviceInfo = require('../../../utils/device-info')
 const protocol = require('../../../utils/frame-protocol')
 const activeDevice = require('../../../utils/active-device')
+const uploadLimit = require('../../../utils/upload-limit')
 const toast = require('../../../utils/toast')
 
 const app = getApp()
@@ -72,6 +87,30 @@ function buildDisplayPhotos(sourcePhotos, devices) {
   return sourcePhotos
     .filter(photo => photo.onDevice !== false)
     .map(normalizePhoto)
+}
+
+// 投屏记录关联的相册照片 id。后端两种大小写都出现过（records.js 的再次投屏取原图同样两个都读），
+// 这里统一收口；取不到返回 ''（这类记录没有相册账，只能删记录本身，见 confirmDeleteSelected）。
+function recordPhotoId(record) {
+  const value =
+    record && record.uProductImgId !== undefined && record.uProductImgId !== null
+      ? record.uProductImgId
+      : (record && record.uproductImgId)
+  return value === undefined || value === null ? '' : String(value)
+}
+
+// 投屏成功记录 → 网格瓦片。id 取记录 id(upirId)：选中/删除/再次投屏都按它走；
+// photoId 是这条记录对应的相册照片 id(uProductImgId)，设备槽位解析与删相册记录用它。
+function buildRecordTile(record, index) {
+  return {
+    id: String(record.id),
+    photoId: recordPhotoId(record),
+    // 缩略图与投屏画面同源：优先后端缩略图字段，旧数据回退整图（api 层已归一化）
+    imgThumb: record.imgThumb || record.thumbUrl || '',
+    deviceName: record.deviceName || '',
+    createdAt: record.createdAt || '',
+    thumbType: THUMB_TYPES[index % THUMB_TYPES.length]
+  }
 }
 
 // 默认选中偏好：按图库照片出现顺序，取第一台「有照片且仍在筛选项里」的设备ID，没有则返回 ''。
@@ -164,9 +203,10 @@ Page({
     currentFilterLabel: '',
     showFilterMenu: false,
     filterLoading: false,
-    // sourcePhotos/photos 不进 data：模板只渲染 filteredPhotos，这两份全量列表纯 JS 使用
-    // （见 this.sourcePhotos/this.photos）。100 张时三份全字段照片一起 setData 序列化可达上百 KB，
-    // 已逼近 setData 性能红线，移出后传输量降到 1/3。
+    // sourcePhotos/photos/records 不进 data：模板只渲染 filteredPhotos，这几份全量列表纯 JS 使用
+    // （见 this.sourcePhotos/this.photos/this.records）。100 张时全字段列表一起 setData 序列化
+    // 可达上百 KB，已逼近 setData 性能红线。
+    // filteredPhotos = 当前设备的「投屏成功记录」瓦片（见 buildRecordTile），不是图库照片本身。
     filteredPhotos: [],
     selectedMap: {},
     selectedCount: 0,
@@ -185,6 +225,11 @@ Page({
     this.loadPhotos()
   },
 
+  onUnload() {
+    // 页面销毁后作废在途请求，避免慢接口回包继续向已卸载页面 setData
+    this.recordSeq = (this.recordSeq || 0) + 1
+  },
+
   // 失败态「重新加载」：先回到 loading 转圈（即时反馈），再走一遍正常加载
   retryLoad() {
     this.setData({ loading: true, loadError: false })
@@ -195,7 +240,8 @@ Page({
     this.setData(system.getLayoutMetrics())
   },
 
-  // 加载图库：合并真实+占位照片，并过滤掉本地已软删除的项
+  // 加载页面基础数据：设备列表（下拉分类）+ 图库照片（槽位账本，供删除/槽位解析/取原图）。
+  // 网格本身的数据是「当前设备的投屏成功记录」，由 applyFilter → loadRecords 取。
   async loadPhotos() {
     // 首屏渲染即 loading=true，等接口返回再决定展示照片网格还是空态，避免空态先闪一下
     let result
@@ -234,43 +280,112 @@ Page({
 
     this.setData({
       filters,
-      // totalCount 不在这里算：它要跟着「当前设备」走，由 applyFilter 统一维护（见其注释）
+      // totalCount 不在这里算：它要跟着「当前设备」走，由 loadRecords 统一维护（见其注释）
       currentFilter,
       selectedMap: {},
       selectedCount: 0,
       showDeleteConfirm: false,
       filterLoading: false,
-      loading: false,
       loadError: false
+      // loading 保持 true 到记录回包（loadRecords）：先出空态再补数据会闪一下
     })
-    this.applyFilter(currentFilter, photos)
+    this.applyFilter(currentFilter)
   },
 
-  // 按设备ID(userProductId)筛选照片（无「全部」选项）；filter 为空（无设备）时回退展示全部，切换筛选时清空已选。
-  // (2026-07-30)只按设备ID匹配，不再有设备名兜底：设备名可重复，按名匹配会把同名设备的照片混进来。
-  // 代价是「后端没回 deviceId 的老照片」筛不出来——这类照片本就无法可靠归属到某台设备。
-  applyFilter(filter, photos = this.photos || [], keepFilterMenuOpen = false) {
+  // 切换设备分类：清空已选 → 查一键清除状态 → 重新拉这台设备的投屏成功记录。
+  // filter 就是后端设备ID(userProductId)，直接作为记录接口的查询参数，由后端按设备过滤——
+  // 与投屏管理页同一口径，不在端上按记录字段猜归属（记录不一定回 userProductId）。
+  applyFilter(filter, keepFilterMenuOpen = false) {
     const active = (this.data.filters || []).find(item => item.value === filter)
-    const filteredPhotos = filter
-      ? photos.filter(item => String(item.deviceId || '') === filter)
-      : photos
 
     this.setData({
       currentFilter: filter,
       currentFilterLabel: active ? active.label : '',
-      filteredPhotos,
-      // 左上角「共 N 张」取**当前设备**的张数，不是全部设备的合计。
-      // 这里是唯一维护点：首次加载与每次切换设备都经过 applyFilter，算一处即处处对。
-      // 原来在 loadPhotos 里写死 photos.length（全部设备合计），切设备时也不会变——
-      // 用户看到的是「筛到了 3 张，却写着共 12 张」。
-      totalCount: filteredPhotos.length,
       showFilterMenu: keepFilterMenuOpen,
       selectedMap: {},
       selectedCount: 0
     })
 
-    // 进入图库/每次切换设备都查一次该设备的一键清除状态（applyFilter 是两条路径的公共汇合点）
+    // 进入页面/每次切换设备都查一次该设备的一键清除状态（applyFilter 是两条路径的公共汇合点）
     this.checkDeviceClearStatus(filter)
+    this.loadRecords(filter)
+  },
+
+  // 拉「当前设备的投屏成功记录」并铺成网格。
+  // · deviceUploadState=1 由后端过滤成功记录，端上再按 status 兜一层，兼容后端忽略该参数；
+  // · 无设备（filters 为空）时不带 userProductId，展示全部成功记录，保持原页面「没有设备也有内容」的行为；
+  // · seq 作废在途请求：切设备切得快时，旧回包不得倒灌覆盖新设备的列表。
+  async loadRecords(userProductId = this.data.currentFilter) {
+    const seq = (this.recordSeq || 0) + 1
+    this.recordSeq = seq
+    this.records = []
+    this.setData({
+      filteredPhotos: [],
+      totalCount: 0,
+      loading: true,
+      loadError: false
+    })
+
+    let records
+    try {
+      records = await api.getProjectionRecords({
+        deviceUploadState: 1,
+        userProductId: userProductId || undefined
+      })
+    } catch (error) {
+      if (seq !== this.recordSeq) {
+        return
+      }
+      // 接口失败时 api 层已 toast；标记 loadError 展示「加载失败 + 重新加载」——
+      // 落到「暂无照片」空态会让用户误以为照片被清空，且除退出重进外没有重试手段
+      this.setData({ loading: false, loadError: true })
+      return
+    }
+
+    if (seq !== this.recordSeq) {
+      return
+    }
+
+    const success = (records || []).filter(item => item.status === 'success')
+    this.records = success
+
+    this.setData({
+      filteredPhotos: success.map(buildRecordTile),
+      // 左上角「共 N 张」取**当前设备**的张数，不是全部设备的合计
+      totalCount: success.length,
+      selectedMap: {},
+      selectedCount: 0,
+      loading: false,
+      loadError: false
+    })
+  },
+
+  // 记录 id(upirId) → 记录对象
+  findRecord(id) {
+    return (this.records || []).filter(item => item.id === String(id))[0] || null
+  },
+
+  // 记录 → 图库照片（按 uProductImgId 关联）。取不到返回 null：
+  // 这类记录对应的相册照片已被删除/后端没回 uProductImgId，只能删记录本身，也没有图库原图可用。
+  findPhotoOfRecord(record) {
+    const imgId = recordPhotoId(record)
+    if (!imgId) {
+      return null
+    }
+    return (
+      (this.photos || []).filter(
+        item => String(item.uProductImgId) === imgId
+      )[0] || null
+    )
+  },
+
+  // 已选记录 id，按**网格展示顺序**返回（不是 Object.keys 顺序）：
+  // 批量再次投屏时预览页的图片顺序要与用户在网格里看到的一致。
+  selectedIdsInOrder() {
+    const map = this.data.selectedMap || {}
+    return (this.data.filteredPhotos || [])
+      .filter(item => map[item.id])
+      .map(item => item.id)
   },
 
   // 查询所选设备的一键清除状态（getUserProductClearImg，retData: 0=未清除, 1=已清除）。
@@ -367,9 +482,14 @@ Page({
       ? this.data.currentFilter
       : (firstFilterValueWithPhotos(filters, photos) || (filters[0] ? filters[0].value : ''))
 
-    this.setData({ filters, currentFilter, filterLoading: false })
+    this.setData({ filters, filterLoading: false })
     // 刷新后仍保持菜单展开；只有用户真正选项时才关闭。
-    this.applyFilter(currentFilter, photos, true)
+    // 选中设备没变就只更新选项：applyFilter 会重新拉记录，仅仅展开一下下拉不该把列表清成转圈。
+    if (currentFilter === this.data.currentFilter) {
+      this.setData({ currentFilter })
+      return
+    }
+    this.applyFilter(currentFilter, true)
   },
 
   // 完全以设备接口返回的设备为准（返回几台就几项），按后端设备ID去重后做同名消歧。
@@ -378,7 +498,13 @@ Page({
   },
 
   selectFilter(e) {
-    this.applyFilter(e.currentTarget.dataset.value)
+    const value = String(e.currentTarget.dataset.value || '')
+    // 选中的还是当前这台：只收起菜单，不重新拉一遍记录
+    if (value === this.data.currentFilter) {
+      this.setData({ showFilterMenu: false })
+      return
+    }
+    this.applyFilter(value)
   },
 
   toggleSelect(e) {
@@ -428,22 +554,20 @@ Page({
     })
   },
 
-  // 删除前的连接校验：删除要同时删设备(0x12)与后端，二者必须一致，所以必须先连上设备。
-  // 已连接返回 device；未连接则提示「无法删除」并返回 null。
-  // 取「选中照片所属设备」并确保已连接（删除 0x12 / 刷新屏幕 0x24 共用）。
+  // 操作前的连接校验：删除要同时删设备(0x12)与后端、再次投屏要走 BLE 图传，都必须先连上设备。
+  // 已连接返回带当下有效 deviceId 的 device；连不上返回 null（提示已在内部弹出）。
   //
-  // ⚠️ 2026-08-03：必须按照片自己的 deviceId(=后端 userProductId) 找设备，不能一律用首页选中的
-  //    那台（旧行为）。图库按设备筛选后，选中的是 B 设备的照片，却对 A 设备下 0x12/0x24 ——
-  //    等于拿 B 的槽位号去删 / 刷 A 上的图，删错刷错。Flutter 侧（state.dart deleteAlbumPhotos /
-  //    refreshGalleryPhotoOnScreen）一直是连「照片所属设备」的，本次两端对齐：同一张照片不管在
-  //    哪端操作，都指向同一台设备的同一个物理槽位。
-  //  · 选中照片跨设备 → 直接拦下（同一份掩码解析出的槽位只对一台设备成立）；
-  //  · 照片没有 deviceId（后端未回的老照片）→ 退回当前选中设备，保持旧行为。
-  async ensureConnectedDevice(photoIds) {
+  // ⚠️ 2026-08-03 起的口径不变：必须按**这些照片自己所属的设备**找，不能一律用首页选中的那台。
+  //    选中的是 B 设备的照片却对 A 设备下 0x12/0x24，等于拿 B 的槽位号去删 / 刷 A 上的图。
+  //    Flutter 侧（state.dart deleteAlbumPhotos / refreshGalleryPhotoOnScreen）同口径。
+  //  · 记录带 userProductId → 按它找设备；跨设备直接拦下（同一份掩码解析出的槽位只对一台设备成立）；
+  //  · 记录没带 userProductId（后端未回）→ 退回当前设备下拉选中的那台——本页列表本就是
+  //    按该设备ID向后端筛出来的，归属一致。
+  async ensureConnectedDevice(recordIds) {
     const owners = []
-    ;(photoIds || []).forEach(id => {
-      const photo = (this.photos || []).filter(item => item.id === id)[0]
-      const owner = String((photo && photo.deviceId) || '')
+    ;(recordIds || []).forEach(id => {
+      const record = this.findRecord(id)
+      const owner = String((record && record.userProductId) || '')
       if (owners.indexOf(owner) === -1) {
         owners.push(owner)
       }
@@ -456,7 +580,7 @@ Page({
       return null
     }
 
-    const ownerId = owners[0] || ''
+    const ownerId = owners[0] || String(this.data.currentFilter || '')
     let device = ownerId
       ? (this.devices || []).filter(
           item => String(item.userProductId || item.id || '') === ownerId
@@ -513,10 +637,14 @@ Page({
     }, 220)
   },
 
-  // 删除选中照片：先把设备固件上对应槽位删掉(CMD 0x12)，设备删成功后再删后端记录，
-  // 保证「列表 / 后端 / 设备」三处一致。设备删除失败则整体中止，避免列表删了但相框里还在。
+  // 删除选中照片：先把设备固件上对应槽位删掉(CMD 0x12)，设备删成功后再删后端相册记录，
+  // 最后删掉本页列表的来源——投屏成功记录，保证「列表 / 相册 / 投屏记录 / 设备」四处一致。
+  // 设备删除失败则整体中止，避免列表删了但相框里还在。
+  //
+  // ids 是**投屏记录 id(upirId)**；设备槽位与相册记录都要先按 uProductImgId 换算成图库照片 id
+  // （findPhotoOfRecord）。换算不到的记录（相册照片已被删/后端没回该字段）只删记录本身。
   async confirmDeleteSelected() {
-    const ids = selectedIds(this.data.selectedMap)
+    const ids = this.selectedIdsInOrder()
 
     if (!ids.length) {
       this.hideDeleteDialog()
@@ -531,19 +659,30 @@ Page({
       return
     }
 
+    // 记录 → 图库照片 id：设备槽位解析与相册记录删除都按它走，顺带去重
+    //（同一张相册照片被投屏过多次时会有多条成功记录）
+    const photoIds = []
+    ids.forEach(id => {
+      const photo = this.findPhotoOfRecord(this.findRecord(id))
+      if (photo && photoIds.indexOf(photo.id) === -1) {
+        photoIds.push(photo.id)
+      }
+    })
+
     wx.showLoading({ title: '删除中', mask: true })
     let refreshWarn = '' // 「设备已删成功但刷屏失败」的提示文案，成功删除后带给用户
-    let devicePhotoAbnormal = false
+    // 有记录找不到对应相册照片 → 设备侧本就无从删起，按「设备照片异常」提示，但记录仍要删掉
+    let devicePhotoAbnormal = photoIds.length < ids.length
     try {
       // 读固件已占用槽位（升序），用同一份快照把每张选中照片解析成对应槽位；
       // 不在本设备上的（解析为 -1）跳过，只删能对上的。curImgIndex 用于判断是否删到屏显图。
       // 槽位掩码是删除操作的依据，必须真实读取；deviceInfo 已取消 15s 节流。
       const info = await deviceInfo.read(device.deviceId, { force: true })
       const occupied = protocol.maskToIndexes(info.imgMask)
-      const slotIndexes = ids
+      const slotIndexes = photoIds
         .map(id => this.resolveDeviceImageIndex(id, device, occupied))
         .filter(index => index >= 0)
-      devicePhotoAbnormal = slotIndexes.length < ids.length
+      devicePhotoAbnormal = devicePhotoAbnormal || slotIndexes.length < photoIds.length
 
       // 2) 一条 0x12 批量删这些槽位（deleteImage 内部把索引数组转成掩码）
       if (slotIndexes.length) {
@@ -576,18 +715,34 @@ Page({
     }
     wx.hideLoading()
 
-    // 3) 设备删除成功后，再删后端记录；删完 loadPhotos 以后端为准刷新（不再做本地软隐藏）
-    try {
-      await api.deleteAlbumPhotos(ids)
-    } catch (error) {
-      toast.warn({
-        title: (error && error.message) || '删除照片记录失败',
-        icon: 'none'
-      })
-      return
+    // 3) 设备删除成功后，再删后端相册记录（api 层自带「删除中」loading）
+    if (photoIds.length) {
+      try {
+        await api.deleteAlbumPhotos(photoIds)
+      } catch (error) {
+        toast.warn({
+          title: (error && error.message) || '删除照片记录失败',
+          icon: 'none'
+        })
+        return
+      }
     }
 
-    if (devicePhotoAbnormal) {
+    // 4) 最后删掉本页列表的来源——投屏成功记录。不删的话照片虽已从设备和相册消失，
+    //    「我的相册」下次进来仍会把它列出来（列表就是按成功记录铺的）。
+    //    允许部分失败：设备与相册记录已经删掉，不能因为记录没删干净就整体报错回滚。
+    let recordResult = { total: ids.length, failed: 0 }
+    wx.showLoading({ title: '删除中', mask: true })
+    try {
+      recordResult = await api.deleteProjectionRecords(ids)
+    } catch (error) {
+      recordResult = { total: ids.length, failed: ids.length }
+    }
+    wx.hideLoading()
+
+    if (recordResult.failed) {
+      toast.warn({ title: '照片已删除，投屏记录未全部删除，请稍后重试', icon: 'none' })
+    } else if (devicePhotoAbnormal) {
       toast.warn({ title: '照片在此电子纸设备异常，请删除重新上传', icon: 'none' })
     } else if (refreshWarn) {
       toast.warn({ title: refreshWarn, icon: 'none' })
@@ -623,73 +778,100 @@ Page({
     }
   },
 
-  // 刷新屏幕：图库照片大多已存在于固件，只需找到其在设备上的槽位索引，让相框切到这张图。
-  // 仅支持单选——多选/全选是为了批量删除，单选才走刷新屏幕逻辑。
-  async refreshScreen() {
-    const ids = selectedIds(this.data.selectedMap)
+  // 再次投屏（2026-08-04 取代原「刷新屏幕」按钮）：与投屏管理页的「再次投屏」完全同链路——
+  // 把图片地址 + 目标设备写进 pendingProjection，跳投屏预览页；用户可在预览页重新构图，
+  // 点「开始投屏」后照常走 seekink 出帧 + BLE 图传 + setUserProductUpload 建**新记录**。
+  // 所以再次投屏产生的是一张新照片、一条新记录，不会改动被选中的那条。
+  //
+  // 多选/全选按「批量传输」走同一条链路：预览页本就支持多张（左右切图逐张构图），
+  // 结果页按张串行图传。张数上限与首页相册选图一致（utils/upload-limit，常规 10 张）。
+  //
+  // 在途锁：前置要跑设备查找 + 扫描连接，弱网下点了没反应会诱发连点，
+  // 并发两条「查设备→连接→跳转」会双跳转报错（records.js 记过同类崩点）。
+  async retryProjection() {
+    if (this._retrying) {
+      return
+    }
+    this._retrying = true
+    try {
+      await this.doRetryProjection()
+    } finally {
+      this._retrying = false
+    }
+  },
+
+  async doRetryProjection() {
+    const ids = this.selectedIdsInOrder()
 
     if (!ids.length) {
       toast.warn({
-        title: '请选择图片',
+        title: '请选择照片',
         icon: 'none'
       })
       return
     }
 
-    if (ids.length > 1) {
+    const limit = uploadLimit.albumPickLimit()
+    if (ids.length > limit) {
       toast.warn({
-        title: '刷新屏幕只能选中一张图片',
+        title: `一次最多投屏 ${limit} 张照片`,
         icon: 'none'
       })
       return
     }
 
-    const photoId = ids[0]
+    // 预览/重转码用图优先取「图库里同一张照片的原图」（按 uProductImgId 关联）：
+    // 记录里的 img 是后端按设备尺寸转换/压缩过的图，比例可能与原图不一致（预览会显得被拉伸），
+    // 图库 img 与首次投屏同源，能保证「投屏」与「再次投屏」进预览页显示一致；
+    // 相册照片已删/后端没回 uProductImgId 时退回记录里的图（保持可用）。与 records.js 同口径。
+    const images = ids
+      .map(id => {
+        const record = this.findRecord(id)
+        if (!record) {
+          return null
+        }
+        const photo = this.findPhotoOfRecord(record)
+        const url =
+          (photo && photo.url) || record.thumbUrl || record.img || record.url || ''
+        return url ? { url } : null
+      })
+      .filter(Boolean)
 
-    // 与「这张照片所属设备」建立蓝牙连接（2026-08-03 由「首页轮播选中的那台」改过来，
-    // 与删除、与 Flutter 同一口径：槽位号只在它自己的设备上成立，连错设备就是刷错图）
-    const device = await this.ensureConnectedDevice([photoId])
+    if (!images.length) {
+      toast.warn({
+        title: '所选照片没有可投屏的图片',
+        icon: 'none'
+      })
+      return
+    }
+
+    // 与「这些照片所属设备」建立蓝牙连接（口径同删除：槽位/图传只在它自己的设备上成立）。
+    // 放在取图之后：没有可投屏的图时不该先干等几秒扫描重连。
+    const device = await this.ensureConnectedDevice(ids)
     if (!device) {
       return // 提示已由 ensureConnectedDevice / ensureConnectedForAction 弹出
     }
 
-    wx.showLoading({ title: '刷新中', mask: true })
-    try {
-      // 读固件当前已占用的图片槽位（升序），按所选照片在本设备照片中的位置取对应槽位
-      // force：槽位掩码是刷屏指定目标的依据，吃到旧掩码会刷错图
-      const info = await deviceInfo.read(device.deviceId, { force: true })
-      const occupied = protocol.maskToIndexes(info.imgMask)
-      const index = this.resolveDeviceImageIndex(photoId, device, occupied)
-
-      if (index < 0) {
-        wx.hideLoading()
-        toast.warn({
-          title: '未找到该图片在电子纸设备上的位置',
-          icon: 'none'
-        })
-        return
-      }
-
-      // CMD=0x24：让固件切换/刷新到指定索引的图片
-      await deviceBle.refreshScreen(device.deviceId, index)
-      wx.hideLoading()
-      toast.show({
-        title: '已刷新屏幕',
-        icon: 'none'
-      })
-    } catch (error) {
-      wx.hideLoading()
+    if (images.length < ids.length) {
       toast.warn({
-        // 刷新屏幕要先扫描/连上设备，超时是这里最常见的失败；统一中文提示（2026-08-01）
-        title: activeDevice.friendlyConnectMessage(
-          (error && error.message) || '刷新失败'
-        ),
+        title: `${ids.length - images.length} 张照片缺少图片地址，已跳过`,
         icon: 'none'
       })
     }
+
+    // payload 形态与首页手选图片完全一致（只有 url），结果页会照常出帧 + 建记录 + 记账
+    wx.setStorageSync('pendingProjection', {
+      device,
+      images
+    })
+    wx.navigateTo({
+      url: '/subpackages/projection/preview/preview'
+    })
   },
 
-  // 选中照片 → 固件图片槽位索引。删除图片(0x12)与刷新屏幕(0x24)共用这一处解析。
+  // 选中照片 → 固件图片槽位索引。删除图片(0x12) 与删除后的补刷屏(0x24) 共用这一处解析。
+  // ⚠️ 入参是**图库照片 id(uProductImgId)**，不是投屏记录 id：调用方先经 findPhotoOfRecord 换算。
+  //    单测 tests/album-slot-index.test.js 直接按 this.photos 调它，改签名会一并失效。
   //
   // ① 首选后端记录的真实槽位 imgIndex：投屏成功时由 result.js 上报的设备物理位置，是准确值。
   // ② 没有 imgIndex 时才回退推算（投屏成功但记账失败会产生这种记录，见 docs/decisions/image-slot-index.md

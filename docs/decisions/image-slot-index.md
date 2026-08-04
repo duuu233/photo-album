@@ -7,6 +7,13 @@
 
 ## 操作日志（最新在上）
 
+- **2026-08-04**：小程序「设备照片」页并入「我的相册」（列表数据源改为投屏成功记录，
+  见 [变更记录](../changes/2026-08-04-折叠屏滚动适配与我的相册合并.md)）。**本文的槽位规则完全不变**，
+  只有两处调用口径要注意：
+  - 页面上手动的「刷新屏幕（0x24）」按钮已移除（改为「再次投屏」），`resolveDeviceImageIndex` 的读方
+    现在是「删除图片」与「删除后补刷屏」；
+  - 页面选中项是**投屏记录 id(upirId)**，必须先按 `uProductImgId` 换算成相册照片 id 再调
+    `resolveDeviceImageIndex`——该函数入参仍是相册照片 id，未改签名，`tests/album-slot-index.test.js` 不变。
 - **2026-08-03**：小程序与 Flutter 的槽位解析**逐条对齐**（起因：两端交替给同一台设备投图后「索引混乱」）。
   详见下方「六、双端一致性」。小程序侧改 `subpackages/album/list/list.js`
   （`resolveDeviceImageIndex` 三条规则 + 删除/刷屏改连「照片所属设备」），
@@ -41,7 +48,7 @@
 | 动作 | 谁做 | 说明 |
 |---|---|---|
 | **写** imgIndex | 每次投屏成功，**三条链路都要** | 正常投屏 → `editUserProductImgRecord`；再次/重新投屏 → `addUserProductImgRecord` |
-| **读** imgIndex | 图库「删除图片」、图库「刷新屏幕」 | 均走 `list.js` 的 `resolveDeviceImageIndex()` |
+| **读** imgIndex | 「我的相册」删除图片、删除后补刷屏（2026-08-04 前还有手动「刷新屏幕」按钮） | 均走 `list.js` 的 `resolveDeviceImageIndex()`，入参是相册照片 id |
 | 不涉及 | 设备管理（一键清空、轮播设置）、投屏记录页 | 一键清空是全删，不需要定位；再次/重新投屏是重新找空位 |
 
 **再次投屏 / 重新投屏的语义**（易误解，记录在此）：

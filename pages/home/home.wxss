@@ -1,9 +1,27 @@
+/* 根容器锁死为「一屏」：高度取实测窗口高度 --win-h（页面下发，见 home.js setSystemMetrics），
+   取不到时才回落 100vh。折叠屏展开态下 100vh 与真实窗口可能不一致，且窗口高度会随折叠/分屏变化，
+   必须用实测值，配合 onResize 重算。
+   纵向排布 = 导航栏(自然高度) + .home-scroll(占满剩余)，超出部分由滚动容器消化。 */
 .home-root {
   position: relative;
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: var(--win-h, 100vh);
   overflow: hidden;
   overflow-x: hidden;
   color: #2a2d32;
+}
+
+/* 导航栏之下的滚动区：占满导航栏以外的全部高度。
+   ⚠️ 必须是 `flex: 1 1 0`（基准 0）而不是 `1 1 auto`：基准 auto 时本项的基准高度 = 内容高度，
+   内容一超屏就变成「负剩余空间」，flex 会把**导航栏一起按比例压扁**（标题被切、返回键错位）。
+   基准 0 时剩余空间恒为正，只有本项参与分配，导航栏永远保持自身高度。
+   min-height:0 同样不可省，否则滚动区按内容撑开、整块顶出根容器，又回到「滑不动」。 */
+.home-scroll {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .home-bg {
@@ -52,11 +70,14 @@
   pointer-events: none;
 }
 
+/* 两种场景的内容块：至少铺满滚动区可视高度（窗口高 − 实测导航高），装不下时自然向下生长并可滚动。
+   --nav-h 由 page-nav 的 measure 事件回抛（见 home.js onNavMeasure），与导航栏实际占位一致；
+   旧写法 `100vh - var(--status-bar) - 88rpx` 里的 88rpx 会随屏宽放大，折叠屏上误差可达几十 px。 */
 .home-content,
 .binding-content {
   position: relative;
   z-index: 1;
-  min-height: calc(100vh - var(--status-bar) - 88rpx);
+  min-height: calc(var(--win-h, 100vh) - var(--nav-h, 64px));
 }
 
 .home-content {
@@ -65,9 +86,14 @@
   padding-bottom: calc(170rpx + var(--safe-bottom));
 }
 
+/* 绑定流程的底部按钮/帮助链接是 position:absolute 贴容器底的：容器改用 min-height 后，
+   装得下时仍贴在可视区底部（观感不变），装不下时跟着容器一起下移、随页面滚出来。
+   ⚠️ 不能写死 height——折叠屏上雷达图(500rpx)+文案就可能超过一屏，写死高度按钮会被压在屏外。 */
 .binding-content {
-  height: calc(100vh - var(--status-bar) - 88rpx);
-  min-height: 0;
+  height: auto;
+  /* 给贴底的「立即绑定/取消扫描/重新扫描」按钮 + 「扫描不到怎么办」链接预留位置：
+     48rpx 底距 + 112rpx 按钮 + 24rpx 间距 + 链接一行。附近设备较多时，列表末尾不会被按钮压住。 */
+  padding-bottom: calc(226rpx + var(--safe-bottom));
 }
 
 button {

@@ -3,7 +3,8 @@
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" mode="aspectFill"></image>
   </view>
 
-  <!-- 去掉「设备照片」标题（2026-08-01 产品要求），改由导航栏右上角的设备下拉承担标题作用。
+  <!-- 「我的相册」（2026-08-04 由「设备照片」+「投屏管理」合并）：列表 = 投屏成功记录，
+       导航栏的设备下拉即「按电子纸设备分类」的分类器，同时承担标题作用（2026-08-01 去标题）。
        样式走 app.wxss 的 .nav-device-filter，与投屏管理页同一份，保证两页宽度一致。 -->
   <page-nav>
     <view wx:if="{{filters.length}}" class="nav-device-filter">
@@ -48,7 +49,7 @@
     </view>
     <view wx:if="{{filters.length}}" class="album-hint">
       <view class="album-hint__dot"></view>
-      <text>指定显示或删除当前屏幕照片</text>
+      <text>选中照片可再次投屏或删除，支持多选/全选</text>
     </view>
 
     <!-- 有照片：照片网格（选中时加 has-bottom-bar 留出底部栏空间）+ 底部操作栏 -->
@@ -71,8 +72,10 @@
         </view>
       </view>
 
+      <!-- 底部操作栏：再次投屏（橙）/ 删除（红）/ 取消（深色）。
+           2026-08-04：第一枚由「刷新屏幕」改为投屏记录页的「再次投屏」，单选投一张、多选/全选按批量传输走。 -->
       <view class="album-bottom-bar" wx:if="{{selectedCount}}">
-        <view class="bottom-action action-refresh" hover-class="none" aria-label="刷新屏幕" bindtap="refreshScreen">
+        <view class="bottom-action action-retry" hover-class="none" aria-label="再次投屏" bindtap="retryProjection">
           <image class="action-icon" src="/assets/images/album-icon01.png" mode="aspectFit"></image>
         </view>
         <view class="bottom-action action-delete" hover-class="none" aria-label="删除照片" bindtap="showDeleteDialog">
@@ -84,11 +87,11 @@
       </view>
     </block>
 
-    <!-- 无照片空态：引导用户重新投屏（此时若有设备，导航栏设备下拉仍展示设备并默认选中） -->
+    <!-- 无照片空态：引导用户先投屏（此时若有设备，导航栏设备下拉仍展示设备并默认选中） -->
     <view wx:else class="album-empty">
       <image class="empty-art" src="/subpackages/album/images/album-bg01.png" mode="aspectFit"></image>
-      <view class="empty-title">当前没有可查看的电子纸设备照片</view>
-      <view class="empty-desc">您可以重新投屏照片到电子纸设备</view>
+      <view class="empty-title">当前电子纸设备还没有投屏成功的照片</view>
+      <view class="empty-desc">投屏成功的照片会自动出现在这里</view>
     </view>
   </block>
 
@@ -100,7 +103,7 @@
       </view>
       <view class="confirm-copy">
         <view class="confirm-title">删除照片</view>
-        <view class="confirm-desc">确认删除已选的{{selectedCount}}张照片吗？删除后将从当前电子纸设备图库中移除，且无法恢复</view>
+        <view class="confirm-desc">确认删除已选的{{selectedCount}}张照片吗？删除后将同时从电子纸设备与我的相册中移除，且无法恢复</view>
       </view>
       <view class="confirm-actions">
         <view class="confirm-cancel" hover-class="none" bindtap="hideDeleteDialog">取消</view>

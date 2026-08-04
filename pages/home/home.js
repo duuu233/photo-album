@@ -218,6 +218,11 @@ Page({
     scene: SCENES.UNBOUND,
     statusBarHeight: 20,
     safeBottom: 0,
+    // 折叠屏/分屏适配（2026-08-04）：可视窗口高度与导航栏高度都按真实测量值下发成 CSS 变量，
+    // 页面布局不再直接依赖 100vh。折叠屏展开后 rpx 随屏宽变大（内容按 750rpx 等比放大），
+    // 窗口却更矮更方，内容必然超出一屏；--win-h 决定滚动容器的高度，超出部分由 .home-scroll 滚动。
+    windowHeight: 0,
+    navHeight: 64,
     navTitle: getNavigationTitle(SCENES.UNBOUND),
     avatarUrl: DEFAULT_AVATAR,
     currentDevice: DEFAULT_DEVICE,
@@ -382,14 +387,33 @@ Page({
 
       this.setData({
         statusBarHeight: info.statusBarHeight || 20,
-        safeBottom: bottomInset
+        safeBottom: bottomInset,
+        // 取真实窗口高度而不是 100vh：折叠屏展开/折叠、分屏、悬浮窗下窗口高度会变，
+        // 且部分机型 100vh 拿到的是整屏而非当前窗口，页面会被撑出可视区且滑不动。
+        windowHeight: info.windowHeight || 0
       })
     } catch (error) {
       this.setData({
         statusBarHeight: 20,
-        safeBottom: 0
+        safeBottom: 0,
+        windowHeight: 0 // 取不到窗口高度时 wxss 回落 100vh（见 .home-root）
       })
     }
+  },
+
+  // 自定义导航栏把实测高度回抛上来（page-nav attached 时 triggerEvent('measure')）：
+  // 滚动区高度 = 窗口高度 − 导航栏高度，必须用同一份测量值，否则折叠屏上会差出一截。
+  onNavMeasure(e) {
+    const navHeight = (e && e.detail && e.detail.navHeight) || 0
+    if (navHeight && navHeight !== this.data.navHeight) {
+      this.setData({ navHeight })
+    }
+  },
+
+  // 折叠屏展开/折叠、屏幕旋转、分屏都会触发 onResize：重新测量窗口，滚动区随之重算。
+  // 不能只在 onLoad 量一次——折叠状态是运行中变化的。
+  onResize() {
+    this.setSystemMetrics()
   },
 
   // 拉取设备列表确定首页处于已绑定还是未绑定场景；失败则兜底为未绑定

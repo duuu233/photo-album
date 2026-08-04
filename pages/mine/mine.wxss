@@ -1,10 +1,27 @@
+/* 根容器锁一屏高（--win-h 为实测窗口高度，取不到回落 100vh），纵向排布：
+   导航栏(自然高度) + .mine-scroll(占满剩余并滚动)。折叠屏展开后内容按 rpx 放大会超出一屏，
+   靠滚动容器消化，不再被裁掉下半屏。 */
 .mine-root {
   position: relative;
-  min-height: 100vh;
-  padding-bottom: calc(170rpx + var(--safe-bottom));
+  display: flex;
+  flex-direction: column;
+  height: var(--win-h, 100vh);
   overflow: hidden;
   color: #2a2d32;
-  padding: 0 48rpx;
+}
+
+/* 同首页 .home-scroll：基准必须是 0，用 auto 会在内容超屏时把导航栏一起压扁 */
+.mine-scroll {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  min-height: 0; /* 不可省：否则滚动区按内容高度撑开，整块顶出根容器又变成滑不动 */
+}
+
+/* 页面左右留白与底部导航避让都收进滚动内容里（原来写在 .mine-root 的 padding 上，
+   会连带把导航栏也内缩 48rpx）。 */
+.mine-body {
+  padding: 0 48rpx calc(170rpx + var(--safe-bottom));
 }
 
 .mine-bg {
@@ -135,11 +152,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* 2026-08-04 三卡（我的设备/设备照片/投屏管理）合并为两卡（我的设备/我的相册）：
+     卡片改为等分剩余宽度，间距沿用原来的 21rpx，两卡各约 316rpx，不再留出大片空白。 */
+  gap: 21rpx;
 }
 
 .quick-card {
   position: relative;
-  width: 204rpx;
+  flex: 1 1 0;
+  min-width: 0;
   height: 296rpx;
 
   display: flex;
