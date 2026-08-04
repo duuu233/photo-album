@@ -27,12 +27,22 @@ function canonical(value) {
   return normalized.match(/.{2}/g).join(':')
 }
 
+// 展示任意完整字节序列（例如广播阶段的 4 字节短 ID）时统一补冒号。
+// 身份校验仍必须走 canonical/isComplete；本函数只负责展示格式，不放宽 6 字节身份规则。
+function formatBytes(value) {
+  const normalized = normalize(value)
+  if (!normalized || normalized.length % 2 !== 0 || !/^[0-9A-F]+$/.test(normalized)) {
+    return ''
+  }
+  return normalized.match(/.{2}/g).join(':')
+}
+
 function requireComplete(value, message) {
   const result = canonical(value)
   if (result) {
     return result
   }
-  const error = new Error(message || '设备-未读取到完整的6字节设备ID，请重新连接后再试')
+  const error = new Error(message || '电子纸设备-未读取到完整的6字节电子纸设备ID，请重新连接后再试')
   error.code = 'INCOMPLETE_DEVICE_ID'
   throw error
 }
@@ -42,5 +52,6 @@ module.exports = {
   normalize,
   isComplete,
   canonical,
+  formatBytes,
   requireComplete
 }

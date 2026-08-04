@@ -132,10 +132,10 @@ function textValue(value) {
 // 设备-/小程序-/接口-）。幂等：已带任一来源前缀时原样返回，避免重复叠加。
 function prefixDeviceError(error) {
   const e =
-    error instanceof Error ? error : new Error((error && error.message) || '设备操作失败')
-  const msg = e.message || '设备操作失败'
-  if (!/^接口-|^设备-|^小程序-/.test(msg)) {
-    e.message = '设备-' + msg
+    error instanceof Error ? error : new Error((error && error.message) || '电子纸设备操作失败')
+  const msg = e.message || '电子纸设备操作失败'
+  if (!/^(?:接口-|设备-|电子纸设备-|小程序-)/.test(msg)) {
+    e.message = '电子纸设备-' + msg
   }
   return e
 }
@@ -243,7 +243,7 @@ function getOtaValidationError(device) {
   const url = textValue(device && device.downloadPath)
 
   if (!version || !url) {
-    return '检测到设备可更新，但缺少新版本号或固件下载地址，请稍后重试。'
+    return '检测到电子纸设备可更新，但缺少新版本号或固件下载地址，请稍后重试。'
   }
 
   if (!isBinFirmwareUrl(url)) {
@@ -883,7 +883,7 @@ Page({
     }
     // deviceId 直连 + 序列号交叉匹配，避免记录丢 deviceId 时误判「未连接」拦住入口
     if (!activeDevice.isDeviceConnected(device)) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
       return
     }
     wx.navigateTo({
@@ -899,7 +899,7 @@ Page({
     }
     // deviceId 直连 + 序列号交叉匹配，避免记录丢 deviceId 时误判「未连接」拦住入口
     if (!activeDevice.isDeviceConnected(device)) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
       return
     }
 
@@ -979,7 +979,7 @@ Page({
     wx.showModal({
       title: '本地固件测试',
       content:
-        '将使用代码包内的测试固件进入 OTA 流程：设备已连接则执行真实蓝牙 DFU 升级，未连接则仅做干跑校验（不写设备）。是否继续？',
+        '将使用代码包内的测试固件进入 OTA 流程：电子纸设备已连接则执行真实蓝牙 DFU 升级，未连接则仅做干跑校验（不写电子纸设备）。是否继续？',
       confirmText: '进入测试',
       confirmColor: '#ff6a20',
       success: res => {
@@ -1128,7 +1128,7 @@ Page({
       this.setData({ otaTestStatus: okText })
       if (unconfirmedTest) {
         // 未确认是失败语义（没拿到设备 0xF3 确认）：按约定走 warn 加「设备-」来源前缀
-        toast.warn({ title: '设备-' + okText, icon: 'none' })
+        toast.warn({ title: '电子纸设备-' + okText, icon: 'none' })
       } else {
         toast.show({ title: okText, icon: 'none' })
       }
@@ -1196,7 +1196,7 @@ Page({
   clearCopies() {
     // 一键清空需与固件交互：未连接不自动重连，直接提示「请先连接设备」
     if (!activeDevice.isDeviceConnected(this.data.device)) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
       return
     }
     this.showClearConfirm()
@@ -1211,7 +1211,7 @@ Page({
     // 一键清空需已连接：未连接不自动重连(点击时已拦一次，这里作二次保护)，直接提示「请先连接设备」。
     const deviceId = activeDevice.findConnectedDeviceId(this.data.device)
     if (!deviceId) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
       return false
     }
 
@@ -1303,7 +1303,7 @@ Page({
             throw prefixDeviceError(
               new Error(
                 ((deleteError && deleteError.message) || '清空失败') +
-                  `（设备仍剩 ${remaining.length} 张未删除）`
+                  `（电子纸设备仍剩 ${remaining.length} 张未删除）`
               )
             )
           }
@@ -1330,13 +1330,13 @@ Page({
       // 这类一律统一提示「设备暂时无法连接」，不把底层设备错误码抛给用户；
       // 后端接口类错误（「接口-」前缀）仍如实提示，避免把接口问题误报成设备连不上。
       const deviceLinkFailed =
-        !isBusy && (!deviceBle.isConnected(deviceId) || /^设备-/.test(rawMsg))
+        !isBusy && (!deviceBle.isConnected(deviceId) || /^(?:设备|电子纸设备)-/.test(rawMsg))
       logClearDeviceData(traceId, '清空失败', { deviceLinkFailed, busy: isBusy, error: rawMsg })
       toast.warn({
         title: isBusy
           ? protocol.BUSY_MESSAGE
           : deviceLinkFailed
-          ? '设备暂时无法连接'
+          ? '电子纸设备暂时无法连接'
           : rawMsg || '清空失败',
         icon: 'none'
       })
@@ -1456,7 +1456,7 @@ Page({
   // 「删除设备」= 一键清空设备与图库 + 断开连接 + 解除绑定。该动作必须在连接态发起。
   showPermanentDeleteConfirm() {
     if (!activeDevice.findConnectedDeviceId(this.data.device)) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
       return
     }
     this.setData({
@@ -1506,7 +1506,7 @@ Page({
     }
     const deviceId = activeDevice.findConnectedDeviceId(this.data.device)
     if (!deviceId) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
       return
     }
     this._permanentDeleting = true
@@ -1516,7 +1516,7 @@ Page({
       return
     }
 
-    wx.showLoading({ title: '删除设备中', mask: true })
+    wx.showLoading({ title: '删除电子纸设备中', mask: true })
     try {
       deviceBle.disconnect(deviceId)
       await api.deleteDevice(this.data.id)
@@ -1534,7 +1534,7 @@ Page({
       wx.hideLoading()
     }
     this.setData({ showPermanentDeleteConfirm2: false })
-    toast.show({ title: '设备已删除', icon: 'none' })
+    toast.show({ title: '电子纸设备已删除', icon: 'none' })
     setTimeout(() => wx.navigateBack(), 500)
   },
 
@@ -1545,7 +1545,7 @@ Page({
 
     wx.showModal({
       title: '格式化设备',
-      content: '格式化会删除设备上的照片数据，请确认是否继续。',
+      content: '格式化会删除电子纸设备上的照片数据，请确认是否继续。',
       confirmText: '格式化',
       confirmColor: '#c7372f',
       success: async res => {

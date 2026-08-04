@@ -84,7 +84,7 @@
       <view class="empty-device__art">
         <view class="frame-logo"></view>
       </view>
-      <view class="empty-device__title">暂无设备</view>
+      <view class="empty-device__title">暂无电子纸设备</view>
       <view class="empty-device__desc">请先搜索并绑定附近的智能相框。</view>
       <view class="empty-device__btn" hover-class="none" bindtap="goBind">添加设备</view>
     </view>

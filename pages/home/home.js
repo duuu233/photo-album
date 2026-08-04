@@ -204,11 +204,11 @@ function sceneState(scene) {
     homeBgImage: getHomeBgImage(),
     homeFgImage: getHomeFgImage(),
     promptTitle:
-      scene === SCENES.UNBOUND_RECONNECT ? '设备连接失败' : '暂未绑定设备',
+      scene === SCENES.UNBOUND_RECONNECT ? '电子纸设备连接失败' : '暂未绑定电子纸设备',
     promptDesc:
       scene === SCENES.UNBOUND_RECONNECT
-        ? '当前设备未连接，APP需先连接设备后再投屏'
-        : '当前暂无可投屏设备，请先绑定相框设备',
+        ? '当前电子纸设备未连接，APP需先连接电子纸设备后再投屏'
+        : '当前暂无可投屏电子纸设备，请先绑定电子纸设备',
     promptButton: scene === SCENES.UNBOUND_RECONNECT ? '重新连接' : '立即绑定'
   }
 }

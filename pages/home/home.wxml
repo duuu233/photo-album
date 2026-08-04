@@ -148,7 +148,7 @@
           class="empty-hero-art"
           src="/assets/images/empty_device_art.png"
           mode="aspectFit" />
-        <view class="empty-hint">请先绑定相框设备后再投屏照片</view>
+        <view class="empty-hint">请先绑定电子纸设备后再投屏照片</view>
         <view
           class="bind-pill"
           hover-class="none"
@@ -342,8 +342,8 @@
       <!-- 搜索中：提示靠近设备，可取消或查看帮助 -->
       <block wx:elif="{{isBindingScanning}}">
         <view class="scan-copy">
-          <view class="scan-title">正在搜索附近设备</view>
-          <view class="scan-desc">请尽量将手机靠近需要添加的设备...</view>
+          <view class="scan-title">正在搜索附近电子纸设备</view>
+          <view class="scan-desc">请尽量将手机靠近需要添加的电子纸设备...</view>
         </view>
         <view
           class="scan-help-link"
@@ -363,8 +363,8 @@
       <!-- 未发现设备：提示重试，可重新扫描或查看帮助 -->
       <block wx:else>
         <view class="scan-copy no-device-copy">
-          <view class="scan-title">未发现设备</view>
-          <view class="scan-desc">未搜索到附近设备，请确认设备已开机并靠近手机</view>
+          <view class="scan-title">未发现电子纸设备</view>
+          <view class="scan-desc">未搜索到附近电子纸设备，请确认电子纸设备已开机并靠近手机</view>
         </view>
         <view
           class="scan-help-link"
@@ -403,10 +403,10 @@
           mode="aspectFit" />
         <view class="check-title">请检查:</view>
         <view class="check-list">
-          <text>1.设备是否有电?</text>
-          <text>2.当前设备是否被占用?</text>
-          <text>3.设备蓝牙是否工作正常，手机或小程序蓝牙开关是否打开</text>
-          <text>4.设备是否与手机距离过远，隔离或有其他遮挡物</text>
+          <text>1.电子纸设备是否有电?</text>
+          <text>2.当前电子纸设备是否被占用?</text>
+          <text>3.电子纸设备蓝牙是否工作正常，手机或小程序蓝牙开关是否打开</text>
+          <text>4.电子纸设备是否与手机距离过远，隔离或有其他遮挡物</text>
         </view>
       </view>
     </view>

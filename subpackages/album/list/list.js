@@ -311,7 +311,7 @@ Page({
     this.clearImgModalShowing = true
     wx.showModal({
       title: '提示',
-      content: '照片在此设备异常，请删除重新上传',
+      content: '照片在此电子纸设备异常，请删除重新上传',
       showCancel: false,
       confirmText: '确认',
       success: res => {
@@ -450,7 +450,7 @@ Page({
     })
     if (owners.length > 1) {
       toast.warn({
-        title: '只能操作同一台设备的照片',
+        title: '只能操作同一台电子纸设备的照片',
         icon: 'none'
       })
       return null
@@ -464,7 +464,7 @@ Page({
       : null
     if (ownerId && !device) {
       toast.warn({
-        title: '未找到照片所属设备，请刷新后重试',
+        title: '未找到照片所属电子纸设备，请刷新后重试',
         icon: 'none'
       })
       return null
@@ -474,7 +474,7 @@ Page({
     }
     if (!device || !(device.deviceId || device.bleDeviceId || device.deviceNo || device.name)) {
       toast.warn({
-        title: '设备未连接，请先连接设备',
+        title: '电子纸设备未连接，请先连接电子纸设备',
         icon: 'none'
       })
       return null
@@ -567,7 +567,7 @@ Page({
         toast.warn({
           // 超时统一走中文可操作文案（2026-08-01），不把微信/固件的英文原文抛给用户
           title: activeDevice.friendlyConnectMessage(
-            (error && error.message) || '设备删除失败'
+            (error && error.message) || '电子纸设备删除失败'
           ),
           icon: 'none'
         })
@@ -588,7 +588,7 @@ Page({
     }
 
     if (devicePhotoAbnormal) {
-      toast.warn({ title: '照片在此设备异常，请删除重新上传', icon: 'none' })
+      toast.warn({ title: '照片在此电子纸设备异常，请删除重新上传', icon: 'none' })
     } else if (refreshWarn) {
       toast.warn({ title: refreshWarn, icon: 'none' })
     } else {
@@ -664,7 +664,7 @@ Page({
       if (index < 0) {
         wx.hideLoading()
         toast.warn({
-          title: '未找到该图片在设备上的位置',
+          title: '未找到该图片在电子纸设备上的位置',
           icon: 'none'
         })
         return
@@ -813,7 +813,7 @@ Page({
 
     if (!device) {
       toast.warn({
-        title: '请先选择设备',
+        title: '请先选择电子纸设备',
         icon: 'none'
       })
       return

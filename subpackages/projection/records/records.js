@@ -243,7 +243,7 @@ Page({
         targetDevice.name
       )
     ) {
-      toast.warn({ title: '未找到该记录对应的设备，请前往首页确认设备', icon: 'none' })
+      toast.warn({ title: '未找到该记录对应的电子纸设备，请前往首页确认电子纸设备', icon: 'none' })
       return
     }
     const connectedId = await activeDevice.ensureConnectedForAction(targetDevice)

@@ -17,7 +17,7 @@
     </view>
   </block>
 
-  <view wx:else class="about-text">BoltStar是一款帮助你轻松管理和分享照片的应用，连接设备，珍藏生活每一刻。</view>
+  <view wx:else class="about-text">BoltStar是一款帮助您轻松管理和分享照片的应用，连接电子纸设备，珍藏生活每一刻。</view>
 
   <button wx:if="{{state === 'available'}}" class="primary-btn update-btn" hover-class="none" bindtap="startUpdate">立即更新</button>
   <button class="delete-account" hover-class="none">用户注销</button>

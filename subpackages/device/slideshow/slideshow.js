@@ -127,7 +127,7 @@ Page({
     const device = this.data.device
 
     if (turningOn && !this.isDeviceConnected()) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
       this.setData({ carouselOn: false }) // 还原开关：连接前不允许开启
       return
     }

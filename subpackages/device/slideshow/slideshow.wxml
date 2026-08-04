@@ -44,8 +44,8 @@
   <view wx:else class="slideshow-status">
     <view class="status-card glass-panel">
       <image class="status-art" src="/assets/images/empty_device_art.png" mode="aspectFit"></image>
-      <view class="status-title">{{loadError ? '加载失败' : '设备不存在'}}</view>
-      <view class="status-desc">{{loadError ? '网络异常或服务出错，请稍后重试' : '该设备可能已被删除或解绑'}}</view>
+      <view class="status-title">{{loadError ? '加载失败' : '电子纸设备不存在'}}</view>
+      <view class="status-desc">{{loadError ? '网络异常或服务出错，请稍后重试' : '该电子纸设备可能已被删除或解绑'}}</view>
       <view wx:if="{{loadError}}" class="status-retry" hover-class="none" bindtap="loadDevice">重新加载</view>
     </view>
   </view>

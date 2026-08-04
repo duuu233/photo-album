@@ -54,7 +54,8 @@ const PREBAKE_IDLE_MS = 800
 // 分段控制器按张选择。两种方向改变的都只是「可视区域（取景框）」，图片本身不动，
 // **页面展示交互两方向完全一致**；点「开始投屏」才把框内所见烘焙成上传图
 //（见 prepareProjectionImages / bakeEditedImage）。
-//   · 竖向 portrait —— 取景框 = 设备物理比例（竖向），导出直接画进设备分辨率画布，不旋转；
+//   · 竖向 portrait —— 取景框 = 设备物理比例（竖向），导出到设备分辨率画布时固定旋转 180°，
+//     不读取任何设备的 rotationDegree；
 //   · 横向 landscape —— 取景框 = 设备宽高对调后的横向比例（相框躺着摆），展示照旧横向，
 //     仅导出时整幅按设备 rotationDegree 旋转后画进**竖向设备分辨率**画布（2026-07-22 用户拍板恢复：
 //     曾短暂改为「对调分辨率直出、方向交给接口侧」，接口侧不适配横向图，已回到本方案）。
@@ -62,9 +63,9 @@ const ORIENT_PORTRAIT = 'portrait'
 const ORIENT_LANDSCAPE = 'landscape'
 const DEFAULT_ORIENTATION = ORIENT_PORTRAIT
 
-// 横向导出时整幅构图的旋转量（度，顺时针）由设备接口字段 rotationDegree 决定。
-// 历史设备/旧缓存拿不到该字段时继续按 270° 处理，保持既有真机方向不变。
-// 同一角度同时用于画布导出与手机端反向预览，绝不能在两处分别取值，否则会出现
+// 导出时整幅构图的旋转量（度，顺时针）：竖向固定 180°；横向由设备接口字段
+// rotationDegree 决定，历史设备/旧缓存拿不到该字段时继续按 270° 处理。
+// 每种方向的同一角度同时用于画布导出与手机端反向预览，绝不能在两处分别取值，否则会出现
 // 「设备上正了、手机预览里倒了」。
 //
 // ⚠️ 横向取景的导出绝不能直接输出横向尺寸（如 960×680）：像素总数与竖向相同、帧字节数(宽×高÷2)
@@ -453,6 +454,15 @@ Page({
       `width:${size.dispH.toFixed(2)}rpx;height:${size.dispW.toFixed(2)}rpx;` +
       `transform:translate(-50%,-50%) rotate(${-this.data.exportRotationDegree}deg);`
     )
+  },
+
+  // 竖向烘焙文件已固定旋转 180°，在手机预览中反向旋转回来，保持构图所见不变。
+  // 横向仍需使用对调尺寸的专用样式，二者不能共用同一套宽高计算。
+  computeBakedImgStyle(orientation, viewW, viewH) {
+    if (orientation === ORIENT_LANDSCAPE) {
+      return this.computeRotatedImgStyle(viewW, viewH)
+    }
+    return `transform:rotate(${-deviceRotation.PORTRAIT_ROTATION_DEG}deg);`
   },
 
   // 量取编辑舞台（.preview-stage）的 px 尺寸：页面初始布局完成后只量一次，
@@ -1017,7 +1027,7 @@ Page({
   // 把一组编辑状态（取景框内所见：方向+平移+旋转+缩放）一次画布合成，烘焙为设备物理分辨率的新图。
   // canvas 尺寸=设备物理分辨率（竖向）：转换方（seekink 抖动接口）按上传图像素量化六色帧
   //（帧字节数=宽×高÷2），上传图必须正好是设备尺寸，这是硬约束。
-  //   · 竖向：画布坐标系直接对应取景框，放大系数 k = outW / frameW；
+  //   · 竖向：放大系数 k = outW / frameW，整幅构图固定旋转 180°；
   //   · 横向：先把整幅构图按设备 rotationDegree 旋转再画，k 按「取景框宽 → 画布高」算。
   // 失败 resolve 原图（不阻断投屏），console.warn 留痕。
   bakeEditedImage(image, g) {
@@ -1040,15 +1050,15 @@ Page({
     // 原图 px → canvas px：baseScale(显示/原图) × zoom × k
     const s = g.baseScale * g.zoom * k
     const rad = (g.angle * Math.PI) / 180
-    const exportRotateRad = (this.data.exportRotationDegree * Math.PI) / 180
+    const exportRotationDegree = deviceRotation.exportDegreeFor(this.data.device, g.orientation)
+    const exportRotateRad = (exportRotationDegree * Math.PI) / 180
     return this._exportCanvas(outW, outH, g.src, (ctx, img) => {
       ctx.save()
-      // 先落到画布中心（横向再按设备 rotationDegree 旋转整幅构图）：此后坐标系就等价于取景框，
+      // 先落到画布中心，再按方向旋转整幅构图（竖向固定 180°，横向用设备 rotationDegree）：
+      // 此后坐标系就等价于取景框，
       // 图片相对取景框中心的平移(tx,ty)、用户自己的旋转(rad)、缩放(s) 都能原样套用。
       ctx.translate(outW / 2, outH / 2)
-      if (landscape) {
-        ctx.rotate(exportRotateRad)
-      }
+      ctx.rotate(exportRotateRad)
       ctx.translate(g.tx * k, g.ty * k)
       ctx.rotate(rad)
       ctx.scale(s, s)
@@ -1068,14 +1078,12 @@ Page({
     }
     updated.tempFilePath = tempFilePath
     // cropW/cropH 记的是**文件真实像素**（设备物理分辨率，竖向），别改成可视区域尺寸。
-    // 展示按取景方向铺；横向成图是按设备角度转过的竖向文件，要再给图片元素一个反向旋转
-    // 把它摆正（见 computeRotatedImgStyle），保证 fallback 展示仍是用户构图的样子。
+    // 展示按取景方向铺；两种方向的成图都转过，需给图片元素套对应的反向旋转，
+    // 保证 fallback 展示仍是用户构图的样子。
     updated.cropW = dev.width
     updated.cropH = dev.height
     updated.wrapStyle = this.computeWrapStyle(view.width, view.height)
-    updated.imgStyle = g.orientation === ORIENT_LANDSCAPE
-      ? this.computeRotatedImgStyle(view.width, view.height)
-      : ''
+    updated.imgStyle = this.computeBakedImgStyle(g.orientation, view.width, view.height)
     // 预览缓存已并入正式产物，清掉避免再被当缓存复用（此时 tempFilePath 已是烘焙图）
     updated.previewSrc = ''
     updated._bakedKey = ''
@@ -1084,6 +1092,7 @@ Page({
 
   // 一组编辑状态的指纹：变了才需要重新烘焙（滑动切图的预览缓存、投屏出图复用都靠它判定）。
   _editSignature(g) {
+    const exportRotationDegree = deviceRotation.exportDegreeFor(this.data.device, g.orientation)
     return [
       g.src,
       g.orientation,
@@ -1092,7 +1101,8 @@ Page({
       g.ty.toFixed(2),
       g.angle.toFixed(2),
       g.frameW.toFixed(2),
-      g.baseScale.toFixed(6)
+      g.baseScale.toFixed(6),
+      exportRotationDegree
     ].join('|')
   },
 
@@ -1140,9 +1150,7 @@ Page({
         previewSrc: filePath,
         _bakedKey: key,
         wrapStyle: this.computeWrapStyle(view.width, view.height),
-        imgStyle: g.orientation === ORIENT_LANDSCAPE
-          ? this.computeRotatedImgStyle(view.width, view.height)
-          : ''
+        imgStyle: this.computeBakedImgStyle(g.orientation, view.width, view.height)
       })
     } catch (err) {
       // 烘焙失败不挡切图：过场里退回原图显示（会有一次视觉跳变，但功能不受影响）
@@ -1190,7 +1198,8 @@ Page({
     this.persistPending(next)
   },
 
-  // 把一张「没经用户编辑」的图，按设备（竖向）比例做 aspectFill 中心裁切并导出为新临时文件。
+  // 把一张「没经用户编辑」的图，按设备（竖向）比例做 aspectFill 中心裁切，
+  // 再固定旋转 180° 后导出为新临时文件。
   // 目的：用户不做任何编辑就投屏时，让上传后端/图传用的图与预览所见（取景框 cover 铺满，即中心裁切）
   // 完全一致——后端即便按设备分辨率转码也不会再变形。
   // 只处理竖向：横向取景的图必然带编辑状态（用户切过分段控制器），走 bakeEditedImage。
@@ -1235,7 +1244,22 @@ Page({
           // 上传图必须正好是设备尺寸，否则帧大小对不上设备、投屏必失败（如 725×1024→371712 字节，
           // 设备 680×960 只要 326400）。比设备小的图会放大（correctness 优先，画质本就受六色量化限制）。
           this._exportCanvas(size.width, size.height, src, (ctx, img) => {
-            ctx.drawImage(img, sx, sy, sw, sh, 0, 0, size.width, size.height)
+            const portraitRotateRad = (deviceRotation.PORTRAIT_ROTATION_DEG * Math.PI) / 180
+            ctx.save()
+            ctx.translate(size.width / 2, size.height / 2)
+            ctx.rotate(portraitRotateRad)
+            ctx.drawImage(
+              img,
+              sx,
+              sy,
+              sw,
+              sh,
+              -size.width / 2,
+              -size.height / 2,
+              size.width,
+              size.height
+            )
+            ctx.restore()
           }).then((tempFilePath) => {
             const updated = Object.assign({}, image)
             // 备份原图源，供「原图」还原（与编辑烘焙一致，已备份则不覆盖）
@@ -1243,11 +1267,16 @@ Page({
               updated._origSrc = updated.tempFilePath || updated.url || ''
             }
             updated.tempFilePath = tempFilePath
-            // cropW/cropH = 文件真实像素（设备物理分辨率，竖向）；竖向成图无需反向转正
+            // cropW/cropH = 文件真实像素（设备物理分辨率，竖向）；文件内容已固定旋转 180°，
+            // fallback 预览需反向转正。
             updated.cropW = size.width
             updated.cropH = size.height
             updated.wrapStyle = this.computeWrapStyle(size.width, size.height)
-            updated.imgStyle = ''
+            updated.imgStyle = this.computeBakedImgStyle(
+              ORIENT_PORTRAIT,
+              size.width,
+              size.height
+            )
             resolve(updated)
           }).catch(() => resolve(image))
         },
@@ -1314,7 +1343,7 @@ Page({
     }
 
     if (!this.data.device) {
-      toast.warn({ title: '请选择设备', icon: 'none' })
+      toast.warn({ title: '请选择电子纸设备', icon: 'none' })
       return
     }
 
@@ -1325,7 +1354,7 @@ Page({
 
     // 必须有真实蓝牙 deviceId 才能连接图传（绑定时由蓝牙读取写入）
     if (!this.data.device.deviceId) {
-      toast.warn({ title: '设备未连接，请重新绑定后再投屏', icon: 'none' })
+      toast.warn({ title: '电子纸设备未连接，请重新绑定后再投屏', icon: 'none' })
       return
     }
 

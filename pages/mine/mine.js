@@ -27,7 +27,8 @@ Page({
     nickName: '微信用户',
     userId: '--',
     photoCount: 0,
-    deviceCount: 0
+    deviceCount: 0,
+    bgReady: false
   },
 
   onLoad() {
@@ -41,6 +42,12 @@ Page({
       })
     }
     this.loadUserInfo()
+  },
+
+  onMineBgLoaded() {
+    if (!this.data.bgReady) {
+      this.setData({ bgReady: true })
+    }
   },
 
   setSystemMetrics() {

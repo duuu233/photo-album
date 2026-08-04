@@ -193,7 +193,7 @@ function parseAck(payload) {
 function parseDeviceInfo(data) {
   const b = toBytes(data)
   if (b.length < 28) {
-    throw new Error(`设备信息长度不足：期望28字节，实际${b.length}字节`)
+    throw new Error(`电子纸设备信息长度不足：期望28字节，实际${b.length}字节`)
   }
   const screenType = b[26]
   const screen = SCREEN_TYPES[screenType] || {}
@@ -291,7 +291,7 @@ const RESULT_TEXT = {
   0x08: '不支持的命令',
   0x09: '传输中断',
   0x0a: '校验失败(整图CRC32不符)',
-  0x0b: '设备忙(Busy)'
+  0x0b: '电子纸设备忙(Busy)'
 }
 
 function resultText(code) {
@@ -303,7 +303,7 @@ function resultText(code) {
 // BUSY_MESSAGE 是面向用户的统一提示；所有和设备交互的判断（device-ble.js 的 request() 集中拦截）
 // 一旦收到任意指令的 0x0B 应答，都用它提示，避免各处各写一套文案。
 const RESULT_BUSY = 0x0b
-const BUSY_MESSAGE = '当前设备繁忙，请稍后重试'
+const BUSY_MESSAGE = '当前电子纸设备繁忙，请稍后重试'
 
 // 判断一个 RESULT 结果码是否为「设备忙」。
 function isBusyResult(code) {

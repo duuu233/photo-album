@@ -96,7 +96,7 @@ Page({
     this.setData({
       dialogType: 'delete-warn',
       dialogTitle: '用户注销',
-      dialogDesc: '注销将永久删除您的所有账号数据，请确认设备照片已自行清空，否则注销后将无法删除设备照片',
+      dialogDesc: '注销将永久删除您的所有账号数据，请确认电子纸设备照片已自行清空，否则注销后将无法删除电子纸设备照片',
       dialogConfirmText: '继续'
     })
   },
@@ -127,7 +127,7 @@ Page({
       this.setData({
         dialogType: 'delete',
         dialogTitle: '用户注销',
-        dialogDesc: '我已了解设备照片需自行处理的说明，并确认继续注销。',
+        dialogDesc: '我已了解电子纸设备照片需自行处理的说明，并确认继续注销。',
         dialogConfirmText: '确认'
       })
       return

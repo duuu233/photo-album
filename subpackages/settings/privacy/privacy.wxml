@@ -15,10 +15,10 @@
       <view class="article-list">• 注册 / 登录信息：如手机号、验证码、账号信息等。</view>
       <view class="article-list">• 您在使用服务时主动上传或填写的内容，例如资料、反馈信息等。</view>
       <view class="article-p">2. 自动收集的信息</view>
-      <view class="article-list">• 设备信息：设备型号、操作系统版本、唯一设备识别码、网络类型、IP 地址等。</view>
+      <view class="article-list">• 终端信息：终端型号、操作系统版本、唯一终端识别码、网络类型、IP 地址等。</view>
       <view class="article-list">• 日志信息：使用时长、功能访问路径、异常日志等，用于优化产品体验。</view>
       <view class="article-section-title">二、我们如何使用这些信息?</view>
-      <view class="article-p">用于提供、维护和优化本应用的核心服务，包括账号安全、设备连接、照片投屏和客户支持。</view>
+      <view class="article-p">用于提供、维护和优化本应用的核心服务，包括账号安全、电子纸设备连接、照片投屏和客户支持。</view>
     </view>
   </scroll-view>
 

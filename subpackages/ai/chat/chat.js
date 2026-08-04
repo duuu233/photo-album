@@ -452,7 +452,7 @@ Page({
       }
       wx.showModal({
         title: '提示',
-        content: '使用 AI 创作前请先绑定设备',
+        content: '使用 AI 创作前请先绑定电子纸设备',
         cancelText: '返回',
         confirmText: '去绑定',
         success: res => {
@@ -1350,7 +1350,7 @@ Page({
       return false
     }
     if (!this._speech && !this._recorder) {
-      toast.warn({ title: '当前设备不支持录音', icon: 'none' })
+      toast.warn({ title: '当前手机不支持录音', icon: 'none' })
       return false
     }
     this._voiceCancelled = false
@@ -1794,7 +1794,7 @@ Page({
       const devices = await api.getDevices()
       if (!devices.length) {
         this.setData({ 'devicePicker.show': false })
-        toast.show({ title: '暂无已绑定设备，请先绑定设备', icon: 'none' })
+        toast.show({ title: '暂无已绑定电子纸设备，请先绑定电子纸设备', icon: 'none' })
         return
       }
       const pickerDevices = devices.map((item, index) =>

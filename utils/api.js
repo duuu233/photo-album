@@ -516,7 +516,7 @@ module.exports = {
       // 绑定入库只允许 0x01 返回的完整 6 字节 Device_ID；禁止广播短 ID / BLE 句柄兜底。
       deviceId: deviceIdUtil.requireComplete(
         data.deviceId,
-        '设备-绑定失败：未读取到完整的6字节设备ID'
+        '电子纸设备-绑定失败：未读取到完整的6字节电子纸设备ID'
       )
     })
     return http.post('/Client/UserProduct/addUserProduct', payload, {
@@ -825,7 +825,7 @@ module.exports = {
     // productId 必传：匹配不到就中止绑定并明确提示，避免缺 productId 还往后端发请求。
     if (!productId) {
       throw new Error(
-        '未匹配到对应产品(productId)，请确认该设备在产品列表中存在'
+        '未匹配到对应产品(productId)，请确认该电子纸设备在产品列表中存在'
       )
     }
 
@@ -843,7 +843,7 @@ module.exports = {
         scan.hardwareDeviceId,
         scan.productSerialNo
       ),
-      '设备-绑定失败：未读取到完整的6字节设备ID'
+      '电子纸设备-绑定失败：未读取到完整的6字节电子纸设备ID'
     )
     const payload = {
       productId, // 必传，已在上面确保非空

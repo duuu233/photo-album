@@ -314,8 +314,8 @@ Page({
       releaseNotes: [
         `本地固件：${TEST_FW_NAME}`,
         willDryRun
-          ? '当前未连接设备：点击将进行「干跑」，仅校验读包/拆头/组帧/分包（不经过真实蓝牙）'
-          : '设备已连接：点击将通过蓝牙执行真实 DFU 升级',
+          ? '当前未连接电子纸设备：点击将进行「干跑」，仅校验读包/拆头/组帧/分包（不经过真实蓝牙）'
+          : '电子纸设备已连接：点击将通过蓝牙执行真实 DFU 升级',
         'DFU v1.5：FF10/FF11 · 128字节头握手 + PRN窗口 + END(0xF3)整包校验'
       ],
       package: {
@@ -371,7 +371,7 @@ Page({
       actionText = '无法升级'
       errorMessage =
         firmware.invalidReason ||
-        '检测到设备可更新，但固件版本号或下载地址无效，请稍后重试。'
+        '检测到电子纸设备可更新，但固件版本号或下载地址无效，请稍后重试。'
     } else if (hasPackage) {
       statusText = '发现新版本'
       statusClass = 'is-available'
@@ -383,13 +383,13 @@ Page({
       statusText = '无法升级'
       statusClass = 'is-error'
       actionText = '重新绑定设备'
-      errorMessage = '设备缺少蓝牙连接ID，请重新绑定后再升级。'
+      errorMessage = '电子纸设备缺少蓝牙连接ID，请重新绑定后再升级。'
     } else if (hasPackage && device && device.connected === false) {
       canUpgrade = false
-      statusText = '设备未连接'
+      statusText = '电子纸设备未连接'
       statusClass = 'is-error'
       actionText = '设备未连接'
-      errorMessage = '请先连接设备，并在升级过程中保持设备在线。'
+      errorMessage = '请先连接电子纸设备，并在升级过程中保持电子纸设备在线。'
     }
 
     return {
@@ -412,9 +412,9 @@ Page({
       this.setData({
         loading: false,
         state: 'failed',
-        statusText: '设备不存在',
+        statusText: '电子纸设备不存在',
         statusClass: 'is-error',
-        errorMessage: '缺少设备ID，无法检查固件版本。'
+        errorMessage: '缺少电子纸设备ID，无法检查固件版本。'
       })
       return
     }
@@ -437,7 +437,7 @@ Page({
       let device = await api.getDeviceDetail(this.data.id)
 
       if (!device) {
-        throw new Error('设备不存在')
+        throw new Error('电子纸设备不存在')
       }
 
       device = mergeSelectedDevice(device)
@@ -598,7 +598,7 @@ Page({
         statusClass: 'is-error',
         canUpgrade: true,
         actionText: '重新升级',
-        errorMessage: '未获取到设备蓝牙连接，请先在详情页连接设备后再升级。'
+        errorMessage: '未获取到电子纸设备蓝牙连接，请先在详情页连接电子纸设备后再升级。'
       })
       return
     }
@@ -624,7 +624,7 @@ Page({
       statusTitle: dryRun ? '固件校验中' : '固件下载中',
       statusDesc: dryRun
         ? '正在本地校验固件包…'
-        : '升级中请保持设备供电、手机屏幕常亮，勿切后台',
+        : '升级中请保持电子纸设备供电、手机屏幕常亮，勿切后台',
       artImage: artFor('progress'),
       showPrimary: false
     })
@@ -663,7 +663,7 @@ Page({
           await api.reportDeviceFirmwareUpgrade(this.data.id, {
             status: 'fail',
             version: firmware.latestVersion,
-            message: '数据已全部发送，但未收到设备 0xF3 确认，升级未确认成功'
+            message: '数据已全部发送，但未收到电子纸设备 0xF3 确认，升级未确认成功'
           }).catch(() => {})
         }
         this.setData({
@@ -674,15 +674,15 @@ Page({
           actionText: '重新升级',
           progressPercent: 100,
           progressText: doneText,
-          errorMessage: '数据已全部发送，但未收到设备 0xF3 确认——升级未确认成功，请重试。',
+          errorMessage: '数据已全部发送，但未收到电子纸设备 0xF3 确认——升级未确认成功，请重试。',
           screenStatus: 'fail',
           statusTitle: '升级失败',
-          statusDesc: '数据已全部发送，但未收到设备确认，升级未确认成功，请重试。',
+          statusDesc: '数据已全部发送，但未收到电子纸设备确认，升级未确认成功，请重试。',
           artImage: artFor('fail'),
           showPrimary: true
         })
         // 未确认是失败语义（没拿到设备 0xF3 确认）：按约定走 warn 加「设备-」来源前缀
-        toast.warn({ title: '设备-' + doneText, icon: 'none' })
+        toast.warn({ title: '电子纸设备-' + doneText, icon: 'none' })
         return
       }
 

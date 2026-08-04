@@ -54,9 +54,9 @@
           <view class="conn-meta">MTU {{item.mtu}} · 每包 {{item.dataChunk}} 字节 · {{item.writeType}}</view>
         </view>
         <button class="btn btn-soft conn-release" bindtap="disconnectAllConnections">断开全部并释放设备</button>
-        <view class="row-tip">设备为单连接：真实投屏/绑定流程若结束没断开，会一直占着设备，导致再次「搜索/连接」失败。点上方按钮断开全部即可让设备重新广播、可再次搜索连接。</view>
+        <view class="row-tip">电子纸设备为单连接：真实投屏/绑定流程若结束没断开，会一直占着电子纸设备，导致再次「搜索/连接」失败。点上方按钮断开全部即可让电子纸设备重新广播、可再次搜索连接。</view>
       </block>
-      <view wx:else class="row-tip">当前没有占用设备，可以正常搜索并连接。</view>
+      <view wx:else class="row-tip">当前没有占用电子纸设备，可以正常搜索并连接。</view>
     </view>
 
     <!-- 设备信息卡片 -->
@@ -114,10 +114,10 @@
         <button class="btn btn-mini btn-compact" disabled="{{busy}}" bindtap="cmdSetConnInterval">应用 0x13</button>
         <button class="btn btn-mini btn-compact btn-sync" bindtap="cmdSyncTransferToProjection">同步投屏</button>
       </view>
-      <view class="row-tip">BLE 连接间隔单位为 1.25ms，允许 7.5~4000ms；图传默认用 7.5ms(最小值/最快)。每次图传前会自动按此值设置并复读确认（0x05→0x13→0x05），卡住时据此区分「间隔没生效」还是「设备吃不下速率」。<text class="row-tip-strong">「同步投屏」</text>把当前调好的三项——连接间隔 / 发送速度 / 发包窗口——一并写给真实投屏：之后正式投屏就按这些值传，不点则维持默认(7.5ms / 极速3ms / 10包)。当前投屏：连接间隔 {{projectionConnIntervalMs}}ms · 每包间隔 {{projectionPaceMs}}ms · 窗口 {{projectionWindow}} 包。</view>
+      <view class="row-tip">BLE 连接间隔单位为 1.25ms，允许 7.5~4000ms；图传默认用 7.5ms(最小值/最快)。每次图传前会自动按此值设置并复读确认（0x05→0x13→0x05），卡住时据此区分「间隔没生效」还是「电子纸设备吃不下速率」。<text class="row-tip-strong">「同步投屏」</text>把当前调好的三项——连接间隔 / 发送速度 / 发包窗口——一并写给真实投屏：之后正式投屏就按这些值传，不点则维持默认(7.5ms / 极速3ms / 10包)。当前投屏：连接间隔 {{projectionConnIntervalMs}}ms · 每包间隔 {{projectionPaceMs}}ms · 窗口 {{projectionWindow}} 包。</view>
       <view class="row">
         <text class="row-label">系统校时</text>
-        <text class="row-hint">把手机当前时间同步给设备 RTC</text>
+        <text class="row-hint">把手机当前时间同步给电子纸设备 RTC</text>
         <button class="btn btn-mini" disabled="{{busy}}" bindtap="cmdSetTime">校时 0x11</button>
       </view>
     </view>
@@ -147,7 +147,7 @@
           <label class="radio"><radio value="10" checked="{{windowSize === 10}}" color="#ff621f" />10 包</label>
         </radio-group>
       </view>
-      <view class="row-tip">发满多少包等一次累计应答(0x23)。固件已扩内存、上限 10 包，默认 10；怀疑设备收不过来丢包时可退到 5 包对照。当前窗口 {{windowSize}} 包。</view>
+      <view class="row-tip">发满多少包等一次累计应答(0x23)。固件已扩内存、上限 10 包，默认 10；怀疑电子纸设备收不过来丢包时可退到 5 包对照。当前窗口 {{windowSize}} 包。</view>
       <view class="convert-panel">
         <view class="convert-head">
           <text class="convert-title">上传转换参数</text>
@@ -241,7 +241,7 @@
         <button class="btn btn-primary" disabled="{{busy || uploading}}" bindtap="cmdUploadAlbum">上传相册图片</button>
       </view>
       <button class="btn btn-soft" disabled="{{busy || uploading}}" bindtap="cmdUploadLocalRaw">上传手机上的 .raw/.bin 直发</button>
-      <view class="row-tip">把已打包好的 .raw/.bin 帧（字节数 = 宽×高÷2，EF6-370=172800）原样发给设备，不旋转/不转换。.bin 即后端转换生成的 frame.bin，与正式投屏下载的 .bin 直发同源；.raw 是硬件给的 demo 帧，两者格式一致。带头部的文件也支持：文件 = 头部 + 帧数据时自动剥掉头部按尾部一帧发送（15 字节 0x20 帧头会解析并做 CRC32 校验，结果打进下方控制台）。选不到文件时：电脑微信把 .raw/.bin 发给「文件传输助手」，手机再来这里从聊天文件里选。</view>
+      <view class="row-tip">把已打包好的 .raw/.bin 帧（字节数 = 宽×高÷2，EF6-370=172800）原样发给电子纸设备，不旋转/不转换。.bin 即后端转换生成的 frame.bin，与正式投屏下载的 .bin 直发同源；.raw 是硬件给的 demo 帧，两者格式一致。带头部的文件也支持：文件 = 头部 + 帧数据时自动剥掉头部按尾部一帧发送（15 字节 0x20 帧头会解析并做 CRC32 校验，结果打进下方控制台）。选不到文件时：电脑微信把 .raw/.bin 发给「文件传输助手」，手机再来这里从聊天文件里选。</view>
       <view wx:if="{{uploading}}" class="progress">
         <view class="progress-bar"><view class="progress-fill" style="width: {{uploadPercent}}%"></view></view>
         <text class="progress-text">图传中 {{uploadPercent}}%</text>

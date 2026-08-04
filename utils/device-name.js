@@ -11,10 +11,10 @@ function validateDeviceName(input) {
   const length = Array.from(name).length
 
   if (length === 0) {
-    return { ok: false, name, message: '请输入设备名称' }
+    return { ok: false, name, message: '请输入电子纸设备名称' }
   }
   if (length > DEVICE_NAME_MAX_LEN) {
-    return { ok: false, name, message: `设备名称最多${DEVICE_NAME_MAX_LEN}个字符` }
+    return { ok: false, name, message: `电子纸设备名称最多${DEVICE_NAME_MAX_LEN}个字符` }
   }
   return { ok: true, name, message: '' }
 }

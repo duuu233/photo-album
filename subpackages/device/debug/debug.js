@@ -603,7 +603,7 @@ Page({
   disconnectAllConnections() {
     const ids = deviceBle.disconnectAll()
     if (!ids.length) {
-      toast.warn({ title: '当前没有已连接的设备', icon: 'none' })
+      toast.warn({ title: '当前没有已连接的电子纸设备', icon: 'none' })
       this.refreshMpConnections()
       return
     }
@@ -613,7 +613,7 @@ Page({
     }
     this.appendLog({
       type: 'act',
-      text: `已断开全部连接（${ids.length} 个），设备已释放，可重新搜索/连接`
+      text: `已断开全部连接（${ids.length} 个），电子纸设备已释放，可重新搜索/连接`
     })
     toast.show({ title: `已释放 ${ids.length} 个连接`, icon: 'none' })
     this.refreshMpConnections()
@@ -622,7 +622,7 @@ Page({
   // ── 连接 / 扫描 ─────────────────────────────────────────
   requireDevice() {
     if (!this.data.deviceId || !this.data.connected) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
       return false
     }
     return true
@@ -649,7 +649,7 @@ Page({
       this.setData({ devices })
       this.appendLog({
         type: 'act',
-        text: `扫描完成（已放开过滤），发现 ${devices.length} 个设备`
+        text: `扫描完成（已放开过滤），发现 ${devices.length} 个电子纸设备`
       })
       // 逐个打印名字+信号，方便和白名单 EF6-370 / EF6-589 对照，确认设备到底叫什么
       devices.forEach(device => {
@@ -807,8 +807,8 @@ Page({
       {
         format: info =>
           info
-            ? `设备信息：Device_ID ${info.deviceId || '--'} · 电量 ${info.battery}% · ${info.screen} · 容量 ${info.capacity} · 已存 ${info.imgCount} 张 · 固件 ${info.firmwareVersion || '--'}`
-            : '设备信息已刷新'
+            ? `电子纸设备信息：Device_ID ${info.deviceId || '--'} · 电量 ${info.battery}% · ${info.screen} · 容量 ${info.capacity} · 已存 ${info.imgCount} 张 · 固件 ${info.firmwareVersion || '--'}`
+            : '电子纸设备信息已刷新'
       }
     )
   },
@@ -982,7 +982,7 @@ Page({
       () => deviceBle.setTime(this.data.deviceId, new Date()),
       {
         format: () =>
-          `已把手机当前时间同步给设备：${new Date().toLocaleString()}`
+          `已把手机当前时间同步给电子纸设备：${new Date().toLocaleString()}`
       }
     )
   },
@@ -1031,7 +1031,7 @@ Page({
       {
         refresh: true,
         format: res =>
-          `删除完成，设备现存 ${protocol.maskToIndexes(res.imgMask).length} 张`
+          `删除完成，电子纸设备现存 ${protocol.maskToIndexes(res.imgMask).length} 张`
       }
     )
   },
@@ -1166,7 +1166,7 @@ Page({
       if (typeof saved === 'string') {
         const profile = findDebugCalibrationProfile(saved)
         if (profile) {
-          this.applyCalibrationProfile(profile, { log: '已恢复本设备校准档' })
+          this.applyCalibrationProfile(profile, { log: '已恢复本电子纸设备校准档' })
         }
         return
       }
@@ -1222,13 +1222,13 @@ Page({
     this.setData(patch)
     this.appendLog({
       type: 'act',
-      text: `已恢复本设备校准配置：${profile.name}（含自定义六色）`
+      text: `已恢复本电子纸设备校准配置：${profile.name}（含自定义六色）`
     })
   },
 
   saveDeviceCalibrationProfile() {
     if (!this.data.deviceId) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
       return
     }
     if (!wx.setStorageSync) {
@@ -1252,9 +1252,9 @@ Page({
       })
       this.appendLog({
         type: 'ok',
-        text: `已保存本设备校准配置：${this.data.calibrationProfileName}（含自定义六色）`
+        text: `已保存本电子纸设备校准配置：${this.data.calibrationProfileName}（含自定义六色）`
       })
-      toast.show({ title: '已保存本设备配置', icon: 'none' })
+      toast.show({ title: '已保存本电子纸设备配置', icon: 'none' })
     } catch (error) {
       toast.warn({ title: '保存失败：' + error.message, icon: 'none' })
     }
@@ -1554,13 +1554,13 @@ Page({
       if (!dimOk) {
         notes.push({
           type: 'err',
-          text: `头部宽高 ${hWidth}×${hHeight} 与本设备 ${info.width}×${info.height} 不一致：仍按本设备尺寸取尾部 ${expectBytes} 字节发送，请核对文件是否为本机型。`
+          text: `头部宽高 ${hWidth}×${hHeight} 与本电子纸设备 ${info.width}×${info.height} 不一致：仍按本电子纸设备尺寸取尾部 ${expectBytes} 字节发送，请核对文件是否为本机型。`
         })
       }
       if (hFormat !== 0x01) {
         notes.push({
           type: 'err',
-          text: `头部 FORMAT=0x${hFormat.toString(16).padStart(2, '0')} 非 0x01：固件目前只支持 0x01（六色 4bpp 原始帧），继续直发但可能被设备拒绝。`
+          text: `头部 FORMAT=0x${hFormat.toString(16).padStart(2, '0')} 非 0x01：固件目前只支持 0x01（六色 4bpp 原始帧），继续直发但可能被电子纸设备拒绝。`
         })
       }
       return { ok: true, payload, notes }
@@ -1843,7 +1843,7 @@ Page({
         text: `图传前 连接间隔(0x05)=${before.ms}ms · units=${before.units}`
       })
     } catch (error) {
-      const verdict = `设备不支持读取连接间隔(0x05)：${error.message}`
+      const verdict = `电子纸设备不支持读取连接间隔(0x05)：${error.message}`
       this.appendLog({ type: 'err', text: verdict })
       return { category: 'unsupported', verdict, before: null, after: null }
     }
@@ -1882,13 +1882,13 @@ Page({
   connDiagConclusion(category) {
     switch (category) {
       case 'applied':
-        return '连接间隔已确认生效仍卡住 → 基本可判定是「设备吃不下这个速率」：把发送速度调慢一档（pace 调大）后重试，问题不在连接参数。'
+        return '连接间隔已确认生效仍卡住 → 基本可判定是「电子纸设备吃不下这个速率」：把发送速度调慢一档（pace 调大）后重试，问题不在连接参数。'
       case 'not-applied':
-        return '设备对 0x13 回了成功但复读没变 → 连接间隔实际没生效：先查固件 0x13 是否真正更新链路参数，再谈速率。'
+        return '电子纸设备对 0x13 回了成功但复读没变 → 连接间隔实际没生效：先查固件 0x13 是否真正更新链路参数，再谈速率。'
       case 'rejected':
         return '0x13 被拒（不支持/忙）→ 连接间隔没生效：先解决 0x13 设置，或只靠 pace/窗口调速。'
       case 'unsupported':
-        return '设备不支持连接间隔指令(0x05) → 用不了它提速：只能靠 pace（每包间隔）/窗口来调。'
+        return '电子纸设备不支持连接间隔指令(0x05) → 用不了它提速：只能靠 pace（每包间隔）/窗口来调。'
       case 'unconfirmed':
         return '设了 0x13 但复读失败，无法确认是否生效：建议重连后手动点「获取连接间隔(0x05)」核对。'
       default:
@@ -1910,7 +1910,7 @@ Page({
     } else {
       index = protocol.firstFreeIndex(info.imgMask, info.capacity)
       if (index < 0) {
-        toast.warn({ title: '设备已存满，请先删除图片', icon: 'none' })
+        toast.warn({ title: '电子纸设备已存满，请先删除图片', icon: 'none' })
         return
       }
     }
@@ -1959,7 +1959,7 @@ Page({
           if (phase === 'retry' && detail) {
             // 卡顿重试：把「停在第几包、重发第几次」实时显示出来。
             // 若 stuckAt 长时间不变 → 多为设备中断/链路断；若缓慢变大 → 只是慢，可能还能传完。
-            patch.uploadStatus = `传输卡顿：停在第 ${detail.stuckAt} 包，正第 ${detail.retries} 次重发…（此数字若长时间不动，基本是设备侧中断或链路问题）`
+            patch.uploadStatus = `传输卡顿：停在第 ${detail.stuckAt} 包，正第 ${detail.retries} 次重发…（此数字若长时间不动，基本是电子纸设备侧中断或链路问题）`
             patch.uploadStatusType = 'info'
           } else {
             patch.uploadStatus = `传输中：${done}/${total} 包`
@@ -1972,7 +1972,7 @@ Page({
       // mtu/chunkSize/totalPackets/window/configuredPace/finalPace/dataMs/ackWaitMs/
       // ackTimeouts/retryEvents/throughputKbps…）。同一张图两边各传一次，字段一对就知道慢在哪。
       console.log('[调试台图传]', summary.transferStats)
-      const okText = `图传完成 ✓ 设备现存 ${summary.imgCount} 张，剩余 ${summary.storageFree} 字节`
+      const okText = `图传完成 ✓ 电子纸设备现存 ${summary.imgCount} 张，剩余 ${summary.storageFree} 字节`
       this.appendLog({ type: 'ok', text: okText })
       this.setData({ uploadStatus: okText, uploadStatusType: 'ok' })
       // 传完顺手刷新屏幕显示这张，便于直接在屏上确认。
@@ -1994,7 +1994,7 @@ Page({
       const aborted =
         this._uploadAborted || (error && error.message === 'UPLOAD_ABORTED')
       let text = aborted
-        ? '图传已中断：上传时手机息屏/切到后台，蓝牙在后台会暂停、设备也会超时。请保持屏幕常亮后重新上传。'
+        ? '图传已中断：上传时手机息屏/切到后台，蓝牙在后台会暂停、电子纸设备也会超时。请保持屏幕常亮后重新上传。'
         : `图传失败：${error.message}`
       // 非息屏类失败：把图传前的连接间隔诊断结论拼上，直接告诉是「没生效」还是「吃不下速率」。
       if (!aborted && connDiag) {

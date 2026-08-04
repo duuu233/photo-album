@@ -161,7 +161,7 @@
             <text>一键清空</text>
           </view>
           <view class="row-right">
-            <text>清空设备及设备照片记录</text>
+            <text>空电子纸设备及小程序/APP内的照片</text>
             <view class="ui-chevron">
             </view>
           </view>
@@ -181,7 +181,7 @@
             <text>解除绑定</text>
           </view>
           <view class="row-right">
-            <text>保留设备上的照片</text>
+            <text>解除绑定电子纸设备，保留照片</text>
             <view class="ui-chevron">
             </view>
           </view>
@@ -213,7 +213,7 @@
         </view>
         <view class="confirm-copy">
           <view class="confirm-title">解除绑定</view>
-          <view class="confirm-desc">解除绑定后，设备上的照片将保留，您可以稍后重新绑定设备。</view>
+          <view class="confirm-desc">解除绑定后，电子纸设备上的照片将保留，您可以稍后重新绑定电子纸设备。</view>
         </view>
         <view class="confirm-actions">
           <view
@@ -246,7 +246,7 @@
         </view>
         <view class="confirm-copy">
           <view class="confirm-title">删除设备</view>
-          <view class="confirm-desc">如果您不再使用设备，建议执行一键清空设备照片，防止隐私泄露</view>
+          <view class="confirm-desc">删除设备将执行一键清空电子纸设备及小程序/APP内的照片，防止隐私泄露。是否确认删除设备？</view>
         </view>
         <view class="confirm-actions">
           <view class="confirm-cancel" hover-class="none" bindtap="hidePermanentDeleteConfirm">取消</view>
@@ -267,7 +267,7 @@
         </view>
         <view class="confirm-copy">
           <view class="confirm-title">确认删除设备</view>
-          <view class="confirm-desc">我已知晓删除设备相关内容，确认删除</view>
+          <view class="confirm-desc">我已知晓删除电子纸设备相关内容，确认删除</view>
         </view>
         <view class="confirm-actions">
           <view class="confirm-cancel" hover-class="none" bindtap="hidePermanentDeleteConfirm2">取消</view>
@@ -291,7 +291,7 @@
         </view>
         <view class="confirm-copy">
           <view class="confirm-title">一键清空</view>
-          <view class="confirm-desc">将清空彩色墨水屏设备内所有照片，同时清空小程序/APP的图库，请谨慎选择是否继续。</view>
+          <view class="confirm-desc">将清空电子纸设备内所有照片，同时清空小程序/APP的图库，请谨慎选择是否继续。</view>
         </view>
         <view class="confirm-actions">
           <view
@@ -419,8 +419,8 @@
         class="status-art"
         src="/assets/images/empty_device_art.png"
         mode="aspectFit" />
-      <view class="status-title">{{loadError ? '加载失败' : '设备不存在'}}</view>
-      <view class="status-desc">{{loadError ? '网络异常或服务出错，请稍后重试' : '该设备可能已被删除或解绑'}}</view>
+      <view class="status-title">{{loadError ? '加载失败' : '电子纸设备不存在'}}</view>
+      <view class="status-desc">{{loadError ? '网络异常或服务出错，请稍后重试' : '该电子纸设备可能已被删除或解绑'}}</view>
       <view
         wx:if="{{loadError}}"
         class="status-retry"

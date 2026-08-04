@@ -30,7 +30,7 @@ const FIRMWARE_RELEASE = {
   releaseNotes: [
     '优化照片写入稳定性',
     '提升蓝牙 OTA 传输容错能力',
-    '修复部分设备重连后版本号刷新异常'
+    '修复部分电子纸设备重连后版本号刷新异常'
   ]
 }
 
@@ -120,7 +120,7 @@ const RECORD_SEED = [
     imageCount: 1,
     status: 'fail',
     createdAt: '2026-05-19 12:20',
-    message: '设备已离线'
+    message: '电子纸设备已离线'
   },
   {
     id: 'r_006',
@@ -310,7 +310,7 @@ function realDeviceFields(scan) {
   const intervalSeconds = Number(scan.intervalSeconds) || 0
   const productDeviceId = deviceIdUtil.requireComplete(
     scan.productDeviceId || scan.deviceNo || scan.hardwareDeviceId,
-    '设备-模拟绑定失败：未读取到完整的6字节设备ID'
+    '电子纸设备-模拟绑定失败：未读取到完整的6字节电子纸设备ID'
   )
   return {
     name: scan.name || scan.screen || '智能相框',
@@ -364,7 +364,7 @@ function renameDevice(deviceId, data) {
   const device = getDeviceById(store, deviceId)
 
   if (!device) {
-    return fail('设备不存在', 404)
+    return fail('电子纸设备不存在', 404)
   }
 
   device.name = data.name
@@ -387,7 +387,7 @@ function updateDevicePlayback(deviceId, data) {
   const device = getDeviceById(store, deviceId)
 
   if (!device) {
-    return fail('设备不存在', 404)
+    return fail('电子纸设备不存在', 404)
   }
 
   Object.assign(device, data)
@@ -400,7 +400,7 @@ function formatDevice(deviceId) {
   const device = getDeviceById(store, deviceId)
 
   if (!device) {
-    return fail('设备不存在', 404)
+    return fail('电子纸设备不存在', 404)
   }
 
   device.usedMemory = 0
@@ -416,7 +416,7 @@ function clearDevicePhotoCopies(deviceId) {
   const device = getDeviceById(store, deviceId)
 
   if (!device) {
-    return fail('设备不存在', 404)
+    return fail('电子纸设备不存在', 404)
   }
 
   device.usedMemory = 0
@@ -436,7 +436,7 @@ function getDeviceFirmware(deviceId) {
   const device = getDeviceById(store, deviceId)
 
   if (!device) {
-    return fail('设备不存在', 404)
+    return fail('电子纸设备不存在', 404)
   }
 
   const release = store.firmwareRelease || FIRMWARE_RELEASE
@@ -473,7 +473,7 @@ function reportDeviceFirmwareUpgrade(deviceId, data) {
   const device = getDeviceById(store, deviceId)
 
   if (!device) {
-    return fail('设备不存在', 404)
+    return fail('电子纸设备不存在', 404)
   }
 
   const release = store.firmwareRelease || FIRMWARE_RELEASE
@@ -501,7 +501,7 @@ function deleteDevice(deviceId) {
   const existed = getDeviceById(store, deviceId)
 
   if (!existed) {
-    return fail('设备不存在', 404)
+    return fail('电子纸设备不存在', 404)
   }
 
   store.devices = store.devices.filter(item => item.id !== deviceId)
@@ -532,7 +532,7 @@ function uploadProjection(data) {
   const device = getDeviceById(store, data.deviceId)
 
   if (!device) {
-    return fail('设备不存在', 404)
+    return fail('电子纸设备不存在', 404)
   }
 
   // 设备离线：写一条失败记录后返回错误（便于用户在记录页看到失败原因）
@@ -544,17 +544,17 @@ function uploadProjection(data) {
       imageCount: data.images.length,
       status: 'fail',
       createdAt: nowText(),
-      message: '设备未连接'
+      message: '电子纸设备未连接'
     })
     writeStore(store)
-    return fail('设备未连接')
+    return fail('电子纸设备未连接')
   }
 
   // 估算本次上传总大小，超过设备剩余容量则拒绝
   const estimatedSize = data.images.reduce((sum, image) => sum + Number(image.sizeMb || image.size || 2.5), 0)
 
   if (device.usedMemory + estimatedSize > device.totalMemory) {
-    return fail('设备内存不足，请先清理相框照片')
+    return fail('电子纸设备内存不足，请先清理相框照片')
   }
 
   const photos = data.images.map((image, index) => normalizeImage(image, index, device))

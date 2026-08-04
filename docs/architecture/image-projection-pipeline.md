@@ -1,7 +1,7 @@
 # 图片投屏流水线
 
 > 状态：current  
-> 最后核对：2026-08-03  
+> 最后核对：2026-08-04
 > 适用范围：微信小程序投屏、再次投屏、AI 图片投屏  
 > 当前实现：`subpackages/projection/preview/preview.js`、`subpackages/projection/result/result.js`、`utils/dithering.js`、`utils/device-ble.js`
 
@@ -46,7 +46,7 @@
 失败页「重新投屏」额外一条不变量（2026-08-03）：**跳回预览页前必须把图还原成原图**
 （`result.js restorePendingOriginals`，口径同预览页「原图」按钮），构图由
 `pendingProjection.editStates` 恢复。原因是投屏时预览页已把成品图写回 `tempFilePath`，
-拿它当编辑底图会造成竖向二次裁剪、横向二次旋转（设备上错位）。
+拿它当编辑底图会造成竖向二次裁剪/二次 `180°` 旋转、横向二次设备角旋转（设备上错位）。
 
 每重投一次就多一条 `deviceUploadState=0` 的记录：接口没有「复用 `upirId` 重传」入口，
 连续重试会在记录页失败页累积同一张图，待与后端确认口径。
@@ -54,6 +54,7 @@
 ## 关键约束
 
 - 发送前必须按[设备身份与 BLE 会话](device-identity-and-connection.md)确认目标物理设备。
+- 竖向构图必须固定顺时针旋转 `180°` 后导出，且不受目标设备 `rotationDegree` 影响；编辑与未编辑出图路径必须保持一致。
 - 设备按固定行宽解析帧。横向构图仍必须导出到设备竖向物理画布，不能仅因总像素数相同就直接发送对调宽高的数据。
 - 横向构图的顺时针旋转角读取目标设备 `rotationDegree`，历史设备或旧缓存缺少该字段时默认使用 `270°`；手机预览反向旋转必须与该值同源。
 - seekink `type` 必须和目标设备尺寸一致；当前颜色参数为 `BWRYGB`，抖动模式为 `2`。

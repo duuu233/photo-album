@@ -66,8 +66,8 @@ const OTA_RESULT_TEXT = {
   0x01: '校验/芯片信息错误',
   0x02: 'ACK 超时',
   0x03: '主机主动终止',
-  0x04: '设备主动终止',
-  0x05: '设备状态错误',
+  0x04: '电子纸设备主动终止',
+  0x05: '电子纸设备状态错误',
   0x06: '不支持的 opcode',
   0x07: '资源不足',
   0x08: '固件大小超限',
@@ -81,7 +81,7 @@ const OTA_RESULT_TEXT = {
 
 function otaResultText(code) {
   const text = OTA_RESULT_TEXT[code]
-  return text || `设备返回错误码 0x${(code & 0xff).toString(16).padStart(2, '0')}`
+  return text || `电子纸设备返回错误码 0x${(code & 0xff).toString(16).padStart(2, '0')}`
 }
 
 // 每台设备一个 OTA 会话；与 device-ble 的 FF00 会话互不影响（各自过滤 deviceId/特征）。
@@ -290,7 +290,7 @@ function ensureGlobalListener() {
   if (wx.onBLEConnectionStateChange) {
     wx.onBLEConnectionStateChange(res => {
       if (!res.connected) {
-        cleanupSession(res.deviceId, '设备连接已断开')
+        cleanupSession(res.deviceId, '电子纸设备连接已断开')
       }
     })
   }
@@ -539,7 +539,7 @@ async function ensureOtaConnection(deviceId) {
 async function buildOtaSession(deviceId) {
   const { service } = await discoverOtaService(deviceId)
   if (!service) {
-    throw new Error('未发现设备 OTA 服务(FF10)')
+    throw new Error('未发现电子纸设备 OTA 服务(FF10)')
   }
 
   const found = await discoverOtaChars(deviceId, service.uuid)
@@ -927,14 +927,14 @@ async function transferData(session, bytes, options) {
     percent: 15,
     sent: 0,
     total: payloadLen,
-    message: '发送 128 字节头信息，等待设备校验头部'
+    message: '发送 128 字节头信息，等待电子纸设备校验头部'
   })
   const headerAck = await sendFrameAwaitAck(
     session,
     buildDataFrame(header),
     OP.DATA,
     5000,
-    '头信息握手超时：设备未应答 128 字节头信息校验（请确认升级包与设备面板/型号匹配）'
+    '头信息握手超时：电子纸设备未应答 128 字节头信息校验（请确认升级包与电子纸设备面板/型号匹配）'
   )
   if (headerAck.result !== 0x00) {
     // 0x0A~0x0E 明确指向「包不对/头版本/面板/CRC16/版本号」——直接把设备语义透传给用户。
@@ -978,13 +978,13 @@ async function transferData(session, bytes, options) {
     } catch (error) {
       if (error.message === 'OTA_ACK_TIMEOUT') {
         throw new Error(
-          `OTA 传输中断：已发送 ${batchEnd}/${totalPackets} 包后，设备未在 1.5s 内应答（疑似丢包），请重试整个升级`
+          `OTA 传输中断：已发送 ${batchEnd}/${totalPackets} 包后，电子纸设备未在 1.5s 内应答（疑似丢包），请重试整个升级`
         )
       }
       throw error
     }
     if (ack.result !== 0x00) {
-      throw new Error('设备接收数据报错：' + otaResultText(ack.result))
+      throw new Error('电子纸设备接收数据报错：' + otaResultText(ack.result))
     }
 
     seq = batchEnd
@@ -999,7 +999,7 @@ async function transferData(session, bytes, options) {
   }
 
   // ── 步骤 5：END 结束包，设备整包校验 total_bytes==bin_size 且 CRC32(payload)==bin_crc32 ──
-  emit(onProgress, { phase: 'verifying', percent: 98, sent: payloadLen, total: payloadLen, message: '数据已发完，发送结束包(0xF3)，等待设备整包校验' })
+  emit(onProgress, { phase: 'verifying', percent: 98, sent: payloadLen, total: payloadLen, message: '数据已发完，发送结束包(0xF3)，等待电子纸设备整包校验' })
   // 校验窗口需覆盖「设备最后一批落盘 + CRC32 计算」，给足时长（默认 15s，可由 finalTimeout 覆盖）。
   const finalTimeout = Number.isFinite(options.finalTimeout) ? options.finalTimeout : 15000
   let final
@@ -1009,23 +1009,23 @@ async function transferData(session, bytes, options) {
       buildEndFrame(),
       OP.END,
       finalTimeout,
-      `OTA 校验超时：结束包已发送，但 ${Math.round(finalTimeout / 1000)}s 内未收到设备整包校验结果(0xF3 应答)，请重试`
+      `OTA 校验超时：结束包已发送，但 ${Math.round(finalTimeout / 1000)}s 内未收到电子纸设备整包校验结果(0xF3 应答)，请重试`
     )
   } catch (error) {
     if (shouldAbort()) {
       throw new Error('OTA_ABORTED')
     }
     if (!session.ready || /断开/.test((error && error.message) || '')) {
-      throw new Error('OTA 传输中断：结束包已发送，但设备在返回整包校验结果前断开，升级未完成，请重试。')
+      throw new Error('OTA 传输中断：结束包已发送，但电子纸设备在返回整包校验结果前断开，升级未完成，请重试。')
     }
     throw error
   }
 
   if (final.result !== 0x00) {
-    throw new Error('设备整包校验失败：' + otaResultText(final.result))
+    throw new Error('电子纸设备整包校验失败：' + otaResultText(final.result))
   }
 
-  emit(onProgress, { phase: 'done', percent: 100, sent: payloadLen, total: payloadLen, message: '升级完成，设备校验通过，约 100ms 后复位运行新固件' })
+  emit(onProgress, { phase: 'done', percent: 100, sent: payloadLen, total: payloadLen, message: '升级完成，电子纸设备校验通过，约 100ms 后复位运行新固件' })
   return { totalPackets, mtu: session.mtu, chunkSize, payloadSize: payloadLen, confirmed: true }
 }
 
@@ -1216,10 +1216,10 @@ function prefixDeviceError(error) {
   const e =
     error instanceof Error ? error : new Error((error && error.message) || 'OTA 升级失败')
   const msg = e.message || 'OTA 升级失败'
-  if (/^接口-|^设备-/.test(msg) || /^[A-Z][A-Z0-9_]*$/.test(msg)) {
+  if (/^(?:接口-|设备-|电子纸设备-)/.test(msg) || /^[A-Z][A-Z0-9_]*$/.test(msg)) {
     return e
   }
-  e.message = '设备-' + msg
+  e.message = '电子纸设备-' + msg
   return e
 }
 

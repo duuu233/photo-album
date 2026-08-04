@@ -2,11 +2,16 @@
   class="mine-root"
   style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;"
 >
-  <view class="mock-bg">
+  <view class="mine-bg" aria-hidden="true">
     <image
-      class="mock-bg__image"
-      src="https://oss.boltfox.cn/prodFile/202607310920402821453.png"
+      class="mine-bg-placeholder"
+      src="/assets/images/home-bg-placeholder.jpg"
       mode="aspectFill" />
+    <image
+      class="mine-bg-image {{bgReady ? 'is-ready' : ''}}"
+      src="https://oss.boltfox.cn/prodFile/202607310920402821453.png"
+      mode="aspectFill"
+      bindload="onMineBgLoaded" />
   </view>
   <page-nav title="我的" show-back="{{false}}">
   </page-nav>

@@ -133,7 +133,7 @@ Page({
       } else {
         toast.warn({
           // 搜索/连接超时统一走中文可操作文案，不把 "operate time out" 这类英文原文抛给用户
-          title: activeDevice.friendlyConnectMessage(error.message || '设备搜索失败'),
+          title: activeDevice.friendlyConnectMessage(error.message || '电子纸设备搜索失败'),
           icon: 'none'
         })
       }
@@ -247,8 +247,8 @@ Page({
     return String(value == null ? '' : value).replace(/[:\-\s]/g, '').toUpperCase()
   },
 
-  // 列表里展示给用户看的「设备ID」：取广播厂商数据里的 4 字节 Device_ID，归一化成 8 位十六进制
-  //（如 1A2B3C4D）。与 Flutter 端 bind_device_flow._displayDeviceCode 同规则，两端展示同一个值。
+  // 列表里展示给用户看的「设备ID」：取广播厂商数据里的 4 字节 Device_ID，
+  // 统一展示为带冒号的 4 字节十六进制（如 1A:2B:3C:4D），与「我的设备」格式一致。
   //
   // 为什么扫描阶段就要展示：默认设备名 = 产品广播名（EF6-370/EF6-589），同型号设备必然重名，
   // 绑定前这是用户唯一能把两台区分开的标识。以前这里写死「设备ID 绑定后读取」，理由是
@@ -264,7 +264,8 @@ Page({
     if (!raw) {
       return ''
     }
-    return raw.length > 8 ? raw.slice(-8) : raw
+    const shortId = raw.length > 8 ? raw.slice(-8) : raw
+    return deviceIdUtil.formatBytes(shortId)
   },
 
   // 查当前用户是否已绑定这台设备（按硬件 Device_ID 匹配），命中则返回那条已绑定记录。
@@ -339,7 +340,7 @@ Page({
     }
     if (!this.data.selectedId) {
       toast.warn({
-        title: '请选择要绑定的设备',
+        title: '请选择要绑定的电子纸设备',
         icon: 'none'
       })
       return
@@ -375,13 +376,13 @@ Page({
     let bleConnected = false
     // 真实蓝牙设备：连接并读取设备信息；连接失败则中止绑定（不再有模拟兜底）
     if (scanDevice.realBluetooth && scanDevice.deviceId) {
-      wx.showLoading({ title: '连接设备中', mask: true })
+      wx.showLoading({ title: '连接电子纸设备中', mask: true })
       try {
         info = await deviceBle.readDeviceInfo(scanDevice.deviceId)
         // readDeviceInfo 成功不等于身份字段一定有效；未拿到完整 6 字节 ID 时禁止继续绑定。
         info.deviceId = deviceIdUtil.requireComplete(
           info && info.deviceId,
-          '设备-未读取到完整的6字节设备ID，请重新连接后再试'
+          '电子纸设备-未读取到完整的6字节电子纸设备ID，请重新连接后再试'
         )
         bleConnected = true // ensureConnection 已建立可复用会话，绑定成功后将沿用它
         try {
@@ -402,7 +403,7 @@ Page({
         toast.warn({
           // 绑定时的连接超时同样要中文可操作（2026-08-01）：微信原文
           //「createBLEConnection:fail connect time out」用户看不懂，统一成「连接超时，稍后再试」
-          title: activeDevice.friendlyConnectMessage(error.message || '设备连接失败'),
+          title: activeDevice.friendlyConnectMessage(error.message || '电子纸设备连接失败'),
           icon: 'none'
         })
         this.setData({ binding: false })
@@ -414,7 +415,7 @@ Page({
 
     // 绑定判重/落库阶段（最多两次 getDevices，弱网可达数秒）也给连续 loading：
     // 此前「连接设备中」消失后这段是零反馈，页面像卡住，用户会以为没点上
-    wx.showLoading({ title: '绑定设备中', mask: true })
+    wx.showLoading({ title: '绑定电子纸设备中', mask: true })
 
     // 避免同一台设备被重复绑定（设备页会因此出现多条同款记录）：用刚连上读到的硬件 Device_ID
     // 去已绑定列表里找，命中就复用那条、不再新建，并沿用刚建立的连接（绑定成功 = 已连接）。
@@ -430,7 +431,7 @@ Page({
       })
       wx.hideLoading()
       app.setSelectedDevice(reused)
-      // 设备已绑定并已为你连接：不再弹提示，直接返回上一页复用这条连接；仅失败时提示。
+      // 电子纸设备已绑定并已为您连接：不再弹提示，直接返回上一页复用这条连接；仅失败时提示。
       // 保持 binding=true 直到返回上一页，避免窗口内被重复点击触发二次操作
       setTimeout(() => wx.navigateBack(), 500)
       return
@@ -504,7 +505,7 @@ Page({
     const checked = deviceName.validateDeviceName(e.detail.value)
     if (!device || !device.id || !checked.ok) {
       toast.warn({
-        title: checked.message || '设备信息异常，请稍后在设备页修改',
+        title: checked.message || '电子纸设备信息异常，请稍后在电子纸设备页修改',
         icon: 'none'
       })
       return

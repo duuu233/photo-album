@@ -22,7 +22,7 @@
       <view class="progress-tips glass-panel">
         <view class="progress-tip-item">
           <text class="progress-tip-index">1</text>
-          <text class="progress-tip-text">投屏过程请保持手机亮屏，不要远离设备</text>
+          <text class="progress-tip-text">投屏过程请保持手机亮屏，不要远离电子纸设备</text>
         </view>
         <view class="progress-tip-item">
           <text class="progress-tip-index">2</text>
@@ -34,7 +34,7 @@
         </view>
         <view class="progress-tip-item">
           <text class="progress-tip-index">4</text>
-          <text class="progress-tip-text">投屏完成后设备会自动刷新，刷新期间设备繁忙无法投屏，请等待刷新结束</text>
+          <text class="progress-tip-text">投屏完成后电子纸设备会自动刷新，刷新期间电子纸设备繁忙无法投屏，请等待刷新结束</text>
         </view>
       </view>
     </block>
@@ -67,7 +67,7 @@
     <view wx:if="{{status === 'fail'}}" class="fail-tips glass-panel">
       <view class="progress-tip-item">
         <text class="progress-tip-index">1</text>
-        <text class="progress-tip-text">请确认设备蓝牙正常连接中，手机蓝牙正常使用</text>
+        <text class="progress-tip-text">请确认电子纸设备蓝牙正常连接中，手机蓝牙正常使用</text>
       </view>
       <view class="progress-tip-item">
         <text class="progress-tip-index">2</text>

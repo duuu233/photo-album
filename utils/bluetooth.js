@@ -191,8 +191,8 @@ function showEmptyResultGuide() {
     return false
   }
   wx.showModal({
-    title: '没有搜索到设备',
-    content: `请确认相框已开机并贴近手机。鸿蒙系统如反复搜不到，可在：\n${systemSettingsPath()}\n把「附近设备」关闭再打开，并彻底退出微信后重试。`,
+    title: '没有搜索到电子纸设备',
+    content: `请确认电子纸设备已开机并贴近手机。鸿蒙系统如反复搜不到，可在：\n${systemSettingsPath()}\n把「附近设备」关闭再打开，并彻底退出微信后重试。`,
     confirmText: '我知道了',
     showCancel: false
   })
@@ -511,7 +511,7 @@ function connectDevice(deviceId) {
         resolve(true)
       },
       fail(error) {
-        reject(new Error(error.errMsg || '设备连接失败'))
+        reject(new Error(error.errMsg || '电子纸设备连接失败'))
       }
     })
   })
