@@ -1,8 +1,8 @@
-<!-- 首页根容器：通过 CSS 变量把状态栏高度/底部安全区/窗口高度/导航高度传给样式，适配各机型。
-     --win-h / --nav-h 是折叠屏适配的关键（2026-08-04）：内容按 rpx 等比放大后在折叠屏展开态
-     必然超出一屏，根容器锁死为一屏高，超出的部分交给下面的 .home-scroll 滚动。
-     windowHeight 为 0（接口异常）时整条 var 回落 100vh，行为与改动前一致。 -->
-<view class="home-root" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px; {{windowHeight ? '--win-h: ' + windowHeight + 'px;' : ''}} --nav-h: {{navHeight}}px;">
+<!-- 首页根容器：通过 CSS 变量把状态栏高度/底部安全区/导航高度传给样式，适配各机型。
+     折叠屏适配（2026-08-04）：内容按 rpx 等比放大后在展开态必然超出一屏，根容器锁死为一屏高
+     （wxss 里用 100vh，不用 JS 测的窗口高度——原因见 home.wxss .home-root 的注释），
+     超出的部分交给下面的 .home-scroll 滚动。 -->
+<view class="home-root" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px; --nav-h: {{navHeight}}px;">
   <!-- 背景：本地占位图(3K，OSS 背景的强压缩版)立即渲染打底，OSS 大图加载完淡入盖上——
        首屏不再被远程图门控（此前弱网下用户要白等最多 6s），bgReady 只驱动淡入不再挡内容 -->
   <view class="home-bg" aria-hidden="true">

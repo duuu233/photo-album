@@ -1,8 +1,8 @@
-<!-- 根容器同首页折叠屏适配（2026-08-04）：--win-h 为实测窗口高度（取不到回落 100vh），
+<!-- 根容器同首页折叠屏适配（2026-08-04）：一屏高由 wxss 的 100vh 决定（不用 JS 测的窗口高度），
      导航栏之下整块交给 .mine-scroll 滚动，折叠屏展开/分屏时「我的相册」等入口不会被挤出屏外。 -->
 <view
   class="mine-root"
-  style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px; {{windowHeight ? '--win-h: ' + windowHeight + 'px;' : ''}}"
+  style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;"
 >
   <view class="mine-bg" aria-hidden="true">
     <image

@@ -1,12 +1,19 @@
-/* 根容器锁死为「一屏」：高度取实测窗口高度 --win-h（页面下发，见 home.js setSystemMetrics），
-   取不到时才回落 100vh。折叠屏展开态下 100vh 与真实窗口可能不一致，且窗口高度会随折叠/分屏变化，
-   必须用实测值，配合 onResize 重算。
-   纵向排布 = 导航栏(自然高度) + .home-scroll(占满剩余)，超出部分由滚动容器消化。 */
+/* 根容器锁死为「一屏」，高度**只用 CSS 的 100vh**，不用 JS 测出来的像素值。
+   纵向排布 = 导航栏(自然高度) + .home-scroll(占满剩余)，超出部分由滚动容器消化。
+
+   ⚠️ 2026-08-04 修正：这里曾用页面下发的 `--win-h`（`wx.getWindowInfo().windowHeight`），
+   在折叠屏上引出两个 bug，都是「JS 快照 ≠ webview 真实视口」造成的：
+     ① 背景填不满 —— 首页是 tabBar 页，`windowHeight` 按配置扣掉了原生 tabBar 的高度，
+        而本页 `wx.hideTabBar()` 之后视口其实是整屏，于是底部露出一条没有背景的缝；
+     ② 展开状态冷启动滑不动 —— 那一刻取到的窗口高度偏大，滚动区比真实视口还高，
+        内容装得下就不产生滚动，下半屏却在屏幕外（折一次再展开会触发 onResize 重测，所以「合上就好了」）。
+   `100vh` 由 webview 自己解析，折叠/展开/分屏/三折叠时窗口一变就重新布局，
+   永远与真实视口一致，也不存在冷启动快照过期的问题。 */
 .home-root {
   position: relative;
   display: flex;
   flex-direction: column;
-  height: var(--win-h, 100vh);
+  height: 100vh;
   overflow: hidden;
   overflow-x: hidden;
   color: #2a2d32;
@@ -24,8 +31,12 @@
   min-height: 0;
 }
 
+/* 背景层用 fixed 铺满**视口**，不跟随根容器的计算高度。
+   与图库/投屏管理等页的 app.wxss `.mock-bg` 同一套做法（那几页一直是 fixed，从没出现过露底）。
+   这样即便根容器高度因为某些机型/隐藏 tabBar 与视口差了几十 px，背景也不会在底部露出一条缝；
+   页面内容滚动时背景保持不动，观感与改动前一致。 */
 .home-bg {
-  position: absolute;
+  position: fixed;
   top: 0;
   right: 0;
   bottom: 0;
@@ -70,14 +81,15 @@
   pointer-events: none;
 }
 
-/* 两种场景的内容块：至少铺满滚动区可视高度（窗口高 − 实测导航高），装不下时自然向下生长并可滚动。
-   --nav-h 由 page-nav 的 measure 事件回抛（见 home.js onNavMeasure），与导航栏实际占位一致；
+/* 两种场景的内容块：至少铺满滚动区可视高度（视口高 − 实测导航高），装不下时自然向下生长并可滚动。
+   --nav-h 由 page-nav 的 measure 事件回抛（见 home.js onNavMeasure），是**已渲染节点的实测高度**，
+   与导航栏实际占位一致，不属于上面说的「窗口快照」那类问题；
    旧写法 `100vh - var(--status-bar) - 88rpx` 里的 88rpx 会随屏宽放大，折叠屏上误差可达几十 px。 */
 .home-content,
 .binding-content {
   position: relative;
   z-index: 1;
-  min-height: calc(var(--win-h, 100vh) - var(--nav-h, 64px));
+  min-height: calc(100vh - var(--nav-h, 64px));
 }
 
 .home-content {

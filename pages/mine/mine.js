@@ -23,8 +23,6 @@ Page({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
-    // 折叠屏/分屏适配（2026-08-04）：实测窗口高度，滚动区据此定高（见 mine.wxss .mine-root）
-    windowHeight: 0,
     avatarUrl: '',
     nickName: '微信用户',
     userId: '--',
@@ -58,20 +56,19 @@ Page({
       const safeBottom = Math.max(0, (info.screenHeight || 0) - (info.safeArea ? info.safeArea.bottom : info.windowHeight || 0))
       this.setData({
         statusBarHeight: info.statusBarHeight || 20,
-        safeBottom,
-        // 窗口高度取实测值而非 100vh：折叠屏折叠/展开、分屏后 vh 可能是旧值，页面会被撑出可视区
-        windowHeight: info.windowHeight || 0
+        safeBottom
+        // ⚠️ 页面高度不在这里存：交给 wxss 的 100vh（见 mine.wxss .mine-root 注释）
       })
     } catch (error) {
       this.setData({
         statusBarHeight: 20,
-        safeBottom: 0,
-        windowHeight: 0 // 取不到时 wxss 回落 100vh
+        safeBottom: 0
       })
     }
   },
 
-  // 折叠屏展开/折叠、旋转、分屏都会触发：重新测量窗口，滚动区随之重算
+  // 折叠屏展开/折叠、旋转、分屏、三折叠切形态都会触发：
+  // 页面高度由 100vh 自动跟随，这里只重测状态栏高度与底部安全区（内外屏刘海/Home Indicator 不同）
   onResize() {
     this.setSystemMetrics()
   },

@@ -1,11 +1,12 @@
-/* 根容器锁一屏高（--win-h 为实测窗口高度，取不到回落 100vh），纵向排布：
-   导航栏(自然高度) + .mine-scroll(占满剩余并滚动)。折叠屏展开后内容按 rpx 放大会超出一屏，
-   靠滚动容器消化，不再被裁掉下半屏。 */
+/* 根容器锁一屏高，纵向排布：导航栏(自然高度) + .mine-scroll(占满剩余并滚动)。
+   折叠屏展开后内容按 rpx 放大会超出一屏，靠滚动容器消化，不再被裁掉下半屏。
+   高度**只用 100vh**，不用 JS 测的窗口高度——原因见 home.wxss `.home-root` 的注释
+   （tabBar 页的 windowHeight 会扣掉已隐藏的原生 tabBar，且冷启动快照在折叠屏上可能失真）。 */
 .mine-root {
   position: relative;
   display: flex;
   flex-direction: column;
-  height: var(--win-h, 100vh);
+  height: 100vh;
   overflow: hidden;
   color: #2a2d32;
 }
@@ -24,8 +25,10 @@
   padding: 0 48rpx calc(170rpx + var(--safe-bottom));
 }
 
+/* 背景层用 fixed 铺满**视口**，不跟随根容器的计算高度（同首页 .home-bg、图库页 .mock-bg）：
+   根容器高度万一与视口差几十 px 也不会在底部露出一条没有背景的缝。 */
 .mine-bg {
-  position: absolute;
+  position: fixed;
   top: 0;
   right: 0;
   bottom: 0;

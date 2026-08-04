@@ -221,10 +221,9 @@ Page({
     scene: SCENES.UNBOUND,
     statusBarHeight: 20,
     safeBottom: 0,
-    // 折叠屏/分屏适配（2026-08-04）：可视窗口高度与导航栏高度都按真实测量值下发成 CSS 变量，
-    // 页面布局不再直接依赖 100vh。折叠屏展开后 rpx 随屏宽变大（内容按 750rpx 等比放大），
-    // 窗口却更矮更方，内容必然超出一屏；--win-h 决定滚动容器的高度，超出部分由 .home-scroll 滚动。
-    windowHeight: 0,
+    // 导航栏实测高度（page-nav 的 measure 事件回抛）：内容块据此算「视口高 − 导航高」。
+    // ⚠️ 页面高度本身不在这里存——用 wxss 的 100vh，别再引入 windowHeight 快照
+    //（折叠屏上会与真实视口对不上，见 home.wxss .home-root 注释）。
     navHeight: 64,
     navTitle: getNavigationTitle(SCENES.UNBOUND),
     avatarUrl: DEFAULT_AVATAR,
@@ -390,22 +389,22 @@ Page({
 
       this.setData({
         statusBarHeight: info.statusBarHeight || 20,
-        safeBottom: bottomInset,
-        // 取真实窗口高度而不是 100vh：折叠屏展开/折叠、分屏、悬浮窗下窗口高度会变，
-        // 且部分机型 100vh 拿到的是整屏而非当前窗口，页面会被撑出可视区且滑不动。
-        windowHeight: info.windowHeight || 0
+        safeBottom: bottomInset
+        // ⚠️ 这里**不要**再存 windowHeight 当页面高度用：页面高度交给 wxss 的 100vh，
+        //    由 webview 自己解析，才不会与真实视口对不上（见 home.wxss .home-root 注释）。
+        //    状态栏高度与底部安全区是另一回事——它们只能靠接口读，且折叠前后会变，所以留在这里。
       })
     } catch (error) {
       this.setData({
         statusBarHeight: 20,
-        safeBottom: 0,
-        windowHeight: 0 // 取不到窗口高度时 wxss 回落 100vh（见 .home-root）
+        safeBottom: 0
       })
     }
   },
 
   // 自定义导航栏把实测高度回抛上来（page-nav attached 时 triggerEvent('measure')）：
-  // 滚动区高度 = 窗口高度 − 导航栏高度，必须用同一份测量值，否则折叠屏上会差出一截。
+  // 内容块的最小高度 = 视口高(100vh) − 这个导航高度。
+  // 它量的是**已渲染节点**，不是窗口快照，折叠屏上不会失真。
   onNavMeasure(e) {
     const navHeight = (e && e.detail && e.detail.navHeight) || 0
     if (navHeight && navHeight !== this.data.navHeight) {
@@ -413,8 +412,9 @@ Page({
     }
   },
 
-  // 折叠屏展开/折叠、屏幕旋转、分屏都会触发 onResize：重新测量窗口，滚动区随之重算。
-  // 不能只在 onLoad 量一次——折叠状态是运行中变化的。
+  // 折叠屏展开/折叠、屏幕旋转、分屏、三折叠切形态都会触发 onResize。
+  // 页面高度本身由 100vh 自动跟随，这里只需重测**状态栏高度与底部安全区**——
+  // 内外屏的刘海/挖孔/Home Indicator 不同，这两个值折叠前后确实会变。
   onResize() {
     this.setSystemMetrics()
   },
