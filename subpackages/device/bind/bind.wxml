@@ -44,8 +44,9 @@
           <view class="nearby-copy">
             <text class="nearby-name">{{item.name}}</text>
             <text class="nearby-sub">{{item.screen ? item.screen + ' · ' : ''}}{{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.signalText || '--'}}</text>
-            <!-- 设备ID：广播里的 4 字节 Device_ID（8 位十六进制），扫描阶段就能显示，
-                 用来区分同型号同名设备（见 bind.js displayDeviceCode）。
+            <!-- 设备ID：广播里的 Device_ID，扫描阶段就能显示，用来区分同型号同名设备
+                 （见 bind.js displayDeviceCode）。新固件播完整 6 字节、与设备详情页一致；
+                 老固件只有 4 字节，包里就这么多，不做截断也不补齐。
                  判重/身份匹配仍只认连上后 0x01 读到的完整 6 字节 ID，与这里的展示无关。 -->
             <text wx:if="{{item.deviceCode}}" class="nearby-sub">设备ID {{item.deviceCode}}</text>
           </view>

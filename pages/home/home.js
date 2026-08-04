@@ -157,6 +157,9 @@ function normalizeDevice(device) {
     // 横向构图写入竖向物理画布时的顺时针旋转角。必须随首页选中设备透传到预览页；
     // 字段缺失时由预览页按历史行为回退 270°。
     rotationDegree: device.rotationDegree,
+    // 竖向构图的顺时针旋转角（2026-08-04 新增后端字段）。同样必须透传到预览页；
+    // 字段缺失时预览页按「不旋转(0°)」处理。⚠️ 0 是合法值，这里只能原样透传，不能补默认值。
+    verticalRotation: device.verticalRotation,
     // 先沿用最近一次有效电量；15 秒窗口外由 loadHomeState 收尾后台刷新，
     // 不在刷新前清空，避免「-- → 真值」闪烁。
     battery: batteryUtil.normalizeBattery(device.battery),

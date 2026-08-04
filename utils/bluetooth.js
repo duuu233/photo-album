@@ -391,10 +391,14 @@ function normalizeDevice(device) {
     name,
     // 设备编号优先用广播里的 Device_ID，兜底用蓝牙 deviceId
     deviceNo: ad.deviceId || device.deviceId,
-    // 广播厂商数据里的 4 字节 Device_ID（形如 AA:BB:CC:DD），解析不到为空串。
+    // 广播厂商数据里的 Device_ID：老固件 4 字节（AA:BB:CC:DD）、
+    // **2026-08-04 起新固件为完整 6 字节**（AA:BB:CC:DD:EE:FF），解析不到为空串。
     // 与 deviceNo 的区别：deviceNo 会兜底成微信 BLE 句柄，不能用来判断「到底有没有拿到广播 ID」；
     // 展示层要区分「真有广播ID」和「只有句柄」，故单独留一个不兜底的字段（见 bind.js displayDeviceCode）。
     broadcastDeviceId: ad.deviceId || '',
+    // 上面那个广播 ID 是否已是完整 6 字节（新固件）。⚠️ 仅供展示判断，
+    // 身份判定一律仍走连上后 0x01 的完整 ID，不因广播长度够了就放宽。
+    broadcastDeviceIdComplete: !!ad.deviceIdComplete,
     model: ad.model || '',
     screen: ad.screen || '',
     screenType: ad.screenType || 0,

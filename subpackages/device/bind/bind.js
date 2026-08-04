@@ -247,25 +247,31 @@ Page({
     return String(value == null ? '' : value).replace(/[:\-\s]/g, '').toUpperCase()
   },
 
-  // 列表里展示给用户看的「设备ID」：取广播厂商数据里的 4 字节 Device_ID，
-  // 统一展示为带冒号的 4 字节十六进制（如 1A:2B:3C:4D），与「我的设备」格式一致。
+  // 列表里展示给用户看的「设备ID」：取广播厂商数据里的 Device_ID，带冒号展示，
+  // 与「我的设备」「设备详情」同一套格式。
+  //
+  // 长度随固件走，**不再做任何截断**（2026-08-04）：
+  //   · 新固件广播 6 字节 → 显示 AA:BB:CC:DD:EE:FF，与设备详情页完全一致；
+  //   · 老固件广播 4 字节 → 显示 AA:BB:CC:DD（包里就只有这些，两个平台都一样）。
+  // 原来无脑 `slice(-8)` 砍成 4 字节，新固件上会把完整 ID 白白截掉一半 —— 那正是用户
+  // 反馈的「和详情页不一致、看着像被裁剪」。
   //
   // 为什么扫描阶段就要展示：默认设备名 = 产品广播名（EF6-370/EF6-589），同型号设备必然重名，
-  // 绑定前这是用户唯一能把两台区分开的标识。以前这里写死「设备ID 绑定后读取」，理由是
-  // 「广播只有 4 字节、完整 6 字节要连上读 0x01」——那条规则约束的是**身份判定**
-  //（判重/交叉匹配一律只认 0x01 的完整 ID，见 findBoundDevice / active-device），
-  // 不该顺带把**展示**也一起禁掉：展示只需要能区分眼前这几台，4 字节足够。
+  // 绑定前这是用户唯一能把两台区分开的标识。展示放宽不等于身份放宽——判重、认领会话、
+  // 绑定入库一律仍只认连上后 0x01 读到的完整 ID（见 findBoundDevice / active-device）：
+  // 广播是明文、可被伪造重放，0x01 才是从设备真身上读的。
   //
-  // 兜底：广播厂商数据解析不出来时退回微信 BLE deviceId（安卓是 MAC、iOS 是 UUID，
-  // 又长又对用户无意义），同样只取末 8 位；两者都没有才返回空串（模板隐藏这一行）。
+  // 兜底（广播厂商数据没解出来时）：
+  //   · 安卓的 BLE deviceId 就是 MAC（12 hex）——设备方口径里它就是那个完整身份，整串显示；
+  //   · iOS 给的是与设备无关、换台手机就变的随机 UUID（32 hex），它根本不是设备ID，
+  //     以前截成 8 位显示只会让用户以为「设备ID 被裁了」，现在直接不显示（模板隐藏这一行）。
   displayDeviceCode(device) {
     const broadcast = this.deviceSerial(device && device.broadcastDeviceId)
-    const raw = broadcast || this.deviceSerial(device && device.deviceId)
-    if (!raw) {
-      return ''
+    if (broadcast) {
+      return deviceIdUtil.formatBytes(broadcast)
     }
-    const shortId = raw.length > 8 ? raw.slice(-8) : raw
-    return deviceIdUtil.formatBytes(shortId)
+    const handle = this.deviceSerial(device && device.deviceId)
+    return /^[0-9A-F]{12}$/.test(handle) ? deviceIdUtil.formatBytes(handle) : ''
   },
 
   // 查当前用户是否已绑定这台设备（按硬件 Device_ID 匹配），命中则返回那条已绑定记录。

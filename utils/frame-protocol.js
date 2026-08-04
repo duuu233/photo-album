@@ -457,14 +457,29 @@ function parseImgEndResult(data) {
   }
 }
 
-// 解析广播包里的厂商自定义数据（6.10.7）：Company_ID(2=0xFFFF) + Screen_Type(1) + Device_ID(4) + Battery(1)。
+// 广播厂商数据里 Device_ID 的两种长度（6.10.7）。
+//
+// 老固件 4 字节（MAC 中的 4 个字节）；**2026-08-04 起新固件改播完整 6 字节 MAC**，
+// 使扫描阶段就能拿到与 0x01 GET_INFO 一致的完整设备 ID —— 这条路对 iOS 同样成立
+//（iOS 系统不给外设 MAC，但厂商广播数据两端都拿得到）。
+const AD_DEVICE_ID_LEN_V2 = 6
+const AD_DEVICE_ID_LEN_V1 = 4
+
+// 解析广播包里的厂商自定义数据（6.10.7）：
+//   Company_ID(2=0xFFFF) + Screen_Type(1) + Device_ID(4 或 6) + Battery(1)
 // 微信的 advertisData 是否含 2 字节 Company_ID 各平台略有差异，这里两种偏移都试，命中合法值即采用。
+//
+// ⚠️ 新旧固件必须同时支持（灰度期两种设备并存）：靠「Company_ID 之后的剩余长度」区分，
+//    这是唯一可靠的判据 —— 老包恒为 6 字节(1+4+1)、新包恒为 8 字节(1+6+1)。
+//    长度够 8 时**只按新版解**，绝不回退老版：回退会把 Device_ID 的第 5 个字节当成电量，
+//    校验碰巧通过时就会**静默显示错误的设备 ID 和错误的电量**（无报错，极难排查）。
 function parseAdvertising(advertisData) {
   const b = toBytes(advertisData)
 
-  const attempt = offset => {
+  const attempt = (offset, idLength) => {
     const screenType = b[offset]
-    const battery = b[offset + 5]
+    // 电量紧跟在 Device_ID 之后，位置随 ID 长度浮动
+    const battery = b[offset + 1 + idLength]
     if (!SCREEN_TYPES[screenType] || battery === undefined || battery > 100) {
       return null
     }
@@ -473,19 +488,34 @@ function parseAdvertising(advertisData) {
       screenType,
       screen: screen.label,
       model: screen.model,
-      deviceId: bytesToId(b, offset + 1, 4),
+      deviceId: bytesToId(b, offset + 1, idLength),
+      // 这段广播 ID 是否已是完整 6 字节。展示层据此决定是否整串显示；
+      // ⚠️ 身份判定（判重/认领会话/绑定入库）仍只认连上后 0x01 读到的值，广播明文可伪造，
+      //    不因为长度够了就放宽 —— 见 docs/architecture/device-identity-and-connection.md。
+      deviceIdComplete: idLength === AD_DEVICE_ID_LEN_V2,
       battery
     }
   }
 
+  const attemptAt = offset => {
+    const rest = b.length - offset
+    if (rest >= AD_DEVICE_ID_LEN_V2 + 2) {
+      return attempt(offset, AD_DEVICE_ID_LEN_V2) // 新固件：屏型1 + ID6 + 电量1
+    }
+    if (rest >= AD_DEVICE_ID_LEN_V1 + 2) {
+      return attempt(offset, AD_DEVICE_ID_LEN_V1) // 老固件：屏型1 + ID4 + 电量1
+    }
+    return null
+  }
+
   // 含 Company_ID：前两字节为 0xFF 0xFF，则从第 2 字节起为 Screen_Type
   if (b[0] === 0xff && b[1] === 0xff) {
-    const withId = attempt(2)
+    const withId = attemptAt(2)
     if (withId) {
       return withId
     }
   }
-  return attempt(0)
+  return attemptAt(0)
 }
 
 module.exports = {
@@ -502,6 +532,8 @@ module.exports = {
   OTA_CHAR_CONTROL_UUID,
   OTA_CHAR_DATA_UUID,
   SCREEN_TYPES,
+  AD_DEVICE_ID_LEN_V1,
+  AD_DEVICE_ID_LEN_V2,
   playModeToString,
   playModeToByte,
   crc16Modbus,
