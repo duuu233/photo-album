@@ -10,8 +10,10 @@ const fold = require('../../../utils/fold-adapt')
 const DEFAULT_DEVICE_SIZE = { width: 480, height: 720 }
 
 // 预览舞台（.preview-stage）的可用区域，单位 rpx：宽 = 屏宽 750 - 左右各 46 边距；
-// 高度与 Flutter 的 Expanded + LayoutBuilder 对齐：680rpx 只是短屏下限，长屏会占满页面剩余空间。
+// 高度与 Flutter 的 Expanded + LayoutBuilder 对齐：舞台占满页面除固定块外的剩余高度。
 // fallback / 烘焙预览必须使用 _measureStage 实测后的高度，不能再把 680rpx 当成固定上限。
+// ⚠️ STAGE_MIN_H_RPX 只是**实测完成前**的临时换算基准，不是布局下限——wxss 里舞台已改成
+//    `flex: 1 1 0; min-height: 0`（剩多少给多少）。把它当下限会在折叠屏展开态把底部按钮顶出视口。
 const STAGE_W_RPX = 658
 const STAGE_MIN_H_RPX = 680
 
@@ -221,9 +223,15 @@ Page(fold.adapt({
   // 注：状态栏/安全区的重测由 utils/fold-adapt 的 adapt() 在这之前完成。
   onResize() {
     this._stageRect = null
-    if (this.data.imageCount) {
-      this.enterEdit()
+    if (!this.data.imageCount) {
+      return
     }
+    // 先把手上这张的实时构图快照进 _states：重进编辑态是按 src 从 _states 恢复的，
+    // 不存的话恢复到的是「上次切图时」的旧构图，用户刚拖好的位置会被吞掉。
+    this._saveEditState()
+    // 必须 remeasure：enterEdit 对「正在编辑同一张图」有一条直接返回的快路径，
+    // 不绕开它就只会把 editReady 置真，舞台一个字都不会重量，取景框仍停在折叠前的位置和尺寸。
+    this.enterEdit({ remeasure: true })
   },
 
   // 统一刷新图片相关状态：当前预览图与张数（设备空间是否够由结果页按真实容量/掩码判断）
@@ -597,7 +605,12 @@ Page(fold.adapt({
   // 之后单指平移 / 双指缩放+旋转 / 右上角按钮转90°，图片在框下自由变换，框不动，框内即最终成像。
   // 页面加载与「上一张/下一张」都会自动调用；同一张图已有编辑状态（_states）则原样恢复。
   // 失败（无图/量不到舞台/读图失败）不打扰用户：静默停在 fallback 普通预览，投屏走未编辑链路。
-  enterEdit() {
+  //
+  // options.remeasure：强制重走「量舞台 → 重算取景框」这条完整路径，即使当前正在编辑同一张图。
+  // 折叠/展开/旋转/分屏后（onResize）必须带上，否则会命中下面那条快路径，取景框继续按旧舞台算，
+  // 导出的构图与用户所见对不上。
+  enterEdit(options) {
+    const remeasure = !!(options && options.remeasure)
     return new Promise((resolve) => {
       const index = this.data.activeIndex
       const image = this.data.images[index]
@@ -608,7 +621,7 @@ Page(fold.adapt({
         return
       }
       // 已在编辑同一张图：直接复用当前变换，不重置（图片节点也不动，自然没有重新解码）
-      if (this.data.editing && this._edit && this._edit.src === src) {
+      if (!remeasure && this.data.editing && this._edit && this._edit.src === src) {
         this._markEditReady()
         resolve(true)
         return

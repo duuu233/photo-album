@@ -1,7 +1,30 @@
+/* 页面根容器：一屏高的纵向 flex（导航 + 计数 + 舞台 + 圆点 + 分段 + 提示 + 按钮）。
+   ⚠️ 必须是**确定高度**（`height`，不是 `min-height`）。本页 disableScroll: true（见 preview.json），
+      装不下的部分既没有滚动容器接管、也滚不动，只能靠 flex 在一屏内部消化；
+      而写成 `min-height` 时根容器高度 = 内容高度，flex 永远算不出「负剩余空间」，
+      `flex-shrink` 一次都不会生效 —— 舞台一寸不让，分段控制器与「开始投屏」被顶到视口以外，
+      用户看到的就是「只剩一张照片、点哪儿都没反应，像被锁住了」。
+      折叠屏展开态必然触发：rpx = 屏宽/750，屏一宽舞台的 680rpx 就是 640px 上下，
+      窗口反而更矮更方，一定装不下（2026-08-05 的 `@media` 单改舞台没能生效，成因即此）。 */
 .preview-page {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* 舞台以外的各块一律不参与伸缩：只有舞台让高度，导航/计数/圆点/分段/提示/按钮
+   在任何窗口下都保持自然尺寸，不会被压扁、也不会被挤出视口。
+   （.preview-nav 是 page-nav 组件的**宿主节点**——wxml 上的 class 落在宿主上，这里的规则
+   也只作用于宿主，不越界改组件内部；组件内的 .page-nav 是实测出来的固定高度，
+   宿主一旦被压缩，导航栏就会盖到下面的计数条上。） */
+.preview-nav,
+.preview-counter,
+.carousel-dots,
+.segmented,
+.gesture-tip,
+.preview-submit {
+  flex: 0 0 auto;
 }
 
 .preview-counter {
@@ -24,38 +47,29 @@
   padding: 4rpx 30rpx;
 }
 
-/* 编辑舞台：对齐 Flutter 的 Expanded 布局，在 680rpx 短屏下限之上占满页面剩余空间。
-   JS 会实测最终高度供 fallback 与编辑层共用；上下留白仍保持 48rpx/24rpx。 */
+/* 编辑舞台：对齐 Flutter 的 Expanded 布局，占满页面除固定块外的全部剩余高度。
+   JS 会实测最终高度供 fallback 与编辑层共用；上下留白仍保持 48rpx/24rpx。
+
+   ⚠️ 基准必须是 0（`flex: 1 1 0`），不能是 auto、更不能是 680rpx：基准不为 0 时它会参与
+      「内容总高」，窗口一矮就产生负剩余空间，flex 会把导航栏等固定块一起按比例压扁
+      （与 styles/fold-adapt.wxss 里 `.fold-scroll` 那条约束同源）。
+   ⚠️ 也不要再写 `min-height: 680rpx`：rpx 随屏宽放大，折叠屏展开态它就超过整块可用高度，
+      舞台会拒绝收缩，把下面的分段控制器与「开始投屏」按钮顶出视口（本页禁滚，找不回来）。
+      短屏下限改由 flex 自己兜：剩多少给多少，宁可舞台小一点，也不能有块够不着。
+      JS 侧 `STAGE_MIN_H_RPX` 仍是 680，但那只是**实测完成前**的临时换算基准，不是布局下限。 */
 .preview-stage {
   position: relative;
   z-index: 1;
-  flex: 1 0 680rpx;
+  flex: 1 1 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 680rpx;
+  min-height: 0;
   margin: 48rpx 46rpx 24rpx;
   /* Banner 轨道的左右邻格就停在舞台外各一屏处，必须由舞台裁掉（2026-08-01）——
      否则静止时页面左右 46rpx 的留白里会露出邻图的一条边。裁剪只能加在舞台上，
      不能加在轨道上：轨道要靠自身平移把邻格送进可视区，自己裁自己就永远露不出来。 */
   overflow: hidden;
-}
-
-/* 折叠屏展开 / 分屏 / 横屏适配（2026-08-05，方案见 styles/fold-adapt.wxss）。
-   本页是「一屏装完」的手势编辑器：**不能**套滚动容器（滚动会和拖拽/双指缩放抢手势，
-   实测舞台矩形也会随滚动漂移），所以改成让舞台自己让高度。
-
-   为什么这类窗口下会超出一屏：rpx = 屏宽/750，屏一宽，`flex-basis: 680rpx` 与
-   `min-height: 680rpx` 跟着放大，而窗口反而更矮，舞台又 `flex-shrink: 0` 不肯压缩，
-   计数条/圆点/操作栏/开始投屏按钮就被顶到屏幕外，还没有滚动条能找回来。
-
-   门槛取宽高比 3:4：普通手机竖屏约 0.46 **不匹配**（样式一行都不变），
-   折叠屏展开态(≈0.9)、分屏、平板、横屏才命中，此时舞台按视口高度取下限并允许压缩。 */
-@media (min-aspect-ratio: 3/4) {
-  .preview-stage {
-    flex: 1 1 auto;
-    min-height: 40vh;
-  }
 }
 
 /* Banner 轨道（2026-08-01 自绘，替掉 swiper）：铺满舞台，横向平移带动三格一起走。
@@ -310,4 +324,48 @@
   top: 0;
   width: 10rpx;
   height: 10rpx;
+}
+
+/* ── 折叠屏展开 / 分屏 / 平板 / 横屏（2026-08-05 首版，当天真机回归后重写）──────────────
+   本页是「一屏装完」的手势编辑器：**不能**套滚动容器（滚动会和长按拖拽/双指缩放抢手势，
+   `_measureStage()` 实测的舞台矩形也会随滚动漂移），一屏之内只能靠 flex 分配高度。
+
+   「装得下、点得到」已经由文件开头两条保证（根容器 `height: 100vh` + 舞台 `flex: 1 1 0`），
+   与窗口形态无关，**不依赖本段媒体查询**——首版把这件事押在
+   `@media { .preview-stage { flex: 1 1 auto; min-height: 40vh } }` 上，
+   但根容器当时是 `min-height`（高度按内容撑开），flex 根本没有剩余空间可分，那条规则等于没写，
+   展开态下分段控制器与「开始投屏」照样被顶出视口，页面又禁滚 —— 就是「像被锁住」那个现象。
+
+   本段只剩观感一件事：把纵向留白收紧，把省下的高度让回舞台。
+   这类窗口特别需要：rpx = 屏宽/750，屏一宽，所有按 rpx 写的间距/按钮等比放大（展开态 48rpx ≈ 45px），
+   窗口却更矮更方，留白吃掉的比例格外夸张，不收紧的话舞台只剩三成屏高，构图施展不开。
+   门槛取宽高比 3:4：普通手机竖屏约 0.46 **不匹配**（样式一行都不变），
+   折叠屏展开态(≈0.9)、分屏、平板、横屏才命中。
+
+   ⚠️ 本段必须留在文件**最后**：媒体查询不提升优先级，同为单类选择器时后写的赢，
+      放到各基础规则前面等于白写（`.segmented` / `.segmented-item` / `.gesture-tip` /
+      `.preview-submit` 的基础规则都在上面）。 */
+@media (min-aspect-ratio: 3/4) {
+  .preview-stage {
+    margin: 16rpx 46rpx 12rpx;
+  }
+
+  .segmented {
+    margin-top: 16rpx;
+  }
+
+  .segmented-item {
+    gap: 8rpx;
+    padding: 12rpx 0;
+  }
+
+  .gesture-tip {
+    margin-top: 12rpx;
+  }
+
+  /* 只覆盖下外边距：上外边距仍是 auto（贴底），左右仍是 46rpx */
+  .preview-submit {
+    height: 96rpx;
+    margin-bottom: calc(24rpx + var(--safe-bottom));
+  }
 }

@@ -125,6 +125,23 @@ function firstFilterValueWithPhotos(filters, photos) {
   return hit ? String(hit.deviceId) : ''
 }
 
+// 默认选中偏好（优先级更高）：当下**连接中**的那台设备。
+// 用户在首页/设备列表/设备详情连过设备、BLE 会话还活着时，进「我的相册」就该直接落在那台上——
+// 本页的再次投屏/删除都要连设备，默认分类到已连接的那台，用户不必先在下拉里找一遍。
+// 与投屏管理页 records.js 的 `filters.find(item => item.connected)` 完全同口径
+//（2026-08-04 合并「设备照片」+「投屏管理」时只搬过来了设备照片页的默认规则，这条跟着丢了）。
+//
+// 连接态一律**现算**：设备接口不返回它，只能按当下真实 BLE 会话判定（deviceId 直连 +
+// 设备ID×广播ID 序列号交叉匹配，见 utils/active-device.findConnectedDeviceId）。
+// 单连接下最多只有一台命中；真出现多台就取设备接口顺序里第一台。
+function firstConnectedFilterValue(filters, devices) {
+  const hit = (devices || []).find(device => activeDevice.findConnectedDeviceId(device))
+  // 筛选项按 userProductId(兜底 id) 建，取值口径必须与 buildDeviceFiltersFromDevices 一致；
+  // 再限定「仍在筛选项里」——取不到设备ID 的设备根本不成项，默认值不能落到下拉里没有的设备上。
+  const value = hit ? String(hit.userProductId || hit.id || '') : ''
+  return value && filters.some(item => item.value === value) ? value : ''
+}
+
 // 由设备接口(getDevices)列表生成筛选项(按后端设备ID userProductId 去重)。图库为空但用户有设备时用它——
 // 导航栏设备下拉是设备展示载体，只要设备接口有数据就该显示设备并默认选中第一台。
 // value=userProductId(兜底 id)即后端查询参数本身(见 checkDeviceClearStatus)；label 仅作展示。
@@ -272,10 +289,7 @@ Page(fold.adapt({
     // (2026-07-30)已删「照片里带的设备ID、但设备列表里没有的(已解绑设备老照片)并入下拉」的兜底：
     // 这类照片不再单独成筛选项，也不会出现在任何设备的筛选结果里。
     const filters = this.buildLatestDeviceFilters(devices)
-    // 默认选中：保留原选中(仍在列表) → 否则优先第一台「有照片」的设备(避免默认打开空设备，维持原有观感) → 再否则第一台
-    const currentFilter = filters.some(item => item.value === this.data.currentFilter)
-      ? this.data.currentFilter
-      : (firstFilterValueWithPhotos(filters, photos) || (filters[0] ? filters[0].value : ''))
+    const currentFilter = this.pickDefaultFilter(filters, photos, devices)
 
     // 全量照片列表存实例字段（不参与渲染，模板只用 filteredPhotos），省 setData 序列化开销
     this.sourcePhotos = sourcePhotos
@@ -481,9 +495,7 @@ Page(fold.adapt({
     this.devices = devices
     const photos = this.photos || []
     const filters = this.buildLatestDeviceFilters(devices)
-    const currentFilter = filters.some(item => item.value === this.data.currentFilter)
-      ? this.data.currentFilter
-      : (firstFilterValueWithPhotos(filters, photos) || (filters[0] ? filters[0].value : ''))
+    const currentFilter = this.pickDefaultFilter(filters, photos, devices)
 
     this.setData({ filters, filterLoading: false })
     // 刷新后仍保持菜单展开；只有用户真正选项时才关闭。
@@ -498,6 +510,23 @@ Page(fold.adapt({
   // 完全以设备接口返回的设备为准（返回几台就几项），按后端设备ID去重后做同名消歧。
   buildLatestDeviceFilters(devices) {
     return disambiguateFilterLabels(buildDeviceFiltersFromDevices(devices))
+  },
+
+  // 默认选中哪台设备（loadPhotos 首屏与下拉刷新共用，两处必须同一套规则）：
+  //   ① 保留用户当前选中的那台（仍在列表里）——本页 onShow 每次都会重跑 loadPhotos，
+  //      不保留的话「点进照片再返回」就会把用户手动切过的设备冲掉；
+  //   ② 否则优先**连接中**的设备：外面（首页/设备列表/设备详情）连了哪台，进来就看哪台的照片；
+  //   ③ 否则第一台「有照片」的设备（避免默认打开空设备，维持原「设备照片」页的观感）；
+  //   ④ 再否则第一台。
+  pickDefaultFilter(filters, photos, devices) {
+    if (filters.some(item => item.value === this.data.currentFilter)) {
+      return this.data.currentFilter
+    }
+    return (
+      firstConnectedFilterValue(filters, devices) ||
+      firstFilterValueWithPhotos(filters, photos) ||
+      (filters[0] ? filters[0].value : '')
+    )
   },
 
   selectFilter(e) {

@@ -218,7 +218,10 @@
   - 云端图库列表作为槽位账本与原图来源，不直接渲染；
   - 使用 `imgIndex` 定位设备物理槽位；
   - 单选/多选再次投屏（多选走批量传输链路）、删除设备图片 + 相册记录 + 来源投屏记录；
-  - 「我的」页卡片上的张数 = 全部设备的投屏成功记录条数（`api.getProjectionSuccessCount`，2026-08-05）。
+  - 「我的」页卡片上的张数 = 全部设备的投屏成功记录条数（`api.getProjectionSuccessCount`，2026-08-05）；
+  - 默认选中的设备（`list.js pickDefaultFilter`，2026-08-05）：
+    保留当前选中 → **连接中的设备** → 第一台有照片的设备 → 第一台
+    （连接态按真实 BLE 会话现算 `activeDevice.findConnectedDeviceId`，与投屏管理页同口径）。
 - 关键文件：
   - `subpackages/album/list/list.js`
   - `pages/mine/mine.js`
@@ -453,8 +456,11 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
       （tabBar 页会扣掉已隐藏的原生 tabBar，展开态冷启动快照失真）；
     - `.fold-scroll` 必须 `flex: 1 1 0` + `min-height: 0`，写成 `auto` 会把导航栏一起压扁；
     - 固定底栏、弹层、toast 一律留在滚动区**外**；
-    - 手势编辑页（投屏预览）**不套滚动容器**，改用宽高比媒体查询让内容让高度，
-      并在 `onResize` 作废实测矩形缓存。
+    - 手势编辑页（投屏预览）**不套滚动容器**（滚动与拖拽/缩放抢手势、实测矩形会漂移），
+      改为根容器 `height: 100vh`（**必须是确定高度**，`min-height` 时 flex 没有剩余空间可分，
+      `flex-shrink` 永不生效）+ 舞台 `flex: 1 1 0; min-height: 0` 吃掉剩余高度，其余块 `flex: 0 0 auto`；
+      宽高比媒体查询只用来收紧留白（纯观感，正确性不依赖它）；
+      `onResize` 作废实测矩形缓存并**强制**重进编辑态（`enterEdit({ remeasure: true })`）。
 
 12. **「我的」页两张卡片的数字各有口径。**（2026-08-05）
     - 「我的相册」= 全部设备的**投屏成功记录条数**（`api.getProjectionSuccessCount`），与该页列表同口径；

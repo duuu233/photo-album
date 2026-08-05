@@ -8,7 +8,9 @@
       src="https://oss.boltfox.cn/prodFile/202607310920402821453.png"
       mode="aspectFill" />
   </view>
-  <page-nav title="照片预览">
+  <!-- class 落在组件宿主节点上（即本页纵向 flex 的第一个 flex 项），
+       由 preview.wxss 的 .preview-nav 关掉它的伸缩，窗口再矮导航栏也不会被压变形 -->
+  <page-nav class="preview-nav" title="照片预览">
   </page-nav>
   <view class="preview-counter" wx:if="{{imageCount}}">
     <view class="preview-imageCount">{{activeIndex + 1}}/{{imageCount}}</view>
