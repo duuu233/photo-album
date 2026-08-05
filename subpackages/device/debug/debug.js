@@ -16,6 +16,7 @@ const protocol = require('../../../utils/frame-protocol')
 const imageCodec = require('../../../utils/image-codec')
 const system = require('../../../utils/system')
 const api = require('../../../utils/api')
+const fold = require('../../../utils/fold-adapt')
 
 // 第三方（seekink 抖动出帧接口）鉴权 token 的返回归一化：与 dithering.js normalizeAuthToken 保持一致
 // （那份未导出，调试台单独复制一份）。接口返回形态未定——可能直接是 token 串，也可能包在
@@ -354,7 +355,9 @@ function fromImageDataWithDebugCalibration(
   return { data, width, height, dataSize: data.length }
 }
 
-Page({
+// 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
+// styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
+Page(fold.adapt({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -2016,4 +2019,4 @@ Page({
     }
     wx.switchTab({ url: '/pages/home/home' })
   }
-})
+}))

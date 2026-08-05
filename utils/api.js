@@ -8,6 +8,11 @@ const { md5 } = require('./md5')
 // 图库/再次投屏预览看着偏肉，放宽到 1MB 上下（2026-07-14）。见下方 setUserProductUpload 的字段说明。
 const UPLOAD_COMPRESS_SIZE_KB = 1024
 
+// 统计「投屏成功记录条数」时的翻页参数：单页 100 条与列表页同口径；
+// MAX_PAGES 是后端分页元数据异常（recordCount/pageCount 都不回）时的死循环保险丝。
+const RECORD_COUNT_PAGE_SIZE = 100
+const RECORD_COUNT_MAX_PAGES = 20
+
 function normalizeFilePaths(input) {
   const files = Array.isArray(input) ? input : [input]
 
@@ -949,6 +954,53 @@ module.exports = {
     return module.exports
       .getUserProductImgRecordList(query)
       .then(data => pageData(data).map(normalizeProjectionRecord))
+  },
+
+  // 「我的」页「我的相册」卡片上的数字：**全部设备**的投屏成功记录条数。
+  // 与该页列表同口径（deviceUploadState=1 + 端上按 status 兜底），只是不带 userProductId
+  // ——卡片统计的是全部设备的合计，不是当前选中的那台。
+  //
+  // 这里只要数字不要数据，所以尽量少打请求：
+  // · 后端认 deviceUploadState 时（回来的整页都是成功记录），直接用分页元数据 recordCount，
+  //   一次请求就拿到真实总数，超过一页也不会被截断；
+  // · 后端忽略它时 recordCount 是「成功+失败」的合计，不能当成功数用，只能逐页翻并按 status 数。
+  //   判停优先看 pageCount/recordCount，不能拿「回包条数 < 请求的 pageSize」当依据：
+  //   后端可能无视 pageSize 按自己的默认值分页（见 guide.js fetchAllFaq 踩过的同款坑）。
+  getProjectionSuccessCount() {
+    const readPage = (pageIndex, scanned, counted) =>
+      module.exports
+        .getUserProductImgRecordList({
+          pageIndex,
+          pageSize: RECORD_COUNT_PAGE_SIZE,
+          deviceUploadState: 1
+        })
+        .then(data => {
+          const rows = pageData(data)
+          // 成功判定收口到 normalizeProjectionRecord，与列表页同一套字段兼容规则
+          const success = rows.filter(
+            row => normalizeProjectionRecord(row).status === 'success'
+          )
+          const seen = scanned + rows.length
+          const total = counted + success.length
+          const recordCount = Number(data && data.recordCount) || 0
+          const pageCount = Number(data && data.pageCount) || 0
+
+          // 整页都是成功记录 → 后端确实按 deviceUploadState 过滤了，recordCount 即成功总数
+          if (recordCount && rows.length && success.length === rows.length) {
+            return recordCount
+          }
+
+          const done =
+            !rows.length ||
+            pageIndex >= RECORD_COUNT_MAX_PAGES ||
+            (pageCount && pageIndex >= pageCount) ||
+            (!pageCount && recordCount && seen >= recordCount) ||
+            (!pageCount && !recordCount && rows.length < RECORD_COUNT_PAGE_SIZE)
+
+          return done ? total : readPage(pageIndex + 1, seen, total)
+        })
+
+    return readPage(1, 0, 0)
   },
 
   deleteProjectionRecord(recordId) {

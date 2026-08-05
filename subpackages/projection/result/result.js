@@ -18,6 +18,7 @@ const protocol = require('../../../utils/frame-protocol')
 const toast = require('../../../utils/toast')
 const media = require('../../../utils/media')
 const activeDevice = require('../../../utils/active-device')
+const fold = require('../../../utils/fold-adapt')
 
 // 统一的上传前压缩质量（性能优化 2026-07-13；2026-07-16 改为直接缩到设备物理分辨率；
 // 2026-07-22 起抖动接口上传与原图建记录上传两路共用同一套 compressForUpload）。
@@ -108,7 +109,9 @@ function readPerformanceEnvironment() {
   })
 }
 
-Page({
+// 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
+// styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
+Page(fold.adapt({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -1108,4 +1111,4 @@ Page({
   },
 
   noop() {}
-})
+}))

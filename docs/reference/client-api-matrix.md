@@ -14,6 +14,13 @@
 > 🛠 **维护约定**：每次修改本表涉及的接口/字段，务必在下方「操作日志」补一条（日期 + 改了什么 + 关联文件/commit），**最新在上**——别让文档与代码脱节。
 
 ## 操作日志（最新在上）
+- **2026-08-05**：「我的」页「我的相册」卡片的张数改为**全部设备的投屏成功记录条数**，与该页列表同口径
+  （原来取用户信息的 `imgCount`，相册口径，把失败/已删的也算在内，和点进去看到的列表对不上）。
+  新增 `api.getProjectionSuccessCount()`：`getUserProductImgRecordList` 带 `deviceUploadState=1`、
+  **不带 `userProductId`**；整页都是成功记录时直接采信分页元数据 `recordCount`（一次请求，超一页也不截断），
+  后端忽略过滤参数时退回逐页翻 + 按状态计数（判停看 `pageCount`/`recordCount`，同 FAQ 的翻页口径，20 页封顶）。
+  `pages/mine/mine.js` 相应把 `getAlbumPhotos()` 换成它。回归用例 `tests/projection-success-count.test.js`。
+  详见 `docs/changes/2026-08-05-我的相册计数与全站折叠屏适配.md`。Flutter 同步已实现。
 - **2026-07-27**：修复收紧完整 6 字节 ID 后出现的**首页、设备列表、设备详情跨页连接态丢失**
   回归。根因是三个页面重新拉接口/裁剪展示对象时，可能只保留
   `deviceNo`、`productDeviceId`、`firmwareDeviceId` 中的一部分；活动 BLE 会话仍存在，却因页面
@@ -135,6 +142,7 @@
 | 个人信息 | 修改密码 | `POST /Client/User/changePassword` | ⛔ | - | 邮箱账号密码体系 |
 | 个人信息 | 用户注销 PC 版 | `POST /Client/User/userOffPC` | ⛔ | - | PC 版接口 |
 | 我的相册 | 相册列表/删除（支持多选） | `GET /Client/UserProduct/getUserProductImgRecordList`、`GET /Client/UserProduct/getUserProductImgList`、`POST /Client/UserProduct/delUserProductImg`、`POST /Client/UserProduct/delUserProductImgRecord` | ✅ | `getProjectionRecords`、`getAlbumPhotos`、`deleteAlbumPhotos`、`deleteProjectionRecords` | **2026-08-04 起**：列表数据源改为「投屏成功记录」(`deviceUploadState=1`，按 `userProductId` 分类)，相册列表只作为槽位账本与原图来源；删除 = 设备 `0x12` + 删相册记录 + 删来源投屏记录三步 |
+| 我的（首屏统计） | 「我的相册」卡片的张数 | `GET /Client/UserProduct/getUserProductImgRecordList` | ✅ | `getProjectionSuccessCount` | **2026-08-05 起**：全部设备的投屏成功记录条数（`deviceUploadState=1`、不带 `userProductId`），与「我的相册」列表同口径，不再用 `getUserInfo` 的 `imgCount`。整页均为成功记录时取分页元数据 `recordCount`（一次请求即真实总数）；后端忽略过滤参数时逐页翻并按状态计数，20 页封顶 |
 | 我的设备 | 设备连接流程 | ➖ | ✅ | - | 稳定设备身份一律为 `0x01` 返回的完整 6 字节 ID；广播 4 字节短 ID + 尺寸仅用于筛选候选。连接后必须用完整 ID 严格确认，校验通过后才认领会话并写直连缓存。身份不一致时断开、排除错误候选并重扫，同时清理被污染的缓存。设备自定义名称不作为物理身份依据（2026-07-27） |
 | 我的设备 | 设备列表（设备图、名称、设备 ID） | `GET /Client/UserProduct/getUserProductList` | ✅ | `getUserProductList` | 接口 `deviceId` 非空且为完整 6 字节时展示，空值不显示；页面字段为 `productDeviceId`，避免与微信 BLE 临时句柄混淆 |
 | 我的设备 | 设备详情 | `GET /Client/UserProduct/getUserProductDetail` | ✅ | `getUserProductDetail` | 出参含投屏导出旋转角：`rotationDegree`(横向构图，缺失回退 `270°`) 与 **`verticalRotation`(竖向构图，2026-08-04 新增，缺失即 `0°`=不旋转)**。两者各管一个取景方向、互不兜底；`0` 是合法值。列表接口同样透传（`normalizeDevice` 全量展开），首页展示模型需手动透传这两个字段 |

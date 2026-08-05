@@ -7,6 +7,7 @@ const activeDevice = require('../../../utils/active-device')
 const deviceIdUtil = require('../../../utils/device-id')
 const deviceName = require('../../../utils/device-name')
 const system = require('../../../utils/system')
+const fold = require('../../../utils/fold-adapt')
 
 const app = getApp()
 const RECENTLY_BOUND_DEVICE_KEY = 'recentlyBoundDeviceId'
@@ -19,7 +20,9 @@ const RECENTLY_BOUND_DEVICE_KEY = 'recentlyBoundDeviceId'
 // 旧交互下列表要等窗口跑满才整批出现，单方面拉长窗口只会让人干等，这也是这次必须两件事一起改的原因。
 const SCAN_TIMEOUT_MS = 20000
 
-Page({
+// 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
+// styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
+Page(fold.adapt({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -550,4 +553,4 @@ Page({
       wx.navigateBack()
     }, 500)
   }
-})
+}))

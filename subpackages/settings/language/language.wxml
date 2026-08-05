@@ -1,8 +1,12 @@
-<view class="settings-shell" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+<!-- 折叠屏适配（2026-08-05，方案见 styles/fold-adapt.wxss）：根容器锁一屏高，
+     导航栏与 toast 留在滚动区外，中间内容交给 .fold-scroll 滚动。 -->
+<view class="settings-shell fold-viewport" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <page-nav title="语种设置"></page-nav>
    <view class="mock-bg">
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" mode="aspectFill"></image>
   </view>
+  <scroll-view class="fold-scroll" scroll-y="{{true}}">
+   <view class="fold-scroll-body settings-scroll-body">
   <view class="glass-card language-card">
     <view wx:for="{{languages}}" wx:key="value" class="language-row" hover-class="none" data-value="{{item.value}}" bindtap="selectLanguage">
       <text>{{item.label}}</text>
@@ -11,6 +15,10 @@
     </view>
   </view> 
 
+   </view>
+  </scroll-view>
+
+  <!-- 贴底按钮留在滚动区外：定位父级仍是根容器（一屏高），位置与改动前逐像素一致 -->
   <view class="primary-btn save-language" hover-class="none" bindtap="saveLanguage">保存设置</view>
 
   <global-toast id="globalToast"></global-toast>

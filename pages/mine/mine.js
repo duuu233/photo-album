@@ -73,7 +73,7 @@ Page({
     this.setSystemMetrics()
   },
 
-  // 并行拉取用户信息、相册照片、设备列表，组装“我的”页头部展示数据
+  // 并行拉取用户信息、设备列表、投屏成功记录数，组装“我的”页头部与两张功能卡的展示数据
   async loadUserInfo() {
     // 游客模式：未登录展示默认头部，不强制跳登录（登录留到具体操作时再触发）
     const token = app.globalData.token || wx.getStorageSync('token')
@@ -92,10 +92,10 @@ Page({
     }
 
     try {
-      const [userInfo, photos, devices] = await Promise.all([
+      const [userInfo, devices, castSuccessCount] = await Promise.all([
         api.getUserProfile(),
-        api.getAlbumPhotos(),
-        api.getDevices()
+        api.getDevices(),
+        api.getProjectionSuccessCount()
       ])
       const displayUserId = userInfo.id || userInfo.userNo || '--'
       const displayName = displayNickname(userInfo.nickName) || '微信用户'
@@ -104,7 +104,10 @@ Page({
         avatarUrl: userInfo.avatarUrl || '',
         nickName: displayName,
         userId: displayUserId,
-        photoCount: Number(userInfo.imgCount) || photos.length,
+        // 2026-08-05：「我的相册」卡片的张数改成**全部设备的投屏成功记录条数**，与点进去
+        // 看到的列表同一个口径。不再用用户信息里的 imgCount（相册口径：投屏失败的、已从设备
+        // 删掉的都算在内），那个数和列表对不上。
+        photoCount: castSuccessCount,
         deviceCount: Number(userInfo.productCount) || devices.length
       })
     } catch (error) {

@@ -1,6 +1,10 @@
-<view class="settings-shell update-shell" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+<!-- 折叠屏适配（2026-08-05，方案见 styles/fold-adapt.wxss）：根容器锁一屏高，
+     导航栏与 toast 留在滚动区外，中间内容交给 .fold-scroll 滚动。 -->
+<view class="settings-shell update-shell fold-viewport" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <page-nav title="更新BoltStar"></page-nav>
 
+  <scroll-view class="fold-scroll" scroll-y="{{true}}">
+   <view class="fold-scroll-body settings-scroll-body">
   <view class="logo-wrap">
     <image class="logo-img" src="/assets/images/logo.png" mode="aspectFit"></image>
     <view wx:if="{{state === 'updating'}}" class="version-text">正在更新...</view>
@@ -19,6 +23,10 @@
 
   <view wx:else class="about-text">BoltStar是一款帮助您轻松管理和分享照片的应用，连接电子纸设备，珍藏生活每一刻。</view>
 
+   </view>
+  </scroll-view>
+
+  <!-- 贴底按钮留在滚动区外：定位父级仍是根容器（一屏高），位置与改动前逐像素一致 -->
   <button wx:if="{{state === 'available'}}" class="primary-btn update-btn" hover-class="none" bindtap="startUpdate">立即更新</button>
   <button class="delete-account" hover-class="none">用户注销</button>
 

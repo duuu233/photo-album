@@ -1,9 +1,12 @@
-<view class="mock-root bind-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+<!-- 折叠屏适配（2026-08-05）：--nav-h 是 page-nav 回抛的实测导航高度（含状态栏），
+     .bind-content 用它算「导航以下的剩余高度」，比写死 88rpx 准（rpx 会随屏宽放大）。
+     bind:measure 由 utils/fold-adapt 注入的 onNavMeasure 接住，页面 JS 不必再写。 -->
+<view class="mock-root bind-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px; --nav-h: {{navHeight}}px;">
   <view class="mock-bg">
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" mode="aspectFill"></image>
   </view>
 
-  <page-nav title="绑定设备"></page-nav>
+  <page-nav title="绑定设备" bind:measure="onNavMeasure"></page-nav>
 
   <view class="bind-content {{showHelp ? 'content-dimmed' : ''}}">
     <!-- 调试台入口：开发对接/硬件联调用，需要屏蔽时注释掉本段即可（不要删除） -->

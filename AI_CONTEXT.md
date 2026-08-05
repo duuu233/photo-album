@@ -125,7 +125,8 @@
 | `subpackages/ai/` | 星宝聊天和会话管理 |
 | `subpackages/settings/` | 设置、资料、语言、指南、更新、协议与隐私页面 |
 | `components/` | 品牌按钮、TabBar、表单、页面导航和全局 Toast |
-| `utils/` | API、网络、BLE、协议、身份、图片、缓存、权限、语言和平台适配 |
+| `utils/` | API、网络、BLE、协议、身份、图片、缓存、权限、语言和平台适配（含折叠屏适配 `fold-adapt.js`） |
+| `styles/` | 跨页公共样式方案，目前只有折叠屏/分屏适配 `fold-adapt.wxss`（由 `app.wxss` 统一 `@import`） |
 | `assets/` | 图片和 AI 错误文案 JSON 等静态资源 |
 | `tests/` | Node 单元测试，目前集中于设备身份和电量 |
 | `docs/` | 当前架构、协议、决策、接口参考、变更记录和历史归档 |
@@ -216,14 +217,17 @@
   - 按电子纸设备分类展示**投屏成功记录**（列表数据源，只取成功）；
   - 云端图库列表作为槽位账本与原图来源，不直接渲染；
   - 使用 `imgIndex` 定位设备物理槽位；
-  - 单选/多选再次投屏（多选走批量传输链路）、删除设备图片 + 相册记录 + 来源投屏记录。
+  - 单选/多选再次投屏（多选走批量传输链路）、删除设备图片 + 相册记录 + 来源投屏记录；
+  - 「我的」页卡片上的张数 = 全部设备的投屏成功记录条数（`api.getProjectionSuccessCount`，2026-08-05）。
 - 关键文件：
   - `subpackages/album/list/list.js`
+  - `pages/mine/mine.js`
   - `utils/api.js`
   - `utils/upload-limit.js`
   - `utils/frame-protocol.js`
   - `docs/decisions/image-slot-index.md`
   - `docs/changes/2026-08-04-折叠屏滚动适配与我的相册合并.md`
+  - `docs/changes/2026-08-05-我的相册计数与全站折叠屏适配.md`
 
 ### OTA / DFU
 
@@ -441,7 +445,23 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
     - 缓存缺失、换账号、退出、注销或登录态失效后必须重新同意；
     - 同意校验必须早于会话创建、草稿清空、图片上传和 AI 请求。
 
-11. **CodeGraph 和 Markdown 分工。**
+11. **折叠屏/分屏适配走公共方案，不各页自创。**（2026-08-05）
+    - 样式在 `styles/fold-adapt.wxss`（已由 `app.wxss` 统一 `@import`），JS 在 `utils/fold-adapt.js`；
+    - 两种模式：`disableScroll: true` 的页用「一屏高根容器 `.fold-viewport` + `.fold-scroll` 容器滚动」，
+      `disableScroll: false` 的页只要根容器别写死高度；
+    - 页面高度**只用 CSS 的 `100vh`**，绝不用 `wx.getWindowInfo().windowHeight`
+      （tabBar 页会扣掉已隐藏的原生 tabBar，展开态冷启动快照失真）；
+    - `.fold-scroll` 必须 `flex: 1 1 0` + `min-height: 0`，写成 `auto` 会把导航栏一起压扁；
+    - 固定底栏、弹层、toast 一律留在滚动区**外**；
+    - 手势编辑页（投屏预览）**不套滚动容器**，改用宽高比媒体查询让内容让高度，
+      并在 `onResize` 作废实测矩形缓存。
+
+12. **「我的」页两张卡片的数字各有口径。**（2026-08-05）
+    - 「我的相册」= 全部设备的**投屏成功记录条数**（`api.getProjectionSuccessCount`），与该页列表同口径；
+    - 「我的设备」= `getUserInfo` 的 `productCount`，缺失才回退设备列表长度；
+    - 用户信息里的 `imgCount` 仍解析但不再用于展示（相册口径，含失败/已删，与列表对不上）。
+
+13. **CodeGraph 和 Markdown 分工。**
     - CodeGraph 是当前符号、依赖、调用链和影响范围的来源；
     - Markdown 保存设计原因、协议契约、历史、风险和跨端约束；
     - 不能用归档 Markdown 覆盖当前代码事实，也不能用 CodeGraph 取代决策历史。

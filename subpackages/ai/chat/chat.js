@@ -28,6 +28,7 @@ const toast = require('../../../utils/toast')
 const activeDevice = require('../../../utils/active-device')
 const language = require('../../../utils/language')
 const aiServiceConsent = require('../../../utils/ai-service-consent')
+const fold = require('../../../utils/fold-adapt')
 
 // 微信「同声传译」插件（WechatSI）：录音直接转文字，小程序里做语音输入的官方方案。
 // ⚠️ 光在 app.json 声明还不够，必须先在**小程序后台**「设置 → 第三方设置 → 插件管理」
@@ -287,7 +288,9 @@ function nextMessageTimeMeta(messages, value) {
   }
 }
 
-Page({
+// 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
+// styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
+Page(fold.adapt({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -1899,4 +1902,4 @@ Page({
     const distance = (detail.scrollHeight || 0) - (detail.scrollTop || 0) - this._chatViewH
     this._stick = distance <= SCROLL_STICK_PX
   }
-})
+}))

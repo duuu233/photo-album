@@ -1,3 +1,8 @@
+/* 折叠屏/分屏通用适配类（.fold-viewport / .fold-scroll / .fold-page …）。
+   单独成文件、只提供叠加类，页面不加类就完全不受影响；在这里 @import 一次，
+   全站（含分包页面）即可直接用，不必每个页面各写一遍 @import。 */
+@import "styles/fold-adapt.wxss";
+
 page {
   min-height: 100vh;
   color: #232323;

@@ -1,6 +1,7 @@
 const api = require('../../../utils/api')
 const language = require('../../../utils/language')
 const richHtml = require('../../../utils/rich-html')
+const fold = require('../../../utils/fold-adapt')
 
 // 单页条数：后端 pageSize 上限未知（默认才 10），取 50 并配合翻页兜住全量。
 const PAGE_SIZE = 50
@@ -23,7 +24,9 @@ function faqToGuide(item, index) {
   }
 }
 
-Page({
+// 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
+// styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
+Page(fold.adapt({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -202,4 +205,4 @@ Page({
   goBack() {
     wx.navigateBack()
   }
-})
+}))

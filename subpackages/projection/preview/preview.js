@@ -3,6 +3,7 @@ const toast = require('../../../utils/toast')
 const activeDevice = require('../../../utils/active-device')
 const dithering = require('../../../utils/dithering')
 const deviceRotation = require('../../../utils/device-rotation')
+const fold = require('../../../utils/fold-adapt')
 
 // 设备屏幕分辨率（width×height）：列表/详情接口都会返回，取景框据此锁定宽高比（如 500x500 → 1:1）。
 // 接口暂未返回该字段，这里先给默认值便于联调测试（如需 1:1 改成 { width: 500, height: 500 }）。
@@ -93,7 +94,9 @@ function isPristineEdit(state) {
   )
 }
 
-Page({
+// 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
+// styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
+Page(fold.adapt({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -209,6 +212,18 @@ Page({
     // 常驻编辑：首屏渲染完（舞台可测量）立即对当前图开启编辑态。
     // 放 onReady 是因为 enterEdit 要 boundingClientRect 量舞台，onLoad 时节点尚未渲染量不到。
     this.enterEdit()
+  },
+
+  // 折叠屏展开/折叠、旋转、分屏（2026-08-05）：舞台尺寸变了，`_stageRect` 这份
+  // 「布局固定、只量一次」的缓存立刻失效——取景框、图片摆放、导出裁剪全按它算，
+  // 不作废就会按旧尺寸裁图（框还停在原位置，导出的构图和用户所见对不上）。
+  // 清缓存后按当前图重新进编辑态（与切图同一条路径；编辑状态按 src 存，会被原样恢复）。
+  // 注：状态栏/安全区的重测由 utils/fold-adapt 的 adapt() 在这之前完成。
+  onResize() {
+    this._stageRect = null
+    if (this.data.imageCount) {
+      this.enterEdit()
+    }
   },
 
   // 统一刷新图片相关状态：当前预览图与张数（设备空间是否够由结果页按真实容量/掩码判断）
@@ -1451,4 +1466,4 @@ Page({
       url: '/pages/home/home'
     })
   }
-})
+}))
