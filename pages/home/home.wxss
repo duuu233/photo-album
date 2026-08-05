@@ -100,8 +100,15 @@
 
 /* 绑定流程的底部按钮/帮助链接是 position:absolute 贴容器底的：容器改用 min-height 后，
    装得下时仍贴在可视区底部（观感不变），装不下时跟着容器一起下移、随页面滚出来。
-   ⚠️ 不能写死 height——折叠屏上雷达图(500rpx)+文案就可能超过一屏，写死高度按钮会被压在屏外。 */
+   ⚠️ 不能写死 height——折叠屏上雷达图(500rpx)+文案就可能超过一屏，写死高度按钮会被压在屏外。
+
+   ⚠️ `display: flow-root` 不可删（2026-08-06）：本块是普通块级又没有 padding-top，
+   首个子元素 `.radar-wrap` 的 `margin-top: 56rpx` 会穿透出去变成本块自己的上外边距，
+   把这个 `min-height` = 一屏的块整体下推 56rpx —— 内容明明装得下，`.home-scroll` 却多出
+   56rpx 可滚动区域（所有机型都有，与折叠无关）。同 `styles/fold-adapt.wxss` 的
+   `.fold-scroll-body`，那里有完整推导。兄弟块 `.home-content` 是 flex 容器，天然没这个问题。 */
 .binding-content {
+  display: flow-root;
   height: auto;
   /* 给贴底的「立即绑定/取消扫描/重新扫描」按钮 + 「扫描不到怎么办」链接预留位置：
      48rpx 底距 + 112rpx 按钮 + 24rpx 间距 + 链接一行。附近设备较多时，列表末尾不会被按钮压住。 */

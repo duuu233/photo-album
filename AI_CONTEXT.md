@@ -459,9 +459,14 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
       （设置类页面那摞 `position: absolute` 贴底按钮）必须显式 `z-index ≥ 2`——
       `.fold-scroll` 是 `z-index: 1` 的透明层，缺省层级的按钮会被它盖住，
       表现为「看得见、点不动」（2026-08-05 退出登录/用户注销的线上故障）；
-    - 内容搬进 `.fold-scroll-body` 后**父容器由 flex 变成了普通块级**：原先靠根容器的
-      `align-self / align-items` 做水平居中的块会整体贴左（登录页协议勾选行踩过），
+    - 内容搬进 `.fold-scroll-body` 后**父容器由 flex 变成了普通块级**，两条后果都踩过：
+      ① 原先靠根容器的 `align-self / align-items` 做水平居中的块会整体贴左（登录页协议勾选行），
       套壳时逐个检查这类居中，一律改成 `margin: … auto`（块级/flex 下都成立）；
+      ② **撑满视口的滚动内容块**（写了 `min-height: 100%` / `min-height: calc(100vh - 导航)`）
+      必须自成 BFC（`display: flow-root`）或自带 `padding-top`，否则首个子元素的 `margin-top`
+      会**穿透出去**变成该块自己的上外边距、把整块下推同样的距离，滚动内容 = 外边距 + 一屏
+      → **内容明明装得下也多出一截滚动条**（登录页 376rpx、更新页 276rpx、首页绑定态 56rpx，
+      所有机型都有，与折叠无关）；约束由 `tests/fold-scroll-phantom.test.js` 锁住；
     - 手势编辑页（投屏预览）**不套滚动容器**（滚动与拖拽/缩放抢手势、实测矩形会漂移），
       改为根容器 `height: 100vh`（**必须是确定高度**，`min-height` 时 flex 没有剩余空间可分，
       `flex-shrink` 永不生效）+ 舞台 `flex: 1 1 0; min-height: 0` 吃掉剩余高度，其余块 `flex: 0 0 auto`；

@@ -68,12 +68,33 @@
 
    `position: relative` 只是让内容块自己能当定位父级，不改变任何既有元素的位置。
 
+   ⚠️⚠️ **`display: flow-root` 不可删**：它把本块变成独立的 BFC，专治「内容明明不够一屏，
+   却凭空多出一段滚动」。原因是**外边距合并**——本块自己没有 padding-top / border-top 时，
+   第一个子元素的 `margin-top` 不会留在块内，而是**穿透出去变成本块自己的上外边距**，
+   把这个 `min-height: 100%`（= 整个滚动视口高）的块整体往下推同样的距离：
+
+     滚动内容高 = 子元素的 margin-top + 100%  >  滚动视口高 → 凭空多出一截可滚动区域。
+
+   多出的量正好等于首个子元素的上外边距，**与折叠与否无关，所有机型都有**：
+   登录页 `.login-main` 的 376rpx（约半屏！）、更新页 `.logo-wrap` 的 276rpx、
+   设置/语种页首张 `.glass-card` 的 68rpx、忘记密码页 `.form-card` 的 28rpx
+   —— 2026-08-06 登录页反馈的「非折叠屏也有滚动条」就是这一条。
+   改动前这些页面的根容器是 flex（或首个子元素前面还排着导航栏），本来不会发生合并；
+   套壳搬进块级的 `.fold-scroll-body` 之后才出现。
+
+   为什么用 `display: flow-root` 而不是别的挡法：它只断开外边距合并，**不改变子元素的
+   布局方式**（仍是普通块级流，兄弟之间的合并、`text-align`、百分比高度全部照旧），
+   所以装得下时与改动前逐像素一致。`overflow: hidden` 会裁掉卡片阴影，
+   `display: flex` 会改子元素的排布规则，`padding-top: 0.01px` 是玄学值，都不如它干净。
+   （iOS 12 及更早的 WKWebView 不认 flow-root，会退回本次修复前的表现，不会更糟。）
+
    ⚠️ 原本 `position: absolute; bottom: …` 贴在根容器底部的元素（设置页那摞按钮）
       **不要搬进滚动区**：留在根容器里（滚动区外）位置一像素不动，也不押在「百分比高度能不能解析」上；
       但要给滚动内容块补 `padding-bottom`，把它们占的高度让出来（见 settings/shared.wxss 的
       `.settings-scroll-body`），否则变长的内容会从这些脱离文档流的按钮底下穿过去。 */
 .fold-scroll-body {
   position: relative;
+  display: flow-root;
   box-sizing: border-box;
   min-height: 100%;
 }
