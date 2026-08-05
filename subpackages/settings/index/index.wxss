@@ -103,8 +103,12 @@
   /* margin-right: 10rpx; */
 }
 
+/* z-index 必须 ≥ 2：本按钮留在 .fold-scroll(z-index:1) 之外、又与它在屏幕上重叠，
+   不显式抬高就会被滚动区盖住 —— 滚动区透明，按钮**看得见却点不动**
+   （2026-08-05 折叠屏改造引入，普通手机同样中招，见 styles/fold-adapt.wxss 的告警）。 */
 .outline-logout {
   position: absolute;
+  z-index: 2;
   right: 48rpx;
   bottom: calc(212rpx + var(--safe-bottom));
   left: 48rpx;
@@ -122,8 +126,10 @@
   backdrop-filter: blur(7.949999809265137px);
 }
 
+/* z-index 同 .outline-logout */
 .delete-account {
   position: absolute;
+  z-index: 2;
   right: 48rpx;
   bottom: calc(70rpx + var(--safe-bottom));
   left: 48rpx;

@@ -455,7 +455,10 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
     - 页面高度**只用 CSS 的 `100vh`**，绝不用 `wx.getWindowInfo().windowHeight`
       （tabBar 页会扣掉已隐藏的原生 tabBar，展开态冷启动快照失真）；
     - `.fold-scroll` 必须 `flex: 1 1 0` + `min-height: 0`，写成 `auto` 会把导航栏一起压扁；
-    - 固定底栏、弹层、toast 一律留在滚动区**外**；
+    - 固定底栏、弹层、toast 一律留在滚动区**外**；留在外面**又与滚动区重叠**的可点元素
+      （设置类页面那摞 `position: absolute` 贴底按钮）必须显式 `z-index ≥ 2`——
+      `.fold-scroll` 是 `z-index: 1` 的透明层，缺省层级的按钮会被它盖住，
+      表现为「看得见、点不动」（2026-08-05 退出登录/用户注销的线上故障）；
     - 手势编辑页（投屏预览）**不套滚动容器**（滚动与拖拽/缩放抢手势、实测矩形会漂移），
       改为根容器 `height: 100vh`（**必须是确定高度**，`min-height` 时 flex 没有剩余空间可分，
       `flex-shrink` 永不生效）+ 舞台 `flex: 1 1 0; min-height: 0` 吃掉剩余高度，其余块 `flex: 0 0 auto`；
