@@ -252,6 +252,22 @@ function createUtf8Decoder() {
   }
 }
 
+// 排障用：只留个头 + 总长度。响应体几十 KB，整段灌进 console 既看不清也刷屏。
+// 只进 console 和 reject 的 detail（detail 严禁展示给用户，见 ai-i18n.handleAiError）。
+function previewText(value, limit = 200) {
+  let str = ''
+  if (typeof value === 'string') {
+    str = value
+  } else if (value) {
+    try {
+      str = JSON.stringify(value)
+    } catch (error) {
+      str = String(value)
+    }
+  }
+  return str.length > limit ? `${str.slice(0, limit)}…(共 ${str.length} 字符)` : str
+}
+
 // SSE 逐行解析：`data: {...}` 一行一个事件。chunk 边界不保证落在行尾，最后一行留着下次拼。
 function createSseParser(onEvent) {
   let buffer = ''
@@ -268,7 +284,7 @@ function createSseParser(onEvent) {
     try {
       event = JSON.parse(payload)
     } catch (error) {
-      console.warn('[BoltStar] SSE 数据行解析失败', payload)
+      console.warn('[BoltStar] SSE 数据行解析失败', previewText(payload))
       return
     }
     onEvent(event)
@@ -393,9 +409,18 @@ function aiStreamRequest(options) {
           return
         }
         if (!eventCount) {
-          // 200 但一个 SSE 事件都没有：多半是网关/服务端直接回了 JSON（错误体），按它报错
-          const body = parseResponseBody(raw || decodeMaybeBuffer(res.data))
-          settle(reject, errorFromBody(body) || { code: 30001, detail: 'EMPTY_STREAM' })
+          // 200 但一个 SSE 事件都没有：多半是网关/服务端直接回了 JSON（错误体），按它报错。
+          // 都不是的话就是**响应体形状不对**（换行符没按 SSE 发、被转义了之类）——
+          // 光一句 EMPTY_STREAM 看不出所以然，把响应体开头一并带上，一次就能定位。
+          const bodyText = raw || decodeMaybeBuffer(res.data)
+          const body = parseResponseBody(bodyText)
+          settle(
+            reject,
+            errorFromBody(body) || {
+              code: 30001,
+              detail: `EMPTY_STREAM body=${previewText(bodyText)}`
+            }
+          )
           return
         }
         settle(resolve, result)

@@ -127,7 +127,20 @@ async function testEmptyStream() {
   lastRequest.success({ statusCode: 200, data: '' })
   const error = await promise.then(() => null, err => err)
   assert.equal(error.code, 30001)
-  assert.equal(error.detail, 'EMPTY_STREAM')
+  // detail 后面还跟着响应体开头（排障用，形状不对时一眼看出是什么），只断言前缀
+  assert.match(error.detail, /^EMPTY_STREAM body=/)
+}
+
+// EMPTY_STREAM 的 detail 要带上响应体开头，且长响应只截前 200 字符、不把整段灌进日志
+async function testEmptyStreamDetail() {
+  const promise = aiApi.chatStream({ sessionId: 's-9', message: 'hi', imgOrientation: 'square' }, {})
+  const junk = `不是 SSE 的响应体${'x'.repeat(500)}`
+  lastRequest.success({ statusCode: 200, data: junk })
+  const error = await promise.then(() => null, err => err)
+  assert.equal(error.code, 30001)
+  assert.match(error.detail, /^EMPTY_STREAM body=不是 SSE 的响应体/)
+  assert.match(error.detail, /共 \d+ 字符/)
+  assert.ok(error.detail.length < junk.length, 'detail 应截断，不能整段带出来')
 }
 
 // 个别环境不落实 enableChunked（一个 chunk 都不回调，整段响应直接进 success）：
@@ -159,6 +172,7 @@ async function run() {
   await testStreamHappyPath()
   await testGatewayError()
   await testEmptyStream()
+  await testEmptyStreamDetail()
   await testWholeBodyFallback()
   await testAbort()
   console.log('ai stream chat tests passed')
