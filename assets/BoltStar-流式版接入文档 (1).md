@@ -144,3 +144,88 @@ function handleEvent(event) {
 | 7 | 打字机效果 | `text` 逐条追加而非一次性渲染 |
 
 **请求参数（user_id、session_id、message、img_orientation、image_urls）完全不动。**
+
+---
+
+## 六、SSE 响应数据格式
+
+### 6.1 预描述事件
+
+```json
+data: {"type":"pre_text","content":"正在为您绘制软萌可爱的小猫画面…"}
+```
+
+### 6.2 进度事件
+
+```json
+data: {"type":"progress","progress":5,"stage":"request_sent"}
+data: {"type":"progress","progress":44,"stage":"generating"}
+data: {"type":"progress","progress":50,"stage":"partial_succeeded"}
+data: {"type":"progress","progress":80,"stage":"completed"}
+data: {"type":"progress","progress":85,"stage":"downloading"}
+data: {"type":"progress","progress":90,"stage":"uploaded"}
+data: {"type":"progress","progress":100,"stage":"done"}
+```
+
+| progress | stage | 含义 |
+|---|---|---|
+| 5 | request_sent | 请求已发送 |
+| 5-45 | generating | AI 创作中（时间插值递增） |
+| 50 | partial_succeeded | 图片初稿完成 |
+| 80 | completed | 生成完成 |
+| 85 | downloading | 下载图片 |
+| 90 | uploaded | OSS 上传完成 |
+| 100 | done | 全部完成 |
+
+### 6.3 图片事件
+
+```json
+data: {"type":"image","content":"https://inkstar.oss-ap-southeast-1.aliyuncs.com/chat-images%2Fxxx%2Fxxx.jpg?...签名参数"}
+```
+
+### 6.4 文字事件（逐条推送）
+
+```json
+data: {"type":"text","content":"画面里"}
+data: {"type":"text","content":"是软乎乎"}
+data: {"type":"text","content":"的橘白"}
+data: {"type":"text","content":"奶猫。"}
+```
+
+每次推送 1-3 个字符，前端逐条追加实现打字机效果。
+
+### 6.5 完成事件
+
+```json
+data: {"type":"done","orientation":"square"}
+```
+
+### 6.6 完整 SSE 流示例（生图场景）
+
+```
+data: {"type":"pre_text","content":"正在为您绘制软萌可爱的小猫画面…"}
+data: {"type":"progress","progress":5,"stage":"starting"}
+data: {"type":"progress","progress":5,"stage":"request_sent"}
+data: {"type":"progress","progress":15,"stage":"generating"}
+data: {"type":"progress","progress":30,"stage":"generating"}
+data: {"type":"progress","progress":44,"stage":"generating"}
+data: {"type":"progress","progress":50,"stage":"partial_succeeded"}
+data: {"type":"progress","progress":80,"stage":"completed"}
+data: {"type":"progress","progress":85,"stage":"downloading"}
+data: {"type":"progress","progress":90,"stage":"uploaded"}
+data: {"type":"image","content":"https://inkstar.oss-.../xxx.jpg?...签名"}
+data: {"type":"text","content":"画面里"}
+data: {"type":"text","content":"是软乎乎"}
+data: {"type":"text","content":"的橘白奶猫。"}
+data: {"type":"progress","progress":100,"stage":"done"}
+data: {"type":"done","orientation":"square"}
+```
+
+### 6.7 纯文字场景（无生图）
+
+```
+data: {"type":"text","content":"你好呀"}
+data: {"type":"text","content":"😊我是星宝"}
+data: {"type":"text","content":"…"}
+data: {"type":"done","orientation":"square"}
+```
