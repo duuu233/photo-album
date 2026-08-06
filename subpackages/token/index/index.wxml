@@ -43,7 +43,8 @@
 
       <view class="token-section-title">套餐购买</view>
       <!-- 横向滑动套餐列表。enable-flex 让内部 .package-row 的 flex 布局生效
-           （scroll-view 默认不是 flex 容器，不开这个属性卡片会各自换行）。 -->
+           （scroll-view 默认不是 flex 容器，不开这个属性卡片会各自换行）。
+           左右留白由 .package-row 负责，scroll-view 本身通栏（见 wxss）。 -->
       <scroll-view class="package-scroll" scroll-x="{{true}}" enable-flex="{{true}}">
         <view class="package-row">
           <view
@@ -54,10 +55,14 @@
             hover-class="none"
             bindtap="onSelectPackage"
           >
-            <!-- 赠送角标：无赠送的档位（设计稿里的 200 Token）不渲染。
-                 选中态是实心橙色标签、贴住卡片右上角；未选中是橙色文字。 -->
-            <view wx:if="{{item.gift > 0}}" class="package-gift">赠送 {{item.gift}} Token</view>
-            <view wx:else class="package-gift package-gift--placeholder"></view>
+            <!-- 赠送角标：无赠送的档位（设计稿里的 200 Token）不渲染文字。
+                 选中态是实心橙色标签、贴住卡片右上角；未选中是卡片内的橙色文字。
+                 ⚠️ 外层 .package-gift-slot 必须常在：选中态的角标是绝对定位、脱离文档流，
+                    没有这个等高占位，选中那张卡的「500 Token」及以下内容会整体上移，
+                    与相邻档位错开一行高度。 -->
+            <view class="package-gift-slot">
+              <view wx:if="{{item.gift > 0}}" class="package-gift">赠送 {{item.gift}} Token</view>
+            </view>
             <view class="package-tokens">
               <text class="package-tokens-num">{{item.tokens}}</text>
               <text class="package-tokens-unit">Token</text>
@@ -73,7 +78,10 @@
 
       <view class="record-entry" hover-class="none" bindtap="goRecords">
         <view class="record-entry-copy">
-          <view class="record-entry-title">购买 &amp; 消费记录</view>
+          <!-- ⚠️ 这里的 & 必须写字面量：WXML 只有 <text decode="{{true}}"> 会解 HTML 转义符，
+               普通 view 里的转义写法不会被还原，会把转义串本身原样显示出来（本页原来的表现）。
+               记录页 records.wxml 的导航标题同理，也是直接写字面量。 -->
+          <view class="record-entry-title">购买 & 消费记录</view>
           <view class="record-entry-desc">查看所有购买和消费明细</view>
         </view>
         <image class="record-entry-chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
