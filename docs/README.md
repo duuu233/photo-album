@@ -39,6 +39,7 @@
 
 ## 变更记录
 
+- [2026-08-06 AI 改流式（SSE）对接：预描述回复 + 生成进度条](changes/2026-08-06-AI流式对接与生成进度条.md) — 仅小程序（Flutter 按要求暂不同步）；地址切到 `boltstagent-web-…`，`/chat` 用 `enableChunked` + `onChunkReceived` 收流，`pre_text` 预描述秒回、`event.progress` 驱动 0→100 进度条、图约 50% 先上屏、文字边收边打；请求体与鉴权一字未改，老基础库降级回非流式
 - [2026-08-06 「内容不够一屏却有滚动条」修复（滚动内容块的外边距合并）](changes/2026-08-06-滚动内容块假滚动条修复.md) — 仅小程序；`.fold-scroll-body` / `.binding-content` 补 `display: flow-root`，首个子元素的 `margin-top` 不再把「一屏高」的内容块整体下推（登录页多滚 376rpx，与折叠与否无关；Flutter 侧核对无此问题）
 - [2026-08-06 登录页协议勾选行贴左修复（`align-self` 在块级父容器里失效）](changes/2026-08-06-登录页协议勾选行贴左修复.md) — 仅小程序；内容搬进 `.fold-scroll-body`（块级）后 `align-self: center` 失效，改用 `margin: … auto`（与折叠与否无关，所有机型都偏）
 - [2026-08-05 设置类页面贴底按钮「看得见、点不动」修复（退出登录 / 用户注销）](changes/2026-08-05-设置页贴底按钮点不动修复.md) — 仅小程序；`.fold-scroll(z-index:1)` 盖住了缺省层级的贴底按钮，补 `z-index: 2`（Flutter 侧核对无此问题）

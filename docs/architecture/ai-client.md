@@ -1,7 +1,7 @@
 # AI 客户端架构
 
 > 状态：current  
-> 最后核对：2026-07-31
+> 最后核对：2026-08-06
 > 适用范围：微信小程序“星宝”聊天与会话列表  
 > Flutter 同步：2026-07-31 已逐条比对当日三个样式提交并补齐差异（方向按钮尾图标 34rpx→22rpx、
 > 「重新生成」的 ↻ 加固定居中盒）；返回键/历史入口几何补偿、Token 胶囊填充与投影、
@@ -14,7 +14,8 @@
 - BoltStar 使用独立的 `utils/ai-api.js`，不复用 BoltFox `utils/request.js`。
 - 原因是两者 Base URL、响应结构、错误码、超时和公共参数完全不同。
 - 鉴权是唯一交集（2026-07-29 起网关强制）：每个 AI 请求带 `Authentication: Bearer <jwtToken>` 头，token 与 BoltFox 共用登录接口下发的 `jwtToken`（头名是 `Authentication`，不是 `Authorization`）；未登录不带头，由网关回 `JWTTokenIsMissing` 走白名单提示。
-- 小程序使用 JSON 非流式 `/chat`；SSE 仅适用于支持流式读取的其它客户端。
+- 小程序使用流式 `/chat`（SSE）：`wx.request` 开 `enableChunked`，从 `onChunkReceived` 逐块收，事件为 `pre_text`/`progress`/`image`/`text`/`done`。分块回来的是 ArrayBuffer，按字节缓存后再解码，多字节字符和 SSE 行都可能被切在两块之间。
+- 服务地址 2026-08-06 起切到流式版部署；旧的非流式地址只留给「基础库拿不到 `onChunkReceived`」的降级链路，两个部署共用同一份会话数据。
 - 聊天/生图超时较长，POST 不自动重试，避免重复生成或重复计费。
 
 ## 会话
@@ -28,7 +29,9 @@
 
 ## 消息与图片
 
-- 小程序收到完整 JSON 回复后，用客户端打字机逐步展示。
+- 文字边收边打：打字机追着已收到的字打，任意时刻的积压约 1 秒内打完，不是收齐再整段渲染。
+- 预描述（`pre_text`）、生成进度条（`progress`，5→45→50→80→85→90→100）、图片和文字都渲染进同一个 AI 气泡；进度只增不减，平滑由 CSS 过渡负责，`done` 后隐藏进度条。
+- 流中途断开时保留已经上屏的预描述、图片和文字，只提示一句，不把整条换成失败卡片。
 - AI 同一轮的文字和图片属于同一个气泡。
 - 用户图片先压缩到约 100KB，再经 BoltFox `setFileUpload` 取得 URL，最多 4 张并与文字一起发送。
 - `img_orientation` 对外只发送 `vertical`、`horizontal`、`square`；界面别名在客户端归一化。

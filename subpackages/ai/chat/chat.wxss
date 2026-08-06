@@ -341,6 +341,79 @@
   animation: blink 0.8s infinite;
 }
 
+/* —— 流式回复（2026-08-06 SSE）：预描述 + 生成进度条 ——
+   两块都长在 AI 气泡内部、正文与图片上方，所以气泡宽度/背景一律沿用 .bubble--ai，
+   这里只管自己的内边距与间距，别再各自开一个卡片。*/
+.pre-text {
+  display: flex;
+  align-items: flex-start;
+  gap: 10rpx;
+  padding: 14rpx 18rpx;
+  border-radius: 18rpx;
+  background: rgba(239, 100, 30, 0.06);
+}
+
+.pre-text__icon {
+  flex: none;
+  width: 28rpx;
+  height: 28rpx;
+  margin-top: 6rpx;
+}
+
+.pre-text__body {
+  flex: 1;
+  color: #8a6a52;
+  font-size: 26rpx;
+  line-height: 1.5;
+}
+
+.gen-progress {
+  padding: 4rpx 2rpx;
+}
+
+.pre-text + .gen-progress,
+.pre-text + .bubble-text,
+.pre-text + .bubble-imgs,
+.gen-progress + .bubble-text,
+.gen-progress + .bubble-imgs {
+  margin-top: 18rpx;
+}
+
+.gen-progress__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+
+.gen-progress__label {
+  color: #85817d;
+  font-size: 24rpx;
+}
+
+.gen-progress__value {
+  color: #ef641e;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.gen-progress__track {
+  width: 100%;
+  height: 10rpx;
+  overflow: hidden;
+  border-radius: 10rpx;
+  background: rgba(89, 76, 58, 0.1);
+}
+
+/* 服务端推的是 5→45→50→80→85→90→100 这样的台阶值，靠这条过渡抹平成连续增长 */
+.gen-progress__bar {
+  width: 0;
+  height: 100%;
+  border-radius: 10rpx;
+  background: linear-gradient(90deg, #ffb27a, #ef641e);
+  transition: width 0.35s ease;
+}
+
 @keyframes blink {
   50% {
     opacity: 0;

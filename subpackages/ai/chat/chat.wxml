@@ -110,6 +110,23 @@
             ></image>
 
             <block wx:else>
+              <!-- 流式预描述（SSE pre_text）：秒回的一句「正在为您绘制…」，生成完成后保留，当作这条回复的前情提要 -->
+              <view wx:if="{{item.preText}}" class="pre-text">
+                <image class="pre-text__icon" src="/assets/images/ai-spark-orange.png" mode="aspectFit"></image>
+                <text class="pre-text__body" user-select>{{item.preText}}</text>
+              </view>
+
+              <!-- 生成进度（SSE progress，5→45→50→80→85→90→100），done 后隐藏 -->
+              <view wx:if="{{item.streaming}}" class="gen-progress">
+                <view class="gen-progress__head">
+                  <text class="gen-progress__label">{{item.progressLabel}}</text>
+                  <text class="gen-progress__value">{{item.progress}}%</text>
+                </view>
+                <view class="gen-progress__track">
+                  <view class="gen-progress__bar" style="width: {{item.progress}}%"></view>
+                </view>
+              </view>
+
               <text wx:if="{{item.content}}" class="bubble-text" user-select>
                 {{item.content}}
                 <text wx:if="{{item.typing}}" class="caret">▍</text>

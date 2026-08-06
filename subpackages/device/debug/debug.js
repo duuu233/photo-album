@@ -384,8 +384,10 @@ Page(fold.adapt({
     // 指令输入框
     playMode: 'order', // 'order' 顺序 / 'random' 随机
     intervalInput: '60', // 切换间隔(秒)
-    connIntervalInput: '7.5', // BLE 连接间隔(ms)，协议会换算为 1.25ms 单位（7.5ms=6单位，协议最小值）
-    projectionConnIntervalMs: 7.5, // 真实投屏图传前要设的连接间隔(ms)，由「同步投屏」写入，onLoad 时回显
+    // BLE 连接间隔(ms)，协议会换算为 1.25ms 单位（7.5ms=6单位，协议最小值）。这里的 7.5 只是渲染前的占位，
+    // onLoad 会立刻用 getTransferConnIntervalMs() 覆盖成真实生效值（默认 安卓/鸿蒙 7.5ms、iOS 及其他 15ms）
+    connIntervalInput: '7.5',
+    projectionConnIntervalMs: 7.5, // 真实投屏图传前要设的连接间隔(ms)，由「同步投屏」写入，onLoad 时回显（同上，7.5 是占位）
     projectionPaceMs: 3, // 真实投屏图传每包发送间隔(ms)，由「同步投屏」写入，onLoad 时回显
     projectionWindow: 10, // 真实投屏图传窗口包数，由「同步投屏」写入，onLoad 时回显
     switchInput: '0', // 0x24 要显示的图片索引
@@ -429,7 +431,8 @@ Page(fold.adapt({
     this.setData(system.getLayoutMetrics())
     this._logId = 0
 
-    // 回显当前真实投屏要用的传输参数（同步过则是同步值，否则用默认：连接间隔 7.5ms / pace 3ms / 窗口 10 包），
+    // 回显当前真实投屏要用的传输参数（同步过则是同步值，否则用默认：连接间隔按平台取
+    // 安卓/鸿蒙 7.5ms、iOS 及其他 15ms / pace 3ms / 窗口 10 包），
     // 让调试台的输入/档位与真实投屏保持一致——调试台看到的就是投屏会用的值。
     const projectionConnIntervalMs = deviceBle.getTransferConnIntervalMs()
     const projectionPaceMs = deviceBle.getTransferPaceMs()
@@ -941,7 +944,8 @@ Page(fold.adapt({
 
   // 同步投屏：把调试台当前调好的三项传输参数——连接间隔 / 发送速度(pace) / 发包窗口——一并持久化给真实投屏。
   // 之后正式投屏(result.js → optimizeConnectionIntervalForTransfer + uploadImage)图传前会按这些值来传，
-  // 而不是写死默认(7.5ms / 极速 3ms / 10 包)。只写本地存储、不依赖蓝牙连接，所以未连接设备也能同步。
+  // 而不是走默认(连接间隔 安卓 7.5ms / iOS 15ms · 极速 3ms · 10 包)。只写本地存储、不依赖蓝牙连接，
+  // 所以未连接设备也能同步。
   cmdSyncTransferToProjection() {
     const ms = Number(this.data.connIntervalInput)
     if (!Number.isFinite(ms) || ms <= 0) {

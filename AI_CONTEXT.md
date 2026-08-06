@@ -47,8 +47,9 @@
 - 网络服务：
   - BoltFox API：`https://api.boltfox.cn`；
   - seekink 图片抖动：`https://cloud.seekink.cn:8443/.../imageDitheringBinDownload`；
-  - BoltStar AI 非流式服务：阿里云 FC 独立域名，定义在 `utils/ai-api.js`；
-  - 小程序端不使用 SSE，AI 回复为完整 JSON 后在客户端做打字机效果。
+  - BoltStar AI 服务：阿里云 FC 独立域名，定义在 `utils/ai-api.js`；2026-08-06 起切到流式版部署 `boltstagent-web-...`；
+  - `/chat` 走 SSE：`wx.request` 开 `enableChunked`、`onChunkReceived` 收流，事件为 `pre_text`/`progress`/`image`/`text`/`done`；
+  - 基础库拿不到 `onChunkReceived` 时降级回旧的非流式部署（完整 JSON + 客户端打字机）。
 - 测试：
   - 使用 Node.js 内置测试运行器；
   - 当前有 `device-id`、`active-device-identity`、`battery`、`ai-service-consent` 四组单元测试；
@@ -249,7 +250,7 @@
 
 - 职责：
   - 会话创建、列表、历史和删除；
-  - 非流式文本/生图/图文对话；
+  - 流式（SSE）文本/生图/图文对话，含预描述与生成进度；
   - 图片压缩、BoltFox 上传和 URL 传递；
   - 客户端打字机、停止生成、错误本地化；
   - 按登录用户 ID 缓存 AI 服务协议同意状态，并在发送前强制校验；
@@ -358,9 +359,9 @@ App.onShow
   → 首次真实发送且已同意协议时才创建会话
   → 可选图片先压缩到约 100KB
   → BoltFox setFileUpload 获取公网 URL
-  → BoltStar 非流式 /chat（最多 4 张图片）
-  → 完整 JSON 回复
-  → 客户端打字机显示文字，并在同一气泡显示图片
+  → BoltStar 流式 /chat（SSE，最多 4 张图片）
+  → pre_text 预描述先上屏 → progress 驱动进度条 0→100 → image 约 50% 先显示 → text 逐条推送
+  → 边收边打字机显示文字，预描述、进度、图片和文字都在同一气泡；done 后隐藏进度条
 
 AI 图片投屏
   → 下载远程图片到本地临时文件
@@ -436,8 +437,9 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
    - 失败时不写假值，从未成功读取才显示 `--`；
    - 与 `0x01` 设备信息读取的策略不同，后者只做在途去重、不做时间缓存。
 
-9. **AI 使用非流式 JSON。**
-   - 小程序不依赖 SSE；
+9. **AI 使用流式 SSE（2026-08-06 起）。**
+   - 进度条只由服务端 `event.progress` 驱动，本地不做补间，只保证不倒退；
+   - 老基础库降级到非流式 JSON，功能不缺，只是没有预描述和进度；
    - 聊天、生图和上传不做自动重试，避免重复生成、上传或计费；
    - 欢迎语由前端静态展示，不写入服务端历史；
    - 首次真实消息才创建会话，避免空会话；
