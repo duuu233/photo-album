@@ -310,6 +310,20 @@ function createSseParser(onEvent) {
   }
 }
 
+// 服务端把 SSE 的事件分隔符转义成了**字面的「\n」（反斜杠 + n 两个字符）**，整个响应体成了
+// 一行、一个真换行都没有 —— 2026-08-06 真机实测：一次完整生图流 2230 字符，解析器一个事件都
+// 拿不到，只能报 EMPTY_STREAM，页面就是那张「生成未完成」。SSE 规范要求真换行分隔事件，
+// 这是服务端的问题，已反馈后端；在他们修好之前先兜住，修好之后这段自然不会再触发。
+//
+// ⚠️ 只还原**当分隔符用的**那些 \n —— 即后面紧跟着 `data:`（中间可以再夹几个 \n）或者已经到
+// 结尾的。JSON 字符串正文里的 \n（回复文字本身带换行时就长这样）必须原样留着，
+// 否则会把一个事件的 JSON 从中间劈开，反而更糟。
+const ESCAPED_EVENT_SEPARATOR = /\\n(?=(?:\\n)*(?:data:|$))/g
+
+function unescapeEventSeparators(text) {
+  return text.replace(ESCAPED_EVENT_SEPARATOR, '\n')
+}
+
 // 流式响应里混进来的**非 SSE** 响应体（网关 403 JSON、服务端直接回业务错误 JSON）
 function errorFromBody(body) {
   const gatewayMessage = gatewayErrorMessage(body)
@@ -409,10 +423,28 @@ function aiStreamRequest(options) {
           return
         }
         if (!eventCount) {
-          // 200 但一个 SSE 事件都没有：多半是网关/服务端直接回了 JSON（错误体），按它报错。
-          // 都不是的话就是**响应体形状不对**（换行符没按 SSE 发、被转义了之类）——
-          // 光一句 EMPTY_STREAM 看不出所以然，把响应体开头一并带上，一次就能定位。
           const bodyText = raw || decodeMaybeBuffer(res.data)
+          // 最后一搏：分隔符被转义成字面 \n 的话，还原后再解析一遍（见 unescapeEventSeparators）。
+          // 只在这条「否则必然失败」的路径上做，正常流一步都不碰。
+          if (typeof bodyText === 'string' && ESCAPED_EVENT_SEPARATOR.test(bodyText)) {
+            ESCAPED_EVENT_SEPARATOR.lastIndex = 0 // /g 正则的 test 会推进 lastIndex，用完必须归零
+            parser.push(unescapeEventSeparators(bodyText))
+            parser.flush()
+          }
+          if (eventCount) {
+            console.warn(
+              '[BoltStar] 响应体的事件分隔符是字面 \\n 而非真换行（SSE 格式不合规，需后端修）；' +
+                `已还原并解析出 ${eventCount} 个事件，本次无逐字流式效果`
+            )
+            if (streamError) {
+              settle(reject, streamError)
+              return
+            }
+            settle(resolve, result)
+            return
+          }
+          // 还原也救不回来：多半是网关/服务端直接回了 JSON（错误体），按它报错。
+          // 都不是的话就是响应体形状不对，把开头一并带上，一次就能定位。
           const body = parseResponseBody(bodyText)
           settle(
             reject,

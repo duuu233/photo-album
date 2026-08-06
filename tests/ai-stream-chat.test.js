@@ -143,6 +143,56 @@ async function testEmptyStreamDetail() {
   assert.ok(error.detail.length < junk.length, 'detail 应截断，不能整段带出来')
 }
 
+// 服务端把事件分隔符转义成了字面 \n（反斜杠+n），整个响应体一行、没有真换行 ——
+// 2026-08-06 真机实测，一次完整生图流因此报 EMPTY_STREAM、页面出「生成未完成」。
+// 兜底：还原分隔符后重新解析，事件、图、文字、方向都要照常拿到。
+async function testEscapedSeparatorRecovery() {
+  const events = []
+  const promise = aiApi.chatStream(
+    { sessionId: 's-esc', message: '画一个动漫少女', imgOrientation: 'vertical' },
+    { onEvent: event => events.push(event) }
+  )
+  const body = [
+    'data: {"type":"pre_text","content":"正在为您绘制樱花树下的动漫少女画面…"}',
+    'data: {"type":"progress","progress":5,"stage":"starting"}',
+    'data: {"type": "progress", "progress": 50, "stage": "partial_succeeded"}',
+    'data: {"type":"image","content":"https://inkstar.oss-ap-southeast-1.aliyuncs.com/a.jpg?sig=x"}',
+    'data: {"type":"text","content":"画面里"}',
+    'data: {"type":"text","content":"银发少女"}',
+    'data: {"type":"progress","progress":100,"stage":"done"}',
+    'data: {"type":"done","orientation":"vertical"}'
+  ].join('\\n\\n') + '\\n\\n' // 注意：这里是**字面**反斜杠+n，不是换行
+  assert.equal(body.indexOf('\n'), -1, '整段响应体里不能有真换行，否则测的就不是这个场景')
+  pushText(body, [17, 60, 133]) // 切点故意落在汉字中间
+  lastRequest.success({ statusCode: 200, data: '' })
+  const result = await promise
+  assert.equal(events.length, 8)
+  assert.equal(events[0].type, 'pre_text')
+  assert.equal(result.images.length, 1)
+  assert.equal(result.text, '画面里银发少女')
+  assert.equal(result.orientation, 'vertical')
+  assert.equal(result.done, true)
+}
+
+// 还原时只能动**当分隔符用的** \n：JSON 正文里的 \n（回复文字自带换行）动了就把事件劈开了
+async function testEscapedSeparatorKeepsInlineNewline() {
+  const promise = aiApi.chatStream(
+    { sessionId: 's-esc2', message: 'hi', imgOrientation: 'square' },
+    {}
+  )
+  const body =
+    [
+      'data: {"type":"text","content":"第一行\\n第二行"}',
+      'data: {"type":"done","orientation":"square"}'
+    ].join('\\n\\n') + '\\n\\n'
+  pushText(body, [20])
+  lastRequest.success({ statusCode: 200, data: '' })
+  const result = await promise
+  // 正文里的 \n 由 JSON.parse 解成真换行，事件本身没被劈开
+  assert.equal(result.text, '第一行\n第二行')
+  assert.equal(result.done, true)
+}
+
 // 个别环境不落实 enableChunked（一个 chunk 都不回调，整段响应直接进 success）：
 // 把整段当 SSE 文本补喂一次，事件照样还原得出来，不白跑一趟
 async function testWholeBodyFallback() {
@@ -173,6 +223,8 @@ async function run() {
   await testGatewayError()
   await testEmptyStream()
   await testEmptyStreamDetail()
+  await testEscapedSeparatorRecovery()
+  await testEscapedSeparatorKeepsInlineNewline()
   await testWholeBodyFallback()
   await testAbort()
   console.log('ai stream chat tests passed')
