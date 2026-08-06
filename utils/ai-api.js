@@ -24,9 +24,13 @@ const BASE_URL = 'https://boltstagent-web-jncfttrxvt.ap-southeast-1.fcapp.run'
 // 两个部署是同一套服务、同一份会话数据，降级期间会话/历史不会对不上。
 const NON_STREAM_BASE_URL = 'https://boltstaat-agent-fwdomalzks.ap-southeast-1.fcapp.run'
 
-// 普通接口 15s；/chat 与 /image/enhance 涉及生图（上游文生图可能 30s+），放宽到 120s 且不重试
+// 普通接口 15s；/chat 与 /image/enhance 涉及生图（上游文生图可能 30s+），放宽到 300s 且不重试
+//（2026-08-06 由 120s 上调：切流式版后长回复+生图碰得到 2 分钟这条线，被前端掐断比干等更糟——
+// 流式下已经有 pre_text/progress 顶着，用户看得见进度，不需要靠短超时来「早点报错」）。
+// ⚠️ 只放宽生成类。建会话/列表/历史这些秒级接口仍是 15s：它们卡住多半是网络或网关的事，
+// 让用户对着菊花等 5 分钟没有意义，早点报错还能重试。
 const DEFAULT_TIMEOUT = 15000
-const GENERATE_TIMEOUT = 120000
+const GENERATE_TIMEOUT = 300000
 
 // 阿里云网关在 JWT 缺失时返回的是大写字段，和 BoltStar 的
 // { success, code, data, params, detail } 业务协议完全不同。只对白名单中的固定
