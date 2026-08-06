@@ -45,6 +45,22 @@ function parseResponseBody(data) {
   }
 }
 
+// 响应结构兜底：流式版部署（2026-08-06 切）实测把 /session/new 的 `data.session` 包装层
+// 去掉了 —— 字段直接挂在 data 下，而文档 v1.0.4 §二写的仍是嵌套结构（后端是有意改还是漏改
+// 尚未与其确认）。两种都得吃：先按文档取包装层，取不到就把 data 自己当结果。
+// /session/list、/chat/history 是同样的「data 里再套一层」结构，一并兜住，
+// 别等哪天它们也扁平化了才在真机上炸。isValid 用来判断取到的是不是想要的那个东西。
+function unwrapData(body, key, isValid) {
+  const data = (body && body.data) || null
+  if (!data || typeof data !== 'object') {
+    return null
+  }
+  if (isValid(data[key])) {
+    return data[key]
+  }
+  return isValid(data) ? data : null
+}
+
 function gatewayErrorMessage(body) {
   if (
     !body ||
@@ -469,6 +485,7 @@ module.exports = {
   },
 
   // POST /session/new — 新建会话，resolve session 对象 { session_id, title, ... }。
+  // 嵌套（data.session，文档 v1.0.4）与扁平（字段直接在 data 上，流式版部署实测）都认，见 unwrapData。
   // title 默认「新对话」，后端在首条用户消息后自动填成该消息前 20 字（v1.0.4 §二）。
   // ⚠️ 每个用户最多 20 个会话（v1.0.4 §5.2），超限 reject code=20013 MAX_SESSIONS_REACHED，
   // 由调用方传 onSessionLimit 引导用户去会话列表删旧的（见 ai-i18n.handleAiError）。
@@ -476,15 +493,25 @@ module.exports = {
     return aiRequest({
       url: '/session/new',
       data: { user_id: getAiUserId() }
-    }).then(body => body.data.session)
+    }).then(body => {
+      const session = unwrapData(body, 'session', value => !!(value && value.session_id))
+      if (!session) {
+        // 两种结构都对不上（又一次改了协议）：别让调用方拿 undefined 去读 .session_id
+        // 抛 TypeError —— 那会被 catch 成一句没头没尾的报错。按上游错误 reject，
+        // 页面走 handleAiError 的可重试提示，console 里留下 detail 好定位。
+        return Promise.reject({ code: 30001, detail: 'SESSION_MISSING' })
+      }
+      return session
+    })
   },
 
-  // GET /session/list — 会话列表（按更新时间倒序），resolve sessions 数组
+  // GET /session/list — 会话列表（按更新时间倒序），resolve sessions 数组。
+  // data.sessions（文档）与 data 直接是数组（若后端同样扁平化）都认。
   listSessions() {
     return aiRequest({
       url: `/session/list?user_id=${encodeURIComponent(getAiUserId())}`,
       method: 'GET'
-    }).then(body => (body.data && body.data.sessions) || [])
+    }).then(body => unwrapData(body, 'sessions', Array.isArray) || [])
   },
 
   // DELETE /session — 删除会话（含全部历史，不可恢复）
@@ -509,11 +536,17 @@ module.exports = {
     return aiRequest({
       url: `/chat/history?${query}`,
       method: 'GET'
-    }).then(body => ({
-      expired: body.code === 10001,
-      list: (body.data && body.data.data) || [],
-      total: (body.data && body.data.total) || 0
-    }))
+    }).then(body => {
+      const data = body.data
+      return {
+        expired: body.code === 10001,
+        // data.data（文档）与 data 直接是数组（若后端同样扁平化）都认
+        list: unwrapData(body, 'data', Array.isArray) || [],
+        // 扁平结构下没有 total 这个字段。不拿 list.length 顶替：sessions.js 用
+        // page_size=1 探总数，顶替出来的 1 会当成「1 条消息」显示，比不显示更糟。
+        total: (data && !Array.isArray(data) && data.total) || 0
+      }
+    })
   },
 
   // DELETE /chat/history — 删除单条消息
