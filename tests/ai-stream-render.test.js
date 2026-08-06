@@ -135,7 +135,9 @@ async function testGenerateFlow() {
   message = page.data.messages[0]
   assert.equal(message.images.length, 1)
   assert.equal(message.images[0].url, 'http://oss/city.png')
-  assert.equal(message.images[0].pad, 133.33, '图应按当前 img_orientation 预占高度')
+  // 竖向出图 1440×2560(9:16) → 2560/1440 = 177.78（2026-08-06 后端确认的实际尺寸，
+  // 此前按文档 v1.0.4 的 3:4 取 133.33，那组已作废）
+  assert.equal(message.images[0].pad, 177.78, '图应按当前 img_orientation 预占高度')
   assert.equal(message.content, '')
 
   // 迟到/乱序的小进度不能让进度条倒退

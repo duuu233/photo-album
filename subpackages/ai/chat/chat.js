@@ -138,28 +138,32 @@ const STYLE_OPTIONS = [
 
 // 图片比例（需求：竖向/横向/方形；API img_orientation 必传）。
 // pad = 高/宽×100，直接当占位盒的 padding-bottom 百分比用（见 IMAGE_PAD_DEFAULT 上方注释）。
+//
+// ⚠️ 尺寸以 2026-08-06 后端给的**文生图实际出图尺寸**为准，是 16:9 / 1:1 / 9:16 ——
+// 与 API 文档 v1.0.4 §四写的 1472×1104(4:3) / 1328×1328 / 1104×1472(3:4) **不一致**，
+// 文档那组已作废。别再按文档改回去，先找后端对齐。
 const ORIENTATION_OPTIONS = [
   {
     key: 'vertical',
     label: '竖向',
-    size: '1104×1472',
-    pad: 133.33,
+    size: '1440×2560',
+    pad: 177.78, // 2560/1440，9:16
     icon: '/assets/images/ai-orientation-vertical-default.png',
     activeIcon: '/assets/images/ai-orientation-vertical-active.png'
   },
   {
     key: 'horizontal',
     label: '横向',
-    size: '1472×1104',
-    pad: 75,
+    size: '2560×1440',
+    pad: 56.25, // 1440/2560，16:9
     icon: '/assets/images/ai-orientation-horizontal.png',
     activeIcon: '/assets/images/ai-orientation-horizontal-active.png'
   },
   {
     key: 'square',
     label: '方形',
-    size: '1328×1328',
-    pad: 100,
+    size: '1920×1920',
+    pad: 100, // 1:1
     icon: '/assets/images/ai-orientation-square.png',
     activeIcon: '/assets/images/ai-orientation-square-active.png'
   }
@@ -179,12 +183,16 @@ const ORIENTATION_ALIAS = {
 // 图片占位比例（2026-07-27 需求 1.2 / 5.2）：图片没加载完时先按已知比例把高度**占住**，
 // 加载完不会把上面的内容顶飞。取值就是「高/宽×100」，wxml 里作为占位盒的 padding-bottom 百分比。
 //
-// ⚠️ 比例来源：按 API 文档 v1.0.4 §四/§参数速查表的实际出图尺寸算 ——
-//    vertical 1104×1472(3:4) / horizontal 1472×1104(4:3) / square 1328×1328(1:1)。
-//    用户口述的是 {square 1:1, landscape 16:9, portrait 9:16}，与文档的 4:3 / 3:4 **不一致**，
-//    待后端确认到底出哪种；无论哪种都不会出错 —— 图片 bindload 回来会用**真实尺寸**改写这个比例
-//    （见 onImageLoad），文档若变了只需改上面 ORIENTATION_OPTIONS 的 pad 三个数。
-const IMAGE_PAD_DEFAULT = 133.33 // 历史消息取不到方向时按默认的竖向占位
+// ⚠️ 比例来源：2026-08-06 后端确认的**文生图实际出图尺寸**（见 ORIENTATION_OPTIONS）——
+//    vertical 1440×2560(9:16) / horizontal 2560×1440(16:9) / square 1920×1920(1:1)。
+//    此前按文档 v1.0.4 的 3:4 / 4:3 取值，那组已作废。
+//    这里取错也不会一直错 —— 图片 bindload 回来会用**真实尺寸**改写（见 onImageLoad），
+//    pad 只决定「图加载完之前占多高」；尺寸再变只需改 ORIENTATION_OPTIONS 的三个 pad。
+//
+//    图生图/融合图**不走这三档**：后端规则是「像素 ≥ 3,686,400 保持原尺寸，不足则等比放大到
+//    3,686,400」——等比放大不改变宽高比，所以出图比例跟着**用户原图**走，与 img_orientation 无关。
+//    因此带图发送时占位比例取用户原图的（见 sendChat → _dispatchChat 的 replyPad）。
+const IMAGE_PAD_DEFAULT = 177.78 // 历史消息取不到方向时按默认的竖向(9:16)占位
 const IMAGE_PAD_MIN = 40 // 过于扁/长的图钳一下，免得占位盒把整屏撑没了
 const IMAGE_PAD_MAX = 240
 
@@ -912,7 +920,10 @@ Page(fold.adapt({
         : this.data.sessionTitle
     })
     this.stickToBottom({ force: true, animate: true })
-    this._dispatchChat(message, styleKey, urls)
+    // 带图发送 = 图生图/融合图，出图比例跟用户原图走（后端只等比放大，不改宽高比），
+    // 与 img_orientation 无关；多张时按第一张（融合结果的比例后端未约定，bindload 回来会校正）。
+    const replyPad = picked.length ? clampPad(picked[0].pad) : 0
+    this._dispatchChat(message, styleKey, urls, replyPad)
   },
 
   // 发一次 /chat 请求并渲染回复（可被「重试」重复调用，不再追加用户气泡）。
@@ -921,7 +932,10 @@ Page(fold.adapt({
   // assets/BoltStar-流式版接入文档.md）：预描述秒回、进度条 0→100、图先上屏、文字边收边打，
   // 不再是「干等 15~30s 然后整段刷出来」。老基础库收不了流时按 supportsStream() 回退到
   // 非流式 chat()（renderReply 那条老路原样保留）。
-  async _dispatchChat(message, styleKey, urls) {
+  // replyPad：回复图片的占位比例。图生图/融合图传用户原图的比例（见 sendChat），
+  // 文生图传 0 → 回落到当前 img_orientation 那一档（orientationPad）。
+  async _dispatchChat(message, styleKey, urls, replyPad) {
+    this._replyPad = replyPad > 0 ? replyPad : 0 // 见 replyImagePad
     // 占位气泡就是最终那一个气泡：文字打进它的 content，图片挂进它的 images（需求 3：图文同一气泡）
     const holder = {
       id: ++this._uid,
@@ -1009,7 +1023,7 @@ Page(fold.adapt({
       if (showInlineFailure) {
         const index = this.data.messages.findIndex(item => item.id === holder.id)
         if (index >= 0) {
-          this._retryByMessage[holder.id] = { message, styleKey, urls }
+          this._retryByMessage[holder.id] = { message, styleKey, urls, replyPad }
           // elapsed 是分辨「前端超时」和「上游先掐」的唯一线索，失败时无条件打
           console.warn(
             `[BoltStar] code=${code} elapsed=${Date.now() - startedAt}ms`,
@@ -1031,7 +1045,7 @@ Page(fold.adapt({
       this.removeMessageById(holder.id)
       this.setData({ sending: false })
       aiI18n.handleAiError(error, {
-        onRetry: () => this._dispatchChat(message, styleKey, urls),
+        onRetry: () => this._dispatchChat(message, styleKey, urls, replyPad),
         onBanned: () => this.setData({ banned: true })
       })
     }
@@ -1046,7 +1060,7 @@ Page(fold.adapt({
     await this.guardedSend(async () => {
       delete this._retryByMessage[id]
       this.removeMessageById(id)
-      await this._dispatchChat(retry.message, retry.styleKey, retry.urls)
+      await this._dispatchChat(retry.message, retry.styleKey, retry.urls, retry.replyPad)
     })
   },
 
@@ -1059,7 +1073,7 @@ Page(fold.adapt({
   // 回复渲染（需求 3：文字与图片渲染进**同一个气泡**）：文字走打字机，图片打完字后挂到同一条消息的
   // images 上。图片先按当前 img_orientation 占好高度（需求 1.2），加载完再用真实尺寸校正（onImageLoad）。
   renderReply(holderId, text, images) {
-    const pad = this.orientationPad()
+    const pad = this.replyImagePad()
     const replyImages = (images || [])
       .filter(Boolean)
       .map(url => ({ url, serverId: '', pad }))
@@ -1193,7 +1207,7 @@ Page(fold.adapt({
         this.markStreamStarted(index, false)
         this.setData({
           [`messages[${index}].images`]: (this.data.messages[index].images || []).concat([
-            { url, serverId: '', pad: this.orientationPad() }
+            { url, serverId: '', pad: this.replyImagePad() }
           ])
         })
         this.stickToBottom({ force: true, animate: true })
@@ -1310,7 +1324,7 @@ Page(fold.adapt({
       const shown = (this.data.messages[index].images || []).map(img => img.url)
       const missing = (reply.images || []).filter(url => url && shown.indexOf(url) < 0)
       if (missing.length) {
-        const pad = this.orientationPad()
+        const pad = this.replyImagePad()
         this.setData({
           [`messages[${index}].images`]: this.data.messages[index].images.concat(
             missing.map(url => ({ url, serverId: '', pad }))
@@ -1474,6 +1488,13 @@ Page(fold.adapt({
     const key = this.normalizedOrientation()
     const option = ORIENTATION_OPTIONS.find(item => item.key === key)
     return clampPad(option ? option.pad : IMAGE_PAD_DEFAULT)
+  },
+
+  // 本轮回复图的占位比例。图生图/融合图由 _dispatchChat 存下用户原图的比例（后端等比放大、
+  // 不改宽高比，所以出图比例跟原图走）；文生图没有原图，回落到当前方向那一档。
+  // 一次只可能有一轮在途（sending 期间不许再发），所以存在页面上不会串。
+  replyImagePad() {
+    return this._replyPad > 0 ? clampPad(this._replyPad) : this.orientationPad()
   },
 
   openStylePicker() {

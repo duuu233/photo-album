@@ -298,9 +298,18 @@
   box-shadow: 0 12rpx 30rpx rgba(89, 76, 58, 0.07);
 }
 
+/* ⚠️ 宽度必须定在这一层，不能定在 .img-box 上。
+   .img-box 靠 `padding-bottom: pad%` 占高度，而**百分比 padding 是按父元素宽度算的**，
+   不是按自己的宽度。原先 .bubble-imgs 不设宽（撑满气泡内容区 622rpx）、.img-box 定宽 510rpx，
+   于是竖图占位高 = 622×133.33% = 829rpx 配 510rpx 宽 → 盒子实际比例 162.6%，比图片(133.33%)高一截，
+   aspectFill 为了填满就按高度放大、左右各裁掉 56rpx（图右边看着没显示全，2026-08-06 反馈）。
+   父子同宽百分比才算得对：宽度放这儿，.img-box 用 100% 跟着走。
+   .bubble--image（用户发的图）本来就是父子同宽，不受影响。*/
 .bubble-imgs {
   display: flex;
   flex-direction: column;
+  width: 510rpx;
+  max-width: 100%;
   gap: 14rpx;
 }
 
@@ -319,7 +328,7 @@
 }
 
 .bubble-imgs .img-box {
-  width: 510rpx;
+  width: 100%;
 }
 
 /* 用户发的图气泡宽 430rpx、内边距 10rpx → 内容区 410rpx，而 .img-box 默认 400rpx，
