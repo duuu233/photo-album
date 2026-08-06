@@ -94,12 +94,20 @@ const MAX_IMAGES = 4
 // 前端本地同步标题时按同一规则截，避免列表页重拉后标题突然变短。
 const SESSION_TITLE_MAX = 20
 
-// 一键生图风格（需求文案：漫画/风景/肖像/动漫；API 值：cartoon/landscape/portrait/anime）
+// 一键生图风格。key 就是 API 的 img_style，同时决定自动拼接的 message（utils/ai-i18n.js
+// 的 GEN_MESSAGES），所以 label 与 key 必须按语义对上，不能按列表顺序对。
+//
+// ⚠️ 文档 v1.0.3 §5.3.2 的中文对应关系是固定的：
+//      cartoon = 卡通「生成图片-卡通」   anime = 动漫「生成图片-动漫」
+//      landscape = 风景                 portrait = 人像
+//    「漫画」属于 anime 那一档（同一份文档里 cartoon 的日文文案才是「画像を生成-漫画」）。
+//    这里原来把 漫画→cartoon、卡通→anime 反着绑，结果点「漫画」发出去的是「生成图片-卡通」、
+//    点「卡通」发出去的是「生成图片-动漫」——两个选项的文案和出图风格都是对方的。
 const STYLE_OPTIONS = [
-  { key: 'cartoon', label: '漫画' },
+  { key: 'anime', label: '漫画' },
   { key: 'portrait', label: '人物' },
   { key: 'landscape', label: '风景' },
-  { key: 'anime', label: '卡通' }
+  { key: 'cartoon', label: '卡通' }
 ]
 
 // 图片比例（需求：竖向/横向/方形；API img_orientation 必传）。
