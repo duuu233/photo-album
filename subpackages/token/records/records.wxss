@@ -1,0 +1,118 @@
+@import "../shared.wxss";
+
+/* Tab 条留在滚动区**外**（常驻不跟着列表滚）。它不与滚动区重叠，
+   但同样是 z-index:1 的 .fold-scroll 的兄弟节点，这里显式给 2 保证压在其上。 */
+.tab-bar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  margin: 24rpx 48rpx 28rpx;
+  padding: 8rpx;
+  background: rgba(255, 255, 255, 0.8);
+  border: 2rpx solid rgba(255, 255, 255, 0.9);
+  border-radius: 999rpx;
+  box-shadow: 0 12rpx 30rpx rgba(125, 148, 181, 0.08);
+}
+
+.tab-item {
+  flex: 1 1 0;
+  height: 84rpx;
+  color: #8b8f96;
+  border-radius: 999rpx;
+  font-size: 30rpx;
+  font-weight: 500;
+  line-height: 84rpx;
+  text-align: center;
+}
+
+.tab-item--active {
+  color: #ffffff;
+  background: linear-gradient(90deg, #ff8338, #f2621f);
+  font-weight: 600;
+}
+
+/* Tab 条已经占掉了导航栏下方的一段，列表顶部不再另外留白 */
+.record-scroll-body {
+  padding-bottom: calc(48rpx + var(--safe-bottom, 0px));
+}
+
+.record-card {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 24rpx;
+  padding: 28rpx 32rpx 30rpx;
+  background: rgba(255, 255, 255, 0.8);
+  border: 2rpx solid rgba(255, 255, 255, 0.88);
+  border-radius: 24rpx;
+  box-shadow: 0 16rpx 38rpx rgba(125, 148, 181, 0.08);
+}
+
+.record-card--spend {
+  padding: 26rpx 32rpx 28rpx;
+}
+
+.record-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+/* 消费记录的第二行：场景名可能很长，右侧的 Token 数不能被挤走 */
+.record-line--spend {
+  margin-top: 16rpx;
+}
+
+.record-time {
+  color: #9aa0a8;
+  font-size: 26rpx;
+  line-height: 1.2;
+}
+
+.record-amount {
+  color: #2a2d32;
+  font-size: 32rpx;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.record-main {
+  margin-top: 16rpx;
+  color: #2a2d32;
+  font-size: 32rpx;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+/* 与右侧 Token 数同处一行时不再自带上边距，且长文案省略而不是把数字顶出去 */
+.record-main--inline {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record-sub {
+  margin-top: 18rpx;
+  color: #9aa0a8;
+  font-size: 26rpx;
+  line-height: 1.2;
+}
+
+.record-status {
+  margin-top: 18rpx;
+  color: #9aa0a8;
+  font-size: 28rpx;
+  line-height: 1.2;
+}
+
+.record-spend {
+  flex: 0 0 auto;
+  margin-left: 24rpx;
+  color: #f2621f;
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 1.2;
+}

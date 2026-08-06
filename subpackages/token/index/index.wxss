@@ -1,0 +1,282 @@
+@import "../shared.wxss";
+
+/* ── 概览卡 ─────────────────────────────────────────────────────────────────
+   设计稿的橙色渐变底（assets/ai/图标/Surface.png）是一张 335×199 的两端渐变图。
+   WXSS 的 background-image 不支持本地路径，要用就得再插一个绝对定位的 <image>；
+   而这块本身只是「左上 #f9ecdf → 右下 #ffceaa」的纯渐变，用 CSS 画出来完全一致，
+   还免掉 57KB 进包和拉伸到 654rpx 后的圆角重采样，所以这里不引那张图。
+   取色是从 Surface.png 四角实测的（TL 249,236,223 / BR 255,206,170）。 */
+.account-card {
+  position: relative;
+  z-index: 1;
+  margin-top: 40rpx;
+  padding: 28rpx;
+  background: linear-gradient(115deg, #f9ecdf 0%, #ffceaa 100%);
+  border-radius: 28rpx;
+}
+
+.account-card-title {
+  margin: 4rpx 0 24rpx 8rpx;
+  color: #2a2b2b;
+  font-size: 36rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.account-inner {
+  padding: 32rpx 30rpx 28rpx;
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 22rpx;
+}
+
+.account-balance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.account-balance-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-label {
+  color: #8b8f96;
+  font-size: 26rpx;
+  line-height: 1;
+}
+
+.account-balance-value {
+  display: flex;
+  align-items: baseline;
+  margin-top: 22rpx;
+}
+
+.account-balance-num {
+  color: #f2621f;
+  font-size: 76rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.account-balance-unit {
+  margin-left: 12rpx;
+  color: #6b7075;
+  font-size: 32rpx;
+  line-height: 1;
+}
+
+/* 金币插画：flex-shrink 关掉，余额位数多时（万位以上）不被压扁 */
+.account-coin {
+  flex: 0 0 168rpx;
+  width: 168rpx;
+  height: 120rpx;
+}
+
+.account-divider {
+  height: 1rpx;
+  margin: 26rpx 0 24rpx;
+  background: rgba(226, 202, 180, 0.6);
+}
+
+.account-stats {
+  display: flex;
+  align-items: center;
+}
+
+.account-stat {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* 第二列左移一点，与设计稿的分隔线位置一致 */
+.account-stat + .account-stat {
+  padding-left: 32rpx;
+}
+
+.account-stat-split {
+  flex: 0 0 1rpx;
+  width: 1rpx;
+  height: 56rpx;
+  background: rgba(226, 202, 180, 0.75);
+}
+
+.account-stat-value {
+  display: flex;
+  align-items: baseline;
+  margin-top: 18rpx;
+}
+
+.account-stat-num {
+  color: #4a4a4f;
+  font-size: 40rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.account-stat-num--orange {
+  color: #f2621f;
+}
+
+.account-stat-unit {
+  margin-left: 8rpx;
+  color: #8b8f96;
+  font-size: 26rpx;
+  line-height: 1;
+}
+
+/* ── 套餐横滑 ───────────────────────────────────────────────────────────── */
+/* 负外边距 + 同值 padding：卡片能一直滑到屏幕边缘，但首末张仍与页面留白对齐，
+   选中态那圈橙色描边和角标也不会被容器裁掉。 */
+.package-scroll {
+  position: relative;
+  z-index: 1;
+  margin: 0 -48rpx;
+  padding: 16rpx 48rpx 8rpx;
+  white-space: nowrap;
+}
+
+.package-row {
+  display: flex;
+  align-items: stretch;
+  gap: 20rpx;
+}
+
+.package-card {
+  position: relative;
+  flex: 0 0 200rpx;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 200rpx;
+  height: 248rpx;
+  padding: 0 22rpx;
+  background: rgba(255, 255, 255, 0.72);
+  border: 3rpx solid transparent;
+  border-radius: 20rpx;
+  box-shadow: 0 12rpx 30rpx rgba(125, 148, 181, 0.08);
+}
+
+.package-card--active {
+  background: #ffffff;
+  border-color: #ff6a1e;
+  box-shadow: 0 14rpx 34rpx rgba(255, 106, 30, 0.16);
+}
+
+/* 赠送角标：默认是卡片内的橙色文字；选中态变成贴住卡片右上角的实心标签。
+   两态都占同样的行高，切换时下面的「500 Token」不会上下跳。 */
+.package-gift {
+  color: #f2621f;
+  font-size: 22rpx;
+  line-height: 32rpx;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.package-gift--placeholder {
+  /* 无赠送的档位留出等高空位，四张卡的「Token 数」才在同一条水平线上 */
+  height: 32rpx;
+}
+
+.package-card--active .package-gift {
+  position: absolute;
+  top: -3rpx;
+  right: -3rpx;
+  padding: 0 16rpx;
+  color: #ffffff;
+  background: #ff6a1e;
+  border-radius: 0 20rpx 0 20rpx;
+}
+
+.package-tokens {
+  display: flex;
+  align-items: baseline;
+  margin-top: 18rpx;
+}
+
+.package-tokens-num {
+  color: #2a2d32;
+  font-size: 40rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.package-tokens-unit {
+  margin-left: 8rpx;
+  color: #7c828a;
+  font-size: 26rpx;
+  line-height: 1;
+}
+
+.package-price {
+  display: flex;
+  align-items: baseline;
+  margin-top: 20rpx;
+}
+
+.package-price-symbol {
+  color: #2a2d32;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.package-price-num {
+  margin-left: 6rpx;
+  color: #2a2d32;
+  font-size: 48rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.package-card--active .package-price-symbol,
+.package-card--active .package-price-num {
+  color: #f2621f;
+}
+
+.package-unit {
+  margin-top: 16rpx;
+  color: #9aa0a8;
+  font-size: 22rpx;
+  line-height: 1;
+}
+
+/* ── 记录入口 ───────────────────────────────────────────────────────────── */
+.record-entry {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  margin-top: 32rpx;
+  padding: 32rpx 32rpx 34rpx;
+  background: rgba(255, 255, 255, 0.78);
+  border: 2rpx solid rgba(255, 255, 255, 0.88);
+  border-radius: 24rpx;
+  box-shadow: 0 16rpx 38rpx rgba(125, 148, 181, 0.1);
+}
+
+.record-entry-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.record-entry-title {
+  color: #2a2d32;
+  font-size: 32rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.record-entry-desc {
+  margin-top: 16rpx;
+  color: #9aa0a8;
+  font-size: 26rpx;
+  line-height: 1;
+}
+
+.record-entry-chevron {
+  flex: 0 0 24rpx;
+  width: 24rpx;
+  height: 24rpx;
+}

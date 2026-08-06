@@ -39,6 +39,7 @@
 
 ## 变更记录
 
+- [2026-08-06 支付体系（Token）与官方图库接入](changes/2026-08-06-支付体系与官方图库接入.md) — 仅小程序；新增 `subpackages/token`（管理/记录/确认购买）与 `subpackages/gallery`（图库/详情/收藏）两个分包，底栏扩到四格，「我的」页改单列列表并新增两个入口。⚠️ **两个模块的后端接口均不存在**，数据暂由 `utils/token-api.js`、`utils/gallery-api.js` 的 mock 提供；支付通道、收藏关系、图库图片 URL 均待接入
 - [2026-08-06 「内容不够一屏却有滚动条」修复（滚动内容块的外边距合并）](changes/2026-08-06-滚动内容块假滚动条修复.md) — 仅小程序；`.fold-scroll-body` / `.binding-content` 补 `display: flow-root`，首个子元素的 `margin-top` 不再把「一屏高」的内容块整体下推（登录页多滚 376rpx，与折叠与否无关；Flutter 侧核对无此问题）
 - [2026-08-06 登录页协议勾选行贴左修复（`align-self` 在块级父容器里失效）](changes/2026-08-06-登录页协议勾选行贴左修复.md) — 仅小程序；内容搬进 `.fold-scroll-body`（块级）后 `align-self: center` 失效，改用 `margin: … auto`（与折叠与否无关，所有机型都偏）
 - [2026-08-05 设置类页面贴底按钮「看得见、点不动」修复（退出登录 / 用户注销）](changes/2026-08-05-设置页贴底按钮点不动修复.md) — 仅小程序；`.fold-scroll(z-index:1)` 盖住了缺省层级的贴底按钮，补 `z-index: 2`（Flutter 侧核对无此问题）

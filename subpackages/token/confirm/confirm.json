@@ -1,0 +1,9 @@
+{
+  "navigationStyle": "custom",
+  "navigationBarTitleText": "确认购买",
+  "usingComponents": {
+    "page-nav": "/components/page-nav/page-nav"
+  },
+  "disableScroll": true,
+  "backgroundColor": "#f8f5ef"
+}

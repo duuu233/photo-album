@@ -3,6 +3,10 @@
    全站（含分包页面）即可直接用，不必每个页面各写一遍 @import。 */
 @import "styles/fold-adapt.wxss";
 
+/* 贴底主行动按钮（Token 管理 / 确认购买 / 图片详情共用）。同样单独成文件在这里 @import 一次：
+   这三页分属 gallery 与 token 两个不同分包，分包之间不能互相引用，公共样式必须落在主包。 */
+@import "styles/cta-button.wxss";
+
 page {
   min-height: 100vh;
   color: #232323;

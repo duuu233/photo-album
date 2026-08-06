@@ -1,0 +1,96 @@
+<!-- Token 管理（设计稿：assets/ai/UI页面/Token管理.png）
+     折叠屏适配同设置类页面：根容器锁一屏高，导航栏与贴底按钮留在滚动区外，
+     中间内容交给 .fold-scroll 滚动（方案见 styles/fold-adapt.wxss）。 -->
+<view class="token-shell fold-viewport" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <page-nav title="Token管理"></page-nav>
+  <scroll-view class="fold-scroll" scroll-y="{{true}}">
+    <view class="fold-scroll-body token-scroll-body cta-button-gap">
+
+      <!-- 概览卡：外层橙色渐变底 + 内层白卡，与设计稿 Group 195244 一致 -->
+      <view class="account-card">
+        <view class="account-card-title">我的token</view>
+        <view class="account-inner">
+          <view class="account-balance">
+            <view class="account-balance-copy">
+              <view class="account-label">当前可用余额</view>
+              <view class="account-balance-value">
+                <text class="account-balance-num">{{account.balance}}</text>
+                <text class="account-balance-unit">Token</text>
+              </view>
+            </view>
+            <image class="account-coin" src="/assets/images/token-coin.png" mode="aspectFit"></image>
+          </view>
+          <view class="account-divider"></view>
+          <view class="account-stats">
+            <view class="account-stat">
+              <view class="account-label">总额（累计购买）</view>
+              <view class="account-stat-value">
+                <text class="account-stat-num account-stat-num--orange">{{account.totalPurchased}}</text>
+                <text class="account-stat-unit">Token</text>
+              </view>
+            </view>
+            <view class="account-stat-split"></view>
+            <view class="account-stat">
+              <view class="account-label">已消耗</view>
+              <view class="account-stat-value">
+                <text class="account-stat-num">{{account.totalSpent}}</text>
+                <text class="account-stat-unit">Token</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="token-section-title">套餐购买</view>
+      <!-- 横向滑动套餐列表。enable-flex 让内部 .package-row 的 flex 布局生效
+           （scroll-view 默认不是 flex 容器，不开这个属性卡片会各自换行）。 -->
+      <scroll-view class="package-scroll" scroll-x="{{true}}" enable-flex="{{true}}">
+        <view class="package-row">
+          <view
+            wx:for="{{packages}}"
+            wx:key="id"
+            class="package-card {{item.id === selectedId ? 'package-card--active' : ''}}"
+            data-id="{{item.id}}"
+            hover-class="none"
+            bindtap="onSelectPackage"
+          >
+            <!-- 赠送角标：无赠送的档位（设计稿里的 200 Token）不渲染。
+                 选中态是实心橙色标签、贴住卡片右上角；未选中是橙色文字。 -->
+            <view wx:if="{{item.gift > 0}}" class="package-gift">赠送 {{item.gift}} Token</view>
+            <view wx:else class="package-gift package-gift--placeholder"></view>
+            <view class="package-tokens">
+              <text class="package-tokens-num">{{item.tokens}}</text>
+              <text class="package-tokens-unit">Token</text>
+            </view>
+            <view class="package-price">
+              <text class="package-price-symbol">¥</text>
+              <text class="package-price-num">{{item.price}}</text>
+            </view>
+            <view class="package-unit">≈ ¥{{item.unitPrice}}/Token</view>
+          </view>
+        </view>
+      </scroll-view>
+
+      <view class="record-entry" hover-class="none" bindtap="goRecords">
+        <view class="record-entry-copy">
+          <view class="record-entry-title">购买 &amp; 消费记录</view>
+          <view class="record-entry-desc">查看所有购买和消费明细</view>
+        </view>
+        <image class="record-entry-chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
+      </view>
+
+    </view>
+  </scroll-view>
+
+  <!-- 贴底按钮留在滚动区外；.cta-button-gap 已把它占的高度让出来 -->
+  <view
+    class="cta-button {{selectedId ? '' : 'cta-button--disabled'}}"
+    hover-class="none"
+    bindtap="goConfirm"
+  >
+    <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
+    立即购买
+  </view>
+
+  <global-toast id="globalToast"></global-toast>
+</view>
