@@ -954,6 +954,9 @@ Page(fold.adapt({
     // 局部持有这次的流状态：this._stream 会被停止生成/切会话清空，catch 里靠它分辨
     // 「这条流是不是还归我管」，以及「断线前已经吐出内容了没有」。
     const stream = streaming ? this.beginStream(holder.id) : null
+    // 失败时一起打出来：前端超时（GENERATE_TIMEOUT）是 600s，如果 elapsed 稳定卡在明显更短的
+    // 数字上（60s/180s 之类），那就是上游 FC/网关先掐的，调前端超时没用 —— 见 ai-api.js 文件头。
+    const startedAt = Date.now()
 
     try {
       this._chatReq = streaming
@@ -986,7 +989,11 @@ Page(fold.adapt({
       // 这时候把整条换成失败卡片更像 bug）。错误照常按码分发提示，但**不给重试入口**
       // —— 这一轮服务端已经算过、也可能已扣过费，重试等于再来一遍。
       if (stream && stream.hasContent && this._stream === stream) {
-        console.warn('[BoltStar] 流式回复中途中断，保留已生成内容')
+        console.warn(
+          `[BoltStar] 流式回复中途中断，保留已生成内容 code=${(error && error.code) ||
+            '?'} elapsed=${Date.now() - startedAt}ms`,
+          (error && error.detail) || ''
+        )
         stream.ended = true
         this.pumpTyping() // 把已收到的文字打完再收尾
         aiI18n.handleAiError(error, { onBanned: () => this.setData({ banned: true }) })
@@ -1003,9 +1010,11 @@ Page(fold.adapt({
         const index = this.data.messages.findIndex(item => item.id === holder.id)
         if (index >= 0) {
           this._retryByMessage[holder.id] = { message, styleKey, urls }
-          if (error && error.detail) {
-            console.warn(`[BoltStar] code=${code}`, error.detail)
-          }
+          // elapsed 是分辨「前端超时」和「上游先掐」的唯一线索，失败时无条件打
+          console.warn(
+            `[BoltStar] code=${code} elapsed=${Date.now() - startedAt}ms`,
+            (error && error.detail) || ''
+          )
           this.setData({
             [`messages[${index}].loading`]: false,
             // 只收到进度就断了的情况：进度条要一起收掉，否则失败卡片下面还挂着半条进度

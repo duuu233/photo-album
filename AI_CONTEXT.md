@@ -63,7 +63,7 @@
 - `utils/config.js` 当前 `useMock: false`。
 - release 环境在 `utils/request.js` 中强制禁用 Mock，即使本地误开开关也不会在线上使用模拟数据。
 - BoltFox 普通请求单次超时 10 秒，网络层失败最多静默重试 2 次；文件上传超时 20 秒且不自动重试。
-- AI 普通请求超时 15 秒，聊天和生图超时 300 秒且不自动重试。
+- AI 普通请求超时 15 秒，聊天和生图超时 600 秒（10 分钟）且不自动重试。
 - `app.json` 预加载 device、projection、AI 三个分包；设置和相册分包按需加载。
 
 ## Architecture Overview
