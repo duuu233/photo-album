@@ -79,9 +79,16 @@ const TYPE_MAX_TICKS = 420
 
 // 流式打字机（2026-08-06 SSE 接入）：服务端一段一段推 text 事件，打字机不再一次拿到全文，
 // 而是「一路追着积压的字打」。每帧字数 = max(1, ceil(未打字数 / STREAM_TYPE_TICKS))
-// —— 即任意时刻的积压都在约 1 秒内打完：来得慢就一字一字（最顺滑），
+// —— 即任意时刻的积压都在约 STREAM_TYPE_TICKS 帧内打完：来得慢就一字一字（最顺滑），
 // 突然来一大段也不会落下十几秒的尾巴。
-const STREAM_TYPE_TICKS = 60
+//
+// 2026-08-07 从 60（≈1s）放慢到 180（≈2.9s）：图下面那段描述**没有打字机效果**的观感就出在这。
+// 服务端的 text 事件往往是连着涌进来的（尤其响应体一次性到达、靠 unescapeEventSeparators
+// 兜底解析的那条路，所有事件在同一帧解析完），积压瞬间就是全文 —— 压在 1 秒内打完，
+// 100 字就是每帧 2 字、0.8 秒冲完，肉眼基本看不出在打字。
+// 换算：100 字积压 → 1 字/帧 ≈ 1.6s；1000 字积压 → 6 字/帧 ≈ 2.7s（长回复照样不拖尾）。
+// 非流式那条老路是 TYPE_MAX_TICKS=420(≈6.7s)，放慢后两条路的观感也接近了。
+const STREAM_TYPE_TICKS = 180
 // 字打完了但流还没结束时的空转间隔(ms)。这时候没内容可渲染，没必要还按 16ms 空跑。
 const STREAM_IDLE_TICK_MS = 60
 
@@ -1274,7 +1281,10 @@ Page(fold.adapt({
       }
 
       case 'progress':
-        this.markStreamStarted(index, true)
+        // ⚠️ stream.target < 100 这个闸不能省：读数走到 100 时占位盒已经收起、真图已经上屏，
+        // 这时候服务端再补推一条 progress（重复/迟到的都可能），不挡就会把占位盒重新翻出来
+        // 盖在真图上。applyProgress 那边只挡了「进度倒退」，挡不住这里的显形。
+        this.markStreamStarted(index, stream.target < 100)
         this.applyProgress(index, event.progress, event.stage, event.message)
         break
 

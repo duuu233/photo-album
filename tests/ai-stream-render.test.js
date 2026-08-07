@@ -257,6 +257,11 @@ async function testCanvasHidesAtHundred() {
   assert.equal(page.data.messages[0].progressLabel, '生成完成')
   assert.equal(page.data.messages[0].typing, true, '文字这时候还没打完，打字机不受影响')
 
+  // 100% 之后服务端又补推一条 progress（重复/迟到的都可能）：占位盒不能被翻出来盖住真图
+  page.onStreamEvent(holder.id, { type: 'progress', progress: 90, stage: 'uploaded' })
+  page.onStreamEvent(holder.id, { type: 'progress', progress: 100, stage: 'done' })
+  assert.equal(page.data.messages[0].streaming, false, '收起后不能再显形')
+
   page.finishStream(holder.id, { text: '画面里', images: ['http://oss/a.png'], done: true })
   await waitSettled(page)
   assert.equal(page.data.messages[0].images.length, 1)
@@ -352,6 +357,41 @@ async function testAggregateFallback() {
   assert.equal(message.images.length, 1)
 }
 
+// 图下面那段描述必须**逐字**出，不能一帧糊上去（2026-08-07：STREAM_TYPE_TICKS 60→180 前，
+// 一次性涌进来的全文会在 ~0.8s 内冲完，肉眼看不出在打字）。
+// 这里模拟最糟的情况：所有 text 事件在同一帧到达（响应体一次性解析的那条兜底路径就是这样）。
+async function testTypewriterRevealsGradually() {
+  const page = createPage()
+  const holder = pushHolder(page)
+  page.beginStream(holder.id)
+
+  const frames = []
+  const setData = page.setData
+  page.setData = patch => {
+    setData(patch, undefined)
+    if (patch['messages[0].content'] !== undefined) {
+      frames.push(patch['messages[0].content'].length)
+    }
+  }
+
+  const full = '画面里是一只软萌的灰色垂耳兔，长耳朵垂在两侧，圆眼睛亮亮的，毛绒质感很足。'
+  Array.from(full).forEach(ch =>
+    page.onStreamEvent(holder.id, { type: 'text', content: ch })
+  )
+  page.finishStream(holder.id, { text: full, images: [], done: true })
+  await waitSettled(page)
+
+  assert.equal(page.data.messages[0].content, full, '最终要打全')
+  // 每帧最多 ceil(积压/180) 字：这段 37 字全部积压时也只能 1 字/帧，帧数不该被压缩掉
+  assert.ok(
+    frames.length >= Array.from(full).length,
+    `应逐字出，实际只用了 ${frames.length} 帧打完 ${Array.from(full).length} 字`
+  )
+  frames.forEach((len, i) => {
+    assert.ok(i === 0 || len > frames[i - 1], '每帧只增不减')
+  })
+}
+
 // 一句话一张图都没有：不留空白气泡
 async function testEmptyReplyRemovesBubble() {
   const page = createPage()
@@ -397,6 +437,7 @@ async function run() {
   await testProgressTweensBetweenMilestones()
   await testCanvasHidesWhenHundredMissing()
   await testTextOnlyFlow()
+  await testTypewriterRevealsGradually()
   await testAggregateFallback()
   await testEmptyReplyRemovesBubble()
   await testStopKeepsStreamedContent()
