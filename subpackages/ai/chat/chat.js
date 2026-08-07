@@ -1040,6 +1040,10 @@ Page(fold.adapt({
       imgStyle: styleKey,
       imageUrls: urls
     }
+    // 真正发给 /chat 的 image_urls：应与「待发图上传完成」逐条一致（前端全程不改写这些地址）
+    if (urls.length) {
+      console.log('[AI] /chat image_urls=', urls)
+    }
     const streaming = aiApi.supportsStream()
     // 局部持有这次的流状态：this._stream 会被停止生成/切会话清空，catch 里靠它分辨
     // 「这条流是不是还归我管」，以及「断线前已经吐出内容了没有」。
@@ -1295,6 +1299,9 @@ Page(fold.adapt({
         if (!url) {
           return
         }
+        // 服务端回的生成图地址，前端不做任何改写（下载/投屏时才 toHttpsUrl 升协议）。
+        // 这条打出来若不是 OSS 域名，就是后端把上游模型的临时图直出了，不是前端传错 image_urls。
+        console.log('[AI] 回复图 url=', url)
         stream.hasContent = true
         this.markStreamStarted(index, false)
         this.setData({
@@ -1747,6 +1754,9 @@ Page(fold.adapt({
       }
       const uploaded = await api.setFileUpload({ filePaths: [shrunk.filePath] })
       const url = this.extractUrl(uploaded)
+      // 排查「聊天里的图不是我们 OSS 的地址」先看这条：打出的就是 setFileUpload 原样回的地址，
+      // 它会原封不动进 pendingImages[].url → image_urls（见 _dispatchChat 里的 image_urls 日志）。
+      console.log('[AI] 待发图上传完成 url=', url, ' 接口原始返回=', uploaded)
       const index = this.data.pendingImages.findIndex(p => p.id === item.id)
       if (index < 0) {
         return // 上传期间用户已删掉这张
