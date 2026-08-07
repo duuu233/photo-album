@@ -32,21 +32,24 @@ const readRules = file => {
     .map(([selector, body]) => ({ selector: selector.trim(), body: body.trim() }))
 }
 
-// 同名属性后面的覆盖前面的（同特异性下按出现顺序），所以取最后一条
-const declaredWidth = (rules, selector) => {
+// 同名属性后面的覆盖前面的（同特异性下按出现顺序），所以取最后一条。
+// 选择器可能是分组写法（`.a, .b { … }`），逐个拆开比对。
+const declaredProp = (rules, selector, prop) => {
   const matched = rules.filter(rule =>
     rule.selector.split(',').some(one => one.trim() === selector)
   )
   assert.ok(matched.length, `${WXSS} 里找不到规则 ${selector}`)
-  let width = null
+  let value = null
   matched.forEach(rule => {
-    const found = rule.body.match(/(?:^|;)\s*width\s*:\s*([^;]+)/)
+    const found = rule.body.match(new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`))
     if (found) {
-      width = found[1].trim()
+      value = found[1].trim()
     }
   })
-  return width
+  return value
 }
+
+const declaredWidth = (rules, selector) => declaredProp(rules, selector, 'width')
 
 function testPlaceholderBoxMatchesParentWidth() {
   const rules = readRules(WXSS)
@@ -62,14 +65,37 @@ function testPlaceholderBoxMatchesParentWidth() {
     parentWidth && parentWidth !== '100%',
     '.bubble-imgs 要承担那个定宽（原先定在 .img-box 上），否则图会撑满整个气泡内容区'
   )
-  assert.match(
-    readRules(WXSS).find(r => r.selector === '.bubble-imgs').body,
-    /max-width\s*:\s*100%/,
+  assert.equal(
+    declaredProp(rules, '.bubble-imgs', 'max-width'),
+    '100%',
     '.bubble-imgs 定宽后要配 max-width:100%，窄屏才不会溢出气泡'
   )
 
   // 用户发的图气泡：本来就是父子同宽，一并锁住别被改坏
   assert.equal(declaredWidth(rules, '.bubble--image .img-box'), '100%')
+
+  // 生成中的渐变占位盒（2026-08-07）用的是同一套 padding-bottom 占位手法，同样的约束
+  assert.equal(
+    declaredWidth(rules, '.gen-canvas'),
+    '100%',
+    '.gen-canvas 也必须与父元素同宽，否则占位比例失真'
+  )
+  assert.equal(declaredProp(rules, '.gen-canvas-wrap', 'max-width'), '100%')
+}
+
+// 占位盒与真图必须**同尺寸同圆角**：100% 时占位盒原地换成真图，尺寸对不上就会跳一下
+function testPlaceholderMatchesFinalImageBox() {
+  const rules = readRules(WXSS)
+  assert.equal(
+    declaredWidth(rules, '.gen-canvas-wrap'),
+    declaredWidth(rules, '.bubble-imgs'),
+    '渐变占位盒与图片容器要同宽，否则 100% 换真图时宽度会跳'
+  )
+  assert.equal(
+    declaredProp(rules, '.gen-canvas', 'border-radius'),
+    declaredProp(rules, '.img-box', 'border-radius'),
+    '圆角也要一致，否则换图那一下轮廓会变'
+  )
 }
 
 // wxml 里凡是挂 `padding-bottom: {{…}}%` 的标签，都得是 .img-box —— 否则上面按选择器锁的
@@ -81,11 +107,38 @@ function testOnlyImgBoxUsesPercentPadding() {
   tags.forEach(tag => {
     assert.match(
       tag,
-      /class="[^"]*img-box/,
-      `用 padding-bottom 百分比占位的标签必须是 .img-box：${tag.slice(0, 60)}…`
+      /class="[^"]*(img-box|gen-canvas)/,
+      `用 padding-bottom 百分比占位的标签必须是 .img-box 或 .gen-canvas：${tag.slice(0, 60)}…`
     )
     assert.match(tag, /padding-bottom:\s*\{\{[^}]+\}\}%/, '占位比例应由数据驱动')
   })
+}
+
+// 生成中不能同时出现「渐变占位」和「真图」，也不能两个都不出现：
+// 占位盒挂 item.streaming，真图挂 item.images.length && !item.streaming，两者互斥且接得上
+function testPlaceholderAndImageAreMutuallyExclusive() {
+  const wxml = fs.readFileSync(path.join(root, WXML), 'utf8')
+  assert.match(
+    wxml,
+    /class="gen-canvas-wrap"/,
+    'wxml 里应有渐变占位盒'
+  )
+  const canvasTag = wxml.match(/<view[^>]*class="gen-canvas-wrap"[^>]*>/)[0]
+  assert.match(canvasTag, /wx:if="\{\{item\.streaming\}\}"/, '占位盒只在生成中显示')
+
+  const imgsTag = wxml.match(/<view[^>]*class="bubble-imgs"[^>]*>/)[0]
+  assert.match(
+    imgsTag,
+    /wx:if="\{\{item\.images\.length && !item\.streaming\}\}"/,
+    '真图要等 streaming 落下（progress 到 100）才上屏，否则会和占位盒并排出现两块'
+  )
+
+  // 占位盒必须排在 .bubble-imgs 前面、正文之后 —— 换图时才是「原地替换」而不是上下跳
+  const canvasAt = wxml.indexOf('class="gen-canvas-wrap"')
+  const imgsAt = wxml.indexOf('class="bubble-imgs"')
+  const textAt = wxml.indexOf('class="bubble-text"')
+  assert.ok(canvasAt < imgsAt, '占位盒要排在图片容器之前')
+  assert.ok(textAt < canvasAt, '占位盒要排在正文之后，否则 100% 时图会从文字上方跳到下方')
 }
 
 // 顺带把「盒子比例 = 图片比例」这条几何关系算一遍，把踩坑时的数算清楚，别再靠脑补
@@ -112,6 +165,8 @@ function testGeometryHoldsAtDesignWidth() {
 }
 
 testPlaceholderBoxMatchesParentWidth()
+testPlaceholderMatchesFinalImageBox()
 testOnlyImgBoxUsesPercentPadding()
+testPlaceholderAndImageAreMutuallyExclusive()
 testGeometryHoldsAtDesignWidth()
 console.log('ai image aspect tests passed')

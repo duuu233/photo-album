@@ -951,6 +951,8 @@ Page(fold.adapt({
       streaming: false,
       progress: 0,
       progressLabel: '',
+      // 渐变占位盒的比例：与这轮回复图将来的占位比例取同一个值，100% 换真图时高度不跳
+      genPad: this.replyImagePad(),
       timestampMs: Date.now(),
       timeLabel: ''
     }
@@ -1256,6 +1258,10 @@ Page(fold.adapt({
   },
 
   // 进度只增不减（见 beginStream 注释）。数值直接用服务端的，平滑交给 CSS 过渡。
+  //
+  // 到 100% 就把 streaming 落下：渐变占位盒收起、真图原地顶上（需求 2026-08-07 「达到 100%
+  // 渲染生成的图片」）。**不能等 settleStream**——那要等打字机把几十个 text 事件全打完才收，
+  // 图会被压到文字之后好几秒才出来。服务端漏推 100 时仍由 settleStream 兜底置 false。
   applyProgress(index, value) {
     const stream = this._stream
     const next = Math.max(0, Math.min(100, Math.round(Number(value) || 0)))
@@ -1263,10 +1269,17 @@ Page(fold.adapt({
       return
     }
     stream.progress = next
-    this.setData({
+    const patch = {
       [`messages[${index}].progress`]: next,
       [`messages[${index}].progressLabel`]: progressLabel(next)
-    })
+    }
+    if (next >= 100) {
+      patch[`messages[${index}].streaming`] = false
+    }
+    this.setData(patch)
+    if (next >= 100) {
+      this.stickToBottom() // 占位盒换成真图，高度一般会变，跟着贴一下底
+    }
   },
 
   // 流式打字机：一路追着积压的字打，队列空了就等下一段（每帧字数见 STREAM_TYPE_TICKS）。
