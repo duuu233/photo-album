@@ -87,6 +87,7 @@ function pushHolder(page) {
     streaming: false,
     progress: 0,
     progressLabel: '',
+    genPad: 177.78, // 渐变占位盒的比例，与真图同源（见 chat.js replyImagePad）
     timestampMs: 0,
     timeLabel: ''
   }
@@ -170,6 +171,58 @@ async function testGenerateFlow() {
   assert.equal(page.data.messages.length, 1)
 }
 
+// 渐变占位盒的收起时机（2026-08-07 需求「达到 100% 渲染生成的图片」）。
+// 图在 90% 就推过来了，但要压着不显示；streaming 必须在 **progress 到 100 的那一刻**落下
+// ——不能等 settleStream，那要等打字机把几十条 text 打完，图会晚好几秒才出来。
+async function testCanvasHidesAtHundred() {
+  const page = createPage()
+  const holder = pushHolder(page)
+  page.beginStream(holder.id)
+
+  page.onStreamEvent(holder.id, { type: 'pre_text', content: '正在为您绘制…' })
+  assert.equal(page.data.messages[0].streaming, true, '有进度事件就该挂出占位盒')
+
+  // 图先到（服务端约 50~90% 推），但此时 streaming 仍为 true → wxml 上真图不渲染
+  page.onStreamEvent(holder.id, { type: 'image', content: 'http://oss/a.png' })
+  page.onStreamEvent(holder.id, { type: 'progress', progress: 90 })
+  assert.equal(page.data.messages[0].images.length, 1, '图要先收进 images')
+  assert.equal(page.data.messages[0].streaming, true, '没到 100% 之前占位盒不能收')
+
+  // 文字还在流：此时依然是占位盒
+  page.onStreamEvent(holder.id, { type: 'text', content: '画面里' })
+  assert.equal(page.data.messages[0].streaming, true)
+
+  // 到 100%：占位盒立刻收起，真图上屏（不等打字机打完）
+  page.onStreamEvent(holder.id, { type: 'progress', progress: 100 })
+  assert.equal(page.data.messages[0].streaming, false, '100% 时占位盒要立刻收起换真图')
+  assert.equal(page.data.messages[0].progress, 100)
+  assert.equal(page.data.messages[0].typing, true, '文字这时候还没打完，打字机不受影响')
+
+  page.finishStream(holder.id, { text: '画面里', images: ['http://oss/a.png'], done: true })
+  await waitSettled(page)
+  assert.equal(page.data.messages[0].images.length, 1)
+  assert.equal(page.data.messages[0].streaming, false)
+}
+
+// 服务端漏推 100（真机上出现过事件不全）：settleStream 仍要把占位盒兜下来，
+// 否则图永远出不来、占位盒一直挂着
+async function testCanvasHidesWhenHundredMissing() {
+  const page = createPage()
+  const holder = pushHolder(page)
+  page.beginStream(holder.id)
+
+  page.onStreamEvent(holder.id, { type: 'progress', progress: 5 })
+  page.onStreamEvent(holder.id, { type: 'image', content: 'http://oss/b.png' })
+  page.onStreamEvent(holder.id, { type: 'progress', progress: 90 })
+  assert.equal(page.data.messages[0].streaming, true)
+
+  // 没有 progress:100，直接结束
+  page.finishStream(holder.id, { text: '好了', images: ['http://oss/b.png'], done: true })
+  await waitSettled(page)
+  assert.equal(page.data.messages[0].streaming, false, 'settleStream 要兜底收起占位盒')
+  assert.equal(page.data.messages[0].images.length, 1)
+}
+
 // 纯文字场景：没有任何 progress/pre_text 事件，界面不该出现进度条
 async function testTextOnlyFlow() {
   const page = createPage()
@@ -248,6 +301,8 @@ async function testStopKeepsStreamedContent() {
 
 async function run() {
   await testGenerateFlow()
+  await testCanvasHidesAtHundred()
+  await testCanvasHidesWhenHundredMissing()
   await testTextOnlyFlow()
   await testAggregateFallback()
   await testEmptyReplyRemovesBubble()

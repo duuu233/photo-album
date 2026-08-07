@@ -116,23 +116,30 @@
                 <text class="pre-text__body" user-select>{{item.preText}}</text>
               </view>
 
-              <!-- 生成进度（SSE progress，5→45→50→80→85→90→100），done 后隐藏 -->
-              <view wx:if="{{item.streaming}}" class="gen-progress">
-                <view class="gen-progress__head">
-                  <text class="gen-progress__label">{{item.progressLabel}}</text>
-                  <text class="gen-progress__value">{{item.progress}}%</text>
-                </view>
-                <view class="gen-progress__track">
-                  <view class="gen-progress__bar" style="width: {{item.progress}}%"></view>
-                </view>
-              </view>
-
               <text wx:if="{{item.content}}" class="bubble-text" user-select>
                 {{item.content}}
                 <text wx:if="{{item.typing}}" class="caret">▍</text>
               </text>
 
-              <view wx:if="{{item.images.length}}" class="bubble-imgs">
+              <!-- 生成中的图片占位（SSE progress，5→45→50→80→85→90→100）。
+                   位置就是图片将来出现的位置（.bubble-imgs 之前、正文之后），100% 时原地换成真图，
+                   前后不跳。genPad 与真图占位比例同源，所以换的时候高度也不跳。 -->
+              <view wx:if="{{item.streaming}}" class="gen-canvas-wrap">
+                <text class="gen-canvas__label">{{item.progressLabel}}</text>
+                <view class="gen-canvas" style="padding-bottom: {{item.genPad}}%">
+                  <view class="gen-canvas__inner">
+                    <image
+                      class="gen-canvas__icon"
+                      src="/assets/images/ai-magic-white.png"
+                      mode="aspectFit"
+                    ></image>
+                    <text class="gen-canvas__value">{{item.progress}}%</text>
+                  </view>
+                </view>
+              </view>
+
+              <!-- 生成中先不显示真图：占位盒还占着这个位置，等 100%（streaming 落下）再上屏 -->
+              <view wx:if="{{item.images.length && !item.streaming}}" class="bubble-imgs">
                 <block
                   wx:for="{{item.images}}"
                   wx:for-item="img"

@@ -303,13 +303,11 @@
    不是按自己的宽度。原先 .bubble-imgs 不设宽（撑满气泡内容区 622rpx）、.img-box 定宽 510rpx，
    于是竖图占位高 = 622×133.33% = 829rpx 配 510rpx 宽 → 盒子实际比例 162.6%，比图片(133.33%)高一截，
    aspectFill 为了填满就按高度放大、左右各裁掉 56rpx（图右边看着没显示全，2026-08-06 反馈）。
-   父子同宽百分比才算得对：宽度放这儿，.img-box 用 100% 跟着走。
-   .bubble--image（用户发的图）本来就是父子同宽，不受影响。*/
+   父子同宽百分比才算得对：宽度放这儿（与 .gen-canvas-wrap 并在下方同一条规则里写），
+   .img-box 用 100% 跟着走。.bubble--image（用户发的图）本来就是父子同宽，不受影响。*/
 .bubble-imgs {
   display: flex;
   flex-direction: column;
-  width: 510rpx;
-  max-width: 100%;
   gap: 14rpx;
 }
 
@@ -376,51 +374,77 @@
   line-height: 1.5;
 }
 
-.gen-progress {
-  padding: 4rpx 2rpx;
-}
-
-.pre-text + .gen-progress,
 .pre-text + .bubble-text,
+.pre-text + .gen-canvas-wrap,
 .pre-text + .bubble-imgs,
-.gen-progress + .bubble-text,
-.gen-progress + .bubble-imgs {
+.bubble-text + .gen-canvas-wrap {
   margin-top: 18rpx;
 }
 
-.gen-progress__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* —— 生成中的图片占位（2026-08-07）——
+   出图要几十秒，原先只有一条细进度条，用户盯着一片空白等。改成**一整块**跟成图同尺寸的
+   渐变占位：进度百分比摆正中间，100% 时原地换成真图。
+   尺寸/圆角必须与 .img-box 完全一致，换图那一下才不会跳，所以宽度与 .bubble-imgs 并在一处写。*/
+.bubble-imgs,
+.gen-canvas-wrap {
+  width: 510rpx;
+  max-width: 100%;
+}
+
+.gen-canvas__label {
+  display: block;
   margin-bottom: 12rpx;
-}
-
-.gen-progress__label {
-  color: #85817d;
+  color: #a5a09a;
   font-size: 24rpx;
 }
 
-.gen-progress__value {
-  color: #ef641e;
-  font-size: 24rpx;
-  font-weight: 600;
-}
-
-.gen-progress__track {
+/* 与 .img-box 同一套占位手法：height:0 + padding-bottom 百分比。
+   百分比按父元素宽度算，所以宽度定在 .gen-canvas-wrap 上、这里必须 100%
+   （踩坑记录见 .bubble-imgs 上方注释与 tests/ai-image-aspect.test.js）。*/
+.gen-canvas {
+  position: relative;
   width: 100%;
-  height: 10rpx;
+  height: 0;
   overflow: hidden;
-  border-radius: 10rpx;
-  background: rgba(89, 76, 58, 0.1);
+  border-radius: 22rpx;
+  /* 底色取项目里那套暖调（橙 #ef641e / 用户气泡 #ffe0cd）的柔化版，压住饱和度别抢成图的风头 */
+  background:
+    radial-gradient(120% 90% at 6% 0%, #f6b6d8 0%, rgba(246, 182, 216, 0) 58%),
+    radial-gradient(110% 90% at 100% 6%, #f9d5ac 0%, rgba(249, 213, 172, 0) 62%),
+    radial-gradient(130% 110% at 100% 100%, #b9c7ee 0%, rgba(185, 199, 238, 0) 64%),
+    linear-gradient(158deg, #f0c2e0 0%, #e3c6e4 46%, #c8bce9 100%);
 }
 
-/* 服务端推的是 5→45→50→80→85→90→100 这样的台阶值，靠这条过渡抹平成连续增长 */
-.gen-progress__bar {
-  width: 0;
-  height: 100%;
-  border-radius: 10rpx;
-  background: linear-gradient(90deg, #ffb27a, #ef641e);
-  transition: width 0.35s ease;
+.gen-canvas__inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14rpx;
+  /* 唯一的动效：整块轻微呼吸，表示还在跑。渐变本身不动，免得喧宾夺主 */
+  animation: gen-breathe 1.8s ease-in-out infinite;
+}
+
+.gen-canvas__icon {
+  width: 52rpx;
+  height: 52rpx;
+}
+
+.gen-canvas__value {
+  color: #ffffff;
+  font-size: 32rpx;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+  /* 渐变亮处白字会发飘，垫一层很淡的暖影 */
+  text-shadow: 0 2rpx 8rpx rgba(120, 92, 74, 0.22);
+}
+
+@keyframes gen-breathe {
+  50% {
+    opacity: 0.68;
+  }
 }
 
 @keyframes blink {
