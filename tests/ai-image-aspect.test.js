@@ -133,12 +133,21 @@ function testPlaceholderAndImageAreMutuallyExclusive() {
     '真图要等 streaming 落下（progress 到 100）才上屏，否则会和占位盒并排出现两块'
   )
 
-  // 占位盒必须排在 .bubble-imgs 前面、正文之后 —— 换图时才是「原地替换」而不是上下跳
+  // 气泡内顺序（2026-08-07 起）：预描述 → 占位盒 → 真图 → 正文。
+  // 关键不是「正文在上还是在下」，而是**占位盒与真图必须在正文的同一侧**：
+  // 它俩是同一个位置的两个状态，跨到正文两边去的话，100% 换图那一下图会整块跳过正文。
   const canvasAt = wxml.indexOf('class="gen-canvas-wrap"')
   const imgsAt = wxml.indexOf('class="bubble-imgs"')
   const textAt = wxml.indexOf('class="bubble-text"')
   assert.ok(canvasAt < imgsAt, '占位盒要排在图片容器之前')
-  assert.ok(textAt < canvasAt, '占位盒要排在正文之后，否则 100% 时图会从文字上方跳到下方')
+  assert.ok(
+    imgsAt < textAt,
+    '正文要排在图片之后（2026-08-07 需求：文字放到图片下方，与 SSE 里 text 排在 image 之后一致）'
+  )
+  assert.ok(
+    canvasAt < textAt,
+    '占位盒与真图必须都在正文之前，否则 100% 换图时图会从正文一侧跳到另一侧'
+  )
 }
 
 // 顺带把「盒子比例 = 图片比例」这条几何关系算一遍，把踩坑时的数算清楚，别再靠脑补

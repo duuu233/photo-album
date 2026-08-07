@@ -163,8 +163,28 @@ async function testGenerateFlow() {
   assert.equal(page.data.messages[0].progress, 50)
   assert.equal(page.data.messages[0].progressLabel, '初稿已完成 ✨', '倒退的 stage 也不能改文案')
 
-  page.onStreamEvent(holder.id, { type: 'progress', progress: 80, stage: 'completed' })
+  // 服务端 2026-08-07 起在 progress 事件上直接带 message：有就用它，不再走本地 stage 映射
+  page.onStreamEvent(holder.id, {
+    type: 'progress',
+    progress: 80,
+    stage: 'completed',
+    message: '正在打磨细节呢'
+  })
   await waitProgress(page, 80)
+  assert.equal(
+    page.data.messages[0].progressLabel,
+    '正在打磨细节呢',
+    '服务端给了 message 就直接显示，别再用本地那句「正在优化细节…」'
+  )
+
+  // message 是空串/纯空格时当没给，回落到 stage 映射（否则占位盒里会空一行）
+  page.onStreamEvent(holder.id, {
+    type: 'progress',
+    progress: 82,
+    stage: 'completed',
+    message: '   '
+  })
+  await waitProgress(page, 82)
   assert.equal(page.data.messages[0].progressLabel, '正在优化细节…')
   ;[
     { progress: 85, stage: 'downloading' },

@@ -57,7 +57,8 @@ const DOC_IMAGE_FLOW = [
   'data: {"type":"progress","progress":5,"stage":"starting"}',
   'data: {"type":"progress","progress":5,"stage":"request_sent"}',
   'data: {"type":"progress","progress":15,"stage":"generating"}',
-  'data: {"type":"progress","progress":30,"stage":"generating"}',
+  // 2026-08-07 服务端在 progress 上新增 message（文案改由后端下发）：解析层同样原样透传
+  'data: {"type":"progress","progress":30,"stage":"generating","message":"正在创作图片"}',
   'data: {"type":"progress","progress":45,"stage":"generating"}',
   'data: {"type":"progress","progress":50,"stage":"partial_succeeded"}',
   'data: {"type":"progress","progress":80,"stage":"completed"}',
@@ -107,6 +108,10 @@ async function testImageFlowSingleLf() {
     'uploaded',
     'done'
   ])
+
+  // 新增的 message 字段也必须原样到页面（页面优先用它出文案，见 chat.js progressLabel）
+  const messages = events.filter(e => e.type === 'progress' && e.message).map(e => e.message)
+  assert.deepEqual(messages, ['正在创作图片'])
 }
 
 async function testImageFlowBlankLine() {

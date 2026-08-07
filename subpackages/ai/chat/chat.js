@@ -85,9 +85,16 @@ const STREAM_TYPE_TICKS = 60
 // 字打完了但流还没结束时的空转间隔(ms)。这时候没内容可渲染，没必要还按 16ms 空跑。
 const STREAM_IDLE_TICK_MS = 60
 
-// 进度条文案（接入文档「-改」版 §四 对照表）。
+// 进度条文案。**优先直接用服务端 progress 事件里的 `message` 字段**
+//（2026-08-07 服务端新增：`{"type":"progress","progress":35,"stage":"generating","message":"正在创作图片"}`）
+// —— 文案归后端管，前端不再自己翻译 stage，改文案不用发版。
+//
+// 下面两级只是兜底，别删：老部署、以及 pre_text/done 这种本来就没有 message 的场合还要靠它们，
+// 否则占位盒里会空着一行。
+//
+// 兜底第一级：按 stage 映射（文档「-改」版 §四 对照表）。
 // **认 stage 而不只看数值**：progress=5 有 starting / request_sent 两种 stage，光看数字分不开；
-// 而 85(downloading) 与 80(completed) 的文案在文档里是分开的，旧实现按数值分档把它俩并成了一句。
+// 而 85(downloading) 与 80(completed) 的文案在文档里是分开的。
 const STAGE_LABELS = {
   starting: '正在连接生图引擎…',
   request_sent: '正在连接生图引擎…',
@@ -99,9 +106,14 @@ const STAGE_LABELS = {
   done: '生成完成'
 }
 
-// stage 缺失（纯文字流、老服务端、或补间途中的中间值）时按数值回落到同一张表的分档。
+// 兜底第二级：stage 也缺（纯文字流、老服务端、或补间途中的中间值）时按数值回落到同一张表的分档。
 // 分档边界与 STAGE_LABELS 对齐，所以「45→50 爬到一半」和「刚好落在 50」不会给出矛盾的两句话。
-function progressLabel(progress, stage) {
+function progressLabel(progress, stage, message) {
+  // 服务端给了就直接用（trim 一下：空串/纯空格当没给，否则占位盒里会空一行）
+  const fromServer = typeof message === 'string' ? message.trim() : ''
+  if (fromServer) {
+    return fromServer
+  }
   const byStage = stage ? STAGE_LABELS[stage] : ''
   if (byStage) {
     return byStage
@@ -1215,7 +1227,7 @@ Page(fold.adapt({
   //   hasContent —— 已经吐出过预描述/图/文字（决定中断时是保留还是换失败卡片）；
   //   target     —— 服务端最新推到的里程碑，只增不减（重复/乱序推也不会让进度倒退）；
   //   progress   —— 当前**上屏**的进度，由 pumpProgress 一步步爬向 target；
-  //   stage      —— target 那一级的 stage，用来出文案（见 progressLabel）。
+  //   stage/message —— target 那一级的 stage 与服务端文案，用来出文案（见 progressLabel）。
   beginStream(holderId) {
     this._stream = {
       holderId,
@@ -1225,7 +1237,8 @@ Page(fold.adapt({
       hasContent: false,
       target: 0,
       progress: 0,
-      stage: ''
+      stage: '',
+      message: ''
     }
     return this._stream
   },
@@ -1241,23 +1254,28 @@ Page(fold.adapt({
     }
 
     switch (event.type) {
-      // 预描述：「正在为您绘制赛博朋克城市的雨夜夜景…」——1s 级就到，先顶掉长时间空等
+      // 预描述。服务端会推**两条**（2026-08-07 起）：先秒回一句占位的「星宝努力思考创作中」顶掉
+      // 空等，约 3s 后 LLM 出结果，再推真正的「正在为您绘制赛博朋克城市的雨夜夜景…」。
+      // 前端不用分辨是哪一条，直接覆盖即可 —— 所以这里没有「只写第一次」的判断，别加。
       case 'pre_text': {
         const content = String(event.content || '').trim()
         if (!content) {
           return
         }
+        // 第一条是「凭空多出一块内容」，必须强制贴底；后一条只是就地换字，
+        // 这时候还硬拽用户回底部，正在上翻看历史的人会被打断。
+        const first = !this.data.messages[index].preText
         stream.hasContent = true
         this.markStreamStarted(index, true)
         this.setData({ [`messages[${index}].preText`]: content })
         this.applyProgress(index, stream.target || 5, 'starting')
-        this.stickToBottom({ force: true, animate: true })
+        this.stickToBottom({ force: first, animate: true })
         break
       }
 
       case 'progress':
         this.markStreamStarted(index, true)
-        this.applyProgress(index, event.progress, event.stage)
+        this.applyProgress(index, event.progress, event.stage, event.message)
         break
 
       // 图在 90%(uploaded) 之后才推过来（见 beginStream 上方的事件顺序）。
@@ -1322,10 +1340,10 @@ Page(fold.adapt({
   // 收到服务端的里程碑：只记成**目标值**，不直接上屏 —— 上屏交给 pumpProgress 一步步爬过去
   // （接入文档 §三，理由见 PROGRESS_TICK_MS 上方注释）。目标只增不减，迟到/乱序的小值直接丢。
   //
-  // stage 只在目标值真的往前走时才更新。服务端在同一级上换 stage 的两处
+  // stage/message 只在目标值真的往前走时才更新。服务端在同一级上换 stage 的两处
   //（5: starting→request_sent、90 之后仍是 uploaded）在 STAGE_LABELS 里文案本来就相同，
   // 不跟这一步没有可见差别。
-  applyProgress(index, value, stage) {
+  applyProgress(index, value, stage, message) {
     const stream = this._stream
     const next = Math.max(0, Math.min(100, Math.round(Number(value) || 0)))
     if (!stream || next <= stream.target) {
@@ -1333,6 +1351,7 @@ Page(fold.adapt({
     }
     stream.target = next
     stream.stage = stage || ''
+    stream.message = message || ''
     this.pumpProgress()
   },
 
@@ -1371,7 +1390,12 @@ Page(fold.adapt({
   showProgress(index, value) {
     const stream = this._stream
     stream.progress = value
-    const label = progressLabel(value, value >= stream.target ? stream.stage : '')
+    const reached = value >= stream.target
+    const label = progressLabel(
+      value,
+      reached ? stream.stage : '',
+      reached ? stream.message : ''
+    )
     const patch = { [`messages[${index}].progress`]: value }
     if (this.data.messages[index].progressLabel !== label) {
       patch[`messages[${index}].progressLabel`] = label

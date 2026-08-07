@@ -647,9 +647,13 @@ module.exports = {
   //（chat.wxml 的 .welcome 区块，仅在 messages 为空时显示），所以 text 里不会再带招呼语前缀。
   //
   // handlers.onEvent(event) 收原始事件：
-  //   pre_text {content}        预描述文案，约 15s 到（等 LLM 第一轮返回），在它之前页面自己顶 loading
-  //   progress {progress,stage} 里程碑，只有 5/15/30/45/50/80/85/90/100 这几级
-  //                             （中间值要前端自己补，见 chat.js 的 pumpProgress）
+  //   pre_text {content}        预描述文案，推**两条**：先秒回一句占位的「星宝努力思考创作中」，
+  //                             约 3s 后 LLM 出结果再推真文案。调用方直接覆盖即可，不必分辨
+  //   progress {progress,stage,message}
+  //                             里程碑，只有 5/15/30/45/50/80/85/90/100 这几级
+  //                             （中间值要前端自己补，见 chat.js 的 pumpProgress）；
+  //                             message 是服务端下发的进度文案（2026-08-07 新增），有就直接显示，
+  //                             不必再自己维护 stage→文案 的映射表
   //   image    {content}        生成图 URL，排在 progress 90(uploaded) **之后**，不是 50%
   //   text     {content}        回复文字，每次 1~3 字，调用方自行追加渲染
   //   done     {orientation}    结束

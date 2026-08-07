@@ -311,9 +311,6 @@
   gap: 14rpx;
 }
 
-.bubble-text + .bubble-imgs {
-  margin-top: 18rpx;
-}
 
 .img-box {
   position: relative;
@@ -374,10 +371,13 @@
   line-height: 1.5;
 }
 
+/* 气泡内的纵向间距。2026-08-07 起顺序是 预描述 → 占位盒/真图 → 正文
+   （正文改到图片下方），这几条相邻规则要跟着这个顺序走，别照旧写 .bubble-text + .bubble-imgs。*/
 .pre-text + .bubble-text,
 .pre-text + .gen-canvas-wrap,
 .pre-text + .bubble-imgs,
-.bubble-text + .gen-canvas-wrap {
+.gen-canvas-wrap + .bubble-text,
+.bubble-imgs + .bubble-text {
   margin-top: 18rpx;
 }
 
@@ -391,11 +391,13 @@
   max-width: 100%;
 }
 
+/* 进度文案压在百分比正下方、盒子**内部**（2026-08-07 需求，原先是盒外上方的一行灰字）。
+   压在渐变上所以用半透明白：与 __value 拉开层级，一眼分得出「47%」是主、文案是注解。*/
 .gen-canvas__label {
-  display: block;
-  margin-bottom: 12rpx;
-  color: #a5a09a;
+  color: rgba(255, 255, 255, 0.88);
   font-size: 24rpx;
+  letter-spacing: 0.5rpx;
+  text-shadow: 0 2rpx 8rpx rgba(120, 92, 74, 0.22);
 }
 
 /* 与 .img-box 同一套占位手法：height:0 + padding-bottom 百分比。
@@ -422,7 +424,11 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14rpx;
+  /* 图标 / 百分比 / 文案三层叠在一起，间距收到 10rpx 让它们读起来是**一组**而不是三件东西 */
+  gap: 10rpx;
+  /* 文案可能换行，留出左右边距别顶到盒子边上 */
+  padding: 0 24rpx;
+  text-align: center;
   /* 唯一的动效：整块轻微呼吸，表示还在跑。渐变本身不动，免得喧宾夺主 */
   animation: gen-breathe 1.8s ease-in-out infinite;
 }
