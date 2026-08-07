@@ -246,6 +246,14 @@ button {
   font-size: 22rpx;
 }
 
+/* 输入框后面的单位标注（包 / 字节）：跟着内容宽，不跟 .input 抢 flex 空间 */
+.row-unit {
+  flex: 0 0 auto;
+  margin-right: 8rpx;
+  color: #8b9098;
+  font-size: 22rpx;
+}
+
 .row-tip {
   margin-top: 10rpx;
   color: #8b9098;
@@ -285,209 +293,13 @@ button {
   font-size: 26rpx;
 }
 
-/* 上传转换参数 */
-.convert-panel {
-  margin: 18rpx 0 16rpx;
-  padding: 18rpx 20rpx;
-  background: #f7f9fd;
-  border: 2rpx solid #edf1f7;
-  border-radius: 16rpx;
-}
-
-.convert-head {
-  display: flex;
-  align-items: center;
-  margin-bottom: 10rpx;
-}
-
-.convert-title {
-  flex: 0 0 auto;
-  color: #2a2d32;
-  font-size: 26rpx;
-  font-weight: 700;
-}
-
-.convert-summary {
-  flex: 1;
-  min-width: 0;
-  margin-left: 14rpx;
-  color: #8b9098;
-  font-size: 22rpx;
-  text-align: right;
-  word-break: break-all;
-}
-
-.row-tight {
-  margin-top: 12rpx;
-}
-
-.profile-picker {
-  flex: 1;
-  min-width: 0;
-  margin-right: 12rpx;
-}
-
-.picker-field {
-  height: 64rpx;
-  padding: 0 18rpx;
-  color: #2a2d32;
-  font-size: 24rpx;
-  font-weight: 600;
-  line-height: 64rpx;
-  background: #ffffff;
-  border: 2rpx solid #edf1f7;
-  border-radius: 14rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.btn-compact {
-  height: 64rpx;
-  padding: 0 18rpx;
-  font-size: 22rpx;
-  white-space: nowrap;
-}
-
-.profile-note {
-  margin-top: 8rpx;
-  padding-left: 130rpx;
-  color: #8b9098;
-  font-size: 22rpx;
-  line-height: 1.4;
-}
-
-.convert-panel .radio-row {
-  flex-wrap: wrap;
-}
-
-/* 自定义六色 RGB */
-.custom-palette {
-  margin-top: 14rpx;
-  padding: 14rpx;
-  background: #ffffff;
-  border: 2rpx solid #edf1f7;
-  border-radius: 14rpx;
-}
-
-.custom-palette-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.custom-palette-title {
-  color: #2a2d32;
-  font-size: 24rpx;
-  font-weight: 600;
-}
-
-.custom-palette-hint {
-  color: #8b9098;
-  font-size: 20rpx;
-}
-
-.color-row {
-  display: flex;
-  align-items: center;
-  margin-top: 12rpx;
-}
-
-.color-swatch {
-  flex: 0 0 auto;
-  width: 40rpx;
-  height: 40rpx;
-  border: 2rpx solid #d8dde6;
-  border-radius: 8rpx;
-}
-
-.color-name {
-  flex: 0 0 44rpx;
-  margin-left: 12rpx;
-  color: #2a2d32;
-  font-size: 24rpx;
-  font-weight: 600;
-}
-
-.channel {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  margin-left: 10rpx;
-}
-
-.channel-label {
-  flex: 0 0 auto;
-  margin-right: 6rpx;
-  color: #8b9098;
-  font-size: 22rpx;
-}
-
-.channel-input {
-  flex: 1;
-  min-width: 0;
-  height: 56rpx;
-  padding: 0 8rpx;
-  color: #2a2d32;
-  font-size: 24rpx;
-  text-align: center;
-  background: #f2f5fc;
-  border-radius: 10rpx;
-}
-
-/* 同步到真实投屏 / 恢复默认 */
-.sync-row {
-  display: flex;
-  align-items: center;
-}
-
-.sync-btn {
-  flex: 1;
-  background: linear-gradient(90deg, #36c2a6, #1aa886);
-}
-
-.reset-btn {
-  margin-left: 12rpx;
-  color: #6b7280;
-  background: #eef1f6;
-}
-
-.switch-row {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-height: 64rpx;
-}
-
-.switch-row .row-hint {
-  margin-left: 14rpx;
-}
-
-.tune-row {
-  margin-top: 14rpx;
-}
-
-.tune-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.tune-label {
-  color: #2a2d32;
-  font-size: 24rpx;
-  font-weight: 600;
-}
-
-.tune-value {
-  color: #d6480f;
-  font-family: "Consolas", "Menlo", "Courier New", monospace;
-  font-size: 24rpx;
-  font-weight: 700;
-}
-
-.tune-slider {
-  margin: 4rpx 0 0;
+/* 离屏导出画布：与投屏预览页同款，定位到屏幕外不可见，只用于「上传相册图片」出设备分辨率图 */
+.crop-canvas {
+  position: fixed;
+  left: -9999rpx;
+  top: 0;
+  width: 10rpx;
+  height: 10rpx;
 }
 
 /* 进度条 */
