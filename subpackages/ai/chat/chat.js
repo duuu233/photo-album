@@ -1232,18 +1232,31 @@ Page(fold.adapt({
 
   // ==================== 流式回复（SSE） ====================
   //
-  // 事件顺序（生图场景，见接入文档「-改」版 §二完整事件流）：
-  //   pre_text → progress(5/5/15/30/45) → progress(50) → progress(80/85/90) → image
-  //   → text（逐条）→ progress(100) → done
+  // 事件顺序（2026-08-07 服务端新增 init / heartbeat / **mode**）：
+  //   生图：  init → pre_text「星宝努力思考中」→ heartbeat → mode:"image" → pre_text(替换成真文案)
+  //          → progress(5/15/30/45/50/80/85/90) → image → text（逐条）→ progress(100) → done
+  //   纯文字：init → pre_text「星宝努力思考中」→ heartbeat → mode:"text" → pre_text:""
+  //          → text（逐条）→ done
+  //
+  // ⚠️ **占位盒的显形时机由 mode 决定，不是 pre_text**。这是这批改动的要点：
+  //    两条路开头一模一样（都有那句「星宝努力思考中」），服务端要到 mode 事件才知道这轮走哪条。
+  //    改造前是 pre_text 一到就把渐变占位盒亮出来 —— 放到新流程里，纯文字回复也会先闪一个
+  //    生图占位盒再收掉。所以 pre_text 只管写文案，mode:"image" 才唤出占位盒 + 起进度。
+  //    mode:"text" 那条紧跟着的 pre_text:"" 是服务端来擦「思考中」的，擦完气泡若空了要把
+  //    三点动画放回去，别晾出一个空白气泡。
   // ⚠️ image 排在 progress 90(uploaded) **之后**，不是 50%——50 那级只是「初稿完成」，
   //    图还没下载上传完，URL 拿不到。占位盒因此几乎会挂满整个生成过程。
-  // 纯文字场景只有 text + done，没有进度事件，界面表现与改造前一致（三点动画 → 打字机）。
+  //
+  // 兼容没有 mode 的老部署：progress 事件照旧能把占位盒唤出来（见 case 'progress'），
+  // 只是显形时机从 pre_text 推迟到第一条 progress —— 两者本来就前后脚，观感无差。
   //
   // this._stream 只跟着「当前这一条在途回复」走，一次只可能有一条（sending 期间不许再发）：
   //   holderId   —— 内容写进哪个气泡；
   //   chars      —— 已收到的全部文字（按码点拆好，emoji 不会被劈成两半）；
   //   shown      —— 已经打上屏的字数，chars 与 shown 的差就是「积压」；
   //   ended      —— 流已结束（resolve 或中断），打字机排空后才收尾；
+  //   mode       —— 服务端 mode 事件定的这一轮走向：'image'=生图（出占位盒）/'text'=纯文字/
+  //                 ''=还没收到（老部署不发这个事件，一直是空串，各处按「未知」兜底）；
   //   hasContent —— 已经吐出过预描述/图/文字（决定中断时是保留还是换失败卡片）；
   //   target     —— 服务端最新推到的里程碑，只增不减（重复/乱序推也不会让进度倒退）；
   //   progress   —— 当前**上屏**的进度，由 pumpProgress 一步步爬向 target；
@@ -1254,6 +1267,7 @@ Page(fold.adapt({
       chars: [],
       shown: 0,
       ended: false,
+      mode: '',
       hasContent: false,
       target: 0,
       progress: 0,
@@ -1274,29 +1288,71 @@ Page(fold.adapt({
     }
 
     switch (event.type) {
-      // 预描述。服务端会推**两条**（2026-08-07 起）：先秒回一句占位的「星宝努力思考创作中」顶掉
-      // 空等，约 3s 后 LLM 出结果，再推真正的「正在为您绘制赛博朋克城市的雨夜夜景…」。
-      // 前端不用分辨是哪一条，直接覆盖即可 —— 所以这里没有「只写第一次」的判断，别加。
+      // 开流握手 / 心跳。两者都不带要渲染的内容：init 表示服务端已受理，heartbeat 是长等待期间
+      // 用来续命连接的空包。界面继续挂着三点动画即可，这里显式列出来，免得以后有人以为漏处理了。
+      case 'init':
+      case 'heartbeat':
+        break
+
+      // 这一轮走生图还是纯文字。**占位盒只认这个事件**（理由见 beginStream 上方大段注释）。
+      // 字段名按 { "type": "mode", "mode": "image" } 取，同时兼容塞在 content 里的写法。
+      case 'mode': {
+        const mode = String(event.mode || event.content || '').trim().toLowerCase()
+        if (mode !== 'image' && mode !== 'text') {
+          break // 未知取值：当没收到，让 progress 那条兜底路照旧生效
+        }
+        stream.mode = mode
+        if (mode === 'image') {
+          // 渐变占位盒显形并起步到 5%：原先这两件事挂在 pre_text 上，现在挪到这儿。
+          this.markStreamStarted(index, true)
+          this.applyProgress(index, stream.target || 5, 'starting')
+          this.stickToBottom({ force: true, animate: true })
+        }
+        break
+      }
+
+      // 预描述。服务端会推**两条**：先秒回一句占位的「星宝努力思考中」顶掉空等，
+      // 之后按 mode 分两种走向 —— 生图是替换成真正的「正在为您绘制…」，纯文字是推一条**空串**
+      // 把它擦掉。前端不用分辨是哪一条，直接覆盖即可 —— 所以这里没有「只写第一次」的判断，别加。
       case 'pre_text': {
         const content = String(event.content || '').trim()
+        const message = this.data.messages[index]
         if (!content) {
-          return
+          // 空串 = 擦掉预描述（mode:"text" 之后紧跟的那条）。擦完气泡里可能什么都不剩，
+          // 正文还在路上，这时候要把三点动画放回去，别晾出一个空白气泡。
+          if (!message.preText) {
+            break
+          }
+          const patch = { [`messages[${index}].preText`]: '' }
+          if (!message.content && !message.streaming && !(message.images || []).length) {
+            patch[`messages[${index}].loading`] = true
+            // 屏上又什么都不剩了：这时候断线该走「失败卡片 + 可重试」，而不是
+            // 「保留已生成内容」那条（那条不给重试入口，见 _dispatchChat 的 catch）
+            stream.hasContent = false
+          }
+          this.setData(patch)
+          break
         }
         // 第一条是「凭空多出一块内容」，必须强制贴底；后一条只是就地换字，
         // 这时候还硬拽用户回底部，正在上翻看历史的人会被打断。
-        const first = !this.data.messages[index].preText
+        const first = !message.preText
         stream.hasContent = true
-        this.markStreamStarted(index, true)
+        this.markStreamStarted(index, false) // 只收三点动画；占位盒交给 mode:"image"
         this.setData({ [`messages[${index}].preText`]: content })
-        this.applyProgress(index, stream.target || 5, 'starting')
         this.stickToBottom({ force: first, animate: true })
         break
       }
 
       case 'progress':
+        // mode 已经定了走纯文字：迟到/多余的 progress 不能把占位盒翻出来。
+        if (stream.mode === 'text') {
+          break
+        }
         // ⚠️ stream.target < 100 这个闸不能省：读数走到 100 时占位盒已经收起、真图已经上屏，
         // 这时候服务端再补推一条 progress（重复/迟到的都可能），不挡就会把占位盒重新翻出来
         // 盖在真图上。applyProgress 那边只挡了「进度倒退」，挡不住这里的显形。
+        //
+        // 这一行同时是**没有 mode 的老部署**的兜底：进度一来照样把占位盒唤出来。
         this.markStreamStarted(index, stream.target < 100)
         this.applyProgress(index, event.progress, event.stage, event.message)
         break
@@ -1339,7 +1395,12 @@ Page(fold.adapt({
       }
 
       case 'done':
-        this.applyProgress(index, 100, 'done')
+        // 只有走过生图那条路才需要把进度补到 100（收占位盒、换真图）。纯文字这一路压根没有
+        // 占位盒，还去补间就是白跑三十来次 setData（0→100 每 80ms 走 3 步，全程没人看得见）。
+        // 用 target>0 而不是 mode 判：老部署不发 mode，但只要出过图就一定推过 progress。
+        if (stream.target > 0) {
+          this.applyProgress(index, 100, 'done')
+        }
         break
 
       default:

@@ -132,6 +132,50 @@ async function testTextFlowWithEmoji() {
   assert.equal(result.images.length, 0)
 }
 
+// ---- 2026-08-07 新增的 init / heartbeat / mode（两条路的开头 + 分叉）----
+// 解析层对这三个事件不做任何解读，但必须**原样、按序**送到页面：占位盒出不出全看 mode，
+// 少送一个或把顺序打乱，页面就分不清这一轮是生图还是纯文字。
+const MODE_TEXT_FLOW = [
+  'data: {"type":"init"}',
+  'data: {"type":"pre_text","content":"星宝努力思考中"}',
+  'data: {"type":"heartbeat"}',
+  'data: {"type":"mode","mode":"text"}',
+  'data: {"type":"pre_text","content":""}',
+  'data: {"type":"text","content":"你好呀"}',
+  'data: {"type":"done","orientation":"square"}'
+]
+
+const MODE_IMAGE_HEAD = [
+  'data: {"type":"init"}',
+  'data: {"type":"pre_text","content":"星宝努力思考中"}',
+  'data: {"type":"heartbeat"}',
+  'data: {"type":"mode","mode":"image"}',
+  'data: {"type":"pre_text","content":"正在为您绘制软萌可爱的小猫画面…"}',
+  'data: {"type":"progress","progress":5,"stage":"starting"}',
+  'data: {"type":"done","orientation":"square"}'
+]
+
+async function testModeEventsPassThrough() {
+  const { result, events } = await collect(MODE_TEXT_FLOW, { sep: '\n\n' })
+  assert.deepEqual(
+    events.map(e => e.type),
+    ['init', 'pre_text', 'heartbeat', 'mode', 'pre_text', 'text', 'done'],
+    '新事件要一个不落、按原顺序送到页面'
+  )
+  assert.equal(events[3].mode, 'text', 'mode 的取值不能被吃掉')
+  assert.equal(events[4].content, '', '擦预描述用的空串不能被当成「没有这条事件」丢掉')
+  // init/heartbeat/mode 都不是内容，不能混进汇总结果
+  assert.equal(result.text, '你好呀')
+  assert.equal(result.images.length, 0)
+  assert.equal(result.done, true)
+
+  const image = await collect(MODE_IMAGE_HEAD, { sep: '\n\n' })
+  assert.equal(image.events[3].type, 'mode')
+  assert.equal(image.events[3].mode, 'image')
+  assert.equal(image.events[4].content, '正在为您绘制软萌可爱的小猫画面…', '第二条 pre_text 是真文案')
+  assert.equal(image.result.text, '', 'pre_text 不算正文，不能进汇总的 text')
+}
+
 async function testDataPrefixWithoutSpace() {
   // 文档 §4.1 示例代码写死 slice(6)（依赖 `data: ` 带空格）。服务端哪天不带空格，
   // 那份示例会把 JSON 的第一个字符吃掉；我们按 slice(5)+trim，两种都认。
@@ -151,6 +195,7 @@ async function run() {
   await testImageFlowSingleLf()
   await testImageFlowBlankLine()
   await testTextFlowWithEmoji()
+  await testModeEventsPassThrough()
   await testDataPrefixWithoutSpace()
   console.log('ai stream doc conformance tests passed')
 }

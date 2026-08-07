@@ -133,15 +133,32 @@ async function testGenerateFlow() {
   const holder = pushHolder(page)
   page.beginStream(holder.id)
 
-  // 接入文档「-改」版 §二 的生图事件顺序（stage 原样照抄）
-  page.onStreamEvent(holder.id, { type: 'pre_text', content: '正在为您绘制赛博朋克城市的雨夜夜景…' })
+  // 生图事件顺序（2026-08-07 起开头多了 init / heartbeat / mode 三件套）：
+  //   init → pre_text「星宝努力思考中」→ heartbeat → mode:"image" → pre_text(真文案) → progress…
+  page.onStreamEvent(holder.id, { type: 'init' })
+  page.onStreamEvent(holder.id, { type: 'pre_text', content: '星宝努力思考中' })
   let message = page.data.messages[0]
   assert.equal(message.loading, false, 'pre_text 一到就该收起三点动画')
-  assert.equal(message.streaming, true)
-  assert.equal(message.preText, '正在为您绘制赛博朋克城市的雨夜夜景…')
+  assert.equal(
+    message.streaming,
+    false,
+    'mode 还没到，这一轮走不走生图还不知道，占位盒不能先亮出来'
+  )
+  assert.equal(message.preText, '星宝努力思考中')
+  page.onStreamEvent(holder.id, { type: 'heartbeat' })
+  assert.equal(page.data.messages[0].streaming, false, 'heartbeat 不改变任何界面状态')
+
+  // mode:"image" 才是渐变占位盒的开关（改造前挂在 pre_text 上）
+  page.onStreamEvent(holder.id, { type: 'mode', mode: 'image' })
+  assert.equal(page.data.messages[0].streaming, true, 'mode:"image" 唤出占位盒')
   await waitProgress(page, 5)
-  assert.equal(page.data.messages[0].progress, 5, 'pre_text 先把进度条顶到 5%')
+  assert.equal(page.data.messages[0].progress, 5, 'mode:"image" 把进度条顶到 5%')
   assert.equal(page.data.messages[0].progressLabel, '正在连接生图引擎…')
+
+  // 第二条 pre_text：LLM 出结果后替换掉「星宝努力思考中」
+  page.onStreamEvent(holder.id, { type: 'pre_text', content: '正在为您绘制赛博朋克城市的雨夜夜景…' })
+  assert.equal(page.data.messages[0].preText, '正在为您绘制赛博朋克城市的雨夜夜景…')
+  assert.equal(page.data.messages[0].streaming, true, '换文案不能把占位盒弄没了')
 
   ;[
     { progress: 5, stage: 'request_sent' },
@@ -235,7 +252,8 @@ async function testCanvasHidesAtHundred() {
   page.beginStream(holder.id)
 
   page.onStreamEvent(holder.id, { type: 'pre_text', content: '正在为您绘制…' })
-  assert.equal(page.data.messages[0].streaming, true, '有进度事件就该挂出占位盒')
+  page.onStreamEvent(holder.id, { type: 'mode', mode: 'image' })
+  assert.equal(page.data.messages[0].streaming, true, 'mode:"image" 挂出占位盒')
 
   // 图到了（文档 §二：排在 progress 90 之后），但此时 streaming 仍为 true → wxml 上真图不渲染
   page.onStreamEvent(holder.id, { type: 'progress', progress: 90, stage: 'uploaded' })
@@ -318,6 +336,62 @@ async function testCanvasHidesWhenHundredMissing() {
   await waitSettled(page)
   assert.equal(page.data.messages[0].streaming, false, 'settleStream 要兜底收起占位盒')
   assert.equal(page.data.messages[0].images.length, 1)
+}
+
+// mode 事件（2026-08-07 新增）决定这一轮出不出生图占位盒。
+// 两条路的开头一模一样（init → 同一句「星宝努力思考中」→ heartbeat），要到 mode 才分叉——
+// 所以占位盒的开关必须挂在 mode 上：挂回 pre_text 的话，纯文字回复也会先闪一个生图占位盒。
+async function testModeTextKeepsNoGenCanvas() {
+  const page = createPage()
+  const holder = pushHolder(page)
+  page.beginStream(holder.id)
+
+  page.onStreamEvent(holder.id, { type: 'init' })
+  page.onStreamEvent(holder.id, { type: 'pre_text', content: '星宝努力思考中' })
+  page.onStreamEvent(holder.id, { type: 'heartbeat' })
+  assert.equal(page.data.messages[0].streaming, false, 'mode 之前不许出占位盒')
+
+  page.onStreamEvent(holder.id, { type: 'mode', mode: 'text' })
+  assert.equal(page.data.messages[0].streaming, false, 'mode:"text" 走文字流程，没有占位盒')
+
+  // 服务端用空串把「星宝努力思考中」擦掉。擦完正文还没到，气泡里什么都不剩，
+  // 这时候要把三点动画放回去，不能晾出一个空白气泡。
+  page.onStreamEvent(holder.id, { type: 'pre_text', content: '' })
+  assert.equal(page.data.messages[0].preText, '', '空串 pre_text 用来擦掉预描述')
+  assert.equal(page.data.messages[0].loading, true, '擦完气泡空了，三点动画要回来')
+
+  // mode 已经定了纯文字：迟到/多余的 progress 不能把占位盒翻出来
+  page.onStreamEvent(holder.id, { type: 'progress', progress: 45, stage: 'generating' })
+  await wait(PROGRESS_SETTLE_MS)
+  assert.equal(page.data.messages[0].streaming, false, 'mode:"text" 之后 progress 一律不显形')
+  assert.equal(page.data.messages[0].progress, 0, '也不该起进度补间')
+
+  page.onStreamEvent(holder.id, { type: 'text', content: '你好呀' })
+  assert.equal(page.data.messages[0].loading, false, '正文一来三点动画就收')
+  page.onStreamEvent(holder.id, { type: 'done', orientation: 'square' })
+  page.finishStream(holder.id, { text: '你好呀', images: [], orientation: 'square', done: true })
+
+  await waitSettled(page)
+  const message = page.data.messages[0]
+  assert.equal(message.content, '你好呀')
+  assert.equal(message.preText, '', '擦掉的预描述不能又冒出来')
+  assert.equal(message.streaming, false)
+}
+
+// 没有 mode 事件的老部署：progress 一来照样把占位盒唤出来，只是比原来晚一步。
+// 这条兜底不能拆——服务端灰度期间两种流会同时存在。
+async function testGenCanvasFallsBackToProgress() {
+  const page = createPage()
+  const holder = pushHolder(page)
+  page.beginStream(holder.id)
+
+  page.onStreamEvent(holder.id, { type: 'pre_text', content: '正在为您绘制…' })
+  assert.equal(page.data.messages[0].streaming, false, '没有 mode 时 pre_text 也不再自己显形')
+
+  page.onStreamEvent(holder.id, { type: 'progress', progress: 15, stage: 'generating' })
+  assert.equal(page.data.messages[0].streaming, true, '老部署靠 progress 兜底唤出占位盒')
+  await waitProgress(page, 15)
+  assert.equal(page.data.messages[0].progress, 15)
 }
 
 // 纯文字场景：没有任何 progress/pre_text 事件，界面不该出现进度条
@@ -436,6 +510,8 @@ async function run() {
   await testCanvasHidesAtHundred()
   await testProgressTweensBetweenMilestones()
   await testCanvasHidesWhenHundredMissing()
+  await testModeTextKeepsNoGenCanvas()
+  await testGenCanvasFallsBackToProgress()
   await testTextOnlyFlow()
   await testTypewriterRevealsGradually()
   await testAggregateFallback()

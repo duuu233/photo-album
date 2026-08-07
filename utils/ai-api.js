@@ -647,8 +647,14 @@ module.exports = {
   //（chat.wxml 的 .welcome 区块，仅在 messages 为空时显示），所以 text 里不会再带招呼语前缀。
   //
   // handlers.onEvent(event) 收原始事件：
-  //   pre_text {content}        预描述文案，推**两条**：先秒回一句占位的「星宝努力思考创作中」，
-  //                             约 3s 后 LLM 出结果再推真文案。调用方直接覆盖即可，不必分辨
+  //   init     {}               开流握手，服务端已受理，无内容
+  //   heartbeat {}              长等待期间的续命空包，无内容
+  //   mode     {mode}           这一轮走 "image"(生图) 还是 "text"(纯文字)，2026-08-07 新增。
+  //                             排在第一条 pre_text 之后 —— 在此之前两条路的事件一模一样，
+  //                             **调用方要到这个事件才能决定出不出生图占位盒**（见 chat.js）
+  //   pre_text {content}        预描述文案，推**两条**：先秒回一句占位的「星宝努力思考中」，
+  //                             之后按 mode 分流：生图替换成真文案，纯文字推**空串**擦掉它。
+  //                             调用方直接覆盖即可，不必分辨
   //   progress {progress,stage,message}
   //                             里程碑，只有 5/15/30/45/50/80/85/90/100 这几级
   //                             （中间值要前端自己补，见 chat.js 的 pumpProgress）；
