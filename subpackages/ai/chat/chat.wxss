@@ -501,8 +501,33 @@
   height: 26rpx;
 }
 
+/* 回复期间在底部留一条空带，免得「停止生成」压住正在打出来的字。
+   ⚠️ 只对**没有占位盒**的那一段有效——出图那一段被下面 .msg-row--gen 那条覆盖掉。*/
 .bottom-anchor--sending {
   height: 150rpx;
+}
+
+/* —— 生图中：占位盒底部与输入框对齐（2026-08-07 需求 1）——
+   原来占位盒下面依次垫着 气泡内边距 20rpx + 行间距 20rpx + 贴底空带 150rpx，
+   盒子被顶在半空、下方空一大截。这三层在占位盒在场时全部收掉，贴底后盒子底边就正好
+   落在输入框上沿（只剩 .input-area 自己的 8rpx 外边距）；「停止生成」改为悬浮在盒子偏下方，
+   不再需要那条空带给它腾位置。
+   ⚠️ 三条规则必须同时在：少收一层就差那一层的高度，看着就是「差一点点没对齐」。
+   .msg-row--gen 只挂在 item.streaming 的那条消息上（100% 时 streaming 落下，样式随之复位）。*/
+.msg-row--gen {
+  margin-bottom: 0;
+}
+
+.bubble--ai.bubble--gen {
+  padding-bottom: 0;
+  /* 盒子（22rpx）与气泡（28rpx）圆角对齐，贴到底才不会在两个下角露出渐变的尖角 */
+  border-bottom-left-radius: 22rpx;
+  border-bottom-right-radius: 22rpx;
+}
+
+/* 选择器权重 0,2,0 > .bottom-anchor--sending 的 0,1,0，出图那一段稳定压住 150rpx */
+.msg-row--gen + .bottom-anchor {
+  height: 0;
 }
 
 /* ==================== 失败卡片 ==================== */
@@ -588,10 +613,14 @@
 }
 
 /* ==================== 输入区 ==================== */
+/* 停止生成：锚在 .input-area（position: relative）上，bottom:100% 就是输入框上沿，
+   再往上抬 GAP 一点点。这样输入框长高（待发图缩略图那一条）也不用改这里的数字
+   —— 原先写死 fixed bottom:450rpx，是照「输入框大概多高」猜的，一变就飘。
+   生图时占位盒底部已经贴到输入框（见 .msg-row--gen），所以这颗药丸正好悬浮在盒子偏下的位置。*/
 .stop-pill {
-  position: fixed;
+  position: absolute;
   left: 50%;
-  bottom: calc(450rpx + var(--safe-bottom));
+  bottom: calc(100% + 16rpx);
   z-index: 14;
   display: flex;
   align-items: center;

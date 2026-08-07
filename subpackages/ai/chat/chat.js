@@ -158,11 +158,18 @@ const PROGRESS_NEAR_GAP = 20
 // 两个相邻大值交替使用 —— 属性值没变化时组件不会重新滚动，连续贴底会被吃掉；差 1px 视觉无感。
 const SCROLL_BOTTOM_A = 999998
 const SCROLL_BOTTOM_B = 999999
-// 打字期间贴底的节流间隔(ms)。每帧都 setData 一次 scrollTop 会和出字的 setData 抢主线程，
-// 反而更卡；80ms 一次 ≈ 落后不到 5 个字，打完还会强制贴一次底。
-const SCROLL_STICK_MS = 80
+// 打字期间贴底的节流间隔(ms)。原来是 80ms + 关动画：每 80ms 硬生生把视图**瞬移**到底，
+// 一秒十几下，看着就是一闪一闪的顿挫（2026-08-07 反馈「太快、像卡顿」）。现在改成开动画
+// 滑过去，节流间隔跟着抬到 260ms —— 与组件自带的滚动动画时长(≈300ms)基本同步，一次滑行
+// 快走完了下一次才发起，动画就不会被反复打断（打断＝原地重启，正是「顿挫」的来源）。
+// 落后一点点没关系：回复期间底部本来就留着空带(.bottom-anchor--sending)，看不出来。
+const SCROLL_STICK_MS = 260
 // 距底多少 px 以内算「还贴着底」。用户主动往上翻看历史时就别再把他拽回来了。
 const SCROLL_STICK_PX = 60
+// 手指离开后还认多久的滚动事件（惯性滑行期）。见 onChatScroll：只有**用户自己**滑出来的
+// 滚动才拿来判断「是不是翻上去了」，我们自己发起的贴底动画不能算——动画中途距底可能有
+// 好几百 px，拿它去判会当场把自己判成「用户上翻」，之后整条回复就再也不跟着滚了。
+const SCROLL_FLING_MS = 700
 
 // 图文多模态一次最多带 4 张图（文档 v1.0.3 §二 image_urls 上限；超出服务端回 20012）
 const MAX_IMAGES = 4
@@ -451,7 +458,7 @@ Page(fold.adapt({
     // 两次 setData 触发，打字期间跟不上、首屏还会当着用户的面从头滚到尾。现在改 scroll-top
     // 交替大值，一次 setData 直接夹到底（见 SCROLL_BOTTOM_A 注释与 stickToBottom）。
     scrollTop: 0,
-    scrollAnimate: false // 首屏定位/打字期间关动画（动画本身就是「赶不上」的来源），发消息时才开
+    scrollAnimate: false // 只有首屏定位那一下关动画（见 stickToBottom 的 animate 默认值），其余都开着滑
   },
 
   onLoad(options) {
@@ -462,6 +469,8 @@ Page(fold.adapt({
     this._progressTimer = null // 进度补间的定时器（见 pumpProgress）
     this._stream = null // 在途流式回复的状态（见 beginStream）
     this._stick = true // 视图是否还贴着底（用户上翻看历史时置 false，见 onChatScroll）
+    this._touching = false // 手指是否正按在聊天区上（区分「用户滑的」与「我们贴底滑的」）
+    this._touchEndAt = 0 // 上次松手时间，惯性滑行期内的滚动仍算用户的
     this._lastStickAt = 0 // 上次贴底时间，打字期间按 SCROLL_STICK_MS 节流
     this._chatViewH = 0 // 聊天区可视高度，onReady 量一次，用来算「距底多远」
     this._chatReq = null // 进行中的 chat/enhance 请求，供「停止生成」abort
@@ -2377,8 +2386,11 @@ Page(fold.adapt({
 
   // 贴到底部。options：
   //   force  —— 忽略节流、也忽略「用户已上翻」，并把贴底状态复位（发消息/首屏定位/打字结束时用）；
-  //   animate —— 是否带滚动动画。打字期间必须 **false**：动画本身就是「滚动赶不上打字机」的来源，
-  //             一帧一帧地补动画会越追越远；发消息那一下开动画才好看；
+  //   animate —— 是否带滚动动画。**不传时按 force 取默认值**：
+  //             · 跟随类（非 force：打字出字、占位盒换真图、图片 bindload 校正高度）→ 默认**开**动画，
+  //               让视图平滑滑下去。2026-08-07 前这里是瞬移，一秒十几下，就是用户说的「一闪、卡顿」；
+  //             · force 且没显式指定 → 默认**关**动画，留给首屏定位（openSession）：那一下要是带动画，
+  //               用户会眼睁睁看着列表从最老一条滚到最新。发消息那几处都显式传了 animate: true。
   //   done   —— 贴底**渲染完成后**的回调（首屏靠它决定何时显形）。只在 force 时用得上：
   //             非 force 会被节流/上翻判断提前 return，那种情况下不保证被调用。
   //
@@ -2398,15 +2410,38 @@ Page(fold.adapt({
       }
     }
     this._lastStickAt = Date.now()
+    const animate = opts.animate === undefined ? !opts.force : !!opts.animate
     const next = this.data.scrollTop === SCROLL_BOTTOM_A ? SCROLL_BOTTOM_B : SCROLL_BOTTOM_A
-    this.setData({ scrollAnimate: !!opts.animate, scrollTop: next }, opts.done)
+    this.setData({ scrollAnimate: animate, scrollTop: next }, opts.done)
+  },
+
+  // 手指在聊天区上**滑动**（不是点一下）时才算用户在自己滚，见 onChatScroll。
+  // 用 touchmove 而不是 touchstart：点一下（关工具栏/收键盘）不该被当成滚动，
+  // 否则正好撞上我们的贴底动画中途，就会把「用户上翻」误判出来。
+  onChatTouchMove() {
+    this._touching = true
+  },
+
+  onChatTouchEnd() {
+    if (!this._touching) {
+      return // 只是点了一下，没滑
+    }
+    this._touching = false
+    this._touchEndAt = Date.now() // 松手后还有一段惯性滑行，那段也算用户滑的
   },
 
   // 记录「用户是不是自己翻上去了」。量不到聊天区高度时保持自动贴底（＝改造前的行为），
   // 宁可多贴一次底，也别出现「AI 在回复、视图却纹丝不动」。
+  //
+  // ⚠️ 只认用户手势滑出来的滚动。贴底改成带动画之后（2026-08-07），我们自己发起的滚动
+  // 也会一路推 scroll 事件，而动画**中途**的距底距离可能远大于 SCROLL_STICK_PX——照单全收
+  // 就会在自己滑向底部的路上把自己判成「用户上翻」，接着整条回复都不再跟着滚了。
   onChatScroll(event) {
     if (!this._chatViewH) {
       return
+    }
+    if (!this._touching && Date.now() - (this._touchEndAt || 0) > SCROLL_FLING_MS) {
+      return // 不是用户滑的（我们自己的贴底动画）：不改贴底状态
     }
     const detail = event.detail || {}
     const distance = (detail.scrollHeight || 0) - (detail.scrollTop || 0) - this._chatViewH

@@ -39,6 +39,9 @@
       scroll-top="{{scrollTop}}"
       scroll-with-animation="{{scrollAnimate}}"
       bindscroll="onChatScroll"
+      bindtouchmove="onChatTouchMove"
+      bindtouchend="onChatTouchEnd"
+      bindtouchcancel="onChatTouchEnd"
       enable-passive
     >
       <view wx:if="{{!historyLoading && !messages.length}}" class="welcome">
@@ -71,11 +74,11 @@
 
         <view
           id="msg-{{item.id}}"
-          class="msg-row {{item.role === 'user' ? 'msg-row--user' : 'msg-row--ai'}}"
+          class="msg-row {{item.role === 'user' ? 'msg-row--user' : 'msg-row--ai'}} {{item.streaming ? 'msg-row--gen' : ''}}"
         >
           <view
             wx:if="{{item.role !== 'user'}}"
-            class="bubble bubble--ai {{item.loading ? 'bubble--loading' : ''}} {{item.failed ? 'bubble--failed' : ''}}"
+            class="bubble bubble--ai {{item.loading ? 'bubble--loading' : ''}} {{item.failed ? 'bubble--failed' : ''}} {{item.streaming ? 'bubble--gen' : ''}}"
             bindlongpress="onBubbleLongPress"
             data-id="{{item.id}}"
           >
@@ -267,14 +270,17 @@
     </view>
   </view>
 
-  <view wx:if="{{sending}}" class="stop-pill" bindtap="onStopTap">
-    <view class="stop-square"></view>
-    <text>停止生成</text>
-  </view>
-
   <view wx:if="{{banned}}" class="banned-bar">账号已被限制，暂时无法使用 AI 对话</view>
 
   <view class="input-area">
+    <!-- 停止生成：贴着输入框上沿悬浮（定位锚在 .input-area 上，输入框长高了也自动跟着走，
+         不再靠写死的 bottom 值猜高度）。生图时占位盒底部正好压到输入框，这颗药丸就悬浮在
+         盒子偏下的位置（2026-08-07 需求 1）。 -->
+    <view wx:if="{{sending}}" class="stop-pill" catchtap="onStopTap">
+      <view class="stop-square"></view>
+      <text>停止生成</text>
+    </view>
+
     <scroll-view wx:if="{{pendingImages.length}}" class="pending-strip" scroll-x>
       <view wx:for="{{pendingImages}}" wx:key="id" class="pending-thumb">
         <image
