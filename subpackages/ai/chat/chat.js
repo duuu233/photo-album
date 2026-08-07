@@ -85,23 +85,55 @@ const STREAM_TYPE_TICKS = 60
 // 字打完了但流还没结束时的空转间隔(ms)。这时候没内容可渲染，没必要还按 16ms 空跑。
 const STREAM_IDLE_TICK_MS = 60
 
-// 进度条文案（接入文档 §4.3）。数值本身直接用服务端推的 event.progress，不做本地补间：
-// 服务端给的 5→45→50→80→85→90→100 已经够密，CSS 的 width 过渡会把台阶抹平。
-function progressLabel(progress) {
+// 进度条文案（接入文档「-改」版 §四 对照表）。
+// **认 stage 而不只看数值**：progress=5 有 starting / request_sent 两种 stage，光看数字分不开；
+// 而 85(downloading) 与 80(completed) 的文案在文档里是分开的，旧实现按数值分档把它俩并成了一句。
+const STAGE_LABELS = {
+  starting: '正在连接生图引擎…',
+  request_sent: '正在连接生图引擎…',
+  generating: 'AI 正在创作中…',
+  partial_succeeded: '初稿已完成 ✨',
+  completed: '正在优化细节…',
+  downloading: '正在下载图片…',
+  uploaded: '正在下载图片…',
+  done: '生成完成'
+}
+
+// stage 缺失（纯文字流、老服务端、或补间途中的中间值）时按数值回落到同一张表的分档。
+// 分档边界与 STAGE_LABELS 对齐，所以「45→50 爬到一半」和「刚好落在 50」不会给出矛盾的两句话。
+function progressLabel(progress, stage) {
+  const byStage = stage ? STAGE_LABELS[stage] : ''
+  if (byStage) {
+    return byStage
+  }
   if (progress < 5) {
-    return '正在连接…'
+    return '正在连接生图引擎…'
   }
   if (progress < 50) {
     return 'AI 正在创作中…'
   }
   if (progress < 80) {
-    return '图片初稿已完成 ✨'
+    return '初稿已完成 ✨'
+  }
+  if (progress < 85) {
+    return '正在优化细节…'
   }
   if (progress < 100) {
-    return '正在优化细节…'
+    return '正在下载图片…'
   }
   return '生成完成'
 }
+
+// 进度补间（接入文档「-改」版 §三「后端只发里程碑，前端负责平滑动画」）。
+// 后端只推 5/15/30/45/50/80/85/90/100 这几级，而占位盒正中间摆的是一个**数字**——
+// 数字没法像进度条宽度那样靠 CSS 过渡抹平，直接贴上去就是 45→50→80 地跳。
+// 这里按文档给的节奏每 PROGRESS_TICK_MS 走一步（离目标远时一步 3、近了一步 1），
+// 把台阶补成 46、47、48… 的连续读数（设计稿 assets/demo.png 上的 47% 就是这么来的）。
+// ⚠️ 只补到服务端给的目标值，绝不自己往前跑：宁可停在 45% 等下一条，也不能爬到 99% 再倒回去。
+const PROGRESS_TICK_MS = 80
+const PROGRESS_STEP_FAR = 3
+const PROGRESS_STEP_NEAR = 1
+const PROGRESS_NEAR_GAP = 20
 
 // 贴底滚动：scroll-top 给一个远超内容高度的值，让 scroll-view 自己夹到底部（不必量高度）。
 // 两个相邻大值交替使用 —— 属性值没变化时组件不会重新滚动，连续贴底会被吃掉；差 1px 视觉无感。
@@ -408,6 +440,7 @@ Page(fold.adapt({
     this._uid = 0 // 本地消息自增 id
     this._pid = 0 // 待发送图片自增 id
     this._typeTimer = null
+    this._progressTimer = null // 进度补间的定时器（见 pumpProgress）
     this._stream = null // 在途流式回复的状态（见 beginStream）
     this._stick = true // 视图是否还贴着底（用户上翻看历史时置 false，见 onChatScroll）
     this._lastStickAt = 0 // 上次贴底时间，打字期间按 SCROLL_STICK_MS 节流
@@ -654,7 +687,15 @@ Page(fold.adapt({
   async _doCreateSession() {
     try {
       const session = await aiApi.newSession()
-      this.setData({ sessionId: session.session_id, sessionTitle: session.title || '新对话' })
+      const serverTitle = session.title || '新对话'
+      const patch = { sessionId: session.session_id }
+      // 刚建出来的会话，后端给的标题一律是占位的「新对话」（要等首条用户消息入库才自动填）。
+      // 而这一刻页面上的标题**可能已经**同步成首条用户消息了 —— sendChat 现在是「气泡先上屏、
+      // 再建会话」（见其内注释），顺序与 2026-08-07 前相反。别让这个占位把它盖回去。
+      if (serverTitle !== '新对话' || this.data.sessionTitle === '新对话') {
+        patch.sessionTitle = serverTitle
+      }
+      this.setData(patch)
     } catch (error) {
       // 建会话失败不阻塞界面（招呼语照常显示），下次发送会再试
       aiI18n.handleAiError(error, {
@@ -840,6 +881,8 @@ Page(fold.adapt({
       const sendImages = images.filter(img => img.url).map(img => ({ url: img.url, pad: img.pad }))
       // 先把会话建出来，**再清输入框**。顺序不能反：建会话可能失败（网络异常 / 20013 会话已达上限），
       // 先清的话用户打的字和选的图就白没了——而「首次发送才建会话」之后，每轮新对话的第一条都会走到这。
+      // sendChat 自己也会兜底建（一键生图那条路走的就是它，见其内注释），这里多这一趟纯粹是为了
+      // 护住草稿：它有输入框要清，而 sendChat 的回滚只撤得掉气泡、撤不回已经清掉的草稿。
       if (!this.data.sessionId) {
         await this.createSession()
         if (!this.data.sessionId) {
@@ -866,15 +909,6 @@ Page(fold.adapt({
     }
     if (!this.guardToken()) {
       return
-    }
-    // 空态下发出第一条消息，这时才真正建会话——**全项目唯一的建会话时机**（见 createSession 注释）。
-    // onSendTap 走到这之前已经建过了（它要先建再清输入框），这里主要给「一键生图」等其它入口兜底；
-    // createSession 自带在途去重，重复调不会多建。失败就地打住，错误提示由 createSession 内部弹。
-    if (!this.data.sessionId) {
-      await this.createSession()
-      if (!this.data.sessionId) {
-        return
-      }
     }
 
     // 入参兼容字符串数组与 { url, pad } 数组（见方法上方注释）
@@ -911,6 +945,7 @@ Page(fold.adapt({
       timestampMs: sentAt,
       timeLabel: picked.length ? '' : timeMeta.timeLabel
     })
+    const prevTitle = this.data.sessionTitle
     this.setData({
       messages: this.data.messages.concat(userMsgs),
       // 首条消息后标题自动变为首条内容（与后端 session.title 行为一致，本地同步免重拉）。
@@ -920,6 +955,26 @@ Page(fold.adapt({
         : this.data.sessionTitle
     })
     this.stickToBottom({ force: true, animate: true })
+
+    // 空态下发出第一条消息，这时才真正建会话——**全项目唯一的建会话时机**（见 createSession 注释）。
+    // onSendTap 走到这之前已经建过了（它要先建再清输入框），这里主要给「一键生图」等其它入口兜底；
+    // createSession 自带在途去重，重复调不会多建。
+    //
+    // ⚠️ 顺序：用户气泡**先上屏，再** await 建会话。反过来（2026-08-07 前的写法）时，
+    // 「一键生图」点完要干等一整趟 POST /session/new（真机上约 1s）文案才出现在对话框里，
+    // 点下去像没反应。建会话失败时把刚上屏的这几条撤掉、标题也还原，界面回到点击前的样子
+    // ——错误提示由 createSession 内部弹，用户重点一次即可。
+    if (!this.data.sessionId) {
+      await this.createSession()
+      if (!this.data.sessionId) {
+        const rolledBack = userMsgs.map(item => item.id)
+        this.setData({
+          messages: this.data.messages.filter(item => rolledBack.indexOf(item.id) < 0),
+          sessionTitle: prevTitle
+        })
+        return
+      }
+    }
     // 带图发送 = 图生图/融合图，出图比例跟用户原图走（后端只等比放大，不改宽高比），
     // 与 img_orientation 无关；多张时按第一张（融合结果的比例后端未约定，bindload 回来会校正）。
     const replyPad = picked.length ? clampPad(picked[0].pad) : 0
@@ -929,7 +984,7 @@ Page(fold.adapt({
   // 发一次 /chat 请求并渲染回复（可被「重试」重复调用，不再追加用户气泡）。
   //
   // 2026-08-06 起主链路是**流式**（SSE，见 utils/ai-api.chatStream 与
-  // assets/BoltStar-流式版接入文档.md）：预描述秒回、进度条 0→100、图先上屏、文字边收边打，
+  // assets/BoltStar-SSE-前端接入文档 -改.md）：预描述先到、进度条 0→100、图先上屏、文字边收边打，
   // 不再是「干等 15~30s 然后整段刷出来」。老基础库收不了流时按 supportsStream() 回退到
   // 非流式 chat()（renderReply 那条老路原样保留）。
   // replyPad：回复图片的占位比例。图生图/融合图传用户原图的比例（见 sendChat），
@@ -1145,9 +1200,11 @@ Page(fold.adapt({
 
   // ==================== 流式回复（SSE） ====================
   //
-  // 事件顺序（生图场景，见接入文档 §三）：
-  //   pre_text → progress(5…45) → progress(50，图已就绪) → image → progress(80/85/90)
+  // 事件顺序（生图场景，见接入文档「-改」版 §二完整事件流）：
+  //   pre_text → progress(5/5/15/30/45) → progress(50) → progress(80/85/90) → image
   //   → text（逐条）→ progress(100) → done
+  // ⚠️ image 排在 progress 90(uploaded) **之后**，不是 50%——50 那级只是「初稿完成」，
+  //    图还没下载上传完，URL 拿不到。占位盒因此几乎会挂满整个生成过程。
   // 纯文字场景只有 text + done，没有进度事件，界面表现与改造前一致（三点动画 → 打字机）。
   //
   // this._stream 只跟着「当前这一条在途回复」走，一次只可能有一条（sending 期间不许再发）：
@@ -1156,7 +1213,9 @@ Page(fold.adapt({
   //   shown      —— 已经打上屏的字数，chars 与 shown 的差就是「积压」；
   //   ended      —— 流已结束（resolve 或中断），打字机排空后才收尾；
   //   hasContent —— 已经吐出过预描述/图/文字（决定中断时是保留还是换失败卡片）；
-  //   progress   —— 已应用的进度，只增不减（服务端重复/乱序推也不会让进度条倒退）。
+  //   target     —— 服务端最新推到的里程碑，只增不减（重复/乱序推也不会让进度倒退）；
+  //   progress   —— 当前**上屏**的进度，由 pumpProgress 一步步爬向 target；
+  //   stage      —— target 那一级的 stage，用来出文案（见 progressLabel）。
   beginStream(holderId) {
     this._stream = {
       holderId,
@@ -1164,7 +1223,9 @@ Page(fold.adapt({
       shown: 0,
       ended: false,
       hasContent: false,
-      progress: 0
+      target: 0,
+      progress: 0,
+      stage: ''
     }
     return this._stream
   },
@@ -1189,17 +1250,18 @@ Page(fold.adapt({
         stream.hasContent = true
         this.markStreamStarted(index, true)
         this.setData({ [`messages[${index}].preText`]: content })
-        this.applyProgress(index, stream.progress || 5)
+        this.applyProgress(index, stream.target || 5, 'starting')
         this.stickToBottom({ force: true, animate: true })
         break
       }
 
       case 'progress':
         this.markStreamStarted(index, true)
-        this.applyProgress(index, event.progress)
+        this.applyProgress(index, event.progress, event.stage)
         break
 
-      // 图约 50% 就推过来了，先上屏（文字还在后面慢慢流）
+      // 图在 90%(uploaded) 之后才推过来（见 beginStream 上方的事件顺序）。
+      // 先收进 images，但要等进度真的走到 100% 才换掉占位盒（见 showProgress）。
       case 'image': {
         const url = String(event.content || '').trim()
         if (!url) {
@@ -1233,7 +1295,7 @@ Page(fold.adapt({
       }
 
       case 'done':
-        this.applyProgress(index, 100)
+        this.applyProgress(index, 100, 'done')
         break
 
       default:
@@ -1257,27 +1319,68 @@ Page(fold.adapt({
     }
   },
 
-  // 进度只增不减（见 beginStream 注释）。数值直接用服务端的，平滑交给 CSS 过渡。
+  // 收到服务端的里程碑：只记成**目标值**，不直接上屏 —— 上屏交给 pumpProgress 一步步爬过去
+  // （接入文档 §三，理由见 PROGRESS_TICK_MS 上方注释）。目标只增不减，迟到/乱序的小值直接丢。
+  //
+  // stage 只在目标值真的往前走时才更新。服务端在同一级上换 stage 的两处
+  //（5: starting→request_sent、90 之后仍是 uploaded）在 STAGE_LABELS 里文案本来就相同，
+  // 不跟这一步没有可见差别。
+  applyProgress(index, value, stage) {
+    const stream = this._stream
+    const next = Math.max(0, Math.min(100, Math.round(Number(value) || 0)))
+    if (!stream || next <= stream.target) {
+      return
+    }
+    stream.target = next
+    stream.stage = stage || ''
+    this.pumpProgress()
+  },
+
+  // 进度补间：每 PROGRESS_TICK_MS 往 target 走一步，到了就停表（下一条里程碑再把它叫醒）。
+  // 与打字机分开用一支定时器：文字和进度是两条互不等待的流，共用一支会互相拖节奏。
+  pumpProgress() {
+    if (this._progressTimer) {
+      return // 已经在爬了，新的 target 自然会被追上
+    }
+    const step = () => {
+      this._progressTimer = null
+      const stream = this._stream
+      if (!stream) {
+        return // 已被停止生成 / 切会话清掉
+      }
+      const index = this.data.messages.findIndex(item => item.id === stream.holderId)
+      const gap = stream.target - stream.progress
+      if (index < 0 || gap <= 0) {
+        return
+      }
+      const stride = gap > PROGRESS_NEAR_GAP ? PROGRESS_STEP_FAR : PROGRESS_STEP_NEAR
+      this.showProgress(index, Math.min(stream.progress + stride, stream.target))
+      if (stream.progress < stream.target) {
+        this._progressTimer = setTimeout(step, PROGRESS_TICK_MS)
+      }
+    }
+    step() // 首步立即走，别让占位盒先亮一下 0%
+  },
+
+  // 把补间出来的值写上屏。文案按**已上屏**的值出，爬到目标那一刻才用目标的 stage
+  // —— 否则会出现「52% + 正在优化细节…」这种数字与文案对不上的组合。
   //
   // 到 100% 就把 streaming 落下：渐变占位盒收起、真图原地顶上（需求 2026-08-07 「达到 100%
   // 渲染生成的图片」）。**不能等 settleStream**——那要等打字机把几十个 text 事件全打完才收，
   // 图会被压到文字之后好几秒才出来。服务端漏推 100 时仍由 settleStream 兜底置 false。
-  applyProgress(index, value) {
+  showProgress(index, value) {
     const stream = this._stream
-    const next = Math.max(0, Math.min(100, Math.round(Number(value) || 0)))
-    if (!stream || next <= stream.progress) {
-      return
+    stream.progress = value
+    const label = progressLabel(value, value >= stream.target ? stream.stage : '')
+    const patch = { [`messages[${index}].progress`]: value }
+    if (this.data.messages[index].progressLabel !== label) {
+      patch[`messages[${index}].progressLabel`] = label
     }
-    stream.progress = next
-    const patch = {
-      [`messages[${index}].progress`]: next,
-      [`messages[${index}].progressLabel`]: progressLabel(next)
-    }
-    if (next >= 100) {
+    if (value >= 100) {
       patch[`messages[${index}].streaming`] = false
     }
     this.setData(patch)
-    if (next >= 100) {
+    if (value >= 100) {
       this.stickToBottom() // 占位盒换成真图，高度一般会变，跟着贴一下底
     }
   },
@@ -1353,9 +1456,14 @@ Page(fold.adapt({
     this.pumpTyping()
   },
 
-  // 收尾：隐藏进度条、结束打字机、放行发送
+  // 收尾：隐藏进度条、结束打字机、放行发送。
+  // 流都结束了就没什么可等的了，补间没爬完也直接落到 100（服务端漏推 100 时也靠这一手兜底）。
   settleStream(index) {
     this._stream = null
+    if (this._progressTimer) {
+      clearTimeout(this._progressTimer)
+      this._progressTimer = null
+    }
     const message = this.data.messages[index]
     // 一句话、一张图都没有（服务端只推了进度就结束）：留个空气泡纯属让人以为坏了
     if (message && !message.content && !message.preText && !(message.images || []).length) {
@@ -1382,6 +1490,10 @@ Page(fold.adapt({
     if (this._typeTimer) {
       clearTimeout(this._typeTimer) // 打字机现在是递归 setTimeout（见 startTyping / pumpTyping）
       this._typeTimer = null
+    }
+    if (this._progressTimer) {
+      clearTimeout(this._progressTimer) // 进度补间同理（见 pumpProgress）
+      this._progressTimer = null
     }
     this._stream = null // 之后 abort 的 reject 与迟到的 SSE 事件都会认出「这条流已经不归我管」
     if (!silent) {

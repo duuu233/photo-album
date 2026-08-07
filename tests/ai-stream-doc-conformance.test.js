@@ -1,11 +1,12 @@
 const assert = require('node:assert/strict')
 
-// 按 assets/BoltStar-流式版接入文档.md §六「SSE 响应数据格式」逐条核对解析层。
+// 按 assets/BoltStar-SSE-前端接入文档 -改.md §二「SSE 事件类型」逐条核对解析层
+//（章节号是「-改」版的；同样的报文在上一版里是 §六，两版事件流一字未改）。
 // 文档里的原始报文直接抄进来当用例，服务端改格式时这里先红。
 // 覆盖三处文档与标准 SSE 不一致、容易踩的地方：
-//   · §6.6/§6.7 的完整流示例用**单个 \n** 分隔事件（标准 SSE 是空行 \n\n）——两种都得吃；
-//   · §6.4 的 `data: ` 带空格，而文档 §4.1 示例代码写死 slice(6)——我们按 slice(5)+trim 更稳；
-//   · §6.7 文字里有 emoji（4 字节），chunk 边界劈开时不能吐出半个字符。
+//   · 文档的完整流示例用**单个 \n** 分隔事件（标准 SSE 是空行 \n\n）——两种都得吃；
+//   · 报文里 `data: ` 带空格，而文档示例代码写死 slice(6)——我们按 slice(5)+trim 更稳；
+//   · 纯文字场景的文字里有 emoji（4 字节），chunk 边界劈开时不能吐出半个字符。
 let lastRequest = null
 
 global.getApp = () => ({ globalData: { userInfo: { id: 'GA7593223' } } })
@@ -57,7 +58,7 @@ const DOC_IMAGE_FLOW = [
   'data: {"type":"progress","progress":5,"stage":"request_sent"}',
   'data: {"type":"progress","progress":15,"stage":"generating"}',
   'data: {"type":"progress","progress":30,"stage":"generating"}',
-  'data: {"type":"progress","progress":44,"stage":"generating"}',
+  'data: {"type":"progress","progress":45,"stage":"generating"}',
   'data: {"type":"progress","progress":50,"stage":"partial_succeeded"}',
   'data: {"type":"progress","progress":80,"stage":"completed"}',
   'data: {"type":"progress","progress":85,"stage":"downloading"}',
@@ -90,7 +91,9 @@ async function testImageFlowSingleLf() {
   assert.equal(result.orientation, 'square')
   assert.equal(result.done, true)
 
-  // §6.2 的 stage 全部原样透传给页面（我们不认 stage，只用 progress 值，别把未知 stage 吃掉）
+  // stage 全部原样透传给页面：解析层不解读它，但页面要靠它出文案
+  //（chat.js STAGE_LABELS —— 5 有 starting/request_sent 两种 stage，光看数值分不开），
+  // 所以这一层一个都不能吃掉、也不能改名
   const stages = events.filter(e => e.type === 'progress').map(e => e.stage)
   assert.deepEqual(stages, [
     'starting',

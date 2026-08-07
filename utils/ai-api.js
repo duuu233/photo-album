@@ -11,7 +11,8 @@
 // 已确认可安全展示的固定网关错误额外带 userMessage，
 // 由 utils/ai-i18n.handleAiError 按语种/区间分发提示。
 //
-// 流式（2026-08-06 起，见 assets/BoltStar-流式版接入文档.md）：
+// 流式（2026-08-06 起，见 assets/BoltStar-SSE-前端接入文档 -改.md，2026-08-07 核对：
+// 地址/请求体/事件类型/字段名一律未变，仅新增可选的 model_type，故本文件解析层不动）：
 // 服务地址整体切到流式版部署，`/chat` 改用 SSE —— 小程序**可以**收流，靠 `wx.request` 的
 // `enableChunked: true` + `RequestTask.onChunkReceived`（基础库 2.20.2 起），此前注释里
 // 「小程序不支持 SSE」的结论已作废。请求体、参数、JWT 认证方式与非流式版完全一致，
@@ -516,6 +517,12 @@ function buildChatPayload(params) {
   if (params.imgStyle) {
     data.img_style = params.imgStyle
   }
+  // 生图模型档位（2026-08-07「-改」版文档 §一新增）：lite / pro，**不传即 pro**。
+  // 页面暂时没有让用户选档的入口，所以正常情况下这一项不会出现在请求体里，
+  // 行为与加这个参数之前完全一致；等真要开放「快出图 / 高质量」再从 chat.js 传下来即可。
+  if (params.modelType) {
+    data.model_type = params.modelType
+  }
   // 图文多模态：带上用户上传的图片 URL（服务端按张数+关键词决定图生图/讨论/拒绝）。
   // 超 4 张服务端回 20012，前端已在选图时拦截，这里不再截断。
   if (Array.isArray(params.imageUrls) && params.imageUrls.length) {
@@ -630,7 +637,8 @@ module.exports = {
 
   // POST /chat（流式 SSE，**当前主链路**）— 对话/生图/图文多模态。
   // params: { sessionId, message, imgOrientation(必传: vertical/horizontal/square),
-  //           imgStyle(可选: cartoon/landscape/portrait/anime 触发一键生图), temperature,
+  //           imgStyle(可选: cartoon/landscape/portrait/anime 触发一键生图),
+  //           modelType(可选: lite/pro，不传即 pro), temperature,
   //           imageUrls(可选: 图片 URL 数组，最多 4 张；文档 §二「图片支持」——
   //             1 张+生图关键词=图生图美化 / 多张+关键词=友好拒绝 / 其余=AI 分析讨论，均由服务端分流) }
   //
@@ -639,10 +647,11 @@ module.exports = {
   //（chat.wxml 的 .welcome 区块，仅在 messages 为空时显示），所以 text 里不会再带招呼语前缀。
   //
   // handlers.onEvent(event) 收原始事件：
-  //   pre_text {content}        预描述文案，1s 级就能到，用来顶掉「干等 15~30s」
-  //   progress {progress,stage} 0→100 进度（5→45 递增→50→80→85→90→100）
-  //   image    {content}        生成图 URL，约 50% 时到，可先上屏
-  //   text     {content}        回复文字，逐条推送，调用方自行追加渲染
+  //   pre_text {content}        预描述文案，约 15s 到（等 LLM 第一轮返回），在它之前页面自己顶 loading
+  //   progress {progress,stage} 里程碑，只有 5/15/30/45/50/80/85/90/100 这几级
+  //                             （中间值要前端自己补，见 chat.js 的 pumpProgress）
+  //   image    {content}        生成图 URL，排在 progress 90(uploaded) **之后**，不是 50%
+  //   text     {content}        回复文字，每次 1~3 字，调用方自行追加渲染
   //   done     {orientation}    结束
   // resolve 汇总结果 { text, images, orientation, done }，供调用方兜底校对；
   // 返回的 promise 带 .abort()，页面「停止生成」时调用。

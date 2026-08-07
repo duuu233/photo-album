@@ -1,10 +1,11 @@
 const assert = require('node:assert/strict')
 
 // AI 聊天页的流式渲染状态机（subpackages/ai/chat/chat.js，2026-08-06 SSE 接入）。
-// 锁三件容易在后续改动中被打破的事：
+// 锁四件容易在后续改动中被打破的事：
 //   ① 进度只增不减 —— 服务端重复/乱序推 progress 时进度条不能往回跳；
-//   ② 预描述、图、文字都写进**同一个气泡**，图不等文字打完就先上屏；
-//   ③ 流结束后要收尾：隐藏进度条、typing 归位、sending 放行（漏了就再也发不出下一条）。
+//   ② 进度是**补间**上屏的 —— 服务端只给里程碑，中间读数由前端补（2026-08-07「-改」版文档 §三）；
+//   ③ 预描述、图、文字都写进**同一个气泡**，图不等文字打完就先上屏；
+//   ④ 流结束后要收尾：隐藏进度条、typing 归位、sending 放行（漏了就再也发不出下一条）。
 const storage = {}
 
 global.wx = {
@@ -64,6 +65,7 @@ function createPage() {
   }
   page._uid = 0
   page._typeTimer = null
+  page._progressTimer = null
   page._stream = null
   page._stick = true
   page._lastStickAt = 0
@@ -100,6 +102,21 @@ function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+// 补间一步 80ms；等这么久足够确认「进度确实不动了」（用于验倒退被丢弃）
+const PROGRESS_SETTLE_MS = 300
+
+// 进度不再是收到就贴上去，而是每 80ms 补一步爬过去（chat.js pumpProgress），
+// 所以断言之前得等它爬到位。
+async function waitProgress(page, value) {
+  for (let i = 0; i < 200; i += 1) {
+    if (page.data.messages[0].progress >= value) {
+      return
+    }
+    await wait(20)
+  }
+  throw new Error(`进度没有爬到 ${value}%（停在 ${page.data.messages[0].progress}%）`)
+}
+
 // 打字机是异步的（递归 setTimeout），等它把积压打完 + settleStream 收尾
 async function waitSettled(page) {
   for (let i = 0; i < 400; i += 1) {
@@ -116,22 +133,47 @@ async function testGenerateFlow() {
   const holder = pushHolder(page)
   page.beginStream(holder.id)
 
-  // 接入文档 §三 的生图事件顺序
+  // 接入文档「-改」版 §二 的生图事件顺序（stage 原样照抄）
   page.onStreamEvent(holder.id, { type: 'pre_text', content: '正在为您绘制赛博朋克城市的雨夜夜景…' })
   let message = page.data.messages[0]
   assert.equal(message.loading, false, 'pre_text 一到就该收起三点动画')
   assert.equal(message.streaming, true)
   assert.equal(message.preText, '正在为您绘制赛博朋克城市的雨夜夜景…')
-  assert.equal(message.progress, 5, 'pre_text 先把进度条顶到 5%')
+  await waitProgress(page, 5)
+  assert.equal(page.data.messages[0].progress, 5, 'pre_text 先把进度条顶到 5%')
+  assert.equal(page.data.messages[0].progressLabel, '正在连接生图引擎…')
 
-  ;[5, 12, 28, 45].forEach(progress => page.onStreamEvent(holder.id, { type: 'progress', progress }))
+  ;[
+    { progress: 5, stage: 'request_sent' },
+    { progress: 15, stage: 'generating' },
+    { progress: 30, stage: 'generating' },
+    { progress: 45, stage: 'generating' }
+  ].forEach(event => page.onStreamEvent(holder.id, Object.assign({ type: 'progress' }, event)))
+  await waitProgress(page, 45)
   assert.equal(page.data.messages[0].progress, 45)
   assert.equal(page.data.messages[0].progressLabel, 'AI 正在创作中…')
 
-  page.onStreamEvent(holder.id, { type: 'progress', progress: 50 })
-  assert.equal(page.data.messages[0].progressLabel, '图片初稿已完成 ✨')
+  page.onStreamEvent(holder.id, { type: 'progress', progress: 50, stage: 'partial_succeeded' })
+  await waitProgress(page, 50)
+  assert.equal(page.data.messages[0].progressLabel, '初稿已完成 ✨')
 
-  // 图先上屏（此时文字一个字都还没来）
+  // 迟到/乱序的小进度不能让进度条倒退
+  page.onStreamEvent(holder.id, { type: 'progress', progress: 8, stage: 'generating' })
+  await wait(PROGRESS_SETTLE_MS)
+  assert.equal(page.data.messages[0].progress, 50)
+  assert.equal(page.data.messages[0].progressLabel, '初稿已完成 ✨', '倒退的 stage 也不能改文案')
+
+  page.onStreamEvent(holder.id, { type: 'progress', progress: 80, stage: 'completed' })
+  await waitProgress(page, 80)
+  assert.equal(page.data.messages[0].progressLabel, '正在优化细节…')
+  ;[
+    { progress: 85, stage: 'downloading' },
+    { progress: 90, stage: 'uploaded' }
+  ].forEach(event => page.onStreamEvent(holder.id, Object.assign({ type: 'progress' }, event)))
+  await waitProgress(page, 90)
+  assert.equal(page.data.messages[0].progressLabel, '正在下载图片…')
+
+  // 图排在 progress 90 之后（文档 §二），此时文字一个字都还没来
   page.onStreamEvent(holder.id, { type: 'image', content: 'http://oss/city.png' })
   message = page.data.messages[0]
   assert.equal(message.images.length, 1)
@@ -141,18 +183,11 @@ async function testGenerateFlow() {
   assert.equal(message.images[0].pad, 177.78, '图应按当前 img_orientation 预占高度')
   assert.equal(message.content, '')
 
-  // 迟到/乱序的小进度不能让进度条倒退
-  page.onStreamEvent(holder.id, { type: 'progress', progress: 8 })
-  assert.equal(page.data.messages[0].progress, 50)
-
-  ;[80, 85, 90].forEach(progress => page.onStreamEvent(holder.id, { type: 'progress', progress }))
-  assert.equal(page.data.messages[0].progressLabel, '正在优化细节…')
-
   page.onStreamEvent(holder.id, { type: 'text', content: '画面里' })
   page.onStreamEvent(holder.id, { type: 'text', content: '霓虹灯映在积水上🌃' })
   assert.equal(page.data.messages[0].typing, true)
 
-  page.onStreamEvent(holder.id, { type: 'progress', progress: 100 })
+  page.onStreamEvent(holder.id, { type: 'progress', progress: 100, stage: 'done' })
   page.finishStream(holder.id, {
     text: '画面里霓虹灯映在积水上🌃',
     images: ['http://oss/city.png'],
@@ -172,7 +207,7 @@ async function testGenerateFlow() {
 }
 
 // 渐变占位盒的收起时机（2026-08-07 需求「达到 100% 渲染生成的图片」）。
-// 图在 90% 就推过来了，但要压着不显示；streaming 必须在 **progress 到 100 的那一刻**落下
+// 图在 90% 之后就推过来了，但要压着不显示；streaming 必须在 **读数爬到 100 的那一刻**落下
 // ——不能等 settleStream，那要等打字机把几十条 text 打完，图会晚好几秒才出来。
 async function testCanvasHidesAtHundred() {
   const page = createPage()
@@ -182,9 +217,10 @@ async function testCanvasHidesAtHundred() {
   page.onStreamEvent(holder.id, { type: 'pre_text', content: '正在为您绘制…' })
   assert.equal(page.data.messages[0].streaming, true, '有进度事件就该挂出占位盒')
 
-  // 图先到（服务端约 50~90% 推），但此时 streaming 仍为 true → wxml 上真图不渲染
+  // 图到了（文档 §二：排在 progress 90 之后），但此时 streaming 仍为 true → wxml 上真图不渲染
+  page.onStreamEvent(holder.id, { type: 'progress', progress: 90, stage: 'uploaded' })
   page.onStreamEvent(holder.id, { type: 'image', content: 'http://oss/a.png' })
-  page.onStreamEvent(holder.id, { type: 'progress', progress: 90 })
+  await waitProgress(page, 90)
   assert.equal(page.data.messages[0].images.length, 1, '图要先收进 images')
   assert.equal(page.data.messages[0].streaming, true, '没到 100% 之前占位盒不能收')
 
@@ -192,16 +228,51 @@ async function testCanvasHidesAtHundred() {
   page.onStreamEvent(holder.id, { type: 'text', content: '画面里' })
   assert.equal(page.data.messages[0].streaming, true)
 
-  // 到 100%：占位盒立刻收起，真图上屏（不等打字机打完）
-  page.onStreamEvent(holder.id, { type: 'progress', progress: 100 })
-  assert.equal(page.data.messages[0].streaming, false, '100% 时占位盒要立刻收起换真图')
+  // 读数爬到 100：占位盒立刻收起，真图上屏（不等打字机打完）
+  page.onStreamEvent(holder.id, { type: 'progress', progress: 100, stage: 'done' })
+  assert.equal(page.data.messages[0].streaming, true, '90→100 补间途中占位盒还得挂着')
+  await waitProgress(page, 100)
+  assert.equal(page.data.messages[0].streaming, false, '读数到 100 时占位盒要立刻收起换真图')
   assert.equal(page.data.messages[0].progress, 100)
+  assert.equal(page.data.messages[0].progressLabel, '生成完成')
   assert.equal(page.data.messages[0].typing, true, '文字这时候还没打完，打字机不受影响')
 
   page.finishStream(holder.id, { text: '画面里', images: ['http://oss/a.png'], done: true })
   await waitSettled(page)
   assert.equal(page.data.messages[0].images.length, 1)
   assert.equal(page.data.messages[0].streaming, false)
+}
+
+// 补间本身（2026-08-07「-改」版文档 §三）：服务端只推里程碑，前端必须把中间读数补出来。
+// demo.png 上那个 47% 就是补出来的——里程碑里根本没有 47 这一级。
+async function testProgressTweensBetweenMilestones() {
+  const page = createPage()
+  const holder = pushHolder(page)
+  page.beginStream(holder.id)
+
+  const seen = []
+  const setData = page.setData
+  page.setData = patch => {
+    setData(patch, undefined)
+    if (patch['messages[0].progress'] !== undefined) {
+      seen.push(patch['messages[0].progress'])
+    }
+  }
+
+  page.onStreamEvent(holder.id, { type: 'progress', progress: 45, stage: 'generating' })
+  await waitProgress(page, 45)
+  page.onStreamEvent(holder.id, { type: 'progress', progress: 50, stage: 'partial_succeeded' })
+  await waitProgress(page, 50)
+
+  assert.ok(seen.indexOf(47) > -1, `45→50 之间要补出 47%，实际读数：${seen.join(',')}`)
+  // 只增不减，且一步都不越过目标（宁可停在里程碑上等下一条，也不能自己往前跑）
+  seen.forEach((value, i) => {
+    assert.ok(i === 0 || value > seen[i - 1], `进度读数不能回退：${seen.join(',')}`)
+    assert.ok(value <= 50, `补间不能跑到服务端给的目标之前：${seen.join(',')}`)
+  })
+  // 远离目标时一步 3、临近时一步 1（文档 §三）：0→45 这段的步长必须比 45→50 那段大
+  assert.ok(seen[1] - seen[0] === 3, `离目标远时一步 3：${seen.join(',')}`)
+  assert.ok(seen[seen.length - 1] - seen[seen.length - 2] === 1, `临近目标时一步 1：${seen.join(',')}`)
 }
 
 // 服务端漏推 100（真机上出现过事件不全）：settleStream 仍要把占位盒兜下来，
@@ -214,6 +285,7 @@ async function testCanvasHidesWhenHundredMissing() {
   page.onStreamEvent(holder.id, { type: 'progress', progress: 5 })
   page.onStreamEvent(holder.id, { type: 'image', content: 'http://oss/b.png' })
   page.onStreamEvent(holder.id, { type: 'progress', progress: 90 })
+  await waitProgress(page, 90)
   assert.equal(page.data.messages[0].streaming, true)
 
   // 没有 progress:100，直接结束
@@ -302,6 +374,7 @@ async function testStopKeepsStreamedContent() {
 async function run() {
   await testGenerateFlow()
   await testCanvasHidesAtHundred()
+  await testProgressTweensBetweenMilestones()
   await testCanvasHidesWhenHundredMissing()
   await testTextOnlyFlow()
   await testAggregateFallback()

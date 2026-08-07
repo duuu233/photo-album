@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict')
 
-// BoltStar 流式版 /chat（assets/BoltStar-流式版接入文档.md）：
+// BoltStar 流式 /chat（assets/BoltStar-SSE-前端接入文档 -改.md）：
 //   ① 地址切到流式部署，enableChunked=true，响应从 onChunkReceived 逐块收；
 //   ② chunk 是 ArrayBuffer，且**汉字可能被切在两块之间**、SSE 行也可能被切断，解码/分行都要能续上；
 //   ③ pre_text/progress/image/text/done 逐个回调，同时汇总成 { text, images } 供调用方兜底。
