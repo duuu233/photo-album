@@ -8,6 +8,11 @@ const { md5 } = require('./md5')
 // 图库/再次投屏预览看着偏肉，放宽到 1MB 上下（2026-07-14）。见下方 setUserProductUpload 的字段说明。
 const UPLOAD_COMPRESS_SIZE_KB = 1024
 
+// 统计「投屏成功记录条数」时的翻页参数：单页 100 条与列表页同口径；
+// MAX_PAGES 是后端分页元数据异常（recordCount/pageCount 都不回）时的死循环保险丝。
+const RECORD_COUNT_PAGE_SIZE = 100
+const RECORD_COUNT_MAX_PAGES = 20
+
 function normalizeFilePaths(input) {
   const files = Array.isArray(input) ? input : [input]
 
@@ -51,6 +56,18 @@ function firstValue() {
 function normalizeNumber(value, fallback) {
   const number = Number(value)
   return Number.isFinite(number) ? number : fallback
+}
+
+// 轮播设置的权威来源是后端 carouselInterval（分钟）。设备 0x01 读回值、本地缓存值只作
+// 后端缺字段时的兜底；真正下发 0x10 前统一在这里换算成秒，避免连接后被设备旧值反向覆盖。
+function resolveCarouselIntervalSeconds(device = {}, fallbackSeconds = 0) {
+  const carouselMinutes = normalizeNumber(device.carouselInterval, 0)
+  if (carouselMinutes > 0) {
+    return Math.max(1, Math.round(carouselMinutes * 60))
+  }
+
+  const fallback = normalizeNumber(fallbackSeconds, 0)
+  return fallback > 0 ? Math.max(1, Math.round(fallback)) : 0
 }
 
 // 设备图片槽位索引 → 接口入参：后端约定 String 类型。
@@ -108,7 +125,21 @@ function normalizeDevice(device = {}) {
     firstValue(device.totalMemory, device.capacity),
     0
   )
-  const intervalSeconds = normalizeNumber(device.intervalSeconds, 0)
+  // 轮播间隔：后端 carouselInterval 的单位 2026-08-03 起由「小时」改为「分钟」。
+  // 端上一律换算成秒存 intervalSeconds —— 下发固件的 0x10 本来就是秒，中间绝不能再经过
+  // 「整数小时」这一层：5 分钟按小时取整会变成 1 小时甚至 0，用户点一下开关就把设备改了。
+  // 列表接口不下发 carouselInterval，回落到 intervalSeconds（BLE 0x01 读回的真实值）；
+  // 再兜底历史 intervalHours，兼容本地缓存里已归一化过的旧设备记录。
+  const legacyIntervalHours = normalizeNumber(device.intervalHours, 0)
+  const fallbackIntervalSeconds =
+    normalizeNumber(device.intervalSeconds, 0) ||
+    (legacyIntervalHours > 0
+      ? Math.max(1, Math.round(legacyIntervalHours * 3600))
+      : 0)
+  const intervalSeconds = resolveCarouselIntervalSeconds(
+    device,
+    fallbackIntervalSeconds
+  )
   const isUpdate = normalizeNumber(device.isUpdate, 0)
   // 升级方式：后端 updateType 约定 1=强制升级 / 其它(含 2=提醒)=提醒升级（字段名/取值待后端最终确认，仅改此一处即可）。
   // 归一为 upgradeMode: 'force'(强制) | 'remind'(提醒) | ''(无更新)，供启动全局检测与升级入口判断。
@@ -161,10 +192,9 @@ function normalizeDevice(device = {}) {
     totalMemory,
     playbackMode: firstValue(device.playbackMode, device.playMode, 'order'),
     intervalSeconds,
-    intervalHours: normalizeNumber(
-      device.intervalHours,
-      intervalSeconds ? Math.max(1, Math.round(intervalSeconds / 3600)) : 2
-    ),
+    // 仅供展示/选择器下标派生，不参与下发：必须保留小数（5 分钟 = 0.0833 小时），
+    // 一旦在这里 Math.round 成整数小时，分钟级间隔就再也回不来了。
+    intervalHours: intervalSeconds ? intervalSeconds / 3600 : 2,
     isUpdate,
     hasUpdate: isUpdate === 1,
     updateType,
@@ -286,6 +316,7 @@ function productScore(product, scan) {
 }
 
 module.exports = {
+  resolveCarouselIntervalSeconds,
   getProductList(params = {}) {
     return http.get('/Client/Product/getProductList', params, {
       mock: false
@@ -490,7 +521,7 @@ module.exports = {
       // 绑定入库只允许 0x01 返回的完整 6 字节 Device_ID；禁止广播短 ID / BLE 句柄兜底。
       deviceId: deviceIdUtil.requireComplete(
         data.deviceId,
-        '设备-绑定失败：未读取到完整的6字节设备ID'
+        '电子纸设备-绑定失败：未读取到完整的6字节电子纸设备ID'
       )
     })
     return http.post('/Client/UserProduct/addUserProduct', payload, {
@@ -620,7 +651,7 @@ module.exports = {
 
   // 添加投屏记录。⚠️ 2026-07-23 起小程序已无调用方：再次/重新投屏改走正常链路
   //（setUserProductUpload 建记录 + editUserProductImgRecord 记账），旧「imgBle 直传后补记」
-  // 场景随 .bin 链路删除。方法保留（后端接口仍在，Flutter 侧同步前还在用）。
+  // 场景随 .bin 链路删除。方法保留（后端接口仍在；Flutter 侧同名封装同样保留、同样无调用方）。
   // body 只传业务字段（undefined 会被序列化丢弃）；imgIndex 语义同 editUserProductImgRecord。
   // device/language/terminal/userToken 由 request.js 经 header/query 注入。
   addUserProductImgRecord(data = {}) {
@@ -799,7 +830,7 @@ module.exports = {
     // productId 必传：匹配不到就中止绑定并明确提示，避免缺 productId 还往后端发请求。
     if (!productId) {
       throw new Error(
-        '未匹配到对应产品(productId)，请确认该设备在产品列表中存在'
+        '未匹配到对应产品(productId)，请确认该电子纸设备在产品列表中存在'
       )
     }
 
@@ -817,7 +848,7 @@ module.exports = {
         scan.hardwareDeviceId,
         scan.productSerialNo
       ),
-      '设备-绑定失败：未读取到完整的6字节设备ID'
+      '电子纸设备-绑定失败：未读取到完整的6字节电子纸设备ID'
     )
     const payload = {
       productId, // 必传，已在上面确保非空
@@ -925,7 +956,81 @@ module.exports = {
       .then(data => pageData(data).map(normalizeProjectionRecord))
   },
 
+  // 「我的」页「我的相册」卡片上的数字：**全部设备**的投屏成功记录条数。
+  // 与该页列表同口径（deviceUploadState=1 + 端上按 status 兜底），只是不带 userProductId
+  // ——卡片统计的是全部设备的合计，不是当前选中的那台。
+  //
+  // 这里只要数字不要数据，所以尽量少打请求：
+  // · 后端认 deviceUploadState 时（回来的整页都是成功记录），直接用分页元数据 recordCount，
+  //   一次请求就拿到真实总数，超过一页也不会被截断；
+  // · 后端忽略它时 recordCount 是「成功+失败」的合计，不能当成功数用，只能逐页翻并按 status 数。
+  //   判停优先看 pageCount/recordCount，不能拿「回包条数 < 请求的 pageSize」当依据：
+  //   后端可能无视 pageSize 按自己的默认值分页（见 guide.js fetchAllFaq 踩过的同款坑）。
+  getProjectionSuccessCount() {
+    const readPage = (pageIndex, scanned, counted) =>
+      module.exports
+        .getUserProductImgRecordList({
+          pageIndex,
+          pageSize: RECORD_COUNT_PAGE_SIZE,
+          deviceUploadState: 1
+        })
+        .then(data => {
+          const rows = pageData(data)
+          // 成功判定收口到 normalizeProjectionRecord，与列表页同一套字段兼容规则
+          const success = rows.filter(
+            row => normalizeProjectionRecord(row).status === 'success'
+          )
+          const seen = scanned + rows.length
+          const total = counted + success.length
+          const recordCount = Number(data && data.recordCount) || 0
+          const pageCount = Number(data && data.pageCount) || 0
+
+          // 整页都是成功记录 → 后端确实按 deviceUploadState 过滤了，recordCount 即成功总数
+          if (recordCount && rows.length && success.length === rows.length) {
+            return recordCount
+          }
+
+          const done =
+            !rows.length ||
+            pageIndex >= RECORD_COUNT_MAX_PAGES ||
+            (pageCount && pageIndex >= pageCount) ||
+            (!pageCount && recordCount && seen >= recordCount) ||
+            (!pageCount && !recordCount && rows.length < RECORD_COUNT_PAGE_SIZE)
+
+          return done ? total : readPage(pageIndex + 1, seen, total)
+        })
+
+    return readPage(1, 0, 0)
+  },
+
   deleteProjectionRecord(recordId) {
     return module.exports.delUserProductImgRecord(recordId)
+  },
+
+  // 批量删除投屏记录（「我的相册」删照片时连同来源记录一并删，否则删掉的照片还会留在列表里）。
+  // 后端没有批量删接口，这里串行逐条调用；单条关掉 loading 与自动错误提示——
+  // 批量删 10 张会闪 10 次「删除中」、失败时弹 10 条 toast，统一由调用方一次 loading + 一次提示。
+  // 返回 { total, failed }：允许部分失败（设备与相册记录已删成功时不能整体回滚），由调用方决定文案。
+  deleteProjectionRecords(ids) {
+    const list = (Array.isArray(ids) ? ids : [ids]).filter(
+      id => id !== undefined && id !== null && id !== ''
+    )
+
+    return list.reduce(
+      (chain, id) =>
+        chain.then(result =>
+          http
+            .post(
+              '/Client/UserProduct/delUserProductImgRecord',
+              { id },
+              { mock: false, showError: false }
+            )
+            .then(
+              () => result,
+              () => Object.assign(result, { failed: result.failed + 1 })
+            )
+        ),
+      Promise.resolve({ total: list.length, failed: 0 })
+    )
   }
 }

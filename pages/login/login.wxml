@@ -1,4 +1,7 @@
-<view class="login-page safe-bottom {{leaving ? 'login-page--leaving' : ''}}">
+<!-- 折叠屏适配（2026-08-05，方案见 styles/fold-adapt.wxss）：根容器锁一屏高，
+     背景层/导航栏/登录过渡层/toast 留在滚动区外，中间内容交给 .fold-scroll 滚动。
+     内容从上往下排、没有贴底元素，装得下时与改动前完全一致。 -->
+<view class="login-page fold-viewport safe-bottom {{leaving ? 'login-page--leaving' : ''}}">
   <view class="login-bg-stack" aria-hidden="true">
     <image class="login-bg login-bg--halo" src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" mode="aspectFill"></image>
     <view class="login-bg__bottom"></view>
@@ -6,6 +9,8 @@
 
   <page-nav title="登录" custom-back="{{true}}" bind:backtap="goBack"></page-nav>
 
+  <scroll-view class="fold-scroll" scroll-y="{{true}}">
+   <view class="fold-scroll-body">
   <view class="login-main">
     <image class="login-logo" src="/assets/images/logo.png" mode="aspectFit"></image>
 
@@ -35,6 +40,9 @@
       <text class="login-agreement__link" bindtap="openPrivacyPolicy">《隐私政策》</text>
     </view>
   </view>
+
+   </view>
+  </scroll-view>
 
   <!-- 登录成功过渡层：登录接口 + 首页数据预取期间全屏覆盖（含按钮，防重复点击），
        期间预取的设备列表由首页 loadHomeState 一次性消费，落地即是加载完毕的首页 -->

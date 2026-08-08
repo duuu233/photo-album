@@ -114,7 +114,7 @@ function ensureGlobalListener() {
   if (wx.onBLEConnectionStateChange) {
     wx.onBLEConnectionStateChange(res => {
       if (!res.connected) {
-        cleanupSession(res.deviceId, '设备连接已断开')
+        cleanupSession(res.deviceId, '电子纸设备连接已断开')
       }
     })
   }
@@ -439,7 +439,7 @@ async function establishConnection(deviceId) {
         !uuids.some(u => matchUuid(u, protocol.SERVICE_UUID))
       throw new Error(
         onlyOta
-          ? '设备只暴露 OTA 服务(FF10)，未发现相框主服务(FF00)'
+          ? '电子纸设备只暴露 OTA 服务(FF10)，未发现相框主服务(FF00)'
           : '未发现相框主服务(FF00)'
       )
     }
@@ -1279,7 +1279,7 @@ async function uploadImage(deviceId, options) {
           stats.retryEvents++
           if (++retries > 15) {
             throw new Error(
-              `图传中断：设备停在已接收第 ${tracker.last} 包不再前进。可能设备忙或处理不过来。当前 MTU=${session.mtu}、每包 ${CHUNK} 字节`
+              `图传中断：电子纸设备停在已接收第 ${tracker.last} 包不再前进。可能电子纸设备忙或处理不过来。当前 MTU=${session.mtu}、每包 ${CHUNK} 字节`
             )
           }
           onProgress(
@@ -1337,7 +1337,7 @@ async function uploadImage(deviceId, options) {
     const failure =
       error instanceof Error
         ? error
-        : new Error((error && error.message) || '设备图传失败')
+        : new Error((error && error.message) || '电子纸设备图传失败')
     stats.error = failure.message
     failure.transferStats = finalizeTransferStats(stats)
     throw failure
@@ -1465,12 +1465,12 @@ function prefixDeviceError(error) {
   const e =
     error instanceof Error
       ? error
-      : new Error((error && error.message) || '设备操作失败')
-  const msg = e.message || '设备操作失败'
-  if (/^接口-|^设备-/.test(msg) || /^[A-Z][A-Z0-9_]*$/.test(msg)) {
+      : new Error((error && error.message) || '电子纸设备操作失败')
+  const msg = e.message || '电子纸设备操作失败'
+  if (/^(?:接口-|设备-|电子纸设备-)/.test(msg) || /^[A-Z][A-Z0-9_]*$/.test(msg)) {
     return e
   }
-  e.message = '设备-' + msg
+  e.message = '电子纸设备-' + msg
   return e
 }
 

@@ -3,11 +3,13 @@
   flex-direction: column;
 }
 
+/* 底部留 40rpx：失败页多了「排查提示」卡片后内容会一直顶到底部按钮上，
+   这里的下内边距是内容与下方「重新投屏/继续投屏」之间的固定间距（进度态没有按钮时同样保证不贴屏幕底边）。 */
 .result-body {
   position: relative;
   z-index: 1;
   flex: 1;
-  padding: 48rpx 56rpx 0;
+  padding: 48rpx 56rpx 40rpx;
   text-align: center;
 }
 
@@ -74,9 +76,11 @@
   font-size: 26rpx;
 }
 
-/* 进度条下方的投屏注意事项提示（多条，序号列表样式） */
+/* 进度条下方的投屏注意事项提示（多条，序号列表样式）。
+   进度态没有底部按钮，这张卡片就是页面最后一屏内容：补 --safe-bottom 避免落进 iPhone home 指示条 */
 .progress-tips {
   margin-top: 44rpx;
+  margin-bottom: var(--safe-bottom);
   padding: 30rpx 32rpx;
   text-align: left;
 }

@@ -1,11 +1,16 @@
-<view class="mock-root result-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+<!-- 折叠屏适配（2026-08-05，方案见 styles/fold-adapt.wxss）：根容器锁一屏高，
+     背景层/导航栏/底部按钮/弹层留在滚动区外，中间的结果正文交给 .fold-scroll 滚动。
+     .result-body 原本靠 flex:1 撑满剩余高度，进滚动区后改由 .fold-scroll-body 的
+     min-height:100% 承担同一职责，内容装得下时观感不变。 -->
+<view class="mock-root result-page fold-viewport" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" mode="aspectFill"></image>
   </view>
 
   <page-nav title="{{title}}"></page-nav> 
 
-  <view class="result-body">
+  <scroll-view class="fold-scroll" scroll-y="{{true}}">
+  <view class="result-body fold-scroll-body">
     <image class="result-art {{status}}" src="{{artImage}}" mode="aspectFit"></image>
 
     <view class="result-title">{{title}}</view>
@@ -22,7 +27,7 @@
       <view class="progress-tips glass-panel">
         <view class="progress-tip-item">
           <text class="progress-tip-index">1</text>
-          <text class="progress-tip-text">投屏过程请保持手机亮屏，不要远离设备</text>
+          <text class="progress-tip-text">投屏过程请保持手机亮屏，不要远离电子纸设备</text>
         </view>
         <view class="progress-tip-item">
           <text class="progress-tip-index">2</text>
@@ -34,7 +39,7 @@
         </view>
         <view class="progress-tip-item">
           <text class="progress-tip-index">4</text>
-          <text class="progress-tip-text">投屏完成后设备会自动刷新，刷新期间设备繁忙无法投屏，请等待刷新结束</text>
+          <text class="progress-tip-text">投屏完成后电子纸设备会自动刷新，刷新期间电子纸设备繁忙无法投屏，请等待刷新结束</text>
         </view>
       </view>
     </block>
@@ -67,7 +72,7 @@
     <view wx:if="{{status === 'fail'}}" class="fail-tips glass-panel">
       <view class="progress-tip-item">
         <text class="progress-tip-index">1</text>
-        <text class="progress-tip-text">请确认设备蓝牙正常连接中，手机蓝牙正常使用</text>
+        <text class="progress-tip-text">请确认电子纸设备蓝牙正常连接中，手机蓝牙正常使用</text>
       </view>
       <view class="progress-tip-item">
         <text class="progress-tip-index">2</text>
@@ -84,6 +89,9 @@
     </view>
   </view>
 
+  </scroll-view>
+
+  <!-- 底部按钮组留在滚动区外：本来就是贴在一屏底部的一栏，不该跟着正文滚 -->
   <view wx:if="{{status !== 'progress'}}" class="result-actions">
     <view wx:if="{{status === 'success'}}" class="result-primary" hover-class="none" bindtap="continueProjection">继续投屏</view>
     <view wx:else class="result-primary" hover-class="none" bindtap="retry">重新投屏</view>

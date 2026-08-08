@@ -1,9 +1,12 @@
 const api = require('../../../utils/api')
 const toast = require('../../../utils/toast')
+const fold = require('../../../utils/fold-adapt')
 
 const app = getApp()
 
-Page({
+// 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
+// styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
+Page(fold.adapt({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -96,7 +99,7 @@ Page({
     this.setData({
       dialogType: 'delete-warn',
       dialogTitle: '用户注销',
-      dialogDesc: '注销将永久删除您的所有账号数据，请确认设备照片已自行清空，否则注销后将无法删除设备照片',
+      dialogDesc: '注销将永久删除您的所有账号数据，请确认电子纸设备照片已自行清空，否则注销后将无法删除电子纸设备照片',
       dialogConfirmText: '继续'
     })
   },
@@ -127,7 +130,7 @@ Page({
       this.setData({
         dialogType: 'delete',
         dialogTitle: '用户注销',
-        dialogDesc: '我已了解设备照片需自行处理的说明，并确认继续注销。',
+        dialogDesc: '我已了解电子纸设备照片需自行处理的说明，并确认继续注销。',
         dialogConfirmText: '确认'
       })
       return
@@ -158,4 +161,4 @@ Page({
   },
 
   noop() {}
-})
+}))

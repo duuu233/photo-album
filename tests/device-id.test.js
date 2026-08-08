@@ -15,6 +15,9 @@ assert.strictEqual(
   'E9:48:C2:1E:D4:28'
 )
 assert.strictEqual(deviceId.canonical('C21ED428'), '')
+assert.strictEqual(deviceId.formatBytes('C21ED428'), 'C2:1E:D4:28')
+assert.strictEqual(deviceId.formatBytes('c2:1e:d4:28'), 'C2:1E:D4:28')
+assert.strictEqual(deviceId.formatBytes('not-a-device-id'), '')
 assert.throws(
   () => deviceId.requireComplete('C21ED428'),
   error => error && error.code === 'INCOMPLETE_DEVICE_ID'

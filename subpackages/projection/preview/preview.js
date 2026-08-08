@@ -3,14 +3,17 @@ const toast = require('../../../utils/toast')
 const activeDevice = require('../../../utils/active-device')
 const dithering = require('../../../utils/dithering')
 const deviceRotation = require('../../../utils/device-rotation')
+const fold = require('../../../utils/fold-adapt')
 
 // 设备屏幕分辨率（width×height）：列表/详情接口都会返回，取景框据此锁定宽高比（如 500x500 → 1:1）。
 // 接口暂未返回该字段，这里先给默认值便于联调测试（如需 1:1 改成 { width: 500, height: 500 }）。
 const DEFAULT_DEVICE_SIZE = { width: 480, height: 720 }
 
 // 预览舞台（.preview-stage）的可用区域，单位 rpx：宽 = 屏宽 750 - 左右各 46 边距；
-// 高度与 Flutter 的 Expanded + LayoutBuilder 对齐：680rpx 只是短屏下限，长屏会占满页面剩余空间。
+// 高度与 Flutter 的 Expanded + LayoutBuilder 对齐：舞台占满页面除固定块外的剩余高度。
 // fallback / 烘焙预览必须使用 _measureStage 实测后的高度，不能再把 680rpx 当成固定上限。
+// ⚠️ STAGE_MIN_H_RPX 只是**实测完成前**的临时换算基准，不是布局下限——wxss 里舞台已改成
+//    `flex: 1 1 0; min-height: 0`（剩多少给多少）。把它当下限会在折叠屏展开态把底部按钮顶出视口。
 const STAGE_W_RPX = 658
 const STAGE_MIN_H_RPX = 680
 
@@ -54,7 +57,8 @@ const PREBAKE_IDLE_MS = 800
 // 分段控制器按张选择。两种方向改变的都只是「可视区域（取景框）」，图片本身不动，
 // **页面展示交互两方向完全一致**；点「开始投屏」才把框内所见烘焙成上传图
 //（见 prepareProjectionImages / bakeEditedImage）。
-//   · 竖向 portrait —— 取景框 = 设备物理比例（竖向），导出直接画进设备分辨率画布，不旋转；
+//   · 竖向 portrait —— 取景框 = 设备物理比例（竖向），导出到设备分辨率画布时按设备字段
+//     verticalRotation 旋转（2026-08-04 起；该字段缺失即**不旋转**，此前是所有设备固定 180°）；
 //   · 横向 landscape —— 取景框 = 设备宽高对调后的横向比例（相框躺着摆），展示照旧横向，
 //     仅导出时整幅按设备 rotationDegree 旋转后画进**竖向设备分辨率**画布（2026-07-22 用户拍板恢复：
 //     曾短暂改为「对调分辨率直出、方向交给接口侧」，接口侧不适配横向图，已回到本方案）。
@@ -62,10 +66,11 @@ const ORIENT_PORTRAIT = 'portrait'
 const ORIENT_LANDSCAPE = 'landscape'
 const DEFAULT_ORIENTATION = ORIENT_PORTRAIT
 
-// 横向导出时整幅构图的旋转量（度，顺时针）由设备接口字段 rotationDegree 决定。
-// 历史设备/旧缓存拿不到该字段时继续按 270° 处理，保持既有真机方向不变。
-// 同一角度同时用于画布导出与手机端反向预览，绝不能在两处分别取值，否则会出现
+// 导出时整幅构图的旋转量（度，顺时针）：竖向取设备 verticalRotation（缺失 0°=不转），
+// 横向取设备 rotationDegree（缺失回退历史 270°）。两者都由 utils/device-rotation 收口。
+// 每种方向的同一角度同时用于画布导出与手机端反向预览，绝不能在两处分别取值，否则会出现
 // 「设备上正了、手机预览里倒了」。
+// 这个角度决定的是**上传给抖动接口、随后图传到设备的那张成品图**的朝向，不是页面展示朝向。
 //
 // ⚠️ 横向取景的导出绝不能直接输出横向尺寸（如 960×680）：像素总数与竖向相同、帧字节数(宽×高÷2)
 // 也相同，所以**转换接口不会报错**——但设备按 680px 一行解析，拿到 960px 一行的数据会整幅错位/斜切，
@@ -91,7 +96,9 @@ function isPristineEdit(state) {
   )
 }
 
-Page({
+// 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
+// styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
+Page(fold.adapt({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -102,7 +109,10 @@ Page({
     activeIndex: 0,
     imageCount: 0,
     projecting: false,
+    // 横向导出角（设备 rotationDegree）：只给横向成品图的反向预览样式用
     exportRotationDegree: deviceRotation.DEFAULT_ROTATION_DEG,
+    // 竖向导出角（设备 verticalRotation，缺失即 0=不旋转）：给竖向成品图的反向预览样式用
+    verticalRotationDegree: deviceRotation.DEFAULT_VERTICAL_ROTATION_DEG,
 
     // 常驻编辑态（2026-07-22）：进入页面/切换图片即自动对当前图开启编辑——单指平移、
     // 双指缩放+旋转、右上角按钮转90°。没有「保存」按钮，点「开始投屏」自动按框内所见烘焙上传。
@@ -160,6 +170,11 @@ Page({
     const pending = wx.getStorageSync('pendingProjection') || {}
     const images = pending.images || []
     const device = pending.device || null
+    // 接回上一轮的编辑状态（结果页「重新投屏」会先把图还原成原图再跳回本页，见 result.js
+    // restorePendingOriginals）：底图是原图、构图还是用户上次构好的那个，不用重新拖一遍。
+    // 状态按 src 认领——enterEdit 与 prepareProjectionImages 都会校验 state.src === 当前图源，
+    // 对不上（新选的图、还原过的图）自动作废，所以首次进页面带着旧状态也不会串。
+    this._states = pending.editStates || {}
     this.updateImageState(images, device, 0)
 
     // 压缩图片：产品要求恒为开启，页面已隐藏开关入口，故不再读取 Storage 覆盖（保持 data 默认 true）
@@ -201,6 +216,24 @@ Page({
     this.enterEdit()
   },
 
+  // 折叠屏展开/折叠、旋转、分屏（2026-08-05）：舞台尺寸变了，`_stageRect` 这份
+  // 「布局固定、只量一次」的缓存立刻失效——取景框、图片摆放、导出裁剪全按它算，
+  // 不作废就会按旧尺寸裁图（框还停在原位置，导出的构图和用户所见对不上）。
+  // 清缓存后按当前图重新进编辑态（与切图同一条路径；编辑状态按 src 存，会被原样恢复）。
+  // 注：状态栏/安全区的重测由 utils/fold-adapt 的 adapt() 在这之前完成。
+  onResize() {
+    this._stageRect = null
+    if (!this.data.imageCount) {
+      return
+    }
+    // 先把手上这张的实时构图快照进 _states：重进编辑态是按 src 从 _states 恢复的，
+    // 不存的话恢复到的是「上次切图时」的旧构图，用户刚拖好的位置会被吞掉。
+    this._saveEditState()
+    // 必须 remeasure：enterEdit 对「正在编辑同一张图」有一条直接返回的快路径，
+    // 不绕开它就只会把 editReady 置真，舞台一个字都不会重量，取景框仍停在折叠前的位置和尺寸。
+    this.enterEdit({ remeasure: true })
+  },
+
   // 统一刷新图片相关状态：当前预览图与张数（设备空间是否够由结果页按真实容量/掩码判断）
   updateImageState(images, device, activeIndex) {
     const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1)) // 防止下标越界
@@ -211,6 +244,7 @@ Page({
         {
           device,
           exportRotationDegree: deviceRotation.degreeFor(device),
+          verticalRotationDegree: deviceRotation.verticalDegreeFor(device),
           images,
           activeIndex: safeIndex,
           imageCount: images.length,
@@ -434,11 +468,11 @@ Page({
     return `width:${size.dispW.toFixed(2)}rpx;height:${size.dispH.toFixed(2)}rpx;`
   },
 
-  // 已按设备 rotationDegree 转过的横向成图（导出结果），在预览里要**反向转回来**展示，
-  // 否则用户看到的是躺倒/颠倒的照片——文件本身是竖向（如 680×960）、内容是横的，直接铺进横向
-  // photo-wrap 会又转又裁。做法：图片元素用「对调后的尺寸」(竖向 dispH×dispW)，绕中心反向旋转，
-  // 转完正好铺满横向的 wrap。photo-wrap 已是 position:relative + overflow:hidden（见 wxss）。
-  computeRotatedImgStyle(viewW, viewH) {
+  // 已按导出角转过的成图，在预览里要**反向转回来**展示，否则用户看到的是躺倒/颠倒的照片。
+  // 本样式用于「转了奇数个直角(90/270)」的成图：文件宽高与展示框宽高是对调关系，
+  // 直接铺进 wrap 会又转又裁。做法：图片元素用「对调后的尺寸」(dispH×dispW)，绕中心反向旋转，
+  // 转完正好铺满 wrap。photo-wrap 已是 position:relative + overflow:hidden（见 wxss）。
+  computeRotatedImgStyle(viewW, viewH, degree) {
     const size = this.computeWrapSize(viewW, viewH)
     if (!size) {
       return ''
@@ -446,8 +480,23 @@ Page({
     return (
       `position:absolute;left:50%;top:50%;` +
       `width:${size.dispH.toFixed(2)}rpx;height:${size.dispW.toFixed(2)}rpx;` +
-      `transform:translate(-50%,-50%) rotate(${-this.data.exportRotationDegree}deg);`
+      `transform:translate(-50%,-50%) rotate(${-degree}deg);`
     )
+  },
+
+  // 烘焙文件的反向预览样式：导出转了多少度，展示就转回来多少度，保持构图所见不变。
+  // 角度必须与导出同源（都走 deviceRotation.exportDegreeFor），否则会「设备上正了、预览里倒了」。
+  //   · 奇数直角(90/270)：宽高对调，走 computeRotatedImgStyle 那套绝对定位 + 换宽高；
+  //   · 其余角度(0/180…)：宽高不变，纯反向 rotate 即可；0° 时返回空样式（不旋转的常态）。
+  computeBakedImgStyle(orientation, viewW, viewH) {
+    const degree = deviceRotation.exportDegreeFor(this.data.device, orientation)
+    if (deviceRotation.isQuarterTurn(degree)) {
+      return this.computeRotatedImgStyle(viewW, viewH, degree)
+    }
+    if (deviceRotation.normalizeDegree(degree) === 0) {
+      return ''
+    }
+    return `transform:rotate(${-degree}deg);`
   },
 
   // 量取编辑舞台（.preview-stage）的 px 尺寸：页面初始布局完成后只量一次，
@@ -556,7 +605,12 @@ Page({
   // 之后单指平移 / 双指缩放+旋转 / 右上角按钮转90°，图片在框下自由变换，框不动，框内即最终成像。
   // 页面加载与「上一张/下一张」都会自动调用；同一张图已有编辑状态（_states）则原样恢复。
   // 失败（无图/量不到舞台/读图失败）不打扰用户：静默停在 fallback 普通预览，投屏走未编辑链路。
-  enterEdit() {
+  //
+  // options.remeasure：强制重走「量舞台 → 重算取景框」这条完整路径，即使当前正在编辑同一张图。
+  // 折叠/展开/旋转/分屏后（onResize）必须带上，否则会命中下面那条快路径，取景框继续按旧舞台算，
+  // 导出的构图与用户所见对不上。
+  enterEdit(options) {
+    const remeasure = !!(options && options.remeasure)
     return new Promise((resolve) => {
       const index = this.data.activeIndex
       const image = this.data.images[index]
@@ -567,7 +621,7 @@ Page({
         return
       }
       // 已在编辑同一张图：直接复用当前变换，不重置（图片节点也不动，自然没有重新解码）
-      if (this.data.editing && this._edit && this._edit.src === src) {
+      if (!remeasure && this.data.editing && this._edit && this._edit.src === src) {
         this._markEditReady()
         resolve(true)
         return
@@ -1012,8 +1066,9 @@ Page({
   // 把一组编辑状态（取景框内所见：方向+平移+旋转+缩放）一次画布合成，烘焙为设备物理分辨率的新图。
   // canvas 尺寸=设备物理分辨率（竖向）：转换方（seekink 抖动接口）按上传图像素量化六色帧
   //（帧字节数=宽×高÷2），上传图必须正好是设备尺寸，这是硬约束。
-  //   · 竖向：画布坐标系直接对应取景框，放大系数 k = outW / frameW；
-  //   · 横向：先把整幅构图按设备 rotationDegree 旋转再画，k 按「取景框宽 → 画布高」算。
+  //   · 竖向：整幅构图按设备 verticalRotation 旋转（缺失即 0=不转）；
+  //   · 横向：整幅构图按设备 rotationDegree 旋转（缺失回退 270°）。
+  //   放大系数 k 按导出角是否对调轴向决定（见 _bakeToFile）。
   // 失败 resolve 原图（不阻断投屏），console.warn 留痕。
   bakeEditedImage(image, g) {
     return this._bakeToFile(g)
@@ -1030,20 +1085,25 @@ Page({
     const dev = this.getDeviceCropSize()
     const outW = dev.width
     const outH = dev.height
-    const landscape = g.orientation === ORIENT_LANDSCAPE
-    const k = landscape ? outH / g.frameW : outW / g.frameW
+    const exportRotationDegree = deviceRotation.exportDegreeFor(this.data.device, g.orientation)
+    // 「取景框宽 → 画布哪条边」取决于**导出角是否对调轴向**，而不是取景方向本身：
+    //   · 奇数直角(90/270，横向默认 270 即属此类) → 框宽落到画布高，k = outH / frameW；
+    //   · 0/180（竖向默认 0、旧竖向 180 都属此类）→ 框宽落到画布宽，k = outW / frameW。
+    // 这条规则覆盖了原来「横向用 outH、竖向用 outW」的写法，并额外支持竖向配 90/270 的设备。
+    const k = deviceRotation.isQuarterTurn(exportRotationDegree)
+      ? outH / g.frameW
+      : outW / g.frameW
     // 原图 px → canvas px：baseScale(显示/原图) × zoom × k
     const s = g.baseScale * g.zoom * k
     const rad = (g.angle * Math.PI) / 180
-    const exportRotateRad = (this.data.exportRotationDegree * Math.PI) / 180
+    const exportRotateRad = (exportRotationDegree * Math.PI) / 180
     return this._exportCanvas(outW, outH, g.src, (ctx, img) => {
       ctx.save()
-      // 先落到画布中心（横向再按设备 rotationDegree 旋转整幅构图）：此后坐标系就等价于取景框，
+      // 先落到画布中心，再按导出角旋转整幅构图（竖向取设备 verticalRotation、横向取 rotationDegree）：
+      // 此后坐标系就等价于取景框，
       // 图片相对取景框中心的平移(tx,ty)、用户自己的旋转(rad)、缩放(s) 都能原样套用。
       ctx.translate(outW / 2, outH / 2)
-      if (landscape) {
-        ctx.rotate(exportRotateRad)
-      }
+      ctx.rotate(exportRotateRad)
       ctx.translate(g.tx * k, g.ty * k)
       ctx.rotate(rad)
       ctx.scale(s, s)
@@ -1063,14 +1123,12 @@ Page({
     }
     updated.tempFilePath = tempFilePath
     // cropW/cropH 记的是**文件真实像素**（设备物理分辨率，竖向），别改成可视区域尺寸。
-    // 展示按取景方向铺；横向成图是按设备角度转过的竖向文件，要再给图片元素一个反向旋转
-    // 把它摆正（见 computeRotatedImgStyle），保证 fallback 展示仍是用户构图的样子。
+    // 展示按取景方向铺；两种方向的成图都转过，需给图片元素套对应的反向旋转，
+    // 保证 fallback 展示仍是用户构图的样子。
     updated.cropW = dev.width
     updated.cropH = dev.height
     updated.wrapStyle = this.computeWrapStyle(view.width, view.height)
-    updated.imgStyle = g.orientation === ORIENT_LANDSCAPE
-      ? this.computeRotatedImgStyle(view.width, view.height)
-      : ''
+    updated.imgStyle = this.computeBakedImgStyle(g.orientation, view.width, view.height)
     // 预览缓存已并入正式产物，清掉避免再被当缓存复用（此时 tempFilePath 已是烘焙图）
     updated.previewSrc = ''
     updated._bakedKey = ''
@@ -1079,6 +1137,7 @@ Page({
 
   // 一组编辑状态的指纹：变了才需要重新烘焙（滑动切图的预览缓存、投屏出图复用都靠它判定）。
   _editSignature(g) {
+    const exportRotationDegree = deviceRotation.exportDegreeFor(this.data.device, g.orientation)
     return [
       g.src,
       g.orientation,
@@ -1087,7 +1146,8 @@ Page({
       g.ty.toFixed(2),
       g.angle.toFixed(2),
       g.frameW.toFixed(2),
-      g.baseScale.toFixed(6)
+      g.baseScale.toFixed(6),
+      exportRotationDegree
     ].join('|')
   },
 
@@ -1135,9 +1195,7 @@ Page({
         previewSrc: filePath,
         _bakedKey: key,
         wrapStyle: this.computeWrapStyle(view.width, view.height),
-        imgStyle: g.orientation === ORIENT_LANDSCAPE
-          ? this.computeRotatedImgStyle(view.width, view.height)
-          : ''
+        imgStyle: this.computeBakedImgStyle(g.orientation, view.width, view.height)
       })
     } catch (err) {
       // 烘焙失败不挡切图：过场里退回原图显示（会有一次视觉跳变，但功能不受影响）
@@ -1185,7 +1243,8 @@ Page({
     this.persistPending(next)
   },
 
-  // 把一张「没经用户编辑」的图，按设备（竖向）比例做 aspectFill 中心裁切并导出为新临时文件。
+  // 把一张「没经用户编辑」的图，按设备（竖向）比例做 aspectFill 中心裁切，
+  // 再按设备竖向导出角（verticalRotation，缺失即 0=不转）旋转后导出为新临时文件。
   // 目的：用户不做任何编辑就投屏时，让上传后端/图传用的图与预览所见（取景框 cover 铺满，即中心裁切）
   // 完全一致——后端即便按设备分辨率转码也不会再变形。
   // 只处理竖向：横向取景的图必然带编辑状态（用户切过分段控制器），走 bakeEditedImage。
@@ -1203,7 +1262,16 @@ Page({
           const natW = info.width
           const natH = info.height
           const size = this.getDeviceCropSize()
-          const targetRatio = size.width / size.height
+          // 导出角是奇数直角(90/270)时，画面在画布上会**宽高对调**：中心裁切的目标比例
+          // 与后面的目标矩形都要跟着换，否则转完内容被裁掉一截、边上留白。
+          const rotateDegree = deviceRotation.exportDegreeFor(
+            this.data.device,
+            ORIENT_PORTRAIT
+          )
+          const quarterTurn = deviceRotation.isQuarterTurn(rotateDegree)
+          const destW = quarterTurn ? size.height : size.width
+          const destH = quarterTurn ? size.width : size.height
+          const targetRatio = destW / destH
           if (!(natW > 0) || !(natH > 0) || !(targetRatio > 0)) {
             resolve(image)
             return
@@ -1230,7 +1298,23 @@ Page({
           // 上传图必须正好是设备尺寸，否则帧大小对不上设备、投屏必失败（如 725×1024→371712 字节，
           // 设备 680×960 只要 326400）。比设备小的图会放大（correctness 优先，画质本就受六色量化限制）。
           this._exportCanvas(size.width, size.height, src, (ctx, img) => {
-            ctx.drawImage(img, sx, sy, sw, sh, 0, 0, size.width, size.height)
+            const rotateRad = (rotateDegree * Math.PI) / 180
+            ctx.save()
+            ctx.translate(size.width / 2, size.height / 2)
+            ctx.rotate(rotateRad)
+            // 目标矩形取 destW/destH（奇数直角时已对调）：转过之后正好铺满 size.width×size.height 画布
+            ctx.drawImage(
+              img,
+              sx,
+              sy,
+              sw,
+              sh,
+              -destW / 2,
+              -destH / 2,
+              destW,
+              destH
+            )
+            ctx.restore()
           }).then((tempFilePath) => {
             const updated = Object.assign({}, image)
             // 备份原图源，供「原图」还原（与编辑烘焙一致，已备份则不覆盖）
@@ -1238,11 +1322,16 @@ Page({
               updated._origSrc = updated.tempFilePath || updated.url || ''
             }
             updated.tempFilePath = tempFilePath
-            // cropW/cropH = 文件真实像素（设备物理分辨率，竖向）；竖向成图无需反向转正
+            // cropW/cropH = 文件真实像素（设备物理分辨率，竖向）；文件内容已按导出角转过，
+            // fallback 预览需反向转正（导出角为 0 时样式为空，不做任何旋转）。
             updated.cropW = size.width
             updated.cropH = size.height
             updated.wrapStyle = this.computeWrapStyle(size.width, size.height)
-            updated.imgStyle = ''
+            updated.imgStyle = this.computeBakedImgStyle(
+              ORIENT_PORTRAIT,
+              size.width,
+              size.height
+            )
             resolve(updated)
           }).catch(() => resolve(image))
         },
@@ -1286,9 +1375,14 @@ Page({
 
   // 把当前 images 写回 Storage(pendingProjection)，保证结果页拿到的是处理后的图
   persistPending(images, performance) {
+    // 当前图的实时手势只活在 _edit 里，先快照进 _states 再落盘，否则「重新投屏」接回来的
+    // 是这张图上一次切图时的旧构图（_edit 为空时是空操作）
+    this._saveEditState()
     const pending = wx.getStorageSync('pendingProjection') || {}
     pending.images = images
     pending.device = this.data.device || pending.device
+    // 构图状态随图一起落盘：投屏失败后「重新投屏」把图还原成原图跳回本页，靠它恢复上次的构图
+    pending.editStates = this._states || {}
     if (performance) {
       pending.performance = Object.assign({}, pending.performance, performance)
     }
@@ -1304,7 +1398,7 @@ Page({
     }
 
     if (!this.data.device) {
-      toast.warn({ title: '请选择设备', icon: 'none' })
+      toast.warn({ title: '请选择电子纸设备', icon: 'none' })
       return
     }
 
@@ -1315,7 +1409,7 @@ Page({
 
     // 必须有真实蓝牙 deviceId 才能连接图传（绑定时由蓝牙读取写入）
     if (!this.data.device.deviceId) {
-      toast.warn({ title: '设备未连接，请重新绑定后再投屏', icon: 'none' })
+      toast.warn({ title: '电子纸设备未连接，请重新绑定后再投屏', icon: 'none' })
       return
     }
 
@@ -1385,4 +1479,4 @@ Page({
       url: '/pages/home/home'
     })
   }
-})
+}))

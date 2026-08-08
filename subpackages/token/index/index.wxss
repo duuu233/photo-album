@@ -1,0 +1,308 @@
+@import "../shared.wxss";
+
+/* ── 概览卡 ─────────────────────────────────────────────────────────────────
+   设计稿的橙色渐变底（assets/ai/图标/Surface.png）是一张 335×199 的两端渐变图。
+   WXSS 的 background-image 不支持本地路径，要用就得再插一个绝对定位的 <image>；
+   而这块本身只是「左上 #f9ecdf → 右下 #ffceaa」的纯渐变，用 CSS 画出来完全一致，
+   还免掉 57KB 进包和拉伸到 654rpx 后的圆角重采样，所以这里不引那张图。
+   取色是从 Surface.png 四角实测的（TL 249,236,223 / BR 255,206,170）。 */
+.account-card {
+  position: relative;
+  z-index: 1;
+  margin-top: 40rpx;
+  padding: 28rpx;
+  background: linear-gradient(115deg, #f9ecdf 0%, #ffceaa 100%);
+  border-radius: 28rpx;
+}
+
+.account-card-title {
+  margin: 4rpx 0 24rpx 8rpx;
+  color: #2a2b2b;
+  font-size: 36rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.account-inner {
+  padding: 32rpx 30rpx 28rpx;
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 22rpx;
+}
+
+.account-balance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.account-balance-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+/* nowrap：「总额（累计购买）」有 9 个全角字符，两列一旦被挤窄就会折行，
+   折行那列的数字整体下沉一行，与另一列错开（分隔线也跟着被拉长） */
+.account-label {
+  color: #8b8f96;
+  font-size: 26rpx;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.account-balance-value {
+  display: flex;
+  align-items: baseline;
+  margin-top: 22rpx;
+}
+
+.account-balance-num {
+  color: #f2621f;
+  font-size: 76rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.account-balance-unit {
+  margin-left: 12rpx;
+  color: #6b7075;
+  font-size: 32rpx;
+  line-height: 1;
+}
+
+/* 金币插画：flex-shrink 关掉，余额位数多时（万位以上）不被压扁 */
+.account-coin {
+  flex: 0 0 168rpx;
+  width: 168rpx;
+  height: 120rpx;
+}
+
+.account-divider {
+  height: 1rpx;
+  margin: 26rpx 0 24rpx;
+  background: rgba(226, 202, 180, 0.6);
+}
+
+.account-stats {
+  display: flex;
+  align-items: center;
+}
+
+/* 基准取内容宽（flex-basis: auto）而不是等分（0）：「总额（累计购买）」比「已消耗」长得多，
+   等分会把左列压到刚好折行的边缘，剩余空间再等量分给两列即可（设计稿也是左列略窄）。 */
+.account-stat {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 分隔线：两侧留白相等（原来只在右侧留 32rpx，线紧贴左列、看着偏左），
+   高度用 align-self: stretch 跟满「标题 + 数字」两行（原来写死 56rpx，比两行内容矮一截、
+   上下也不居中），宽度 2rpx 保证任何屏幕密度下都不会被四舍五入成 0 而时隐时现。 */
+.account-stat-split {
+  flex: 0 0 2rpx;
+  align-self: stretch;
+  width: 2rpx;
+  margin: 0 32rpx;
+  background: rgba(226, 202, 180, 0.75);
+}
+
+.account-stat-value {
+  display: flex;
+  align-items: baseline;
+  margin-top: 18rpx;
+}
+
+.account-stat-num {
+  color: #4a4a4f;
+  font-size: 40rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.account-stat-num--orange {
+  color: #f2621f;
+}
+
+.account-stat-unit {
+  margin-left: 8rpx;
+  color: #8b8f96;
+  font-size: 26rpx;
+  line-height: 1;
+}
+
+/* ── 套餐横滑 ───────────────────────────────────────────────────────────── */
+/* 负外边距把横滑区从 .token-scroll-body 的左右 48rpx 留白里拉回屏幕两侧（通栏），
+   留白改由内部 .package-row 承担：卡片能一直滑到屏幕边缘，首末张又与页面其余内容对齐。
+
+   ⚠️ `width: auto` 不可省：scroll-view 的基础样式带 `width: 100%`（普通 view 是 auto），
+      负外边距只会把这 100% 整体左移 48rpx —— 右边就比页面窄了 96rpx，表现为
+      「横滑区没跟整体宽度对齐、滑到底最后一张还差一大截」。写死 100vw / 750rpx 同样能通栏，
+      但 auto 是按父容器算出来的，不押在 rpx 与 vw 在异形屏上是否严格相等。 */
+.package-scroll {
+  position: relative;
+  z-index: 1;
+  width: auto;
+  margin: 0 -48rpx;
+  white-space: nowrap;
+}
+
+/* 上下留白留给卡片阴影与选中态角标（别让 scroll-view 裁掉），左侧留白与页面对齐。
+   右侧留白见下面的 ::after：flex 容器的 padding-right 在溢出方向上会被 webview 丢掉。 */
+.package-row {
+  display: flex;
+  align-items: stretch;
+  padding: 16rpx 0 8rpx 48rpx;
+}
+
+/* 卡片间距用相邻兄弟外边距而不是 gap：末尾的占位项 ::after 不该再多吃一份 gap */
+.package-card + .package-card {
+  margin-left: 20rpx;
+}
+
+.package-row::after {
+  content: '';
+  flex: 0 0 48rpx;
+}
+
+.package-card {
+  position: relative;
+  flex: 0 0 200rpx;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 200rpx;
+  height: 248rpx;
+  padding: 0 22rpx;
+  background: rgba(255, 255, 255, 0.72);
+  border: 3rpx solid transparent;
+  border-radius: 20rpx;
+  box-shadow: 0 12rpx 30rpx rgba(125, 148, 181, 0.08);
+}
+
+.package-card--active {
+  background: #ffffff;
+  border-color: #ff6a1e;
+  box-shadow: 0 14rpx 34rpx rgba(255, 106, 30, 0.16);
+}
+
+/* 角标占位行：四张卡（有赠送 / 无赠送 / 选中 / 未选中）都固定占这 32rpx，
+   下面的「Token 数 → 价格 → 单价」才在同一条水平线上。
+   ⚠️ 高度必须落在这个外层容器上，不能只写在 .package-gift 上：选中态的角标是
+      `position: absolute`（贴卡片右上角），一旦脱离文档流就不再占高，卡片又是
+      `justify-content: center`，选中那张卡的内容会整体上移半格
+      —— 默认选中的「500 Token」比左右两张高一截，就是这么来的。 */
+.package-gift-slot {
+  height: 32rpx;
+}
+
+/* 未选中：卡片内的橙色文字，右对齐 */
+.package-gift {
+  color: #f2621f;
+  font-size: 22rpx;
+  line-height: 32rpx;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* 选中：实心橙色标签，贴住卡片右上角（-3rpx 抵掉卡片那 3rpx 描边） */
+.package-card--active .package-gift {
+  position: absolute;
+  top: -3rpx;
+  right: -3rpx;
+  padding: 0 16rpx;
+  color: #ffffff;
+  background: #ff6a1e;
+  border-radius: 0 20rpx 0 20rpx;
+}
+
+.package-tokens {
+  display: flex;
+  align-items: baseline;
+  margin-top: 18rpx;
+}
+
+.package-tokens-num {
+  color: #2a2d32;
+  font-size: 40rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.package-tokens-unit {
+  margin-left: 8rpx;
+  color: #7c828a;
+  font-size: 26rpx;
+  line-height: 1;
+}
+
+.package-price {
+  display: flex;
+  align-items: baseline;
+  margin-top: 20rpx;
+}
+
+.package-price-symbol {
+  color: #2a2d32;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.package-price-num {
+  margin-left: 6rpx;
+  color: #2a2d32;
+  font-size: 48rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.package-card--active .package-price-symbol,
+.package-card--active .package-price-num {
+  color: #f2621f;
+}
+
+.package-unit {
+  margin-top: 16rpx;
+  color: #9aa0a8;
+  font-size: 22rpx;
+  line-height: 1;
+}
+
+/* ── 记录入口 ───────────────────────────────────────────────────────────── */
+.record-entry {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  margin-top: 32rpx;
+  padding: 32rpx 32rpx 34rpx;
+  background: rgba(255, 255, 255, 0.78);
+  border: 2rpx solid rgba(255, 255, 255, 0.88);
+  border-radius: 24rpx;
+  box-shadow: 0 16rpx 38rpx rgba(125, 148, 181, 0.1);
+}
+
+.record-entry-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.record-entry-title {
+  color: #2a2d32;
+  font-size: 32rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.record-entry-desc {
+  margin-top: 16rpx;
+  color: #9aa0a8;
+  font-size: 26rpx;
+  line-height: 1;
+}
+
+.record-entry-chevron {
+  flex: 0 0 24rpx;
+  width: 24rpx;
+  height: 24rpx;
+}

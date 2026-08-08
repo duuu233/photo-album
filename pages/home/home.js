@@ -157,6 +157,9 @@ function normalizeDevice(device) {
     // 横向构图写入竖向物理画布时的顺时针旋转角。必须随首页选中设备透传到预览页；
     // 字段缺失时由预览页按历史行为回退 270°。
     rotationDegree: device.rotationDegree,
+    // 竖向构图的顺时针旋转角（2026-08-04 新增后端字段）。同样必须透传到预览页；
+    // 字段缺失时预览页按「不旋转(0°)」处理。⚠️ 0 是合法值，这里只能原样透传，不能补默认值。
+    verticalRotation: device.verticalRotation,
     // 先沿用最近一次有效电量；15 秒窗口外由 loadHomeState 收尾后台刷新，
     // 不在刷新前清空，避免「-- → 真值」闪烁。
     battery: batteryUtil.normalizeBattery(device.battery),
@@ -204,11 +207,11 @@ function sceneState(scene) {
     homeBgImage: getHomeBgImage(),
     homeFgImage: getHomeFgImage(),
     promptTitle:
-      scene === SCENES.UNBOUND_RECONNECT ? '设备连接失败' : '暂未绑定设备',
+      scene === SCENES.UNBOUND_RECONNECT ? '电子纸设备连接失败' : '暂未绑定电子纸设备',
     promptDesc:
       scene === SCENES.UNBOUND_RECONNECT
-        ? '当前设备未连接，APP需先连接设备后再投屏'
-        : '当前暂无可投屏设备，请先绑定相框设备',
+        ? '当前电子纸设备未连接，APP需先连接电子纸设备后再投屏'
+        : '当前暂无可投屏电子纸设备，请先绑定电子纸设备',
     promptButton: scene === SCENES.UNBOUND_RECONNECT ? '重新连接' : '立即绑定'
   }
 }
@@ -218,6 +221,10 @@ Page({
     scene: SCENES.UNBOUND,
     statusBarHeight: 20,
     safeBottom: 0,
+    // 导航栏实测高度（page-nav 的 measure 事件回抛）：内容块据此算「视口高 − 导航高」。
+    // ⚠️ 页面高度本身不在这里存——用 wxss 的 100vh，别再引入 windowHeight 快照
+    //（折叠屏上会与真实视口对不上，见 home.wxss .home-root 注释）。
+    navHeight: 64,
     navTitle: getNavigationTitle(SCENES.UNBOUND),
     avatarUrl: DEFAULT_AVATAR,
     currentDevice: DEFAULT_DEVICE,
@@ -383,6 +390,9 @@ Page({
       this.setData({
         statusBarHeight: info.statusBarHeight || 20,
         safeBottom: bottomInset
+        // ⚠️ 这里**不要**再存 windowHeight 当页面高度用：页面高度交给 wxss 的 100vh，
+        //    由 webview 自己解析，才不会与真实视口对不上（见 home.wxss .home-root 注释）。
+        //    状态栏高度与底部安全区是另一回事——它们只能靠接口读，且折叠前后会变，所以留在这里。
       })
     } catch (error) {
       this.setData({
@@ -390,6 +400,23 @@ Page({
         safeBottom: 0
       })
     }
+  },
+
+  // 自定义导航栏把实测高度回抛上来（page-nav attached 时 triggerEvent('measure')）：
+  // 内容块的最小高度 = 视口高(100vh) − 这个导航高度。
+  // 它量的是**已渲染节点**，不是窗口快照，折叠屏上不会失真。
+  onNavMeasure(e) {
+    const navHeight = (e && e.detail && e.detail.navHeight) || 0
+    if (navHeight && navHeight !== this.data.navHeight) {
+      this.setData({ navHeight })
+    }
+  },
+
+  // 折叠屏展开/折叠、屏幕旋转、分屏、三折叠切形态都会触发 onResize。
+  // 页面高度本身由 100vh 自动跟随，这里只需重测**状态栏高度与底部安全区**——
+  // 内外屏的刘海/挖孔/Home Indicator 不同，这两个值折叠前后确实会变。
+  onResize() {
+    this.setSystemMetrics()
   },
 
   // 拉取设备列表确定首页处于已绑定还是未绑定场景；失败则兜底为未绑定

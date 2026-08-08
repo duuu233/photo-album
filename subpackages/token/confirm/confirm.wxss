@@ -1,0 +1,146 @@
+@import "../shared.wxss";
+
+.summary-card {
+  position: relative;
+  z-index: 1;
+  margin-top: 40rpx;
+  padding: 34rpx 32rpx 30rpx;
+  background: rgba(255, 255, 255, 0.86);
+  border: 2rpx solid rgba(255, 255, 255, 0.9);
+  border-radius: 24rpx;
+  box-shadow: 0 16rpx 38rpx rgba(125, 148, 181, 0.1);
+}
+
+.summary-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.summary-tokens {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.summary-tokens-num {
+  color: #2a2d32;
+  font-size: 42rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.summary-tokens-unit {
+  margin-left: 10rpx;
+  color: #7c828a;
+  font-size: 30rpx;
+  line-height: 1;
+}
+
+.summary-price {
+  flex: 0 0 auto;
+  margin-left: 24rpx;
+  color: #f2621f;
+  font-size: 42rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* 赠送标签：橙色描边 + 浅橙底的小胶囊，宽度按文字撑开（inline-flex，不铺满一行） */
+.summary-gift {
+  display: inline-flex;
+  align-items: center;
+  height: 46rpx;
+  margin-top: 20rpx;
+  padding: 0 20rpx;
+  color: #f2621f;
+  background: rgba(255, 106, 30, 0.08);
+  border: 2rpx solid rgba(255, 106, 30, 0.45);
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  line-height: 1;
+}
+
+.summary-divider {
+  height: 1rpx;
+  margin: 28rpx 0 26rpx;
+  background: rgba(207, 214, 224, 0.7);
+}
+
+.summary-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.summary-total-label {
+  color: #9aa0a8;
+  font-size: 28rpx;
+  line-height: 1;
+}
+
+.summary-total-value {
+  display: flex;
+  align-items: baseline;
+}
+
+.summary-total-num {
+  color: #2a2d32;
+  font-size: 36rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.summary-total-unit {
+  margin-left: 10rpx;
+  color: #7c828a;
+  font-size: 28rpx;
+  line-height: 1;
+}
+
+/* ── 支付方式 ───────────────────────────────────────────────────────────── */
+.pay-list {
+  position: relative;
+  z-index: 1;
+}
+
+.pay-row {
+  display: flex;
+  align-items: center;
+  height: 128rpx;
+  margin-bottom: 24rpx;
+  padding: 0 28rpx;
+  background: rgba(255, 255, 255, 0.8);
+  border: 2rpx solid rgba(255, 255, 255, 0.88);
+  border-radius: 24rpx;
+  box-shadow: 0 16rpx 38rpx rgba(125, 148, 181, 0.08);
+}
+
+/* 设计稿两行都是同一种样式（没画选中态），但页面需要让用户看出选了哪个通道，
+   所以选中行补一圈橙色描边——不改变行高，切换时不跳版。 */
+.pay-row--active {
+  border-color: rgba(255, 106, 30, 0.55);
+  box-shadow: 0 16rpx 38rpx rgba(255, 106, 30, 0.12);
+}
+
+.pay-icon {
+  flex: 0 0 64rpx;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 14rpx;
+}
+
+.pay-name {
+  flex: 1;
+  min-width: 0;
+  margin-left: 26rpx;
+  color: #2a2d32;
+  font-size: 32rpx;
+  font-weight: 500;
+}
+
+.pay-chevron {
+  flex: 0 0 24rpx;
+  width: 24rpx;
+  height: 24rpx;
+}

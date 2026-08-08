@@ -4,7 +4,7 @@
   "packOptions": {
     "ignore": [
       {
-        "value": "assets/ai/UI",
+        "value": "assets/ai/UI页面",
         "type": "folder"
       },
       {

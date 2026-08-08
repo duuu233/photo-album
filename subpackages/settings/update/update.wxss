@@ -30,8 +30,12 @@
   text-align: center;
 }
 
+/* z-index 2：与滚动区在屏幕上重叠的贴底按钮必须压过 .fold-scroll(z-index:1)，
+   否则透明的滚动区会吃掉点击（见 styles/fold-adapt.wxss 的告警）。
+   `.primary-btn` 自带的 z-index:1 只是靠 DOM 顺序侥幸压住，这里写死不留悬念。 */
 .update-btn {
   position: absolute;
+  z-index: 2;
   right: 48rpx;
   bottom: calc(216rpx + var(--safe-bottom));
   left: 48rpx;
@@ -77,8 +81,10 @@
   font-size: 24rpx;
 }
 
+/* z-index 同 .update-btn（本按钮 z-index 缺省时会被滚动区盖住、点不动） */
 .delete-account {
   position: absolute;
+  z-index: 2;
   right: 48rpx;
   bottom: calc(70rpx + var(--safe-bottom));
   left: 48rpx;

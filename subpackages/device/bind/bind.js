@@ -7,6 +7,7 @@ const activeDevice = require('../../../utils/active-device')
 const deviceIdUtil = require('../../../utils/device-id')
 const deviceName = require('../../../utils/device-name')
 const system = require('../../../utils/system')
+const fold = require('../../../utils/fold-adapt')
 
 const app = getApp()
 const RECENTLY_BOUND_DEVICE_KEY = 'recentlyBoundDeviceId'
@@ -19,7 +20,9 @@ const RECENTLY_BOUND_DEVICE_KEY = 'recentlyBoundDeviceId'
 // 旧交互下列表要等窗口跑满才整批出现，单方面拉长窗口只会让人干等，这也是这次必须两件事一起改的原因。
 const SCAN_TIMEOUT_MS = 20000
 
-Page({
+// 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
+// styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
+Page(fold.adapt({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -133,7 +136,7 @@ Page({
       } else {
         toast.warn({
           // 搜索/连接超时统一走中文可操作文案，不把 "operate time out" 这类英文原文抛给用户
-          title: activeDevice.friendlyConnectMessage(error.message || '设备搜索失败'),
+          title: activeDevice.friendlyConnectMessage(error.message || '电子纸设备搜索失败'),
           icon: 'none'
         })
       }
@@ -247,24 +250,31 @@ Page({
     return String(value == null ? '' : value).replace(/[:\-\s]/g, '').toUpperCase()
   },
 
-  // 列表里展示给用户看的「设备ID」：取广播厂商数据里的 4 字节 Device_ID，归一化成 8 位十六进制
-  //（如 1A2B3C4D）。与 Flutter 端 bind_device_flow._displayDeviceCode 同规则，两端展示同一个值。
+  // 列表里展示给用户看的「设备ID」：取广播厂商数据里的 Device_ID，带冒号展示，
+  // 与「我的设备」「设备详情」同一套格式。
+  //
+  // 长度随固件走，**不再做任何截断**（2026-08-04）：
+  //   · 新固件广播 6 字节 → 显示 AA:BB:CC:DD:EE:FF，与设备详情页完全一致；
+  //   · 老固件广播 4 字节 → 显示 AA:BB:CC:DD（包里就只有这些，两个平台都一样）。
+  // 原来无脑 `slice(-8)` 砍成 4 字节，新固件上会把完整 ID 白白截掉一半 —— 那正是用户
+  // 反馈的「和详情页不一致、看着像被裁剪」。
   //
   // 为什么扫描阶段就要展示：默认设备名 = 产品广播名（EF6-370/EF6-589），同型号设备必然重名，
-  // 绑定前这是用户唯一能把两台区分开的标识。以前这里写死「设备ID 绑定后读取」，理由是
-  // 「广播只有 4 字节、完整 6 字节要连上读 0x01」——那条规则约束的是**身份判定**
-  //（判重/交叉匹配一律只认 0x01 的完整 ID，见 findBoundDevice / active-device），
-  // 不该顺带把**展示**也一起禁掉：展示只需要能区分眼前这几台，4 字节足够。
+  // 绑定前这是用户唯一能把两台区分开的标识。展示放宽不等于身份放宽——判重、认领会话、
+  // 绑定入库一律仍只认连上后 0x01 读到的完整 ID（见 findBoundDevice / active-device）：
+  // 广播是明文、可被伪造重放，0x01 才是从设备真身上读的。
   //
-  // 兜底：广播厂商数据解析不出来时退回微信 BLE deviceId（安卓是 MAC、iOS 是 UUID，
-  // 又长又对用户无意义），同样只取末 8 位；两者都没有才返回空串（模板隐藏这一行）。
+  // 兜底（广播厂商数据没解出来时）：
+  //   · 安卓的 BLE deviceId 就是 MAC（12 hex）——设备方口径里它就是那个完整身份，整串显示；
+  //   · iOS 给的是与设备无关、换台手机就变的随机 UUID（32 hex），它根本不是设备ID，
+  //     以前截成 8 位显示只会让用户以为「设备ID 被裁了」，现在直接不显示（模板隐藏这一行）。
   displayDeviceCode(device) {
     const broadcast = this.deviceSerial(device && device.broadcastDeviceId)
-    const raw = broadcast || this.deviceSerial(device && device.deviceId)
-    if (!raw) {
-      return ''
+    if (broadcast) {
+      return deviceIdUtil.formatBytes(broadcast)
     }
-    return raw.length > 8 ? raw.slice(-8) : raw
+    const handle = this.deviceSerial(device && device.deviceId)
+    return /^[0-9A-F]{12}$/.test(handle) ? deviceIdUtil.formatBytes(handle) : ''
   },
 
   // 查当前用户是否已绑定这台设备（按硬件 Device_ID 匹配），命中则返回那条已绑定记录。
@@ -339,7 +349,7 @@ Page({
     }
     if (!this.data.selectedId) {
       toast.warn({
-        title: '请选择要绑定的设备',
+        title: '请选择要绑定的电子纸设备',
         icon: 'none'
       })
       return
@@ -375,13 +385,13 @@ Page({
     let bleConnected = false
     // 真实蓝牙设备：连接并读取设备信息；连接失败则中止绑定（不再有模拟兜底）
     if (scanDevice.realBluetooth && scanDevice.deviceId) {
-      wx.showLoading({ title: '连接设备中', mask: true })
+      wx.showLoading({ title: '连接电子纸设备中', mask: true })
       try {
         info = await deviceBle.readDeviceInfo(scanDevice.deviceId)
         // readDeviceInfo 成功不等于身份字段一定有效；未拿到完整 6 字节 ID 时禁止继续绑定。
         info.deviceId = deviceIdUtil.requireComplete(
           info && info.deviceId,
-          '设备-未读取到完整的6字节设备ID，请重新连接后再试'
+          '电子纸设备-未读取到完整的6字节电子纸设备ID，请重新连接后再试'
         )
         bleConnected = true // ensureConnection 已建立可复用会话，绑定成功后将沿用它
         try {
@@ -402,7 +412,7 @@ Page({
         toast.warn({
           // 绑定时的连接超时同样要中文可操作（2026-08-01）：微信原文
           //「createBLEConnection:fail connect time out」用户看不懂，统一成「连接超时，稍后再试」
-          title: activeDevice.friendlyConnectMessage(error.message || '设备连接失败'),
+          title: activeDevice.friendlyConnectMessage(error.message || '电子纸设备连接失败'),
           icon: 'none'
         })
         this.setData({ binding: false })
@@ -414,7 +424,7 @@ Page({
 
     // 绑定判重/落库阶段（最多两次 getDevices，弱网可达数秒）也给连续 loading：
     // 此前「连接设备中」消失后这段是零反馈，页面像卡住，用户会以为没点上
-    wx.showLoading({ title: '绑定设备中', mask: true })
+    wx.showLoading({ title: '绑定电子纸设备中', mask: true })
 
     // 避免同一台设备被重复绑定（设备页会因此出现多条同款记录）：用刚连上读到的硬件 Device_ID
     // 去已绑定列表里找，命中就复用那条、不再新建，并沿用刚建立的连接（绑定成功 = 已连接）。
@@ -430,7 +440,7 @@ Page({
       })
       wx.hideLoading()
       app.setSelectedDevice(reused)
-      // 设备已绑定并已为你连接：不再弹提示，直接返回上一页复用这条连接；仅失败时提示。
+      // 电子纸设备已绑定并已为您连接：不再弹提示，直接返回上一页复用这条连接；仅失败时提示。
       // 保持 binding=true 直到返回上一页，避免窗口内被重复点击触发二次操作
       setTimeout(() => wx.navigateBack(), 500)
       return
@@ -504,7 +514,7 @@ Page({
     const checked = deviceName.validateDeviceName(e.detail.value)
     if (!device || !device.id || !checked.ok) {
       toast.warn({
-        title: checked.message || '设备信息异常，请稍后在设备页修改',
+        title: checked.message || '电子纸设备信息异常，请稍后在电子纸设备页修改',
         icon: 'none'
       })
       return
@@ -543,4 +553,4 @@ Page({
       wx.navigateBack()
     }, 500)
   }
-})
+}))

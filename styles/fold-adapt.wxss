@@ -1,0 +1,121 @@
+/* ── 折叠屏 / 分屏 / 平板 通用适配方案（2026-08-05）────────────────────────────
+   把 2026-08-04 首页与「我的」验证过的那套做法抽成公共类，其余页面按需套用。
+
+   为什么会「只显示一半、怎么滑都不动」：
+     ① rpx 随屏宽放大 —— rpx = 屏宽/750，折叠屏展开后屏更宽，按 rpx 写死的内容整体等比
+        放大，而窗口反而更矮更方，内容必然超出一屏；
+     ② 自定义导航 + 固定底栏的页面常规配置是 `"disableScroll": true`（防整页回弹），
+        页面级滚动本来就是关掉的；
+     ③ 根容器还写着 `overflow: hidden` / 写死高度，超出的部分既没有容器接管，又被直接裁掉。
+   三者叠加，超出的内容就永远够不着。
+
+   ⚠️ 高度一律用 CSS 的 `100vh`，**绝不要**把 `wx.getWindowInfo().windowHeight` 当页面高度：
+      tabBar 页的 windowHeight 会扣掉已 hideTabBar 的原生 tabBar（底部露缝），
+      展开态冷启动拿到的快照还会失真（滚不动）。100vh 由 webview 自己解析，折叠/展开/
+      分屏/三折叠一变就重新布局。这两个坑首页在 2026-08-04 当天踩过并回滚，别再退回去。
+
+   两种模式，按页面原本的滚动方式二选一，都是**叠加类**，不加类的页面一行样式都不受影响：
+
+   模式 B · 容器滚动（本方案默认，`"disableScroll": true` 的页用）
+     <view class="原有根类 fold-viewport">
+       <view class="mock-bg" />           固定背景层：留在滚动区外
+       <page-nav />                       导航栏：留在滚动区外，永远不跟着滚
+       <scroll-view class="fold-scroll" scroll-y>
+         <view class="原有内容块">…</view>  原内容原样搬进来，内部布局不变
+       </scroll-view>
+       固定底栏 / 弹层 / toast              必须留在滚动区外，否则会跟着内容滚
+     </view>
+
+   模式 A · 页面滚动（`"disableScroll": false` 的页用）
+     根容器不写死高度即可：`min-height: 100vh`（不是 `height`），且不要 `overflow: hidden`。
+     这类页面本来就能滚，套 `.fold-page` 只是把写死的高度改回按内容撑开。
+
+   配套的 JS 在 `utils/fold-adapt.js`（折叠/旋转/分屏后重测状态栏高度与底部安全区）。 */
+
+/* 模式 B 根容器：锁一屏高，纵向排布 = 导航栏(自然高度) + 滚动区(占满剩余)。
+   注意本类只补 display/flex-direction/height/overflow，颜色、背景、padding 等
+   仍由页面自己的根类决定 —— 两个类同时写在根节点上，互不覆盖。 */
+.fold-viewport {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* 模式 B 滚动区：占满导航栏以外的全部高度。
+   ⚠️ 必须是 `flex: 1 1 0`（基准 0）而不是 `1 1 auto`：基准 auto 时本项的基准高度 = 内容高度，
+      内容一超屏就变成「负剩余空间」，flex 会把**导航栏一起按比例压扁**（标题被切、返回键错位）。
+   ⚠️ `min-height: 0` 不可省：否则滚动区按内容高度撑开、整块顶出根容器，又回到「滑不动」。
+   z-index:1 是为了盖在 `.mock-bg` 这类 z-index:0 的固定背景层之上。
+
+   ⚠️⚠️ **留在滚动区外、又与滚动区在屏幕上重叠的元素（`position: absolute` 的贴底按钮、
+   浮层）必须显式写 `z-index: 2` 及以上**。滚动区从导航栏一直铺到根容器底部，那摞贴底按钮
+   正落在它下面；z-index 缺省（auto）时无论 DOM 顺序在后都会被 z-index:1 的滚动区盖住。
+   滚动区是透明的，所以**按钮看得见、位置也没错，就是点不动**——2026-08-05 本方案接入设置页
+   当天，「退出登录 / 用户注销」在普通手机上就是这么失灵的（折叠屏与否无关）。
+   反例参考：`settings/*` 那几枚贴底按钮现已逐个写死 z-index:2。
+   只靠 `.primary-btn` 自带的 z-index:1 + 「DOM 在后」压住属于侥幸，别依赖。 */
+.fold-scroll {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+/* 滚动区内容块：内容不够高时也撑满一屏（还原「根容器就是一屏高」的老观感，
+   贴底按钮、居中排版才不会在大屏上跑到半空）。内容超屏时按内容撑开并产生滚动。
+
+   `position: relative` 只是让内容块自己能当定位父级，不改变任何既有元素的位置。
+
+   ⚠️⚠️ **`display: flow-root` 不可删**：它把本块变成独立的 BFC，专治「内容明明不够一屏，
+   却凭空多出一段滚动」。原因是**外边距合并**——本块自己没有 padding-top / border-top 时，
+   第一个子元素的 `margin-top` 不会留在块内，而是**穿透出去变成本块自己的上外边距**，
+   把这个 `min-height: 100%`（= 整个滚动视口高）的块整体往下推同样的距离：
+
+     滚动内容高 = 子元素的 margin-top + 100%  >  滚动视口高 → 凭空多出一截可滚动区域。
+
+   多出的量正好等于首个子元素的上外边距，**与折叠与否无关，所有机型都有**：
+   登录页 `.login-main` 的 376rpx（约半屏！）、更新页 `.logo-wrap` 的 276rpx、
+   设置/语种页首张 `.glass-card` 的 68rpx、忘记密码页 `.form-card` 的 28rpx
+   —— 2026-08-06 登录页反馈的「非折叠屏也有滚动条」就是这一条。
+   改动前这些页面的根容器是 flex（或首个子元素前面还排着导航栏），本来不会发生合并；
+   套壳搬进块级的 `.fold-scroll-body` 之后才出现。
+
+   为什么用 `display: flow-root` 而不是别的挡法：它只断开外边距合并，**不改变子元素的
+   布局方式**（仍是普通块级流，兄弟之间的合并、`text-align`、百分比高度全部照旧），
+   所以装得下时与改动前逐像素一致。`overflow: hidden` 会裁掉卡片阴影，
+   `display: flex` 会改子元素的排布规则，`padding-top: 0.01px` 是玄学值，都不如它干净。
+   （iOS 12 及更早的 WKWebView 不认 flow-root，会退回本次修复前的表现，不会更糟。）
+
+   ⚠️ 原本 `position: absolute; bottom: …` 贴在根容器底部的元素（设置页那摞按钮）
+      **不要搬进滚动区**：留在根容器里（滚动区外）位置一像素不动，也不押在「百分比高度能不能解析」上；
+      但要给滚动内容块补 `padding-bottom`，把它们占的高度让出来（见 settings/shared.wxss 的
+      `.settings-scroll-body`），否则变长的内容会从这些脱离文档流的按钮底下穿过去。 */
+.fold-scroll-body {
+  position: relative;
+  display: flow-root;
+  box-sizing: border-box;
+  min-height: 100%;
+}
+
+/* 模式 A 根容器：把写死的 `height: 100vh` / `height: calc(100vh - …)` 换成按内容撑开。
+   页面级滚动本来就能滚，缺的只是「别裁掉」。 */
+.fold-page {
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+}
+
+/* 固定背景层：铺满**视口**而不是根容器的计算高度，根容器万一与视口差几十 px
+   也不会在底部露出一条没有背景的缝（同 app.wxss 的 .mock-bg、首页 .home-bg）。 */
+.fold-bg {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}

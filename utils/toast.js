@@ -44,7 +44,7 @@ function show(options) {
 function warn(options) {
   const opts = typeof options === 'string' ? { title: options } : Object.assign({}, options || {})
   const title = opts.title == null ? '' : String(opts.title)
-  opts.title = title && !/^(接口-|设备-|小程序-)/.test(title) ? `小程序-${title}` : title
+  opts.title = title && !/^(接口-|设备-|电子纸设备-|小程序-)/.test(title) ? `小程序-${title}` : title
   if (!opts.icon) {
     opts.icon = 'none'
   }

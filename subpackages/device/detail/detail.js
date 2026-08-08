@@ -11,8 +11,13 @@ const activeDevice = require('../../../utils/active-device')
 const deviceName = require('../../../utils/device-name')
 const deviceIdUtil = require('../../../utils/device-id')
 const deviceIdentity = require('../../../utils/device-identity')
+const fold = require('../../../utils/fold-adapt')
 
 const app = getApp()
+
+// 从没读到过间隔时的兜底（秒）。后端 carouselInterval 单位是分钟、固件 0x10 收的是秒，
+// 页面内一律按秒传递，只有这里才允许出现「小时」。
+const DEFAULT_INTERVAL_SECONDS = 2 * 3600
 
 // 屏幕物理分辨率文案（展示在「设备ID」下方），如 `680*960`。
 // 取值优先级：0x01 读到的 screenType 查表 → 后端记录的 width/height → '--'。
@@ -128,10 +133,10 @@ function textValue(value) {
 // 设备-/小程序-/接口-）。幂等：已带任一来源前缀时原样返回，避免重复叠加。
 function prefixDeviceError(error) {
   const e =
-    error instanceof Error ? error : new Error((error && error.message) || '设备操作失败')
-  const msg = e.message || '设备操作失败'
-  if (!/^接口-|^设备-|^小程序-/.test(msg)) {
-    e.message = '设备-' + msg
+    error instanceof Error ? error : new Error((error && error.message) || '电子纸设备操作失败')
+  const msg = e.message || '电子纸设备操作失败'
+  if (!/^(?:接口-|设备-|电子纸设备-|小程序-)/.test(msg)) {
+    e.message = '电子纸设备-' + msg
   }
   return e
 }
@@ -239,7 +244,7 @@ function getOtaValidationError(device) {
   const url = textValue(device && device.downloadPath)
 
   if (!version || !url) {
-    return '检测到设备可更新，但缺少新版本号或固件下载地址，请稍后重试。'
+    return '检测到电子纸设备可更新，但缺少新版本号或固件下载地址，请稍后重试。'
   }
 
   if (!isBinFirmwareUrl(url)) {
@@ -249,7 +254,9 @@ function getOtaValidationError(device) {
   return ''
 }
 
-Page({
+// 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
+// styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
+Page(fold.adapt({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -439,8 +446,9 @@ Page({
             totalMemory: info.capacity,
             playbackMode: info.playMode,
             intervalSeconds: info.intervalSeconds,
+            // 真机回的是秒，换算不取整：300s(5 分钟) 取整会变成 1 小时，保存时再写回就把设备改了。
             intervalHours: info.intervalSeconds
-              ? Math.max(1, Math.round(info.intervalSeconds / 3600))
+              ? info.intervalSeconds / 3600
               : device.intervalHours,
             firmwareVersion: info.firmwareVersion || device.firmwareVersion,
             // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
@@ -553,9 +561,13 @@ Page({
       this.data.device.playbackMode === 'manual'
         ? 'order'
         : this.data.device.playbackMode
+    // 只改模式；间隔以后端 carouselInterval（分钟→秒）为准，后端缺字段才回退设备读回值。
     await this.applyPlayback(
       e.detail.value ? currentMode || 'order' : 'manual',
-      this.data.device.intervalHours,
+      api.resolveCarouselIntervalSeconds(
+        this.data.device,
+        this.data.device.intervalSeconds
+      ),
       e.detail.value
     )
   },
@@ -567,10 +579,17 @@ Page({
     }
 
     const mode = e.detail.value === '0' ? 'order' : 'random'
-    await this.applyPlayback(mode, this.data.device.intervalHours, true)
+    await this.applyPlayback(
+      mode,
+      api.resolveCarouselIntervalSeconds(
+        this.data.device,
+        this.data.device.intervalSeconds
+      ),
+      true
+    )
   },
 
-  // 切换轮播间隔：picker 返回的是 intervalOptions 的下标，需转换为实际小时数
+  // 切换轮播间隔：picker 返回的是 intervalOptions 的下标，intervalOptions 是小时，需转换成秒
   async changeInterval(e) {
     if (!this.data.device) {
       return
@@ -579,12 +598,13 @@ Page({
     const intervalHours = this.data.intervalOptions[Number(e.detail.value)]
     await this.applyPlayback(
       this.data.device.playbackMode || 'order',
-      intervalHours,
+      Math.round(Number(intervalHours) * 3600),
       this.data.device.carouselEnabled !== false
     )
   },
 
-  async applyPlayback(mode, intervalHours, carouselEnabled) {
+  // intervalSeconds 单位为秒（后端 carouselInterval 的分钟已在 api.js 换算），传空才回落默认 2 小时。
+  async applyPlayback(mode, intervalSeconds, carouselEnabled) {
     const device = this.data.device
     if (!device) {
       return
@@ -595,23 +615,25 @@ Page({
       return
     }
 
-    const hours = Number(intervalHours) || 2
-    const intervalSeconds = Math.max(1, Math.round(hours * 3600))
+    const seconds = Math.max(
+      1,
+      Math.round(Number(intervalSeconds) || DEFAULT_INTERVAL_SECONDS)
+    )
 
     wx.showLoading({ title: '保存中', mask: true })
     try {
-      await deviceBle.setPlayback(deviceId, mode, intervalSeconds)
+      await deviceBle.setPlayback(deviceId, mode, seconds)
       this.invalidateBleInfo() // 播放配置已变，清掉最近结果；下次 loadDetail 仍会真实重读
       const updated = Object.assign({}, device, {
         deviceId,
         bleDeviceId: deviceId,
         connected: true,
         playbackMode: mode,
-        intervalSeconds,
-        intervalHours: hours,
+        intervalSeconds: seconds,
+        intervalHours: seconds / 3600,
         carouselEnabled
       })
-      const intervalIndex = this.data.intervalOptions.indexOf(hours)
+      const intervalIndex = this.data.intervalOptions.indexOf(seconds / 3600)
 
       if (
         app.globalData.selectedDevice &&
@@ -816,8 +838,9 @@ Page({
                 info.intervalSeconds === undefined
                   ? device.intervalSeconds
                   : info.intervalSeconds,
+              // 同上：真机秒数换算不取整，保住分钟级间隔
               intervalHours: info.intervalSeconds
-                ? Math.max(1, Math.round(info.intervalSeconds / 3600))
+                ? info.intervalSeconds / 3600
                 : device.intervalHours,
               firmwareVersion: info.firmwareVersion || device.firmwareVersion,
               // 固件真实 Device_ID（0x01 返回，与调试台一致）：设备ID行优先展示它
@@ -863,7 +886,7 @@ Page({
     }
     // deviceId 直连 + 序列号交叉匹配，避免记录丢 deviceId 时误判「未连接」拦住入口
     if (!activeDevice.isDeviceConnected(device)) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
       return
     }
     wx.navigateTo({
@@ -879,7 +902,7 @@ Page({
     }
     // deviceId 直连 + 序列号交叉匹配，避免记录丢 deviceId 时误判「未连接」拦住入口
     if (!activeDevice.isDeviceConnected(device)) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
       return
     }
 
@@ -959,7 +982,7 @@ Page({
     wx.showModal({
       title: '本地固件测试',
       content:
-        '将使用代码包内的测试固件进入 OTA 流程：设备已连接则执行真实蓝牙 DFU 升级，未连接则仅做干跑校验（不写设备）。是否继续？',
+        '将使用代码包内的测试固件进入 OTA 流程：电子纸设备已连接则执行真实蓝牙 DFU 升级，未连接则仅做干跑校验（不写电子纸设备）。是否继续？',
       confirmText: '进入测试',
       confirmColor: '#ff6a20',
       success: res => {
@@ -1108,7 +1131,7 @@ Page({
       this.setData({ otaTestStatus: okText })
       if (unconfirmedTest) {
         // 未确认是失败语义（没拿到设备 0xF3 确认）：按约定走 warn 加「设备-」来源前缀
-        toast.warn({ title: '设备-' + okText, icon: 'none' })
+        toast.warn({ title: '电子纸设备-' + okText, icon: 'none' })
       } else {
         toast.show({ title: okText, icon: 'none' })
       }
@@ -1176,7 +1199,7 @@ Page({
   clearCopies() {
     // 一键清空需与固件交互：未连接不自动重连，直接提示「请先连接设备」
     if (!activeDevice.isDeviceConnected(this.data.device)) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
       return
     }
     this.showClearConfirm()
@@ -1191,7 +1214,7 @@ Page({
     // 一键清空需已连接：未连接不自动重连(点击时已拦一次，这里作二次保护)，直接提示「请先连接设备」。
     const deviceId = activeDevice.findConnectedDeviceId(this.data.device)
     if (!deviceId) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
       return false
     }
 
@@ -1283,7 +1306,7 @@ Page({
             throw prefixDeviceError(
               new Error(
                 ((deleteError && deleteError.message) || '清空失败') +
-                  `（设备仍剩 ${remaining.length} 张未删除）`
+                  `（电子纸设备仍剩 ${remaining.length} 张未删除）`
               )
             )
           }
@@ -1310,13 +1333,13 @@ Page({
       // 这类一律统一提示「设备暂时无法连接」，不把底层设备错误码抛给用户；
       // 后端接口类错误（「接口-」前缀）仍如实提示，避免把接口问题误报成设备连不上。
       const deviceLinkFailed =
-        !isBusy && (!deviceBle.isConnected(deviceId) || /^设备-/.test(rawMsg))
+        !isBusy && (!deviceBle.isConnected(deviceId) || /^(?:设备|电子纸设备)-/.test(rawMsg))
       logClearDeviceData(traceId, '清空失败', { deviceLinkFailed, busy: isBusy, error: rawMsg })
       toast.warn({
         title: isBusy
           ? protocol.BUSY_MESSAGE
           : deviceLinkFailed
-          ? '设备暂时无法连接'
+          ? '电子纸设备暂时无法连接'
           : rawMsg || '清空失败',
         icon: 'none'
       })
@@ -1436,7 +1459,7 @@ Page({
   // 「删除设备」= 一键清空设备与图库 + 断开连接 + 解除绑定。该动作必须在连接态发起。
   showPermanentDeleteConfirm() {
     if (!activeDevice.findConnectedDeviceId(this.data.device)) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
       return
     }
     this.setData({
@@ -1486,7 +1509,7 @@ Page({
     }
     const deviceId = activeDevice.findConnectedDeviceId(this.data.device)
     if (!deviceId) {
-      toast.warn({ title: '请先连接设备', icon: 'none' })
+      toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
       return
     }
     this._permanentDeleting = true
@@ -1496,7 +1519,7 @@ Page({
       return
     }
 
-    wx.showLoading({ title: '删除设备中', mask: true })
+    wx.showLoading({ title: '删除电子纸设备中', mask: true })
     try {
       deviceBle.disconnect(deviceId)
       await api.deleteDevice(this.data.id)
@@ -1514,7 +1537,7 @@ Page({
       wx.hideLoading()
     }
     this.setData({ showPermanentDeleteConfirm2: false })
-    toast.show({ title: '设备已删除', icon: 'none' })
+    toast.show({ title: '电子纸设备已删除', icon: 'none' })
     setTimeout(() => wx.navigateBack(), 500)
   },
 
@@ -1525,7 +1548,7 @@ Page({
 
     wx.showModal({
       title: '格式化设备',
-      content: '格式化会删除设备上的照片数据，请确认是否继续。',
+      content: '格式化会删除电子纸设备上的照片数据，请确认是否继续。',
       confirmText: '格式化',
       confirmColor: '#c7372f',
       success: async res => {
@@ -1547,4 +1570,4 @@ Page({
       }
     })
   }
-})
+}))

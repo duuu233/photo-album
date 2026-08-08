@@ -165,7 +165,7 @@ function handleAiError(err, options = {}) {
   // 让 RequestId 留在用户截图中用于服务端定位；其它 detail 仍不得展示。
   if (userMessage) {
     toast.show({
-      title: /^(接口-|设备-|小程序-)/.test(message)
+      title: /^(接口-|设备-|电子纸设备-|小程序-)/.test(message)
         ? message
         : `接口-${message}`,
       icon: 'none',
@@ -220,7 +220,7 @@ function handleAiError(err, options = {}) {
     return
   }
 
-  toast.show({ title: /^(接口-|设备-|小程序-)/.test(message) ? message : `接口-${message}`, icon: 'none' })
+  toast.show({ title: /^(接口-|设备-|电子纸设备-|小程序-)/.test(message) ? message : `接口-${message}`, icon: 'none' })
 }
 
 // 一键生图按当前语种拼 message（如「生成图片-卡通」）

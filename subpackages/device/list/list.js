@@ -7,6 +7,7 @@ const media = require('../../../utils/media')
 const activeDevice = require('../../../utils/active-device')
 const deviceName = require('../../../utils/device-name')
 const deviceIdentity = require('../../../utils/device-identity')
+const fold = require('../../../utils/fold-adapt')
 
 const app = getApp()
 const RECENTLY_BOUND_DEVICE_KEY = 'recentlyBoundDeviceId'
@@ -19,7 +20,9 @@ function memoryPercent(device) {
   return Math.min(100, Math.round((device.usedMemory / device.totalMemory) * 100))
 }
 
-Page({
+// 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
+// styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
+Page(fold.adapt({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -258,7 +261,7 @@ Page({
     if (this.data.selectMode) {
       app.setSelectedDevice(device)
       toast.show({
-        title: '已切换设备',
+        title: '已切换电子纸设备',
         icon: 'none'
       })
       setTimeout(() => wx.navigateBack(), 350)
@@ -498,7 +501,7 @@ Page({
     const id = this.data.renameDeviceId
     const checked = deviceName.validateDeviceName(e.detail.value)
     if (!checked.ok || !id) {
-      toast.warn(checked.message || '设备信息异常')
+      toast.warn(checked.message || '电子纸设备信息异常')
       return
     }
     this.setData({ renameSaving: true })
@@ -526,7 +529,7 @@ Page({
 
     wx.showModal({
       title: '删除设备',
-      content: '删除设备后，设备上的照片将保留，如不再使用此设备，建议先清空所有照片',
+      content: '删除电子纸设备后，电子纸设备上的照片将保留，如不再使用此电子纸设备，建议先清空所有照片',
       cancelText: '再想想',
       confirmText: '确认',
       confirmColor: '#ff4d4f',
@@ -556,4 +559,4 @@ Page({
       }
     })
   }
-})
+}))

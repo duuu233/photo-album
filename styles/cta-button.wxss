@@ -1,0 +1,55 @@
+/* 贴底主行动按钮（2026-08-06）。
+   设计稿里 Token 管理 / 确认购买 / 图片详情三页底部是同一枚按钮，底图也是同一张
+   （assets/ai/图标/Group19444483.png → assets/images/primary-btn-bg.png）。
+
+   单独成文件、由 app.wxss 统一 @import 一次，理由同 styles/fold-adapt.wxss：
+   ① 三个页面分属 gallery / token 两个**不同分包**，分包之间不能互相引用，
+      从一个分包 @import 另一个分包的 wxss 不可取；
+   ② 放主包一份，两个分包都能用，也不必各自复制一遍。
+
+   与 subpackages/settings/shared.wxss 的 `.primary-btn` 的区别：那枚是纯 CSS 渐变，
+   这枚用设计稿给的磨砂底图（带外发光），两者并存，不要互相替换。 */
+
+/* ⚠️ `z-index: 2` 不可省：`.fold-scroll` 是 z-index:1 的透明层，从导航栏一直铺到根容器底部，
+      正好压在这枚贴底按钮上；层级缺省时按钮「看得见、点不动」
+      （2026-08-05 设置页退出登录/用户注销的线上故障，说明见 styles/fold-adapt.wxss）。
+
+   底图 primary-btn-bg.png 是 726×184 的整图，实心胶囊只占其中 654×112
+   （实测 alpha 边界 x[36,689] y[30,141]），四周是外发光。按 726×184rpx 铺、再用
+   -36/-30 的负偏移，胶囊就正好落满 654×112rpx 的按钮盒——654rpx 也正是全站内容宽度
+   （页面左右各留 48rpx），所以底图不需要拉伸，1:1 就对齐。 */
+.cta-button {
+  position: absolute;
+  right: 48rpx;
+  bottom: calc(60rpx + var(--safe-bottom, 0px));
+  left: 48rpx;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 112rpx;
+  color: #ffffff;
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.cta-button-bg {
+  position: absolute;
+  top: -30rpx;
+  left: -36rpx;
+  z-index: -1;
+  width: 726rpx;
+  height: 184rpx;
+}
+
+.cta-button--disabled {
+  opacity: 0.55;
+}
+
+/* 贴底按钮是 `position: absolute` 且留在滚动区**外**，滚动内容必须把它占的高度让出来，
+   否则变长的内容会从按钮底下穿过去（同 settings/shared.wxss 的 .settings-scroll-body）。
+   196rpx = 按钮高 112rpx + bottom 60rpx + 24rpx 余量。 */
+.cta-button-gap {
+  padding-bottom: calc(196rpx + var(--safe-bottom, 0px));
+}

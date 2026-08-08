@@ -1,5 +1,8 @@
-<!-- 首页根容器：通过 CSS 变量把状态栏高度/底部安全区传给样式，适配各机型 -->
-<view class="home-root" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+<!-- 首页根容器：通过 CSS 变量把状态栏高度/底部安全区/导航高度传给样式，适配各机型。
+     折叠屏适配（2026-08-04）：内容按 rpx 等比放大后在展开态必然超出一屏，根容器锁死为一屏高
+     （wxss 里用 100vh，不用 JS 测的窗口高度——原因见 home.wxss .home-root 的注释），
+     超出的部分交给下面的 .home-scroll 滚动。 -->
+<view class="home-root" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px; --nav-h: {{navHeight}}px;">
   <!-- 背景：本地占位图(3K，OSS 背景的强压缩版)立即渲染打底，OSS 大图加载完淡入盖上——
        首屏不再被远程图门控（此前弱网下用户要白等最多 6s），bgReady 只驱动淡入不再挡内容 -->
   <view class="home-bg" aria-hidden="true">
@@ -27,8 +30,15 @@
     show-back="{{showNavBack}}"
     custom-back="{{showNavBack}}"
     bind:backtap="backFromBinding"
+    bind:measure="onNavMeasure"
   >
   </page-nav>
+  <!-- 可滚动主体（2026-08-04 折叠屏适配）：导航栏之下的全部内容放进滚动容器。
+       窗口装得下时观感与改动前完全一致；折叠屏展开、分屏、超小窗口下内容超出一屏即可上下滚动，
+       不再出现「只显示一半、怎么滑都不动」。
+       ⚠️ 底部导航与三个弹层必须留在滚动容器**外**：它们是 position:fixed 的固定层，
+       放进 scroll-view 会跟着内容一起滚。 -->
+  <scroll-view class="home-scroll" scroll-y="{{true}}">
   <!-- 首屏加载中：只等设备列表落定场景（pageLoading），不再等远程背景图——本地占位图已打底 -->
   <view wx:if="{{pageLoading}}" class="page-loading">
     <view class="page-loading__spinner">
@@ -148,7 +158,7 @@
           class="empty-hero-art"
           src="/assets/images/empty_device_art.png"
           mode="aspectFit" />
-        <view class="empty-hint">请先绑定相框设备后再投屏照片</view>
+        <view class="empty-hint">请先绑定电子纸设备后再投屏照片</view>
         <view
           class="bind-pill"
           hover-class="none"
@@ -213,63 +223,6 @@
               mode="aspectFit"
             />
           </view>
-        </view>
-      </view>
-    </view>
-    <!-- 自定义底部导航（首页/我的），替代原生 tabBar -->
-    <custom-tabbar
-      active="home"
-      safe-bottom="{{safeBottom}}"
-      dimmed="{{hasHomeOverlay}}"
-    >
-    </custom-tabbar>
-    <!-- 弹层①：未绑定/重连提示（标题文案随场景变化）。catchtouchmove 阻止背景滚动穿透 -->
-    <view
-      wx:if="{{showPromptSheet}}"
-      class="home-mask"
-      catchtouchmove="noop"
-    >
-      <view class="bottom-sheet prompt-sheet {{sheetClosing ? 'pop-closing-sheet' : ''}}">
-        <view
-          class="sheet-close"
-          hover-class="none"
-          bindtap="closeHomeSheet"
-        >
-          ×
-        </view>
-        <view class="prompt-title">{{promptTitle}}</view>
-        <view class="prompt-desc">{{promptDesc}}</view>
-        <view
-          class="primary-action"
-          hover-class="none"
-          bindtap="confirmPrompt"
-        >
-          {{promptButton}}
-        </view>
-      </view>
-    </view>
-    <!-- 弹层②：离线断网模式 -->
-    <view
-      wx:if="{{isOfflineMode}}"
-      class="home-mask"
-      catchtouchmove="noop"
-    >
-      <view class="bottom-sheet prompt-sheet offline-sheet {{sheetClosing ? 'pop-closing-sheet' : ''}}">
-        <view
-          class="sheet-close"
-          hover-class="none"
-          bindtap="closeOfflineMode"
-        >
-          ×
-        </view>
-        <view class="prompt-title">离线模式</view>
-        <view class="prompt-desc offline-desc">当前网络异常，app进入离线模式无法同步投屏记录与图库</view>
-        <view
-          class="primary-action"
-          hover-class="none"
-          bindtap="closeOfflineMode"
-        >
-          我知道了
         </view>
       </view>
     </view>
@@ -342,8 +295,8 @@
       <!-- 搜索中：提示靠近设备，可取消或查看帮助 -->
       <block wx:elif="{{isBindingScanning}}">
         <view class="scan-copy">
-          <view class="scan-title">正在搜索附近设备</view>
-          <view class="scan-desc">请尽量将手机靠近需要添加的设备...</view>
+          <view class="scan-title">正在搜索附近电子纸设备</view>
+          <view class="scan-desc">请尽量将手机靠近需要添加的电子纸设备...</view>
         </view>
         <view
           class="scan-help-link"
@@ -363,8 +316,8 @@
       <!-- 未发现设备：提示重试，可重新扫描或查看帮助 -->
       <block wx:else>
         <view class="scan-copy no-device-copy">
-          <view class="scan-title">未发现设备</view>
-          <view class="scan-desc">未搜索到附近设备，请确认设备已开机并靠近手机</view>
+          <view class="scan-title">未发现电子纸设备</view>
+          <view class="scan-desc">未搜索到附近电子纸设备，请确认电子纸设备已开机并靠近手机</view>
         </view>
         <view
           class="scan-help-link"
@@ -382,35 +335,97 @@
         </view>
       </block>
     </view>
-    <!-- 弹层④：「扫描不到怎么办」排查清单 -->
-    <view
-      wx:if="{{isScanHelp}}"
-      class="home-mask scan-help-mask"
-      catchtouchmove="noop"
-    >
-      <view class="bottom-sheet scan-help-sheet {{sheetClosing ? 'pop-closing-sheet' : ''}}">
-        <view
-          class="sheet-close"
-          hover-class="none"
-          bindtap="closeScanHelp"
-        >
-          ×
-        </view>
-        <view class="scan-help-title">扫描不到怎么办?</view>
-        <image
-          class="scan-help-icon"
-          src="/assets/images/scan_help_art.png"
-          mode="aspectFit" />
-        <view class="check-title">请检查:</view>
-        <view class="check-list">
-          <text>1.设备是否有电?</text>
-          <text>2.当前设备是否被占用?</text>
-          <text>3.设备蓝牙是否工作正常，手机或小程序蓝牙开关是否打开</text>
-          <text>4.设备是否与手机距离过远，隔离或有其他遮挡物</text>
-        </view>
+  </block>
+  </scroll-view>
+
+  <!-- ===== 固定层：不随内容滚动（position:fixed / 全屏遮罩），故留在 scroll-view 之外 =====
+       条件里都补上了原来由父级 block 提供的场景判断：pageLoading 期间两个分支都不渲染。 -->
+  <!-- 自定义底部导航（首页/我的），替代原生 tabBar -->
+  <custom-tabbar
+    wx:if="{{!pageLoading && isHomeScene}}"
+    active="home"
+    safe-bottom="{{safeBottom}}"
+    dimmed="{{hasHomeOverlay}}"
+  >
+  </custom-tabbar>
+  <!-- 弹层①：未绑定/重连提示（标题文案随场景变化）。catchtouchmove 阻止背景滚动穿透 -->
+  <view
+    wx:if="{{!pageLoading && isHomeScene && showPromptSheet}}"
+    class="home-mask"
+    catchtouchmove="noop"
+  >
+    <view class="bottom-sheet prompt-sheet {{sheetClosing ? 'pop-closing-sheet' : ''}}">
+      <view
+        class="sheet-close"
+        hover-class="none"
+        bindtap="closeHomeSheet"
+      >
+        ×
+      </view>
+      <view class="prompt-title">{{promptTitle}}</view>
+      <view class="prompt-desc">{{promptDesc}}</view>
+      <view
+        class="primary-action"
+        hover-class="none"
+        bindtap="confirmPrompt"
+      >
+        {{promptButton}}
       </view>
     </view>
-  </block>
+  </view>
+  <!-- 弹层②：离线断网模式 -->
+  <view
+    wx:if="{{!pageLoading && isHomeScene && isOfflineMode}}"
+    class="home-mask"
+    catchtouchmove="noop"
+  >
+    <view class="bottom-sheet prompt-sheet offline-sheet {{sheetClosing ? 'pop-closing-sheet' : ''}}">
+      <view
+        class="sheet-close"
+        hover-class="none"
+        bindtap="closeOfflineMode"
+      >
+        ×
+      </view>
+      <view class="prompt-title">离线模式</view>
+      <view class="prompt-desc offline-desc">当前网络异常，app进入离线模式无法同步投屏记录与图库</view>
+      <view
+        class="primary-action"
+        hover-class="none"
+        bindtap="closeOfflineMode"
+      >
+        我知道了
+      </view>
+    </view>
+  </view>
+  <!-- 弹层④：「扫描不到怎么办」排查清单 -->
+  <view
+    wx:if="{{!pageLoading && !isHomeScene && isScanHelp}}"
+    class="home-mask scan-help-mask"
+    catchtouchmove="noop"
+  >
+    <view class="bottom-sheet scan-help-sheet {{sheetClosing ? 'pop-closing-sheet' : ''}}">
+      <view
+        class="sheet-close"
+        hover-class="none"
+        bindtap="closeScanHelp"
+      >
+        ×
+      </view>
+      <view class="scan-help-title">扫描不到怎么办?</view>
+      <image
+        class="scan-help-icon"
+        src="/assets/images/scan_help_art.png"
+        mode="aspectFit" />
+      <view class="check-title">请检查:</view>
+      <view class="check-list">
+        <text>1.电子纸设备是否有电?</text>
+        <text>2.当前电子纸设备是否被占用?</text>
+        <text>3.电子纸设备蓝牙是否工作正常，手机或小程序蓝牙开关是否打开</text>
+        <text>4.电子纸设备是否与手机距离过远，隔离或有其他遮挡物</text>
+      </view>
+    </view>
+  </view>
   <global-toast id="globalToast">
   </global-toast>
 </view>

@@ -1,0 +1,37 @@
+/* Token（支付体系）三个页面的公共样式。
+   背景与设置类页面用同一张 OSS 图（见 subpackages/settings/shared.wxss 的说明），
+   底色 #f8f5ef 既是图未加载出来时的兜底，也正好是设计稿三张图的页面底色。 */
+.token-shell {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  color: #2a2d32;
+  background: #f8f5ef url(https://oss.boltfox.cn/prodFile/202607310920402821453.png) center / cover no-repeat;
+}
+
+/* 页面左右留白。贴底按钮的高度让位由公共类 `.cta-button-gap` 负责
+   （在 styles/cta-button.wxss，已由 app.wxss 全局 @import）。
+
+   ⚠️ 必须写 padding-left/right **长写法**，不能用 `padding: 0 48rpx` 简写：
+      app.wxss 先于页面 wxss 生效，两者又都是单类选择器（同优先级）→ 后来的页面样式胜出，
+      简写会把 `.cta-button-gap` 的 padding-bottom 一并重置成 0，
+      贴底按钮就压住最后一块内容了。 */
+.token-scroll-body {
+  padding-right: 48rpx;
+  padding-left: 48rpx;
+}
+
+.token-section-title {
+  margin: 56rpx 0 24rpx;
+  color: #2a2b2b;
+  font-size: 32rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.token-empty {
+  padding: 160rpx 0;
+  color: #9aa0a8;
+  font-size: 26rpx;
+  text-align: center;
+}

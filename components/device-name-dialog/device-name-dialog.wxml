@@ -19,7 +19,7 @@
         mode="aspectFit" />
       <view class="name-dialog__title">{{title}}</view>
     </view>
-    <view class="name-dialog__tip">为设备设置一个容易识别的名称</view>
+    <view class="name-dialog__tip">为电子纸设备设置一个容易识别的名称</view>
     <view class="name-field">
       <input
         class="name-field__input"

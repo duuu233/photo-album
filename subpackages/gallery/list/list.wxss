@@ -1,0 +1,43 @@
+@import "../shared.wxss";
+
+/* 分类条留在滚动区外常驻。负外边距 + 同值 padding：能一直滑到屏幕边缘，
+   首末个分类仍与页面留白对齐。z-index:2 保证压在 z-index:1 的 .fold-scroll 之上。 */
+.category-scroll {
+  position: relative;
+  z-index: 2;
+  margin: 12rpx 0 24rpx;
+  padding: 0 48rpx;
+  white-space: nowrap;
+}
+
+.category-row {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.category-chip {
+  flex: 0 0 auto;
+  height: 68rpx;
+  padding: 0 34rpx;
+  color: #6b7078;
+  background: rgba(255, 255, 255, 0.72);
+  border: 2rpx solid rgba(255, 255, 255, 0.9);
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  line-height: 64rpx;
+}
+
+.category-chip--active {
+  color: #ffffff;
+  background: linear-gradient(90deg, #ff8338, #f2621f);
+  border-color: transparent;
+  box-shadow: 0 10rpx 24rpx rgba(255, 106, 30, 0.24);
+}
+
+/* 底栏是 `position: fixed`、bottom = 26rpx + 安全区、高 112rpx，
+   滚动内容要把这段高度让出来，否则最后一排卡片会被底栏压住。 */
+.list-scroll-body {
+  padding-bottom: calc(178rpx + var(--safe-bottom, 0px));
+}

@@ -11,6 +11,19 @@
   background: #f8f5ef url(https://oss.boltfox.cn/prodFile/202607310920402821453.png) center / cover no-repeat;
 }
 
+/* 折叠屏适配（2026-08-05）：设置类页面套 .fold-viewport + .fold-scroll 后，
+   滚动内容块统一再加这个类（方案说明见 styles/fold-adapt.wxss）。
+
+   「退出登录 / 保存设置 / 立即更新 + 用户注销 / 确认」这一摞按钮是
+   `position: absolute; bottom: …`，定位父级仍是**根容器**（它们留在滚动区外，位置一像素没动）。
+   padding-bottom 让出的就是这摞按钮占的高度：它们脱离文档流，不预留的话变长的内容会从底下穿过去。
+   352rpx = 最高的一枚（bottom 216rpx + 高 112rpx）再留 24rpx 余量；`--safe-bottom` 是
+   Home Indicator 的避让，与按钮各自的 bottom 口径保持一致。
+   内容装得下时这块 padding 落在屏幕外的滚动区末端，一个像素都看不出来。 */
+.settings-scroll-body {
+  padding-bottom: calc(352rpx + var(--safe-bottom, 0px));
+}
+
 .nav-bar {
   position: relative;
   z-index: 2;

@@ -1,10 +1,14 @@
-<view class="mock-root email-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+<!-- 折叠屏适配（2026-08-05，方案见 styles/fold-adapt.wxss）：根容器锁一屏高，
+     背景层/导航栏/toast 留在滚动区外，正文交给 .fold-scroll 滚动。
+     贴底提交按钮本来就是 position: fixed（钉在视口上），留在原处不受滚动影响。 -->
+<view class="mock-root fold-viewport email-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" mode="aspectFill"></image>
   </view>
 
   <page-nav title="修改邮箱"></page-nav>
 
+  <scroll-view class="fold-scroll" scroll-y="{{true}}">
   <view class="mock-content email-content">
     <view class="email-form glass-panel">
       <view class="email-row">
@@ -40,6 +44,8 @@
 
     <view class="settings-primary email-submit {{canSubmit ? '' : 'is-disabled'}}" disabled="{{!canSubmit}}" hover-class="none" bindtap="submit">确认修改</view>
   </view>
+
+  </scroll-view>
 
   <global-toast id="globalToast"></global-toast>
 </view>

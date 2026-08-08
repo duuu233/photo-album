@@ -46,10 +46,10 @@
           <image src="/assets/images/ai-welcome-star.png" mode="aspectFit"></image>
         </view>
         <view class="welcome-title">
-          <text>你好！我是星宝</text>
+          <text>您好！我是星宝</text>
           <image src="/assets/images/ai-spark-orange.png" mode="aspectFit"></image>
         </view>
-        <view class="welcome-text">你的 AI 创作伙伴，有什么我可以帮你的吗？</view>
+        <view class="welcome-text">您的 AI 创作伙伴，有什么我可以帮您的吗？</view>
         <view class="welcome-suggestions">
           <view class="welcome-suggestion" data-prompt="生成一张温馨的客厅插画" bindtap="useSuggestion">
             <image src="/assets/images/ai-suggestion-home.png" mode="aspectFit"></image>
@@ -330,7 +330,7 @@
         <input
           class="chat-input"
           value="{{inputValue}}"
-          placeholder="{{banned ? '账号已被限制' : (pendingImages.length ? '描述你想对图片做什么…' : '输入你的想法…')}}"
+          placeholder="{{banned ? '账号已被限制' : (pendingImages.length ? '描述您想对图片做什么…' : '输入您的想法…')}}"
           disabled="{{banned || recording}}"
           confirm-type="send"
           bindinput="onInput"
@@ -445,7 +445,7 @@
   <view wx:if="{{devicePicker.show}}" class="sheet-mask" bindtap="closeDevicePicker">
     <view class="device-sheet" catchtap="noop">
       <view class="device-sheet__title">选择投屏设备</view>
-      <view class="device-sheet__desc">选择设备后，将自动连接并开始投屏</view>
+      <view class="device-sheet__desc">选择电子纸设备后，将自动连接并开始投屏</view>
       <view class="device-sheet__divider"></view>
 
       <view wx:if="{{devicePicker.loading}}" class="page-loading sheet-loading">

@@ -14,6 +14,13 @@
 > 🛠 **维护约定**：每次修改本表涉及的接口/字段，务必在下方「操作日志」补一条（日期 + 改了什么 + 关联文件/commit），**最新在上**——别让文档与代码脱节。
 
 ## 操作日志（最新在上）
+- **2026-08-05**：「我的」页「我的相册」卡片的张数改为**全部设备的投屏成功记录条数**，与该页列表同口径
+  （原来取用户信息的 `imgCount`，相册口径，把失败/已删的也算在内，和点进去看到的列表对不上）。
+  新增 `api.getProjectionSuccessCount()`：`getUserProductImgRecordList` 带 `deviceUploadState=1`、
+  **不带 `userProductId`**；整页都是成功记录时直接采信分页元数据 `recordCount`（一次请求，超一页也不截断），
+  后端忽略过滤参数时退回逐页翻 + 按状态计数（判停看 `pageCount`/`recordCount`，同 FAQ 的翻页口径，20 页封顶）。
+  `pages/mine/mine.js` 相应把 `getAlbumPhotos()` 换成它。回归用例 `tests/projection-success-count.test.js`。
+  详见 `docs/changes/2026-08-05-我的相册计数与全站折叠屏适配.md`。Flutter 同步已实现。
 - **2026-07-27**：修复收紧完整 6 字节 ID 后出现的**首页、设备列表、设备详情跨页连接态丢失**
   回归。根因是三个页面重新拉接口/裁剪展示对象时，可能只保留
   `deviceNo`、`productDeviceId`、`firmwareDeviceId` 中的一部分；活动 BLE 会话仍存在，却因页面
@@ -134,20 +141,21 @@
 | 个人信息 | 忘记密码（未登录） | `POST /Client/User/resetPassword` | ⛔ | - | 邮箱账号找回密码 |
 | 个人信息 | 修改密码 | `POST /Client/User/changePassword` | ⛔ | - | 邮箱账号密码体系 |
 | 个人信息 | 用户注销 PC 版 | `POST /Client/User/userOffPC` | ⛔ | - | PC 版接口 |
-| 我的相册 | 相册列表/删除（支持多选） | `GET /Client/UserProduct/getUserProductImgList`、`POST /Client/UserProduct/delUserProductImg` | ✅ | `getUserProductImgList`、`delUserProductImg` | 仅显示成功上传至设备的照片；删除仅删本人上传，不删云照片 |
+| 我的相册 | 相册列表/删除（支持多选） | `GET /Client/UserProduct/getUserProductImgRecordList`、`GET /Client/UserProduct/getUserProductImgList`、`POST /Client/UserProduct/delUserProductImg`、`POST /Client/UserProduct/delUserProductImgRecord` | ✅ | `getProjectionRecords`、`getAlbumPhotos`、`deleteAlbumPhotos`、`deleteProjectionRecords` | **2026-08-04 起**：列表数据源改为「投屏成功记录」(`deviceUploadState=1`，按 `userProductId` 分类)，相册列表只作为槽位账本与原图来源；删除 = 设备 `0x12` + 删相册记录 + 删来源投屏记录三步 |
+| 我的（首屏统计） | 「我的相册」卡片的张数 | `GET /Client/UserProduct/getUserProductImgRecordList` | ✅ | `getProjectionSuccessCount` | **2026-08-05 起**：全部设备的投屏成功记录条数（`deviceUploadState=1`、不带 `userProductId`），与「我的相册」列表同口径，不再用 `getUserInfo` 的 `imgCount`。整页均为成功记录时取分页元数据 `recordCount`（一次请求即真实总数）；后端忽略过滤参数时逐页翻并按状态计数，20 页封顶 |
 | 我的设备 | 设备连接流程 | ➖ | ✅ | - | 稳定设备身份一律为 `0x01` 返回的完整 6 字节 ID；广播 4 字节短 ID + 尺寸仅用于筛选候选。连接后必须用完整 ID 严格确认，校验通过后才认领会话并写直连缓存。身份不一致时断开、排除错误候选并重扫，同时清理被污染的缓存。设备自定义名称不作为物理身份依据（2026-07-27） |
 | 我的设备 | 设备列表（设备图、名称、设备 ID） | `GET /Client/UserProduct/getUserProductList` | ✅ | `getUserProductList` | 接口 `deviceId` 非空且为完整 6 字节时展示，空值不显示；页面字段为 `productDeviceId`，避免与微信 BLE 临时句柄混淆 |
-| 我的设备 | 设备详情 | `GET /Client/UserProduct/getUserProductDetail` | ✅ | `getUserProductDetail` | - |
+| 我的设备 | 设备详情 | `GET /Client/UserProduct/getUserProductDetail` | ✅ | `getUserProductDetail` | 出参含投屏导出旋转角：`rotationDegree`(横向构图，缺失回退 `270°`) 与 **`verticalRotation`(竖向构图，2026-08-04 新增，缺失即 `0°`=不旋转)**。两者各管一个取景方向、互不兜底；`0` 是合法值。列表接口同样透传（`normalizeDevice` 全量展开），首页展示模型需手动透传这两个字段 |
 | 我的设备 | 设备电量 | ➖ | ✅ | - | 缓存优先：最近一次有效值跨页/落盘保留，同一设备 15 秒内复用；超窗后台发送 BLE `0x04 GET_BATTERY`，旧值持续展示，成功后平滑替换，失败/非法值保留旧值，从未成功读取才显示 `--`（2026-07-27 最终口径） |
 | 我的设备 | 设备名称编辑 | `POST /Client/UserProduct/editUserProduct` | ✅ | `editUserProduct` | - |
 | 我的设备 | 删除设备 | `POST /Client/UserProduct/delUserProduct` | ✅ | `delUserProduct` | id=userProductId |
 | 我的设备 | 一键清空（格式化设备） | `POST /Client/UserProduct/clearUserProductImg` | ✅ | `clearUserProductImg` | 同步删除“我的相册”和设备内照片 |
 | 我的设备 | 开启\关闭轮播模式 | ➖ | ✅ | - | 顺序/随机轮播、关闭轮播；纯设备控制 |
-| 我的图库 | 列表 | `GET /Client/UserProduct/getUserProductImgList` | ✅ | `getUserProductImgList` | 出参含 `imgIndex`(String，设备槽位索引，0 合法)：图库删除/刷新屏幕据此定位设备位置 |
+| 我的图库 | 列表 | `GET /Client/UserProduct/getUserProductImgList` | ✅ | `getUserProductImgList` | 出参含 `imgIndex`(String，设备槽位索引，0 合法)：删除照片据此定位设备位置。2026-08-04 起该列表不再直接渲染，只作为「我的相册」的槽位账本与原图来源 |
 | 我的图库 | 删除 | `POST /Client/UserProduct/delUserProductImg` | ✅ | `delUserProductImg` | id=uProductImgId，支持多选。删除前先按 `imgIndex` 发 BLE `0x12` 删掉设备对应槽位 |
-| 投屏管理 | 投屏记录图片列表（成功/失败） | `GET /Client/UserProduct/getUserProductImgRecordList` | ✅ | `getUserProductImgRecordList` | **Swagger 新增**。出参含 `imgIndex`(String)，记录页本身不消费，仅排查用 |
+| 投屏管理 | 投屏记录图片列表（成功/失败） | `GET /Client/UserProduct/getUserProductImgRecordList` | ✅ | `getUserProductImgRecordList` | **Swagger 新增**。出参含 `imgIndex`(String)，记录页本身不消费，仅排查用。2026-08-04 起「我的相册」也用它（只取成功、按 `userProductId` 分类）；投屏记录页保留，入口改为投屏结果页「投屏明细」 |
 | 投屏管理 | 新增投屏记录（历史接口） | `POST /Client/UserProduct/addUserProductImgRecord` | ➖ | `addUserProductImgRecord`（无调用方） | 小程序已删除 `imgBle` 直传和补记链路；再次/重新投屏统一走正常投屏流程，由 `setUserProductUpload` 建立新记录 |
-| 投屏管理 | 操作：投屏\删除 | `POST /Client/UserProduct/delUserProductImgRecord` | ✅ | `delUserProductImgRecord` | id=upirId，**Swagger 新增** |
+| 投屏管理 | 操作：投屏\删除 | `POST /Client/UserProduct/delUserProductImgRecord` | ✅ | `delUserProductImgRecord`、`deleteProjectionRecords` | id=upirId，**Swagger 新增**。批量版 `deleteProjectionRecords` 串行逐条调用（后端无批量接口），供「我的相册」删照片时连同来源记录一并删。⚠️ `clearUserProductImg` / `delUserProductImg` 是否级联删除投屏记录：**待后端确认** |
 | 操作指南 | 查看帮助文档（**不分设备，全局**） | `GET /Client/Product/getProductFaqList` | ✅ | `getProductFaqList` | 详情 `getProductFaqDetail`；按 `pageCount`/`recordCount` 翻页**全量**读取；Client 侧接口无 productId 参数，不做设备过滤；权重 `grade` 只在后台 DTO，排序由后端负责，前端不重排；随 `language` 走（2026-07-19） |
 | 设置 | 关于我们/联系方式/隐私政策/用户协议 | ➖ | ✅ | - | 静态页面 |
 | 设置 | 语种设置（简中\繁中\英\日） | ➖ | ✅ | - | 小程序默认中文；App 跟随手机语言（其他默认英语） |

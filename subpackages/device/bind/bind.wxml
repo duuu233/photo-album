@@ -1,9 +1,12 @@
-<view class="mock-root bind-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+<!-- 折叠屏适配（2026-08-05）：--nav-h 是 page-nav 回抛的实测导航高度（含状态栏），
+     .bind-content 用它算「导航以下的剩余高度」，比写死 88rpx 准（rpx 会随屏宽放大）。
+     bind:measure 由 utils/fold-adapt 注入的 onNavMeasure 接住，页面 JS 不必再写。 -->
+<view class="mock-root bind-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px; --nav-h: {{navHeight}}px;">
   <view class="mock-bg">
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" mode="aspectFill"></image>
   </view>
 
-  <page-nav title="绑定设备"></page-nav>
+  <page-nav title="绑定设备" bind:measure="onNavMeasure"></page-nav>
 
   <view class="bind-content {{showHelp ? 'content-dimmed' : ''}}">
     <!-- 调试台入口：开发对接/硬件联调用，需要屏蔽时注释掉本段即可（不要删除） -->
@@ -44,8 +47,9 @@
           <view class="nearby-copy">
             <text class="nearby-name">{{item.name}}</text>
             <text class="nearby-sub">{{item.screen ? item.screen + ' · ' : ''}}{{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.signalText || '--'}}</text>
-            <!-- 设备ID：广播里的 4 字节 Device_ID（8 位十六进制），扫描阶段就能显示，
-                 用来区分同型号同名设备（见 bind.js displayDeviceCode）。
+            <!-- 设备ID：广播里的 Device_ID，扫描阶段就能显示，用来区分同型号同名设备
+                 （见 bind.js displayDeviceCode）。新固件播完整 6 字节、与设备详情页一致；
+                 老固件只有 4 字节，包里就这么多，不做截断也不补齐。
                  判重/身份匹配仍只认连上后 0x01 读到的完整 6 字节 ID，与这里的展示无关。 -->
             <text wx:if="{{item.deviceCode}}" class="nearby-sub">设备ID {{item.deviceCode}}</text>
           </view>
@@ -58,8 +62,8 @@
 
     <block wx:elif="{{scanning}}">
       <view class="scan-copy">
-        <view class="scan-title">正在搜索附近设备</view>
-        <view class="scan-desc">请尽量将手机靠近需要添加的设备...</view>
+        <view class="scan-title">正在搜索附近电子纸设备</view>
+        <view class="scan-desc">请尽量将手机靠近需要添加的电子纸设备...</view>
       </view>
       <view class="scan-help-link" hover-class="none" bindtap="openHelp">扫描不到怎么办?</view>
       <view class="primary-action bind-bottom" hover-class="none" bindtap="cancelScan">取消搜索</view>
@@ -67,8 +71,8 @@
 
     <block wx:else>
       <view class="scan-copy">
-        <view class="scan-title">未发现设备</view>
-        <view class="scan-desc">未搜索到附近设备，请确认设备已开机并靠近手机</view>
+        <view class="scan-title">未发现电子纸设备</view>
+        <view class="scan-desc">未搜索到附近电子纸设备，请确认电子纸设备已开机并靠近手机</view>
       </view>
       <view class="scan-help-link" hover-class="none" bindtap="openHelp">扫描不到怎么办?</view>
       <view class="primary-action bind-bottom" hover-class="none" bindtap="scan">重新扫描</view>
@@ -82,10 +86,10 @@
       <image class="scan-help-icon" src="/assets/images/scan_help_art.png" mode="aspectFit"></image>
       <view class="check-title">请检查:</view>
       <view class="check-list">
-        <text>1.设备是否有电?</text>
-        <text>2.当前设备是否被占用?</text>
-        <text>3.设备蓝牙是否工作正常，手机或小程序蓝牙开关是否打开</text>
-        <text>4.设备是否与手机距离过远，隔离或有其他遮挡物</text>
+        <text>1.电子纸设备是否有电?</text>
+        <text>2.当前电子纸设备是否被占用?</text>
+        <text>3.电子纸设备蓝牙是否工作正常，手机或小程序蓝牙开关是否打开</text>
+        <text>4.电子纸设备是否与手机距离过远，隔离或有其他遮挡物</text>
       </view>
     </view>
   </view>

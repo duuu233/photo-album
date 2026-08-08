@@ -48,8 +48,11 @@
   height: 52rpx;
 }
 
+/* z-index 2：贴底按钮与滚动区在屏幕上重叠，必须压过 .fold-scroll(z-index:1)，
+   否则透明的滚动区吃掉点击（见 styles/fold-adapt.wxss 的告警）。 */
 .save-language {
   position: absolute;
+  z-index: 2;
   right: 48rpx;
   bottom: calc(216rpx + var(--safe-bottom));
   left: 48rpx;

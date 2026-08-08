@@ -1,6 +1,7 @@
 const api = require('../../../utils/api')
 const language = require('../../../utils/language')
 const richHtml = require('../../../utils/rich-html')
+const fold = require('../../../utils/fold-adapt')
 
 // 单页条数：后端 pageSize 上限未知（默认才 10），取 50 并配合翻页兜住全量。
 const PAGE_SIZE = 50
@@ -23,7 +24,9 @@ function faqToGuide(item, index) {
   }
 }
 
-Page({
+// 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
+// styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
+Page(fold.adapt({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -32,25 +35,25 @@ Page({
     guides: [
       {
         id: 'bind',
-        title: '如何绑定设备?',
+        title: '如何绑定电子纸设备?',
         open: false,
         lines: [
-          '1.确保相册设备已开机，并打开手机蓝牙。',
-          '2.进入首页点击绑定设备，或「我的设备」。',
-          '3.在设备列表中选择要连接的相册设备。',
+          '1.确保电子纸设备已开机，并打开手机蓝牙。',
+          '2.进入首页点击「绑定设备」，或进入「我的设备」。',
+          '3.在设备列表中选择要连接的电子纸设备。',
           '4.点击「立即绑定」完成连接。',
-          '若未搜索到设备，请确认设备在附近并重新搜索。'
+          '若未搜索到电子纸设备，请确认电子纸设备在附近并重新搜索。'
         ]
       },
-      { id: 'project', title: '如何进行照片投屏?', open: false, lines: ['进入首页，选择拍照或相册，确认照片后发送到已连接设备。'] },
+      { id: 'project', title: '如何进行照片投屏?', open: false, lines: ['进入首页，选择拍照或相册，确认照片后发送到已连接电子纸设备。'] },
       { id: 'album', title: '如何管理我的相册?', open: false, lines: ['进入我的图库，可查看、删除和重新投屏已上传的照片。'] },
-      { id: 'empty', title: '设备照片被清空怎么办?', open: false, lines: ['请在我的图库中重新选择照片投屏，或检查设备存储状态。'] },
+      { id: 'empty', title: '电子纸设备照片被清空怎么办?', open: false, lines: ['请在我的图库中重新选择照片投屏，或检查电子纸设备存储状态。'] },
       {
         id: 'storage',
         title: '相框空间已满怎么办?',
         open: false,
         lines: [
-          '设备空间已满时，新的照片将无法继续投屏。你可以前往「我的相册」删除部分照片，或执行一键清空。清理完成后，再重新选择照片进行投屏即可。'
+          '电子纸设备空间已满时，新的照片将无法继续投屏。您可以前往「我的相册」删除部分照片，或执行一键清空。清理完成后，再重新选择照片进行投屏即可。'
         ]
       }
     ]
@@ -202,4 +205,4 @@ Page({
   goBack() {
     wx.navigateBack()
   }
-})
+}))

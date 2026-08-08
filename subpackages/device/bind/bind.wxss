@@ -1,9 +1,15 @@
-/* 占满导航栏以下的剩余高度：100vh - 状态栏高度(--status-bar) - 顶部导航栏高度(88rpx)。
-   有了确定高度，底部绝对定位的「重新扫描」按钮与「扫描不到怎么办」才会贴屏幕底部。 */
+/* 占满导航栏以下的剩余高度。有了确定高度，底部绝对定位的「重新扫描」按钮与
+   「扫描不到怎么办」才会贴屏幕底部（本页设备列表自带 scroll-view，不靠页面滚动）。
+
+   折叠屏适配（2026-08-05）：高度改用 page-nav 回抛的**实测**导航高度 `--nav-h`
+   （见 utils/fold-adapt 的 onNavMeasure，值里已含状态栏）。
+   旧写法 `100vh - var(--status-bar) - 88rpx` 里的 88rpx 是 rpx，会随屏宽一起放大，
+   折叠屏展开后误差可达几十 px，底部按钮就会往上飘。取不到实测值时按老算式兜底，
+   普通手机上两者本来就相等（状态栏 + 88rpx ≈ 状态栏 + 胶囊行高）。 */
 .bind-content {
   position: relative;
   z-index: 1;
-  height: calc(100vh - var(--status-bar) - 88rpx);
+  height: calc(100vh - var(--nav-h, calc(var(--status-bar) + 88rpx)));
   box-sizing: border-box;
 }
 

@@ -28,6 +28,7 @@ const toast = require('../../../utils/toast')
 const activeDevice = require('../../../utils/active-device')
 const language = require('../../../utils/language')
 const aiServiceConsent = require('../../../utils/ai-service-consent')
+const fold = require('../../../utils/fold-adapt')
 
 // 微信「同声传译」插件（WechatSI）：录音直接转文字，小程序里做语音输入的官方方案。
 // ⚠️ 光在 app.json 声明还不够，必须先在**小程序后台**「设置 → 第三方设置 → 插件管理」
@@ -62,6 +63,11 @@ const INPUT_HOLD_MOVE_PX = 10
 // 接入真实接口后把 readTokenBalance/spendToken 换成后端调用即可。
 const TOKEN_STORAGE_KEY = 'aiTokenBalanceDemo'
 const TOKEN_DEFAULT = 100
+// 2026-08-03 起先屏蔽这套限制：余额是本地假的，支付又没上线，扣满 100 次就再也发不出消息，
+// 纯粹卡住体验/测试。开关关掉后 —— 不扣费、不拦截，右上角 Token 恒显示 TOKEN_DEFAULT
+// （storage 里可能留着历史扣到 0 的旧值，一并忽略，否则会显示 0 Token 像坏了）。
+// 接后端时把它改回 true，readTokenBalance/spendToken 换成接口调用即可，其余逻辑原样还在。
+const TOKEN_LIMIT_ENABLED = false
 
 // 打字机（2026-07-27 优化顺滑度）。原实现是 setInterval(30ms) 每帧追 3 字 —— 30ms 一跳、
 // 一跳 3 字，肉眼能看出「一顿一顿」。现在按 ~60fps 出字、每帧尽量只追 1 字，视觉上连续得多：
@@ -221,6 +227,9 @@ function describeDownloadFail(err) {
 }
 
 function readTokenBalance() {
+  if (!TOKEN_LIMIT_ENABLED) {
+    return TOKEN_DEFAULT
+  }
   const value = wx.getStorageSync(TOKEN_STORAGE_KEY)
   return typeof value === 'number' ? value : TOKEN_DEFAULT
 }
@@ -279,7 +288,9 @@ function nextMessageTimeMeta(messages, value) {
   }
 }
 
-Page({
+// 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
+// styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
+Page(fold.adapt({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -444,7 +455,7 @@ Page({
       }
       wx.showModal({
         title: '提示',
-        content: '使用 AI 创作前请先绑定设备',
+        content: '使用 AI 创作前请先绑定电子纸设备',
         cancelText: '返回',
         confirmText: '去绑定',
         success: res => {
@@ -1049,8 +1060,9 @@ Page({
   },
 
   // Token 权限控制 demo（文档 §5.5）：不足时弹窗引导购买并拦截 AI 调用
+  // TOKEN_LIMIT_ENABLED=false 时整条限制屏蔽，一律放行（见常量处注释）
   guardToken() {
-    if (this.data.tokenBalance > 0) {
+    if (!TOKEN_LIMIT_ENABLED || this.data.tokenBalance > 0) {
       return true
     }
     wx.showModal({
@@ -1063,6 +1075,9 @@ Page({
   },
 
   spendToken() {
+    if (!TOKEN_LIMIT_ENABLED) {
+      return
+    }
     const balance = Math.max(0, this.data.tokenBalance - 1)
     wx.setStorageSync(TOKEN_STORAGE_KEY, balance)
     this.setData({ tokenBalance: balance })
@@ -1338,7 +1353,7 @@ Page({
       return false
     }
     if (!this._speech && !this._recorder) {
-      toast.warn({ title: '当前设备不支持录音', icon: 'none' })
+      toast.warn({ title: '当前手机不支持录音', icon: 'none' })
       return false
     }
     this._voiceCancelled = false
@@ -1782,7 +1797,7 @@ Page({
       const devices = await api.getDevices()
       if (!devices.length) {
         this.setData({ 'devicePicker.show': false })
-        toast.show({ title: '暂无已绑定设备，请先绑定设备', icon: 'none' })
+        toast.show({ title: '暂无已绑定电子纸设备，请先绑定电子纸设备', icon: 'none' })
         return
       }
       const pickerDevices = devices.map((item, index) =>
@@ -1887,4 +1902,4 @@ Page({
     const distance = (detail.scrollHeight || 0) - (detail.scrollTop || 0) - this._chatViewH
     this._stick = distance <= SCROLL_STICK_PX
   }
-})
+}))

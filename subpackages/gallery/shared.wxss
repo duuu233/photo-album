@@ -1,0 +1,99 @@
+/* 官方图库三个页面（图库 / 收藏 / 详情）的公共样式。
+   背景与设置类、Token 类页面同一张 OSS 图，底色 #f8f5ef 兼作兜底与设计稿页面底色。 */
+.gallery-shell {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  color: #2a2d32;
+  background: #f8f5ef url(https://oss.boltfox.cn/prodFile/202607310920402821453.png) center / cover no-repeat;
+}
+
+/* ⚠️ 左右留白写 padding-left/right 长写法，不用 `padding: 0 48rpx` 简写：
+   各页在这之后还要单独补 padding-bottom（让开底栏或贴底按钮），简写会把它重置成 0。
+   同理见 subpackages/token/shared.wxss 的 .token-scroll-body。 */
+.gallery-scroll-body {
+  padding-right: 48rpx;
+  padding-left: 48rpx;
+}
+
+/* ── 瀑布流 ─────────────────────────────────────────────────────────────────
+   两列等宽，列宽 317rpx = (750 − 48×2 页面留白 − 20 列间距) ÷ 2。
+
+   分列不按奇偶下标，而是按累计高度选较短的一列（utils/gallery-api.js 的 splitColumns）：
+   图片高宽比不一，奇偶分列会让某一列明显长出一截。
+
+   每张图的高度在**渲染前**就由 `ratio` 算好写进 style，而不是交给 mode="widthFix"
+   加载后再撑开——后者会在图陆续到达时把下方卡片一路顶走，用户正看的那张会跳掉。
+   这与 AI 聊天页「图片在加载前按已知比例预占空间」是同一条口径。 */
+.waterfall {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 20rpx;
+}
+
+.waterfall-column {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.photo-card {
+  margin-bottom: 20rpx;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.86);
+  border-radius: 20rpx;
+  box-shadow: 0 14rpx 34rpx rgba(125, 148, 181, 0.1);
+}
+
+/* 图片盒：高度由 JS 按 ratio 预算好，加载前后都不改，所以不会跳版 */
+.photo-media {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.photo-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: rgba(226, 230, 236, 0.6);
+}
+
+.photo-title {
+  padding: 20rpx 20rpx 24rpx;
+  color: #2a2d32;
+  font-size: 28rpx;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 收藏角标：半透明白圆底 + 实心橙心（设计稿「我的收藏」页右上角）。
+   catchtap 会在 wxml 上绑，点它只切收藏、不进详情。 */
+.photo-fav {
+  position: absolute;
+  top: 16rpx;
+  right: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60rpx;
+  height: 60rpx;
+  background: rgba(255, 255, 255, 0.62);
+  border-radius: 50%;
+}
+
+.photo-fav-icon {
+  width: 36rpx;
+  height: 36rpx;
+}
+
+.gallery-empty {
+  padding: 180rpx 0;
+  color: #9aa0a8;
+  font-size: 26rpx;
+  text-align: center;
+}

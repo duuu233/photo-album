@@ -1,0 +1,60 @@
+<!-- 购买 & 消费记录（设计稿：assets/ai/UI页面/购买 & 消费记录-{购买,消费}记录.png）
+     两个 Tab 共用一个二级页面，切换只换列表数据，不再开新页面。
+     折叠屏：根容器锁一屏高，导航栏与 Tab 条留在滚动区外（Tab 常驻不跟着滚），
+     列表交给 .fold-scroll 滚动（方案见 styles/fold-adapt.wxss）。 -->
+<view class="token-shell fold-viewport" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <page-nav title="购买 & 消费记录"></page-nav>
+
+  <view class="tab-bar">
+    <view
+      class="tab-item {{tab === 'purchase' ? 'tab-item--active' : ''}}"
+      data-tab="purchase"
+      hover-class="none"
+      bindtap="onSwitchTab"
+    >购买记录</view>
+    <view
+      class="tab-item {{tab === 'spend' ? 'tab-item--active' : ''}}"
+      data-tab="spend"
+      hover-class="none"
+      bindtap="onSwitchTab"
+    >消费记录</view>
+  </view>
+
+  <scroll-view class="fold-scroll" scroll-y="{{true}}">
+    <view class="fold-scroll-body token-scroll-body record-scroll-body">
+
+      <!-- 购买记录：时间 / 金额 · Token 描述 · 支付方式 / 状态 -->
+      <block wx:if="{{tab === 'purchase'}}">
+        <view wx:for="{{purchaseList}}" wx:key="id" class="record-card">
+          <view class="record-line">
+            <text class="record-time">{{item.time}}</text>
+            <text class="record-amount">¥{{item.amountText}}</text>
+          </view>
+          <view class="record-main">{{item.tokens}} Token{{item.gift > 0 ? ' + 赠送 ' + item.gift : ''}}</view>
+          <view class="record-line">
+            <text class="record-sub">{{item.channel}}</text>
+            <text class="record-status">{{item.status}}</text>
+          </view>
+        </view>
+      </block>
+
+      <!-- 消费记录：时间 · 场景 / -N Token -->
+      <block wx:else>
+        <view wx:for="{{spendList}}" wx:key="id" class="record-card record-card--spend">
+          <view class="record-time">{{item.time}}</view>
+          <view class="record-line record-line--spend">
+            <text class="record-main record-main--inline">{{item.scene}}</text>
+            <text class="record-spend">-{{item.tokens}} Token</text>
+          </view>
+        </view>
+      </block>
+
+      <view wx:if="{{!loading && !currentCount}}" class="token-empty">
+        {{tab === 'purchase' ? '还没有购买记录' : '还没有消费记录'}}
+      </view>
+
+    </view>
+  </scroll-view>
+
+  <global-toast id="globalToast"></global-toast>
+</view>

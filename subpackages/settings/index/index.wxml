@@ -1,8 +1,13 @@
-<view class="settings-shell" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+<!-- 折叠屏适配（2026-08-05，方案见 styles/fold-adapt.wxss）：根容器锁一屏高，
+     导航栏与固定弹层留在滚动区外，中间内容交给 .fold-scroll 滚动。
+     装得下时观感与改动前完全一致，装不下（折叠屏展开/分屏/大字号）才出现滚动。 -->
+<view class="settings-shell fold-viewport" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <page-nav title="设置"></page-nav>
    <view class="mock-bg">
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" mode="aspectFill"></image>
   </view>
+  <scroll-view class="fold-scroll" scroll-y="{{true}}">
+   <view class="fold-scroll-body settings-scroll-body">
   <!-- 语种设置已隐藏：小程序语种跟随微信「设置-通用-多语言」，请求层按系统语种自动下发，无需手动选择 -->
   <!-- <view class="glass-card first-card">
     <view class="setting-row" hover-class="none" bindtap="goLanguage">
@@ -46,6 +51,12 @@
     </view> -->
   </view>
 
+   </view>
+  </scroll-view>
+
+  <!-- 贴底按钮留在滚动区**外**：定位父级仍是根容器（一屏高），位置与改动前逐像素一致，
+       也不依赖百分比高度能否解析。内容不会从它们底下穿过去——.settings-scroll-body
+       已用 padding-bottom 把这块高度让出来。 -->
   <view class="outline-logout" hover-class="none" bindtap="showLogout">退出登录</view>
   <view class="delete-account" hover-class="none" bindtap="showDelete">用户注销</view>
 

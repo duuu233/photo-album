@@ -122,7 +122,11 @@
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  height: calc(100vh - var(--status-bar) - 88rpx);
+  /* 折叠屏适配（2026-08-05）：由写死高度改成 min-height —— 这块只是「占满导航以下并居中」，
+     写死高度时内容一超（折叠屏展开后 rpx 放大、系统大字号）就被裁掉，
+     min-height 下本页是页面级滚动（disableScroll:false），超出部分照样能滚到。
+     88rpx 是导航栏高度的近似值，会随屏宽放大，所以只当兜底用，误差落在留白里。 */
+  min-height: calc(100vh - var(--status-bar) - 88rpx);
   padding: 0 46rpx calc(120rpx + var(--safe-bottom));
 }
 

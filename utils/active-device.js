@@ -38,8 +38,8 @@ const DIRECT_CONNECT_TIMEOUT_MS = 3000
 // 弹窗引导去首页切换设备 / 绑定新设备
 function promptSwitchDevice(content) {
   wx.showModal({
-    title: '设备未连接',
-    content: content || '无法连接当前设备，请前往首页切换设备或绑定新设备',
+    title: '电子纸设备未连接',
+    content: content || '无法连接当前电子纸设备，请前往首页切换电子纸设备或绑定新电子纸设备',
     confirmText: '去首页',
     cancelText: '取消',
     success(res) {
@@ -375,7 +375,7 @@ function deviceInfoMatches(device, info) {
 }
 
 function identityMismatchError(device, actualDeviceId) {
-  const error = new Error('设备-连接到的设备与所选设备ID不一致，请确认目标设备已开机并重试')
+  const error = new Error('电子纸设备-连接到的电子纸设备与所选电子纸设备ID不一致，请确认目标电子纸设备已开机并重试')
   error.code = 'DEVICE_ID_MISMATCH'
   error.expectedDeviceIds = deviceSerials(device)
   error.actualDeviceId = normalizeSerial(actualDeviceId)
@@ -659,7 +659,7 @@ async function scanForTarget(device, match, rejectedDeviceIds) {
   })
   const target = match(eligible(found), device)
   if (!target) {
-    throw new Error('未搜索到该设备，请确认设备已开机并在附近')
+    throw new Error('未搜索到该电子纸设备，请确认电子纸设备已开机并在附近')
   }
   return target
 }
@@ -671,7 +671,7 @@ async function ensureDeviceConnected(device, options = {}) {
   if (!deviceSerials(device).length) {
     deviceIdUtil.requireComplete(
       device && (device.productDeviceId || device.deviceNo),
-      '设备-当前设备记录缺少完整的6字节设备ID，请删除后重新绑定'
+      '电子纸设备-当前电子纸设备记录缺少完整的6字节电子纸设备ID，请删除后重新绑定'
     )
   }
   // 先认活动会话（deviceId 直连 + 序列号交叉匹配）：会话还活着就直接复用，绝不重扫——
@@ -683,7 +683,7 @@ async function ensureDeviceConnected(device, options = {}) {
   }
   const showLoading = options.showLoading !== false
   if (showLoading) {
-    wx.showLoading({ title: '连接设备中', mask: true })
+    wx.showLoading({ title: '连接电子纸设备中', mask: true })
   }
   try {
     // 自动重连不读设备信息、loading 全程「连接设备中」，故不传 onConnectStart
@@ -710,7 +710,7 @@ async function connectBoundDevice(device, options = {}) {
   if (!deviceSerials(device).length) {
     deviceIdUtil.requireComplete(
       device && (device.productDeviceId || device.deviceNo),
-      '设备-当前设备记录缺少完整的6字节设备ID，请删除后重新绑定'
+      '电子纸设备-当前电子纸设备记录缺少完整的6字节电子纸设备ID，请删除后重新绑定'
     )
   }
   const match = typeof options.match === 'function' ? options.match : matchScannedDevice
@@ -731,7 +731,7 @@ async function connectBoundDevice(device, options = {}) {
     }
     // 复用前读一次设备信息作活性校验：读得动才是真活着；读不动=后台断开未上报的死会话，清掉走完整扫描重连。
     // 活性校验始终真实发 0x01；deviceInfo 已取消 15s 结果复用。
-    wx.showLoading({ title: '连接设备中', mask: true })
+    wx.showLoading({ title: '连接电子纸设备中', mask: true })
     try {
       const info = await deviceBle.readDeviceInfo(existingId)
       if (!deviceInfoMatches(device, info)) {
@@ -766,10 +766,10 @@ async function connectBoundDevice(device, options = {}) {
   }
 
   // 2) 完整扫描连接：搜索阶段「搜索设备中」，扫到目标后切「连接设备中」，再读一次真实设备信息
-  wx.showLoading({ title: '搜索设备中', mask: true })
+  wx.showLoading({ title: '搜索电子纸设备中', mask: true })
   try {
     const target = await scanMatchConnect(device, match, () =>
-      wx.showLoading({ title: '连接设备中', mask: true })
+      wx.showLoading({ title: '连接电子纸设备中', mask: true })
     )
     // scanMatchConnect 已用 0x01 完成完整 ID 校验，避免重复读 0x01；这里只补固件版本。
     const info = Object.assign({}, target.info || await readAndVerifyDeviceIdentity(device, target.deviceId))
@@ -811,7 +811,7 @@ function showConnectError(error) {
 function friendlyConnectMessage(message) {
   const text = String(message || '')
   if (isConnectTimeoutMessage(text)) {
-    return '设备-连接超时，稍后再试'
+    return '电子纸设备-连接超时，稍后再试'
   }
   return text || '连接失败'
 }
@@ -834,7 +834,7 @@ function isConnectTimeoutMessage(message) {
 // 提示规则：与三处「连接蓝牙」按钮共用 showConnectError——权限被拒弹系统设置引导，其余如实展示原因。
 async function ensureConnectedForAction(device) {
   if (!device || !(device.deviceId || device.bleDeviceId || device.deviceNo || device.name)) {
-    toast.warn({ title: '请先连接设备', icon: 'none' })
+    toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
     return ''
   }
   try {
@@ -854,7 +854,7 @@ async function ensureActiveDeviceConnection() {
   const device = getActiveDevice()
 
   if (!device || !(device.deviceId || device.bleDeviceId || device.deviceNo || device.name)) {
-    promptSwitchDevice('当前没有可用设备，请前往首页选择或绑定相框设备')
+    promptSwitchDevice('当前没有可用电子纸设备，请前往首页选择或绑定电子纸设备')
     throw new Error('NO_ACTIVE_DEVICE')
   }
 
@@ -866,7 +866,7 @@ async function ensureActiveDeviceConnection() {
     const deviceId = await ensureDeviceConnected(device)
     return applyConnectedIdentity(device, deviceId)
   } catch (error) {
-    promptSwitchDevice('无法连接当前设备，请前往首页切换设备或绑定新设备')
+    promptSwitchDevice('无法连接当前电子纸设备，请前往首页切换电子纸设备或绑定新电子纸设备')
     throw error
   }
 }

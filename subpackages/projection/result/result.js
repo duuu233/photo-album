@@ -18,6 +18,7 @@ const protocol = require('../../../utils/frame-protocol')
 const toast = require('../../../utils/toast')
 const media = require('../../../utils/media')
 const activeDevice = require('../../../utils/active-device')
+const fold = require('../../../utils/fold-adapt')
 
 // 统一的上传前压缩质量（性能优化 2026-07-13；2026-07-16 改为直接缩到设备物理分辨率；
 // 2026-07-22 起抖动接口上传与原图建记录上传两路共用同一套 compressForUpload）。
@@ -35,11 +36,11 @@ const STATUS_TEXT = {
   },
   success: {
     title: '投屏完成',
-    desc: '照片已成功投屏到设备，可前往相册查看'
+    desc: '照片已成功投屏到电子纸设备，可前往相册查看'
   },
   fail: {
     title: '投屏失败',
-    desc: '设备连接中断，请检查设备状态后重试'
+    desc: '电子纸设备连接中断，请检查电子纸设备状态后重试'
   }
 }
 
@@ -59,7 +60,7 @@ const STATUS_ART = {
 function classifyFailureMessage(rawMessage, deviceId) {
   const msg = (rawMessage && String(rawMessage)) || '投屏失败'
   if (/内存已满|已存满|空间不足/.test(msg)) {
-    return '设备内存已满，请清理后继续。'
+    return '电子纸设备内存已满，请清理后继续。'
   }
   // 设备忙(0x0B)：设备答得上话、只是暂时在忙，别被下方「设备-」前缀误归成「设备未连接」，
   // 原样提示「当前设备繁忙，请稍后重试」，引导用户稍后再投。
@@ -68,10 +69,10 @@ function classifyFailureMessage(rawMessage, deviceId) {
   }
   const connLost =
     (deviceId && !deviceBle.isConnected(deviceId)) ||
-    /^设备-/.test(msg) ||
+    /^(?:设备|电子纸设备)-/.test(msg) ||
     /连接已断开|连接中断|连接失败|已断开|连接超时|链路|该型号暂不支持图传/.test(msg)
   if (connLost) {
-    return '设备未连接，请检查手机或设备连接后继续'
+    return '电子纸设备未连接，请检查手机或电子纸设备连接后继续'
   }
   return msg
 }
@@ -108,7 +109,9 @@ function readPerformanceEnvironment() {
   })
 }
 
-Page({
+// 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
+// styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
+Page(fold.adapt({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -284,7 +287,7 @@ Page({
         uploaded: 0,
         failCount: images.length ? 1 : 0,
         total: images.length,
-        message: '设备未连接，请重新绑定后再投屏'
+        message: '电子纸设备未连接，请重新绑定后再投屏'
       })
       return
     }
@@ -331,6 +334,9 @@ Page({
     console.log(`[投屏] 开始：目标设备=${device.id || device.deviceNo || '--'}，待投 ${total} 张`)
 
     let uploaded = 0
+    // 多图全部写入后仍只刷新一次，但最终展示首张成功写入的照片。
+    // 用 null 作为未设置标记，避免合法槽位 0 被误判成空值。
+    let firstSuccessfulIndex = null
     // 最后一张的异步刷屏(0x24)Promise：收尾把连接间隔回落到空闲档(100ms)时要等它跑完再发——
     // 刷屏期间设备对新指令回忙(0x0B)，两者挤在一起会让回落白白失败。失败/中断路径无刷屏则保持 null。
     let lastRefreshPromise = null
@@ -365,7 +371,7 @@ Page({
 
       // 1) 连接并读取真实设备信息（屏幕尺寸/类型/容量/已存掩码）。
       // 这几步在第一包数据发出前要花点时间（连接尤其慢），逐步更新文案，避免页面看起来卡在 0% 不动。
-      this.setData({ desc: '正在连接设备…' })
+      this.setData({ desc: '正在连接电子纸设备…' })
       performance.connectionReused = !!activeDevice.findConnectedDeviceId(device)
       let phaseStartedAt = Date.now()
       // pendingProjection 可能来自旧页面/旧缓存，里面的 BLE deviceId 不能直接信任。
@@ -381,7 +387,7 @@ Page({
       this._sessionDevice = device
       this._activeDeviceId = deviceId
       performance.phases.connectMs = Date.now() - phaseStartedAt
-      this.setData({ desc: '正在读取设备信息…' })
+      this.setData({ desc: '正在读取电子纸设备信息…' })
       phaseStartedAt = Date.now()
       const info = await deviceBle.readTransferInfo(deviceId)
       performance.phases.readTransferInfoMs = Date.now() - phaseStartedAt
@@ -407,7 +413,7 @@ Page({
       if (!info.width || !info.height) {
         // 读到空的设备信息(宽/高为 0)：多为「投屏完成后设备正在刷新屏幕、蓝牙暂短断开」时立刻再投所致，
         // 并非机型不支持——按连接问题提示，引导用户等刷新完成 / 检查连接后再试。
-        throw new Error('设备未连接，请检查手机或设备连接后继续')
+        throw new Error('电子纸设备未连接，请检查手机或电子纸设备连接后继续')
       }
 
       // 设备空间：剩余可存张数 = 容量 - 已存张数（掩码置位数）。不再整单预检「够不够放下全部」，
@@ -484,7 +490,7 @@ Page({
         imagePerformance.acquireWaitMs = Date.now() - acquireWaitStartedAt
         if (acquired.error) {
           imagePerformance.acquireError =
-            (acquired.error && acquired.error.message) || '设备帧准备失败'
+            (acquired.error && acquired.error.message) || '电子纸设备帧准备失败'
           throw acquired.error
         }
         const { frameData, taskId, upirId, timings, prepared } = acquired.result
@@ -499,7 +505,7 @@ Page({
         // 字节数必须 = 六色4bpp(宽×高÷2)；对不上直接报清晰错误（设备会回含糊的「参数错误」），便于核对后端返回格式
         if (frameData.length !== expected4bpp) {
           throw new Error(
-            `后端返回的不是设备要的六色4bpp帧：收到 ${frameData.length} 字节(头16=${head})，设备 ${info.width}×${info.height} 需要 ${expected4bpp} 字节`
+            `后端返回的不是电子纸设备要的六色4bpp帧：收到 ${frameData.length} 字节(头16=${head})，电子纸设备 ${info.width}×${info.height} 需要 ${expected4bpp} 字节`
           )
         }
         this.setData({ title: '图片传输中', desc: `正在投第 ${i + 1}/${total} 张…` })
@@ -509,7 +515,7 @@ Page({
           info.capacity
         )
         if (index < 0) {
-          throw new Error('设备内存已满，请清理后继续。')
+          throw new Error('电子纸设备内存已满，请清理后继续。')
         }
         console.log(
           `[投屏] 第 ${i + 1}/${total} 张 图传(0x20)：index=${index} screenType=${info.screenType} ` +
@@ -591,6 +597,9 @@ Page({
         )
 
         // 该槽位记为已用，供下一张选空闲槽位
+        if (firstSuccessfulIndex === null) {
+          firstSuccessfulIndex = index
+        }
         usedIndexes = usedIndexes.concat(index)
         uploaded++
         // 本张传输完成：进度条置 100%，张数 +1（下一张会重新从 0 开始）
@@ -602,7 +611,7 @@ Page({
 
         // 只有最后一张传完后才刷新屏幕(0x24)：部分固件收到 0x24 会断开蓝牙，
         // 批量传输时中途刷屏会导致后续图片传输失败。故中间张一律不刷屏，
-        // 等全部传完后只对最后一张执行一次 0x24，切到最后这张显示。
+        // 等全部传完后只执行一次 0x24，并切到首张成功写入的照片显示。
         // 感知优化(2026-07-10)：0x24 的应答要等墨水屏物理刷完才回（真机实测 ~4s），而刷屏结果
         // 本来就不影响投屏成败（此前失败也被吞掉）。改为不 await——图片已全部写入设备，
         // 立即进入收尾/成功页，刷屏在后台继续；耗时/失败异步补记 trace 并单独打一条日志
@@ -611,7 +620,7 @@ Page({
         if (i === total - 1) {
           const refreshStartedAt = Date.now()
           lastRefreshPromise = deviceBle
-            .refreshScreen(deviceId, index)
+            .refreshScreen(deviceId, firstSuccessfulIndex)
             .then(() => {
               performance.phases.refreshScreenMs = Date.now() - refreshStartedAt
               console.log(
@@ -973,10 +982,53 @@ Page({
     })
   },
 
+  // 「重新投屏」：回投屏预览页重新构图后再投（链路与首次投屏完全一致：抖动接口出帧 +
+  // setUserProductUpload 建记录 + BLE 图传，旧「imgBle(.bin) 直传」分支已删除）。
+  // ⚠️ 跳之前必须把 pendingProjection 里的图**还原成原图**：投屏时预览页已把「取景框内所见」
+  // 烘焙成设备物理分辨率文件写回 tempFilePath（preview.js _applyBakedFile），直接跳回去会把这张
+  // **成品图**当成新的编辑底图：
+  //   · 竖向 → 成品已按设备 verticalRotation 转过（2026-08-04 起，缺省 0°），拿它二次裁剪/旋转
+  //     会方向错误且越编越糊；
+  //   · 横向 → 成品是转过 rotationDegree(默认 270°) 进竖向画布的文件，而编辑层按竖向重新起
+  //     （_states 随页面重建已清空），用户看到的是躺倒的画面，再导出还会再转一次 → 设备上必然错位。
   retry() {
+    this.restorePendingOriginals()
     wx.redirectTo({
       url: '/subpackages/projection/preview/preview'
     })
+  },
+
+  // 把 pendingProjection.images 逐张还原成「进预览页前的原图」，口径与预览页「原图」按钮
+  //（preview.js restoreOrigin）保持一致：图源回 _origSrc、清掉裁剪尺寸与展示样式、作废预览缓存。
+  // 上一轮的构图（缩放/平移/旋转/横竖向）不丢——预览页会按 pendingProjection.editStates 原样恢复，
+  // 用户不用重新构图，但底图已经是原图，随手一改就是从原图重新出图。
+  // 失败静默：还原不了也要让「重新投屏」跳得过去（大不了是回到旧行为）。
+  restorePendingOriginals() {
+    try {
+      const pending = wx.getStorageSync('pendingProjection') || {}
+      const images = pending.images || []
+      if (!images.length) {
+        return
+      }
+      pending.images = images.map(image => {
+        const updated = Object.assign({}, image)
+        // 原图是远程地址（再次投屏的云端图）时清空 tempFilePath 回落到 url：
+        // 把 https 地址塞进 tempFilePath，本页会当本地文件上传（必失败）
+        if (updated._origSrc) {
+          updated.tempFilePath = /^https?:\/\//i.test(updated._origSrc) ? '' : updated._origSrc
+        }
+        updated.cropW = 0
+        updated.cropH = 0
+        updated.wrapStyle = ''
+        updated.imgStyle = ''
+        updated.previewSrc = ''
+        updated._bakedKey = ''
+        return updated
+      })
+      wx.setStorageSync('pendingProjection', pending)
+    } catch (error) {
+      console.warn('[投屏] 重新投屏还原原图失败，按原样跳预览页：', error)
+    }
   },
 
   // 「继续投屏」：不跳首页，在当前结果页弹出「拍照/相册」二选一弹层，选图后走投屏预览页。
@@ -1034,7 +1086,7 @@ Page({
         device.name
       )
     ) {
-      toast.warn({ title: '未找到可投屏的设备', icon: 'none' })
+      toast.warn({ title: '未找到可投屏的电子纸设备', icon: 'none' })
       return
     }
 
@@ -1059,4 +1111,4 @@ Page({
   },
 
   noop() {}
-})
+}))

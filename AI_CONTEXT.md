@@ -14,7 +14,7 @@
 - 搜索、绑定、选择和管理 BoltStar 相框；
 - 通过 BLE 连接真实设备，读取设备信息、电量和播放配置；
 - 从相机、相册或 AI 生成结果中选择图片，进行非破坏性构图并投屏到六色电子纸相框；
-- 管理云端图库、投屏记录和设备上的图片槽位；
+- 在「我的相册」按设备管理投屏成功的照片（再次投屏 / 删除）以及设备上的图片槽位；
 - 设置相框轮播模式、刷新指定图片、清空设备图片；
 - 检查并执行设备固件 OTA/DFU；
 - 使用“星宝”AI 进行文字、图片和生图对话；小程序正式入口已开放。
@@ -120,12 +120,13 @@
 | `app.json` | 主包页面、分包页面、TabBar、权限、插件、预加载和全局组件 |
 | `pages/` | 主包页面：首页、登录、我的 |
 | `subpackages/device/` | 设备列表、绑定、详情、轮播、OTA 和硬件调试台 |
-| `subpackages/album/` | 我的图库及设备图片删除/刷新/再次投屏 |
+| `subpackages/album/` | 「我的相册」：按设备分类展示投屏成功的照片，支持多选再次投屏与删除（2026-08-04 合并原「设备照片」「投屏管理」两个入口） |
 | `subpackages/projection/` | 图片预览编辑、投屏执行、投屏记录 |
 | `subpackages/ai/` | 星宝聊天和会话管理 |
 | `subpackages/settings/` | 设置、资料、语言、指南、更新、协议与隐私页面 |
 | `components/` | 品牌按钮、TabBar、表单、页面导航和全局 Toast |
-| `utils/` | API、网络、BLE、协议、身份、图片、缓存、权限、语言和平台适配 |
+| `utils/` | API、网络、BLE、协议、身份、图片、缓存、权限、语言和平台适配（含折叠屏适配 `fold-adapt.js`） |
+| `styles/` | 跨页公共样式方案，目前只有折叠屏/分屏适配 `fold-adapt.wxss`（由 `app.wxss` 统一 `@import`） |
 | `assets/` | 图片和 AI 错误文案 JSON 等静态资源 |
 | `tests/` | Node 单元测试，目前集中于设备身份和电量 |
 | `docs/` | 当前架构、协议、决策、接口参考、变更记录和历史归档 |
@@ -210,17 +211,26 @@
   - `utils/device-ble.js`
   - `subpackages/projection/records/records.js`
 
-### 图库和设备图片槽位
+### 我的相册和设备图片槽位
 
 - 职责：
-  - 展示云端图库；
+  - 按电子纸设备分类展示**投屏成功记录**（列表数据源，只取成功）；
+  - 云端图库列表作为槽位账本与原图来源，不直接渲染；
   - 使用 `imgIndex` 定位设备物理槽位；
-  - 删除设备图片、刷新指定图片、清空和再次投屏。
+  - 单选/多选再次投屏（多选走批量传输链路）、删除设备图片 + 相册记录 + 来源投屏记录；
+  - 「我的」页卡片上的张数 = 全部设备的投屏成功记录条数（`api.getProjectionSuccessCount`，2026-08-05）；
+  - 默认选中的设备（`list.js pickDefaultFilter`，2026-08-05）：
+    保留当前选中 → **连接中的设备** → 第一台有照片的设备 → 第一台
+    （连接态按真实 BLE 会话现算 `activeDevice.findConnectedDeviceId`，与投屏管理页同口径）。
 - 关键文件：
   - `subpackages/album/list/list.js`
+  - `pages/mine/mine.js`
   - `utils/api.js`
+  - `utils/upload-limit.js`
   - `utils/frame-protocol.js`
   - `docs/decisions/image-slot-index.md`
+  - `docs/changes/2026-08-04-折叠屏滚动适配与我的相册合并.md`
+  - `docs/changes/2026-08-05-我的相册计数与全站折叠屏适配.md`
 
 ### OTA / DFU
 
@@ -323,14 +333,15 @@ App.onShow
 
 多张投屏会让下一张网络出帧、CRC 和预组包与当前张 BLE 传输重叠。预取只用于性能优化，使用前仍要重新校验设备尺寸、帧长度和 chunk 参数。
 
-### 图库删除与刷新
+### 我的相册删除与再次投屏
 
 ```text
-云端图库记录
-  → 解析 imgIndex
-  → 确认当前设备完整身份和活动连接
-  → 设备 0x12 删除或 0x24 刷新
-  → 删除场景再调用 BoltFox 删除记录
+投屏成功记录（按 userProductId 分类）
+  → 按 uProductImgId 关联到云端图库记录
+  → 删除：解析 imgIndex → 确认设备完整身份和活动连接 → 设备 0x12 删除
+          →（删到屏显图时补 0x24 刷屏）→ 删图库记录 → 删来源投屏记录
+  → 再次投屏：取图库原图（缺失回退记录图）→ 连接该记录所属设备
+          → 写 pendingProjection → 走正常预览/投屏链路建**新记录**（多选即批量传输）
 ```
 
 设备操作和云端操作不是事务。设备删除成功、后端删除失败时会产生幽灵记录；设备投屏成功、后端记账失败时会产生孤儿槽位。这是当前已知的一致性风险。
@@ -408,7 +419,10 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
 6. **预览是非破坏性编辑。**
    - 每张图片独立保存平移、缩放、旋转和方向；
    - “开始投屏”时才烘焙输出；
-   - 横向构图必须“横向取景、竖向物理画布导出并旋转 270°”，不能直接对调设备宽高。
+   - 竖向构图按设备字段 `verticalRotation` 顺时针旋转导出，**字段缺失即 `0°`（不旋转）**（2026-08-04 起；此前的“固定 `180°`”口径已废止）；
+   - 横向构图必须“横向取景、竖向物理画布导出并按设备 `rotationDegree` 旋转”（缺失时 `270°`），不能直接对调设备宽高；
+   - 两个方向各取各的字段、绝不互相兜底；`0` 是合法角度，不能用真假值判空；
+   - 未编辑图的中心裁切必须与编辑图转同样的角度，否则同设备上两类图方向不一致。
 
 7. **`imgIndex` 是设备图片的物理身份。**
    - 设备只维护 12 字节图片占用掩码，不知道槽位里是哪张业务图片；
@@ -434,7 +448,37 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
     - 缓存缺失、换账号、退出、注销或登录态失效后必须重新同意；
     - 同意校验必须早于会话创建、草稿清空、图片上传和 AI 请求。
 
-11. **CodeGraph 和 Markdown 分工。**
+11. **折叠屏/分屏适配走公共方案，不各页自创。**（2026-08-05）
+    - 样式在 `styles/fold-adapt.wxss`（已由 `app.wxss` 统一 `@import`），JS 在 `utils/fold-adapt.js`；
+    - 两种模式：`disableScroll: true` 的页用「一屏高根容器 `.fold-viewport` + `.fold-scroll` 容器滚动」，
+      `disableScroll: false` 的页只要根容器别写死高度；
+    - 页面高度**只用 CSS 的 `100vh`**，绝不用 `wx.getWindowInfo().windowHeight`
+      （tabBar 页会扣掉已隐藏的原生 tabBar，展开态冷启动快照失真）；
+    - `.fold-scroll` 必须 `flex: 1 1 0` + `min-height: 0`，写成 `auto` 会把导航栏一起压扁；
+    - 固定底栏、弹层、toast 一律留在滚动区**外**；留在外面**又与滚动区重叠**的可点元素
+      （设置类页面那摞 `position: absolute` 贴底按钮）必须显式 `z-index ≥ 2`——
+      `.fold-scroll` 是 `z-index: 1` 的透明层，缺省层级的按钮会被它盖住，
+      表现为「看得见、点不动」（2026-08-05 退出登录/用户注销的线上故障）；
+    - 内容搬进 `.fold-scroll-body` 后**父容器由 flex 变成了普通块级**，两条后果都踩过：
+      ① 原先靠根容器的 `align-self / align-items` 做水平居中的块会整体贴左（登录页协议勾选行），
+      套壳时逐个检查这类居中，一律改成 `margin: … auto`（块级/flex 下都成立）；
+      ② **撑满视口的滚动内容块**（写了 `min-height: 100%` / `min-height: calc(100vh - 导航)`）
+      必须自成 BFC（`display: flow-root`）或自带 `padding-top`，否则首个子元素的 `margin-top`
+      会**穿透出去**变成该块自己的上外边距、把整块下推同样的距离，滚动内容 = 外边距 + 一屏
+      → **内容明明装得下也多出一截滚动条**（登录页 376rpx、更新页 276rpx、首页绑定态 56rpx，
+      所有机型都有，与折叠无关）；约束由 `tests/fold-scroll-phantom.test.js` 锁住；
+    - 手势编辑页（投屏预览）**不套滚动容器**（滚动与拖拽/缩放抢手势、实测矩形会漂移），
+      改为根容器 `height: 100vh`（**必须是确定高度**，`min-height` 时 flex 没有剩余空间可分，
+      `flex-shrink` 永不生效）+ 舞台 `flex: 1 1 0; min-height: 0` 吃掉剩余高度，其余块 `flex: 0 0 auto`；
+      宽高比媒体查询只用来收紧留白（纯观感，正确性不依赖它）；
+      `onResize` 作废实测矩形缓存并**强制**重进编辑态（`enterEdit({ remeasure: true })`）。
+
+12. **「我的」页两张卡片的数字各有口径。**（2026-08-05）
+    - 「我的相册」= 全部设备的**投屏成功记录条数**（`api.getProjectionSuccessCount`），与该页列表同口径；
+    - 「我的设备」= `getUserInfo` 的 `productCount`，缺失才回退设备列表长度；
+    - 用户信息里的 `imgCount` 仍解析但不再用于展示（相册口径，含失败/已删，与列表对不上）。
+
+13. **CodeGraph 和 Markdown 分工。**
     - CodeGraph 是当前符号、依赖、调用链和影响范围的来源；
     - Markdown 保存设计原因、协议契约、历史、风险和跨端约束；
     - 不能用归档 Markdown 覆盖当前代码事实，也不能用 CodeGraph 取代决策历史。

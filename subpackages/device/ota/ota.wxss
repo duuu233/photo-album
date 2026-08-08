@@ -4,11 +4,12 @@
   flex-direction: column;
 }
 
+/* 底部 40rpx 与投屏结果页同款：内容变长（失败说明多行）时不会顶到下方「升级/重试 + 返回」按钮 */
 .ota-body {
   position: relative;
   z-index: 1;
   flex: 1;
-  padding: 48rpx 56rpx 0;
+  padding: 48rpx 56rpx 40rpx;
   text-align: center;
 }
 
