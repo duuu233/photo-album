@@ -201,17 +201,29 @@ function handleNotify(session, value) {
   }
 }
 
+// 连接时请求的 MTU（协议设计值）与每个 0x21 数据包的数据字节上限（6.8.2）。
+// 这两个值决定真实投屏的分包大小，**不要为了调试而改**——调试台要试更大的包时走
+// negotiateMtu(deviceId, mtu) / uploadImage 的 options.chunkSize 显式传参，不碰这里的默认值。
+const MTU_REQUEST_DEFAULT = 247
+const IMG_DATA_CHUNK_MAX = 236
+
 // 协商 MTU（一次能传多少字节）。这是图传能否成功的关键：
 //   数据包整帧 = SOF+CMD+LEN(2)+PKT_SEQ(2)+DATA+CRC(2) = DATA + 8 字节固定开销，
 //   而蓝牙单次可写 = MTU - 3（ATT 头），整帧必须塞得下，否则会被静默丢弃 → 图传卡死。
 // 安卓默认 MTU 常只有 23，必须主动调大；iOS 由系统自动协商（setBLEMTU 会失败，忽略即可）。
-async function negotiateMtu(deviceId) {
+// requestMtu：想协商到的值，缺省 247。调试台会传更大的值（设备侧 2026-08-07 起支持 MTU 500 +
+// 0x21 数据 489 字节）；真实投屏建连时不传，仍按 247 走。
+async function negotiateMtu(deviceId, requestMtu) {
   let mtu = 0
+  const target =
+    Number.isFinite(requestMtu) && requestMtu > 23
+      ? Math.round(requestMtu)
+      : MTU_REQUEST_DEFAULT
 
-  // 安卓：把 MTU 顶到协议设计值 247；成功会返回实际协商到的值
+  // 安卓：把 MTU 顶到目标值；成功会返回实际协商到的值
   if (wx.setBLEMTU) {
     try {
-      const res = await wxp(wx.setBLEMTU, { deviceId, mtu: 247 })
+      const res = await wxp(wx.setBLEMTU, { deviceId, mtu: target })
       if (res && res.mtu) {
         mtu = res.mtu
       }
@@ -239,12 +251,31 @@ async function negotiateMtu(deviceId) {
   return mtu || 185
 }
 
-// 由 MTU 推算每个图片数据包能装多少字节（上限 236，见 6.8.2）。
+// 由 MTU 推算每个图片数据包能装多少字节（缺省上限 236，见 6.8.2）。
 // 必须保证「整帧(=chunk+8) ≤ 单次可写(=MTU-3)」，否则数据包会被静默丢弃导致图传卡死。
-function chunkFromMtu(mtu) {
+// maxChunk：数据字节上限，缺省 236（协议整帧上限即 236+8=244）。只有调试台会传更大的值。
+function chunkFromMtu(mtu, maxChunk) {
+  const cap =
+    Number.isFinite(maxChunk) && maxChunk >= 1
+      ? Math.round(maxChunk)
+      : IMG_DATA_CHUNK_MAX
   const writable = (mtu || 185) - 3 // 单次可写 = MTU - 3
-  const maxFrame = Math.min(writable, 244) // 协议整帧上限 244
-  return Math.min(236, Math.max(1, maxFrame - 8)) // 减 8 字节固定开销
+  const maxFrame = Math.min(writable, cap + 8) // 整帧上限 = 数据上限 + 8 字节固定开销
+  return Math.min(cap, Math.max(1, maxFrame - 8))
+}
+
+// 本次图传实际用的每包数据字节数。
+//   · 调用方显式传了 chunkSize（调试台的「0x21 数据字节」输入框）→ 按它走，但仍必须塞得进当前
+//     MTU（整帧 = 数据 + 8 ≤ MTU-3），越界即夹回链路能承载的上限，避免写下去被静默丢弃；
+//   · 没传 → 用建连时按 236 上限算好的会话值。真实投屏走的就是这条，行为一字未变。
+function effectiveChunkSize(session, requested) {
+  const fallback = (session && session.dataChunk) || IMG_DATA_CHUNK_MAX
+  const value = Math.round(Number(requested))
+  if (!Number.isFinite(value) || value < 1) {
+    return fallback
+  }
+  const writable = ((session && session.mtu) || 185) - 3
+  return Math.max(1, Math.min(value, writable - 8))
 }
 
 // 发现 FF00 主服务：很多机型（尤其安卓）在 createBLEConnection 成功后服务并未立即就绪，
@@ -550,7 +581,8 @@ function sleep(ms) {
 // 图传数据包之间的发送间隔（毫秒）。FF01 用「无应答写」，写得太快有两个后果：
 //   1) 把手机蓝牙发送缓冲冲爆 → writeValueToCharacteristics error；
 //   2) 设备端（BLE 收包 + 写 Flash）跟不上 → 收一阵就不再前进（ACK_SEQ 卡住）。
-// 默认取「极速」档(3ms)：固件已扩大 MCU 收包内存(可缓 10 包)，配合 7.5ms 连接间隔按最快速率喂数据。
+// 默认取「极速」档(3ms)：固件已扩大 MCU 收包内存(可缓 10 包)，配合平台的极速连接间隔
+//（安卓/鸿蒙 7.5ms、iOS 15ms，见下方 TRANSFER_CONN_INTERVAL_MS_*）按最快速率喂数据。
 // 调试页「同步投屏」可把实测调稳的 pace 写进下面的存储键覆盖它；卡顿时窗口内部还会自动缩窗+减速兜底。
 const PACKET_PACE_MS = 3
 // 图传前尝试把 BLE 连接间隔调到的默认值：按平台区分（2026-07-10 真机 A/B 数据，iPhone 12）。
@@ -614,10 +646,12 @@ function defaultTransferConnIntervalMs() {
 // 真实投屏图传每包发送间隔(ms)的存储键：调试页「同步投屏」把实测 pace 写进来，真实投屏优先读它，
 // 没同步过则回落默认 PACKET_PACE_MS(极速 3ms)。与连接间隔同套「调试台调好→同步到真实场景」的机制。
 const TRANSFER_PACE_STORAGE_KEY = 'transferPaceMs'
-// 图传窗口(发满多少包等一次 0x23 累计应答)。固件扩内存后一次可缓 10 包，默认 10；上限也是 10——
-// 超过固件收包缓冲会溢出丢包，故 setTransferWindow 会夹到 [1, MAX]。调试台可在此范围内调小做对照。
+// 图传窗口(发满多少包等一次 0x23 累计应答)。
+//   · 默认仍是 10：真实投屏没被「同步投屏」改过时用的就是它，本轮一字未动；
+//   · 上限 2026-08-07 由 10 放宽到 50（设备侧扩了收包缓冲，确认可缓 50 包）——调试台的
+//     「发包窗口」输入框在 [1,50] 内自由试；超过缓冲仍会溢出丢包，故 normalizeTransferWindow 照旧夹住。
 const DEFAULT_TRANSFER_WINDOW = 10
-const TRANSFER_WINDOW_MAX = 10
+const TRANSFER_WINDOW_MAX = 50
 const TRANSFER_WINDOW_STORAGE_KEY = 'transferWindow'
 
 // 写一个图传数据包（value 为已组好的完整 0x21 帧 ArrayBuffer，见 buildImgDataFrame/预组包），
@@ -954,7 +988,7 @@ function setTransferWindow(n) {
 }
 
 // 图传前的连接参数优化：读当前值，必要时切到更快的连接间隔，并回读验证是否真实生效。
-// 未显式传 ms 时，用「同步投屏」存下的值（没同步过则默认 7.5ms）。
+// 未显式传 ms 时，用「同步投屏」存下的值（没同步过则用平台默认：安卓/鸿蒙 7.5ms、iOS 及其他 15ms）。
 // 兼容旧固件/异常链路：调用方可捕获错误后继续走原图传逻辑。
 //
 // 回读探针（性能测量 A 补充，2026-07-10）：0x13 回 result=0 只代表「设备接受了指令」；
@@ -1180,7 +1214,8 @@ async function uploadImage(deviceId, options) {
     }
 
     // 2) 0x21 数据：按协商 MTU 分包，以累计 ACK 驱动滑动窗口。
-    const CHUNK = session.dataChunk || 236
+    // options.chunkSize 只有调试台会传（试设备侧新支持的 489 字节）；真实投屏不传，用会话值。
+    const CHUNK = effectiveChunkSize(session, options.chunkSize)
     const WINDOW = normalizeTransferWindow(
       Number.isFinite(options.window) ? options.window : getTransferWindow()
     )
@@ -1380,6 +1415,30 @@ function getActiveConnections() {
     })
 }
 
+// ── 调试台专用的传输参数（真实投屏不调用，调用了也不改变它的行为）──────────────────
+//
+// renegotiateMtu：按给定值重新协商 MTU 并立刻写回会话，返回实际生效值。安卓 setBLEMTU 可在
+// 连接存活期间重协商，所以调试台改完输入框即时生效，不必断开重连；iOS 不支持手动设置，
+// 这里会拿回系统协商的实际值（多为 185），调用方据此就知道「这台机子顶不上去」。
+// ⚠️ 只改 session.mtu（链路能力），session.dataChunk 仍按 236 上限重算：真实投屏读的是 dataChunk，
+//    因此调试台把 MTU 顶到 500 之后即便会话被真实投屏复用，它的分包大小也照旧是 ≤236。
+async function renegotiateMtu(deviceId, requestedMtu) {
+  const session = sessions[deviceId]
+  if (!session || !session.ready) {
+    throw new Error('设备未连接')
+  }
+  const mtu = await negotiateMtu(deviceId, requestedMtu)
+  session.mtu = mtu
+  session.dataChunk = chunkFromMtu(mtu)
+  return { mtu, dataChunk: session.dataChunk }
+}
+
+// 给定「想要的每包数据字节数」，返回本条会话实际会用的值（与 uploadImage 内部同一套夹取规则）。
+// 调试台用它在真正开传前算准包数/回显，不必等传完看 transferStats。
+function getEffectiveChunkSize(deviceId, requested) {
+  return effectiveChunkSize(sessions[deviceId], requested)
+}
+
 // 断开并清理当前小程序持有的全部 BLE 会话，释放被占用的设备（让它重新广播，能再次被搜索/连接）。
 // 返回被断开的 deviceId 列表，方便调用方提示「释放了几个连接」。
 function disconnectAll() {
@@ -1513,6 +1572,14 @@ module.exports = {
   setTransferPaceMs,
   getTransferWindow,
   setTransferWindow,
+  // 调试台专用（真实投屏不调用）：重协商 MTU / 预算每包数据字节数
+  renegotiateMtu,
+  getEffectiveChunkSize,
+  effectiveChunkSize, // 纯函数版（入参 {mtu,dataChunk}），供单测直接验分包夹取规则
+  chunkFromMtu,
+  IMG_DATA_CHUNK_MAX,
+  MTU_REQUEST_DEFAULT,
+  TRANSFER_WINDOW_MAX,
   setTime,
   deleteImage,
   refreshScreen,
@@ -1542,6 +1609,7 @@ module.exports = {
   'setConnectionInterval',
   'setConnectionIntervalMs',
   'optimizeConnectionIntervalForTransfer',
+  'renegotiateMtu',
   'setTime',
   'deleteImage',
   'refreshScreen',

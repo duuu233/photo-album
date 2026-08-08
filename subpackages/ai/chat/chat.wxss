@@ -267,7 +267,7 @@
   width: 100%;
   max-width: 100%;
   color: #555555;
-  border: 2rpx solid rgba(255, 255, 255, 0.9);
+  /* border: 2rpx solid rgba(255, 255, 255, 0.9); */
   background: rgba(255, 255, 255, 0.78);
   box-shadow: 0 12rpx 30rpx rgba(89, 76, 58, 0.08);
 }
@@ -298,15 +298,19 @@
   box-shadow: 0 12rpx 30rpx rgba(89, 76, 58, 0.07);
 }
 
+/* ⚠️ 宽度必须定在这一层，不能定在 .img-box 上。
+   .img-box 靠 `padding-bottom: pad%` 占高度，而**百分比 padding 是按父元素宽度算的**，
+   不是按自己的宽度。原先 .bubble-imgs 不设宽（撑满气泡内容区 622rpx）、.img-box 定宽 510rpx，
+   于是竖图占位高 = 622×133.33% = 829rpx 配 510rpx 宽 → 盒子实际比例 162.6%，比图片(133.33%)高一截，
+   aspectFill 为了填满就按高度放大、左右各裁掉 56rpx（图右边看着没显示全，2026-08-06 反馈）。
+   父子同宽百分比才算得对：宽度放这儿（与 .gen-canvas-wrap 并在下方同一条规则里写），
+   .img-box 用 100% 跟着走。.bubble--image（用户发的图）本来就是父子同宽，不受影响。*/
 .bubble-imgs {
   display: flex;
   flex-direction: column;
   gap: 14rpx;
 }
 
-.bubble-text + .bubble-imgs {
-  margin-top: 18rpx;
-}
 
 .img-box {
   position: relative;
@@ -319,7 +323,7 @@
 }
 
 .bubble-imgs .img-box {
-  width: 510rpx;
+  width: 100%;
 }
 
 /* 用户发的图气泡宽 430rpx、内边距 10rpx → 内容区 410rpx，而 .img-box 默认 400rpx，
@@ -339,6 +343,114 @@
 .caret {
   color: #ef641e;
   animation: blink 0.8s infinite;
+}
+
+/* —— 流式回复（2026-08-06 SSE）：预描述 + 生成进度条 ——
+   两块都长在 AI 气泡内部、正文与图片上方，所以气泡宽度/背景一律沿用 .bubble--ai，
+   这里只管自己的内边距与间距，别再各自开一个卡片。*/
+.pre-text {
+  display: flex;
+  align-items: flex-start;
+  gap: 10rpx;
+  padding: 14rpx 18rpx;
+  border-radius: 18rpx;
+  background: rgba(239, 100, 30, 0.06);
+}
+
+.pre-text__icon {
+  flex: none;
+  width: 28rpx;
+  height: 28rpx;
+  margin-top: 6rpx;
+}
+
+.pre-text__body {
+  flex: 1;
+  color: #8a6a52;
+  font-size: 26rpx;
+  line-height: 1.5;
+}
+
+/* 气泡内的纵向间距。2026-08-07 起顺序是 预描述 → 占位盒/真图 → 正文
+   （正文改到图片下方），这几条相邻规则要跟着这个顺序走，别照旧写 .bubble-text + .bubble-imgs。*/
+.pre-text + .bubble-text,
+.pre-text + .gen-canvas-wrap,
+.pre-text + .bubble-imgs,
+.gen-canvas-wrap + .bubble-text,
+.bubble-imgs + .bubble-text {
+  margin-top: 18rpx;
+}
+
+/* —— 生成中的图片占位（2026-08-07）——
+   出图要几十秒，原先只有一条细进度条，用户盯着一片空白等。改成**一整块**跟成图同尺寸的
+   渐变占位：进度百分比摆正中间，100% 时原地换成真图。
+   尺寸/圆角必须与 .img-box 完全一致，换图那一下才不会跳，所以宽度与 .bubble-imgs 并在一处写。*/
+.bubble-imgs,
+.gen-canvas-wrap {
+  width: 510rpx;
+  max-width: 100%;
+}
+
+/* 进度文案压在百分比正下方、盒子**内部**（2026-08-07 需求，原先是盒外上方的一行灰字）。
+   压在渐变上所以用半透明白：与 __value 拉开层级，一眼分得出「47%」是主、文案是注解。*/
+.gen-canvas__label {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 24rpx;
+  letter-spacing: 0.5rpx;
+  text-shadow: 0 2rpx 8rpx rgba(120, 92, 74, 0.22);
+}
+
+/* 与 .img-box 同一套占位手法：height:0 + padding-bottom 百分比。
+   百分比按父元素宽度算，所以宽度定在 .gen-canvas-wrap 上、这里必须 100%
+   （踩坑记录见 .bubble-imgs 上方注释与 tests/ai-image-aspect.test.js）。*/
+.gen-canvas {
+  position: relative;
+  width: 100%;
+  height: 0;
+  overflow: hidden;
+  border-radius: 22rpx;
+  /* 底色取项目里那套暖调（橙 #ef641e / 用户气泡 #ffe0cd）的柔化版，压住饱和度别抢成图的风头 */
+  background:
+    radial-gradient(120% 90% at 6% 0%, #f6b6d8 0%, rgba(246, 182, 216, 0) 58%),
+    radial-gradient(110% 90% at 100% 6%, #f9d5ac 0%, rgba(249, 213, 172, 0) 62%),
+    radial-gradient(130% 110% at 100% 100%, #b9c7ee 0%, rgba(185, 199, 238, 0) 64%),
+    linear-gradient(158deg, #f0c2e0 0%, #e3c6e4 46%, #c8bce9 100%);
+}
+
+.gen-canvas__inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  /* 图标 / 百分比 / 文案三层叠在一起，间距收到 10rpx 让它们读起来是**一组**而不是三件东西 */
+  gap: 10rpx;
+  /* 文案可能换行，留出左右边距别顶到盒子边上 */
+  padding: 0 24rpx;
+  text-align: center;
+  /* 唯一的动效：整块轻微呼吸，表示还在跑。渐变本身不动，免得喧宾夺主 */
+  animation: gen-breathe 1.8s ease-in-out infinite;
+}
+
+.gen-canvas__icon {
+  width: 52rpx;
+  height: 52rpx;
+}
+
+.gen-canvas__value {
+  color: #ffffff;
+  font-size: 32rpx;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+  /* 渐变亮处白字会发飘，垫一层很淡的暖影 */
+  text-shadow: 0 2rpx 8rpx rgba(120, 92, 74, 0.22);
+}
+
+@keyframes gen-breathe {
+  50% {
+    opacity: 0.68;
+  }
 }
 
 @keyframes blink {
@@ -389,8 +501,33 @@
   height: 26rpx;
 }
 
+/* 回复期间在底部留一条空带，免得「停止生成」压住正在打出来的字。
+   ⚠️ 只对**没有占位盒**的那一段有效——出图那一段被下面 .msg-row--gen 那条覆盖掉。*/
 .bottom-anchor--sending {
   height: 150rpx;
+}
+
+/* —— 生图中：占位盒底部与输入框对齐（2026-08-07 需求 1）——
+   原来占位盒下面依次垫着 气泡内边距 20rpx + 行间距 20rpx + 贴底空带 150rpx，
+   盒子被顶在半空、下方空一大截。这三层在占位盒在场时全部收掉，贴底后盒子底边就正好
+   落在输入框上沿（只剩 .input-area 自己的 8rpx 外边距）；「停止生成」改为悬浮在盒子偏下方，
+   不再需要那条空带给它腾位置。
+   ⚠️ 三条规则必须同时在：少收一层就差那一层的高度，看着就是「差一点点没对齐」。
+   .msg-row--gen 只挂在 item.streaming 的那条消息上（100% 时 streaming 落下，样式随之复位）。*/
+.msg-row--gen {
+  margin-bottom: 0;
+}
+
+.bubble--ai.bubble--gen {
+  padding-bottom: 0;
+  /* 盒子（22rpx）与气泡（28rpx）圆角对齐，贴到底才不会在两个下角露出渐变的尖角 */
+  border-bottom-left-radius: 22rpx;
+  border-bottom-right-radius: 22rpx;
+}
+
+/* 选择器权重 0,2,0 > .bottom-anchor--sending 的 0,1,0，出图那一段稳定压住 150rpx */
+.msg-row--gen + .bottom-anchor {
+  height: 0;
 }
 
 /* ==================== 失败卡片 ==================== */
@@ -476,10 +613,14 @@
 }
 
 /* ==================== 输入区 ==================== */
+/* 停止生成：锚在 .input-area（position: relative）上，bottom:100% 就是输入框上沿，
+   再往上抬 GAP 一点点。这样输入框长高（待发图缩略图那一条）也不用改这里的数字
+   —— 原先写死 fixed bottom:450rpx，是照「输入框大概多高」猜的，一变就飘。
+   生图时占位盒底部已经贴到输入框（见 .msg-row--gen），所以这颗药丸正好悬浮在盒子偏下的位置。*/
 .stop-pill {
-  position: fixed;
+  position: absolute;
   left: 50%;
-  bottom: calc(450rpx + var(--safe-bottom));
+  bottom: calc(100% + 16rpx);
   z-index: 14;
   display: flex;
   align-items: center;

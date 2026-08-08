@@ -7,6 +7,12 @@
 //
 // 推荐联调顺序（页面上从上到下就是这个顺序）：
 //   1) 连接设备   2) 读设备信息(0x01，拿到屏幕类型/容量/图片掩码/电量)   3) 逐个点其它按钮试。
+//
+// 「上传相册图片」＝真实投屏的竖向链路（2026-08-07 起）：
+//   选图(原图) → 按设备物理分辨率竖向中心裁切导出 → 统一压缩 → 第三方 seekink 抖动接口出
+//   六色 4bpp 帧 → 字节数铁闸校验 → BLE 图传。与「我的相框」正式投屏逐步同源，唯一的差别是
+//   **不碰设备管理/投屏记录接口**（不调 setUserProductUpload / editUserProductImgRecord），
+//   联调不会在真实环境留下投屏记录与图库图片。客户端不再做任何量化/调色，帧由第三方算好。
 
 const permission = require('../../../utils/permission')
 const toast = require('../../../utils/toast')
@@ -14,6 +20,9 @@ const bluetooth = require('../../../utils/bluetooth')
 const deviceBle = require('../../../utils/device-ble')
 const protocol = require('../../../utils/frame-protocol')
 const imageCodec = require('../../../utils/image-codec')
+const dithering = require('../../../utils/dithering')
+const deviceRotation = require('../../../utils/device-rotation')
+const media = require('../../../utils/media')
 const system = require('../../../utils/system')
 const api = require('../../../utils/api')
 const fold = require('../../../utils/fold-adapt')
@@ -36,323 +45,56 @@ function normalizeAuthToken(data) {
   return String(raw).replace(/^Bearer\s+/i, '').trim()
 }
 
-// 调试页专用校准档：nibble 为协议编码值（不可改）；rgb 仅参与「原图像素 → 六色」最近色匹配。
-// 只在当前硬件调试页试用，不影响 utils/image-codec.js 和其它正式上传入口。
-const DEBUG_CALIBRATION_PROFILE_SOURCE = [
-  {
-    id: 'shot-20260622',
-    name: '实拍 2026-06-22',
-    note: '本次六色测试图取样；适合当前这台样机/批次。',
-    palette: [
-      { nibble: 0x0, rgb: [0, 0, 0], name: '黑' },
-      { nibble: 0x1, rgb: [255, 255, 255], name: '白' },
-      { nibble: 0x2, rgb: [255, 250, 0], name: '黄' },
-      { nibble: 0x3, rgb: [97, 0, 0], name: '红' },
-      { nibble: 0x5, rgb: [20, 56, 180], name: '蓝' },
-      { nibble: 0x6, rgb: [57, 104, 57], name: '绿' }
-    ]
-  },
-  {
-    id: 'app-6color',
-    name: 'APP 6色基准',
-    note: 'Flutter APP 中 6色.jpg 校准值；用于和 APP 当前效果对齐。',
-    palette: [
-      { nibble: 0x0, rgb: [0, 0, 0], name: '黑' },
-      { nibble: 0x1, rgb: [255, 255, 255], name: '白' },
-      { nibble: 0x2, rgb: [255, 246, 32], name: '黄' },
-      { nibble: 0x3, rgb: [129, 22, 0], name: '红' },
-      { nibble: 0x5, rgb: [47, 77, 151], name: '蓝' },
-      { nibble: 0x6, rgb: [57, 109, 68], name: '绿' }
-    ]
-  },
-  {
-    id: 'mini-default',
-    name: '小程序默认基准',
-    note: 'utils/image-codec.js 默认 palette；用于回退对比旧效果。',
-    palette: [
-      { nibble: 0x0, rgb: [0, 0, 0], name: '黑' },
-      { nibble: 0x1, rgb: [255, 255, 255], name: '白' },
-      { nibble: 0x2, rgb: [255, 255, 29], name: '黄' },
-      { nibble: 0x3, rgb: [140, 65, 43], name: '红' },
-      { nibble: 0x5, rgb: [71, 97, 192], name: '蓝' },
-      { nibble: 0x6, rgb: [90, 129, 96], name: '绿' }
-    ]
+// ── 真实投屏竖向链路用到的常量（与投屏预览页 / 结果页同源，改这里前先核对那两处）────────
+// 画布导出格式：与预览页 _exportCanvas 一致。第三方抖动接口在设备物理分辨率上量化成六色，
+// q=0.92 对最终成像无损，体积却只有 png 的 1/10（png 会让上传慢好几秒）。
+const EXPORT_FILE_TYPE = 'jpg'
+const EXPORT_QUALITY = 0.92
+// 上传前统一压缩的质量：与 result.js compressForUpload 同值（长边已等于设备长边时不会触发压缩）。
+const UPLOAD_COMPRESS_QUALITY = 90
+
+// 广播ID(广播名) → 屏幕规格。调试台按「连接设备的广播名」区分大尺寸/小尺寸：
+//   EF6-370 = 小尺寸 480×720、EF6-589 = 大尺寸 680×960（真源是 protocol.SCREEN_TYPES，勿写死数字）。
+// 取不到/认不出返回 null，由调用方回落到 0x01 自报的 screenType。
+function screenSpecByBroadcastName(name) {
+  const upper = String(name || '').toUpperCase()
+  if (!upper) {
+    return null
   }
-]
-
-const DEBUG_PROFILE_STORAGE_PREFIX = 'debug:image-calibration-profile:'
-const DEBUG_CALIBRATION_PROFILES = DEBUG_CALIBRATION_PROFILE_SOURCE.map(
-  profile =>
-    Object.assign({}, profile, {
-      palette: withLabPalette(profile.palette)
-    })
-)
-const DEBUG_CALIBRATION_PROFILE_OPTIONS = DEBUG_CALIBRATION_PROFILES.map(
-  profile => profile.name
-)
-const DEBUG_DISTANCE_RGB = 'APP RGB 欧氏距离'
-const DEBUG_DISTANCE_LAB = 'Lab ΔE76'
-const DEFAULT_DEBUG_PROFILE_ID = 'app-6color'
-const DEFAULT_DEBUG_PROFILE_INDEX = Math.max(
-  0,
-  DEBUG_CALIBRATION_PROFILES.findIndex(
-    profile => profile.id === DEFAULT_DEBUG_PROFILE_ID
-  )
-)
-const DEFAULT_DEBUG_PROFILE =
-  DEBUG_CALIBRATION_PROFILES[DEFAULT_DEBUG_PROFILE_INDEX]
-
-const DEFAULT_DEBUG_QUANTIZE = {
-  dither: true,
-  ditherStrength: 1,
-  contrast: 1.12,
-  saturation: 1.28,
-  // 默认先和 Flutter APP 端 FrameImageCodec.fromRgba 对齐：RGB 最近色 + 完整 Floyd 抖动。
-  distanceMetric: DEBUG_DISTANCE_RGB,
-  // <0 表示关闭。APP 端没有低饱和黑白保护；需要色准实验时再打开。
-  achromaticChromaMax: -1
-}
-
-const DEBUG_RESAMPLE = {
-  predecodeQuality: 96,
-  maxStageEdge: 2048,
-  stageScale: 0.5
-}
-
-function clamp255(v) {
-  return v < 0 ? 0 : v > 255 ? 255 : v
-}
-
-function enhanceDebugPixel(r, g, b, settings) {
-  const contrast = settings.contrast
-  const saturation = settings.saturation
-  r = (r - 128) * contrast + 128
-  g = (g - 128) * contrast + 128
-  b = (b - 128) * contrast + 128
-  const lum = 0.299 * r + 0.587 * g + 0.114 * b
-  r = lum + (r - lum) * saturation
-  g = lum + (g - lum) * saturation
-  b = lum + (b - lum) * saturation
-  return [clamp255(r), clamp255(g), clamp255(b)]
-}
-
-function srgbToLinear(v) {
-  const n = clamp255(v) / 255
-  return n <= 0.04045 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4)
-}
-
-function xyzPivot(v) {
-  return v > 0.008856 ? Math.pow(v, 1 / 3) : 7.787 * v + 16 / 116
-}
-
-function rgbToLab(r, g, b) {
-  const lr = srgbToLinear(r)
-  const lg = srgbToLinear(g)
-  const lb = srgbToLinear(b)
-  const x = (0.4124564 * lr + 0.3575761 * lg + 0.1804375 * lb) / 0.95047
-  const y = (0.2126729 * lr + 0.7151522 * lg + 0.072175 * lb) / 1.0
-  const z = (0.0193339 * lr + 0.119192 * lg + 0.9503041 * lb) / 1.08883
-  const fx = xyzPivot(x)
-  const fy = xyzPivot(y)
-  const fz = xyzPivot(z)
-  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)]
-}
-
-function labDistance(lab, entry) {
-  const [pl, pa, pb] = entry.lab
-  const dl = lab[0] - pl
-  const da = lab[1] - pa
-  const db = lab[2] - pb
-  return dl * dl + da * da + db * db
-}
-
-function withLabPalette(palette) {
-  return palette.map(entry =>
-    Object.assign({}, entry, {
-      lab: rgbToLab(entry.rgb[0], entry.rgb[1], entry.rgb[2])
-    })
-  )
-}
-
-function findDebugCalibrationProfile(id) {
-  return DEBUG_CALIBRATION_PROFILES.find(profile => profile.id === id) || null
-}
-
-// 把单个 0~255 通道值解析并钳位：非法/空串按 0 处理（用于把输入框字符串转成可计算的整数）。
-function clampChannelInput(v) {
-  const n = Math.round(Number(v))
-  return Number.isFinite(n) ? clamp255(n) : 0
-}
-
-// 调色板(含 rgb 数组) → 页面可编辑的六色行 {nibble,name,r,g,b,css}。
-// r/g/b 用字符串绑定输入框；css 为色块预览背景（按当前值实时算）。nibble 严格沿用协议编码值，不可改。
-function paletteToCustomColors(palette) {
-  return palette.map(entry => {
-    const r = clampChannelInput(entry.rgb[0])
-    const g = clampChannelInput(entry.rgb[1])
-    const b = clampChannelInput(entry.rgb[2])
-    return {
-      nibble: entry.nibble,
-      name: entry.name,
-      r: String(r),
-      g: String(g),
-      b: String(b),
-      css: `rgb(${r}, ${g}, ${b})`
-    }
-  })
-}
-
-// 页面可编辑的六色行 → 带 lab 的调色板（供调试页量化 / 同步投屏使用）。非法通道按 0 处理。
-function customColorsToPalette(customColors) {
-  return customColors.map(entry => {
-    const rgb = [
-      clampChannelInput(entry.r),
-      clampChannelInput(entry.g),
-      clampChannelInput(entry.b)
-    ]
-    return {
-      nibble: entry.nibble,
-      name: entry.name,
-      rgb,
-      lab: rgbToLab(rgb[0], rgb[1], rgb[2])
-    }
-  })
-}
-
-function nearestDebugPaletteIndex(r, g, b, settings) {
-  const palette = settings.palette || DEFAULT_DEBUG_PROFILE.palette
-  const useAchromaticGuard =
-    Number.isFinite(settings.achromaticChromaMax) &&
-    settings.achromaticChromaMax >= 0
-  if (settings.distanceMetric !== DEBUG_DISTANCE_LAB) {
-    const rr = Number(r) || 0
-    const gg = Number(g) || 0
-    const bb = Number(b) || 0
-    const chroma =
-      Math.max(clamp255(rr), clamp255(gg), clamp255(bb)) -
-      Math.min(clamp255(rr), clamp255(gg), clamp255(bb))
-    const paletteLength =
-      useAchromaticGuard && chroma <= settings.achromaticChromaMax
-        ? 2
-        : palette.length
-    let best = 0
-    let bestDist = Infinity
-    for (let i = 0; i < paletteLength; i++) {
-      const [pr, pg, pb] = palette[i].rgb
-      const dr = rr - pr
-      const dg = gg - pg
-      const db = bb - pb
-      const dist = dr * dr + dg * dg + db * db
-      if (dist < bestDist) {
-        bestDist = dist
-        best = i
+  const keys = Object.keys(protocol.SCREEN_TYPES)
+  for (let i = 0; i < keys.length; i++) {
+    const screenType = Number(keys[i])
+    const spec = protocol.SCREEN_TYPES[screenType]
+    const model = String((spec && spec.model) || '').toUpperCase()
+    if (model && upper.indexOf(model) > -1) {
+      return {
+        screenType,
+        model: spec.model,
+        label: spec.label,
+        width: spec.width,
+        height: spec.height
       }
     }
-    return best
   }
-  const cr = clamp255(r)
-  const cg = clamp255(g)
-  const cb = clamp255(b)
-  const chroma = Math.max(cr, cg, cb) - Math.min(cr, cg, cb)
-  const paletteLength =
-    useAchromaticGuard && chroma <= settings.achromaticChromaMax
-      ? 2
-      : palette.length
-  const lab = rgbToLab(cr, cg, cb)
-  let best = 0
-  let bestDist = Infinity
-  for (let i = 0; i < paletteLength; i++) {
-    const dist = labDistance(lab, palette[i])
-    if (dist < bestDist) {
-      bestDist = dist
-      best = i
-    }
-  }
-  return best
+  return null
 }
 
-function spreadDebugError(buf, x, y, width, height, er, eg, eb, weight) {
-  if (x < 0 || x >= width || y < 0 || y >= height) {
-    return
-  }
-  const i = (y * width + x) * 3
-  buf[i] += er * weight
-  buf[i + 1] += eg * weight
-  buf[i + 2] += eb * weight
-}
+// ── 调试台图传参数默认值（2026-08-07 设备侧优化后的口径，**只作用于调试台**）──────────
+//   · 发包窗口 50 包：设备扩了收包缓冲，一次可缓 50 包（此前 10 包）；
+//   · 0x21 图片数据 489 字节：设备把单包数据上限从 236 放宽到 489
+//     （0x21 的 PAYLOAD = PKT_SEQ(2) + 数据，故 PAYLOAD 最大 491 字节）；
+//   · MTU 500：489 + 8 字节整帧固定开销(SOF/CMD/LEN/CRC) = 497，正好等于 MTU 500 的单次可写上限(MTU-3)。
+// 三者是一组：MTU 顶不上去（iOS 不支持手动设置 / 安卓协商下来更小）时，每包数据会被自动夹回
+// 链路真正能承载的值，见 device-ble.effectiveChunkSize——不会出现「写下去被静默丢弃」。
+// 真实投屏的默认值仍是「窗口 10 / 每包 236 / MTU 247」，本文件的改动不会影响它。
+const DEBUG_TRANSFER_WINDOW = 50
+const DEBUG_IMG_DATA_BYTES = 489
+const DEBUG_MTU = 500
 
-// screenType：透传给打包层，3.7寸(EF6-370)按「横向源图」布局打包（见 image-codec.buildScreenFrameBytes）。
-function fromImageDataWithDebugCalibration(
-  imageData,
-  width,
-  height,
-  options,
-  screenType
-) {
-  const settings = Object.assign({}, DEFAULT_DEBUG_QUANTIZE, options || {})
-  const palette = settings.palette || DEFAULT_DEBUG_PROFILE.palette
-  const px = imageData.data
-  const count = width * height
-  const nibbles = new Uint8Array(count)
-
-  if (!settings.dither) {
-    for (let i = 0; i < count; i++) {
-      const [r, g, b] = enhanceDebugPixel(
-        px[i * 4],
-        px[i * 4 + 1],
-        px[i * 4 + 2],
-        settings
-      )
-      nibbles[i] = palette[nearestDebugPaletteIndex(r, g, b, settings)].nibble
-    }
-    const data = imageCodec.buildScreenFrameBytes(
-      nibbles,
-      width,
-      height,
-      screenType
-    )
-    return { data, width, height, dataSize: data.length }
-  }
-
-  const buf = new Float32Array(count * 3)
-  for (let i = 0; i < count; i++) {
-    const [r, g, b] = enhanceDebugPixel(
-      px[i * 4],
-      px[i * 4 + 1],
-      px[i * 4 + 2],
-      settings
-    )
-    buf[i * 3] = r
-    buf[i * 3 + 1] = g
-    buf[i * 3 + 2] = b
-  }
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = y * width + x
-      const r = buf[i * 3]
-      const g = buf[i * 3 + 1]
-      const b = buf[i * 3 + 2]
-      const pi = nearestDebugPaletteIndex(r, g, b, settings)
-      nibbles[i] = palette[pi].nibble
-      const [pr, pg, pb] = palette[pi].rgb
-      const er = (r - pr) * settings.ditherStrength
-      const eg = (g - pg) * settings.ditherStrength
-      const eb = (b - pb) * settings.ditherStrength
-      spreadDebugError(buf, x + 1, y, width, height, er, eg, eb, 7 / 16)
-      spreadDebugError(buf, x - 1, y + 1, width, height, er, eg, eb, 3 / 16)
-      spreadDebugError(buf, x, y + 1, width, height, er, eg, eb, 5 / 16)
-      spreadDebugError(buf, x + 1, y + 1, width, height, er, eg, eb, 1 / 16)
-    }
-  }
-
-  const data = imageCodec.buildScreenFrameBytes(
-    nibbles,
-    width,
-    height,
-    screenType
-  )
-  return { data, width, height, dataSize: data.length }
+// 在画布上铺白底（与预览页 fillWhite 同源）：jpg 无 alpha 通道，不铺底时透明像素会被压成黑色。
+function fillWhite(ctx, width, height) {
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, width, height)
 }
 
 // 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
@@ -376,6 +118,9 @@ Page(fold.adapt({
 
     // 设备信息（0x01 读回后填充）
     info: null,
+    // 后端设备记录：调试台**不调设备管理接口**，所以恒为 null。竖向导出角(verticalRotation)
+    // 因此取缺省 0°=不旋转，与「后端没下发该字段」的真实设备表现一致（见 utils/device-rotation.js）。
+    device: null,
     connInterval: null,
     firmwareVersion: '', // 当前页面已读取到的软件/固件版本（0x03）
     existingIndexes: '', // 设备上已有图片的索引列表，便于决定删哪张/传到哪
@@ -384,31 +129,25 @@ Page(fold.adapt({
     // 指令输入框
     playMode: 'order', // 'order' 顺序 / 'random' 随机
     intervalInput: '60', // 切换间隔(秒)
-    connIntervalInput: '7.5', // BLE 连接间隔(ms)，协议会换算为 1.25ms 单位（7.5ms=6单位，协议最小值）
-    projectionConnIntervalMs: 7.5, // 真实投屏图传前要设的连接间隔(ms)，由「同步投屏」写入，onLoad 时回显
+    // BLE 连接间隔(ms)，协议会换算为 1.25ms 单位（7.5ms=6单位，协议最小值）。这里的 7.5 只是渲染前的占位，
+    // onLoad 会立刻用 getTransferConnIntervalMs() 覆盖成真实生效值（默认 安卓/鸿蒙 7.5ms、iOS 及其他 15ms）
+    connIntervalInput: '7.5',
+    projectionConnIntervalMs: 7.5, // 真实投屏图传前要设的连接间隔(ms)，由「同步投屏」写入，onLoad 时回显（同上，7.5 是占位）
     projectionPaceMs: 3, // 真实投屏图传每包发送间隔(ms)，由「同步投屏」写入，onLoad 时回显
     projectionWindow: 10, // 真实投屏图传窗口包数，由「同步投屏」写入，onLoad 时回显
     switchInput: '0', // 0x24 要显示的图片索引
     deleteInput: '', // 0x12 要删除的图片索引，逗号分隔，如 "0,2"
     uploadIndexInput: '', // 上传槽位，留空则自动选空闲位
     pace: 3, // 图传每包发送间隔(ms)，越小越快；默认极速档，与真实投屏同步；卡住就往「稳」退一档
-    windowSize: 10, // 图传窗口(发满多少包等一次累计应答)。固件扩内存后默认 10，可切 5 做对照
-    cropMode: 'cover', // cover 与 APP centerCropCover 对齐；contain 用白底完整显示原图
-    debugResizeMode: 'staged', // staged=当前分阶段缩放；single=APP对照用单步 drawImage 缩放
-    debugSkipCompressImage: false, // 开启后跳过 wx.compressImage，直接用 chooseMedia 原图进 canvas 解码
-    debugDither: DEFAULT_DEBUG_QUANTIZE.dither,
-    debugContrastPercent: Math.round(DEFAULT_DEBUG_QUANTIZE.contrast * 100),
-    debugContrastText: DEFAULT_DEBUG_QUANTIZE.contrast.toFixed(2),
-    debugSaturationPercent: Math.round(DEFAULT_DEBUG_QUANTIZE.saturation * 100),
-    debugSaturationText: DEFAULT_DEBUG_QUANTIZE.saturation.toFixed(2),
-    debugDistanceMetric: DEFAULT_DEBUG_QUANTIZE.distanceMetric,
-    calibrationProfileOptions: DEBUG_CALIBRATION_PROFILE_OPTIONS,
-    calibrationProfileIndex: DEFAULT_DEBUG_PROFILE_INDEX,
-    calibrationProfileId: DEFAULT_DEBUG_PROFILE.id,
-    calibrationProfileName: DEFAULT_DEBUG_PROFILE.name,
-    calibrationProfileNote: DEFAULT_DEBUG_PROFILE.note,
-    // 自定义六色：套餐只是「一键回填」的预设，真正参与量化/同步的是下面这份可逐项编辑的 RGB。
-    customColors: paletteToCustomColors(DEFAULT_DEBUG_PROFILE.palette),
+    // ── 三项传输参数：输入框改完立即生效，下一次图传就按新值走（不必重连、不必点同步）──
+    windowSize: DEBUG_TRANSFER_WINDOW, // 图传窗口(发满多少包等一次累计应答)，设备侧已支持 50
+    windowInput: String(DEBUG_TRANSFER_WINDOW),
+    dataChunkSize: DEBUG_IMG_DATA_BYTES, // 0x21 每包图片数据字节数（PAYLOAD = PKT_SEQ(2) + 它）
+    chunkInput: String(DEBUG_IMG_DATA_BYTES),
+    mtuRequest: DEBUG_MTU, // 想协商到的 MTU（安卓可即时重协商；iOS 由系统定，只能读回实际值）
+    mtuInput: String(DEBUG_MTU),
+    sessionMtu: 0, // 当前会话**实际**协商到的 MTU（连接/重协商后回填）
+    effectiveChunk: DEBUG_IMG_DATA_BYTES, // 按实际 MTU 夹取后、本次图传真正会用的每包数据字节数
 
     // 第三方 Token（seekink 抖动出帧接口鉴权，/Client/Basic/getXTYUserToken）
     authToken: '', // 获取到的 token 串，展示并可复制
@@ -429,8 +168,10 @@ Page(fold.adapt({
     this.setData(system.getLayoutMetrics())
     this._logId = 0
 
-    // 回显当前真实投屏要用的传输参数（同步过则是同步值，否则用默认：连接间隔 7.5ms / pace 3ms / 窗口 10 包），
-    // 让调试台的输入/档位与真实投屏保持一致——调试台看到的就是投屏会用的值。
+    // 回显当前真实投屏要用的传输参数（同步过则是同步值，否则用默认：连接间隔按平台取
+    // 安卓/鸿蒙 7.5ms、iOS 及其他 15ms / pace 3ms / 窗口 10 包）。
+    // 注意：只有连接间隔与 pace 回填到输入框——发包窗口自 2026-08-07 起调试台默认 50 包
+    //（设备侧新支持的值），与真实投屏的默认 10 包分开，故 projectionWindow 只用于展示对照。
     const projectionConnIntervalMs = deviceBle.getTransferConnIntervalMs()
     const projectionPaceMs = deviceBle.getTransferPaceMs()
     const projectionWindow = deviceBle.getTransferWindow()
@@ -439,8 +180,7 @@ Page(fold.adapt({
       connIntervalInput: String(projectionConnIntervalMs),
       projectionPaceMs,
       pace: projectionPaceMs,
-      projectionWindow,
-      windowSize: projectionWindow
+      projectionWindow
     })
 
     // 注册监听器：device-ble 每发送/接收一帧都会回调这里，把 16 进制打到控制台
@@ -596,10 +336,14 @@ Page(fold.adapt({
       dataChunk: conn.dataChunk,
       writeType: conn.writeType === 'write' ? '有应答写' : '无应答写'
     }))
+    // 顺带回填本页设备实际协商到的 MTU，并按它重算「本次图传每包真正能装多少字节」
+    const current = connections.find(conn => conn.isCurrent)
     this.setData({
       mpConnected: connections.length > 0,
-      mpConnections: connections
+      mpConnections: connections,
+      sessionMtu: current ? current.mtu : 0
     })
+    this.refreshEffectiveChunk()
   },
 
   // 断开小程序当前持有的全部 BLE 会话，释放被占用的设备（让它重新广播，能再次被搜索/连接）。
@@ -711,10 +455,12 @@ Page(fold.adapt({
         session.writeType === 'write' ? '有应答写(可靠)' : '无应答写'
       this.appendLog({
         type: 'act',
-        text: `协商 MTU=${session.mtu} 字节，图传每包数据 ${session.dataChunk} 字节，写入方式：${writeTypeText}`
+        text: `建连协商 MTU=${session.mtu} 字节（真实投屏按 ${deviceBle.IMG_DATA_CHUNK_MAX} 字节/包分包），写入方式：${writeTypeText}`
       })
+      // 建连走的是真实投屏那套（请求 MTU 247 / 每包 ≤236 字节）；调试台连上后立刻按页面上的
+      // MTU 输入框重协商一次，让「MTU 500 + 每包 489 字节」这组新参数即时可用。
+      await this.applyMtuFromInput({ silent: true })
       await this.refreshInfoSilently()
-      this.loadSavedCalibrationProfile()
       await this.refreshConnectionIntervalSilently()
     } catch (error) {
       this.setData({ connected: false })
@@ -941,7 +687,8 @@ Page(fold.adapt({
 
   // 同步投屏：把调试台当前调好的三项传输参数——连接间隔 / 发送速度(pace) / 发包窗口——一并持久化给真实投屏。
   // 之后正式投屏(result.js → optimizeConnectionIntervalForTransfer + uploadImage)图传前会按这些值来传，
-  // 而不是写死默认(7.5ms / 极速 3ms / 10 包)。只写本地存储、不依赖蓝牙连接，所以未连接设备也能同步。
+  // 而不是走默认(连接间隔 安卓 7.5ms / iOS 15ms · 极速 3ms · 10 包)。只写本地存储、不依赖蓝牙连接，
+  // 所以未连接设备也能同步。
   cmdSyncTransferToProjection() {
     const ms = Number(this.data.connIntervalInput)
     if (!Number.isFinite(ms) || ms <= 0) {
@@ -967,11 +714,13 @@ Page(fold.adapt({
         projectionPaceMs: appliedPace,
         pace: appliedPace,
         projectionWindow: appliedWindow,
-        windowSize: appliedWindow
+        // 窗口回填输入框：落库会夹到 [1, TRANSFER_WINDOW_MAX]，回填后所见即真实投屏会用的值
+        windowSize: appliedWindow,
+        windowInput: String(appliedWindow)
       })
       this.appendLog({
         type: 'ok',
-        text: `已同步到真实投屏：连接间隔 ${appliedConn.ms}ms（CONN_INTERVAL=${appliedConn.units}）· 每包间隔 ${appliedPace}ms · 窗口 ${appliedWindow} 包`
+        text: `已同步到真实投屏：连接间隔 ${appliedConn.ms}ms（CONN_INTERVAL=${appliedConn.units}）· 每包间隔 ${appliedPace}ms · 窗口 ${appliedWindow} 包（「0x21 数据字节」与「MTU」不参与同步，只在调试台生效）`
       })
       toast.show({ title: '已同步到投屏', icon: 'success' })
     } catch (error) {
@@ -1048,293 +797,102 @@ Page(fold.adapt({
     this.setData({ pace: Number(e.detail.value) })
   },
 
-  // 切换图传窗口(发满多少包等一次累计应答)。固件收包内存上限 10 包，默认 10；调小(如 5)可做丢包对照。
-  onWindowChange(e) {
-    this.setData({ windowSize: Number(e.detail.value) })
-  },
+  // ── 图传参数（发包窗口 / 0x21 数据字节 / MTU）：改完立即生效，下一次图传就按新值走 ──
+  //
+  // 三者的关系：一包 0x21 整帧 = 数据 + 8 字节固定开销(SOF/CMD/LEN/CRC)，而蓝牙单次可写 = MTU - 3，
+  // 所以「每包数据 ≤ MTU - 11」。默认 MTU 500 / 每包 489 正好卡满；MTU 顶不上去时每包数据会被
+  // 自动夹回链路能承载的值（下方 refreshEffectiveChunk 会把实际值回显出来）。
 
-  formatTuningValue(percent) {
-    const value = Number(percent) / 100
-    return Number.isFinite(value) ? value.toFixed(2) : '1.00'
-  },
-
-  onCropModeChange(e) {
-    this.setData({
-      cropMode: e.detail.value === 'contain' ? 'contain' : 'cover'
-    })
-  },
-
-  onDebugResizeModeChange(e) {
-    this.setData({
-      debugResizeMode: e.detail.value === 'single' ? 'single' : 'staged'
-    })
-  },
-
-  onDebugDitherChange(e) {
-    this.setData({ debugDither: !!e.detail.value })
-  },
-
-  onDebugSkipCompressImageChange(e) {
-    this.setData({ debugSkipCompressImage: !!e.detail.value })
-  },
-
-  onDebugContrastChange(e) {
-    const percent = Number(e.detail.value)
-    if (!Number.isFinite(percent)) {
-      return
-    }
-    this.setData({
-      debugContrastPercent: percent,
-      debugContrastText: this.formatTuningValue(percent)
-    })
-  },
-
-  onDebugSaturationChange(e) {
-    const percent = Number(e.detail.value)
-    if (!Number.isFinite(percent)) {
-      return
-    }
-    this.setData({
-      debugSaturationPercent: percent,
-      debugSaturationText: this.formatTuningValue(percent)
-    })
-  },
-
-  getCalibrationProfileStorageKey() {
-    return `${DEBUG_PROFILE_STORAGE_PREFIX}${encodeURIComponent(this.data.deviceId || '')}`
-  },
-
-  applyCalibrationProfile(profile, options) {
-    const index = DEBUG_CALIBRATION_PROFILES.findIndex(
-      item => item.id === profile.id
-    )
-    this.setData({
-      calibrationProfileIndex: index >= 0 ? index : DEFAULT_DEBUG_PROFILE_INDEX,
-      calibrationProfileId: profile.id,
-      calibrationProfileName: profile.name,
-      calibrationProfileNote: profile.note,
-      // 切换套餐 = 把该套餐的六色 RGB 回填到下面的自定义输入，之后可继续逐项微调
-      customColors: paletteToCustomColors(profile.palette)
-    })
-    if (options && options.log) {
-      this.appendLog({
-        type: 'act',
-        text: `${options.log}：${profile.name} · ${profile.note}`
-      })
-    }
-  },
-
-  // 单个颜色的 R/G/B 输入：只保留数字、上限钳到 255，并实时刷新色块预览。
-  onCustomColorInput(e) {
-    const index = Number(e.currentTarget.dataset.index)
-    const channel = e.currentTarget.dataset.channel
-    if (
-      !Number.isInteger(index) ||
-      index < 0 ||
-      index >= this.data.customColors.length
-    ) {
-      return
-    }
-    if (channel !== 'r' && channel !== 'g' && channel !== 'b') {
-      return
-    }
-    let text = String(e.detail.value).replace(/[^0-9]/g, '')
-    if (text !== '' && Number(text) > 255) {
-      text = '255' // 超 255 直接钳住，避免输入无意义大数
-    }
-    const customColors = this.data.customColors.slice()
-    const entry = Object.assign({}, customColors[index])
-    entry[channel] = text
-    entry.css = `rgb(${clampChannelInput(entry.r)}, ${clampChannelInput(entry.g)}, ${clampChannelInput(entry.b)})`
-    customColors[index] = entry
-    this.setData({ customColors })
-  },
-
-  onCalibrationProfileChange(e) {
-    const index = Number(e.detail.value)
-    const profile = DEBUG_CALIBRATION_PROFILES[index] || DEFAULT_DEBUG_PROFILE
-    this.applyCalibrationProfile(profile, { log: '切换色彩校准档' })
-  },
-
-  loadSavedCalibrationProfile() {
-    if (!this.data.deviceId || !wx.getStorageSync) {
-      return
-    }
-    try {
-      const saved = wx.getStorageSync(this.getCalibrationProfileStorageKey())
-      if (!saved) {
-        return
-      }
-      // 旧版本只存了套餐 id（字符串）：找回套餐并回填其六色。
-      if (typeof saved === 'string') {
-        const profile = findDebugCalibrationProfile(saved)
-        if (profile) {
-          this.applyCalibrationProfile(profile, { log: '已恢复本电子纸设备校准档' })
-        }
-        return
-      }
-      // 新版本存的是完整自定义配置对象（套餐 + 自定义六色 + 抖动 + 对比度 + 饱和度）。
-      if (typeof saved === 'object') {
-        this.restoreSavedCustomConfig(saved)
-      }
-    } catch (error) {
-      // 读取本地调试配置失败不影响上传链路。
-    }
-  },
-
-  // 还原「保存本机」存下的完整自定义配置：套餐标签 + 自定义六色 + 抖动 + 对比度 + 饱和度。
-  restoreSavedCustomConfig(saved) {
-    const profile =
-      findDebugCalibrationProfile(saved.profileId) || DEFAULT_DEBUG_PROFILE
-    const profileIndex = Math.max(
-      0,
-      DEBUG_CALIBRATION_PROFILES.findIndex(item => item.id === profile.id)
-    )
-    const hasColors =
-      Array.isArray(saved.colors) &&
-      saved.colors.length === DEFAULT_DEBUG_PROFILE.palette.length
-    const customColors = hasColors
-      ? paletteToCustomColors(
-          saved.colors.map((color, i) => ({
-            nibble: DEFAULT_DEBUG_PROFILE.palette[i].nibble,
-            name: DEFAULT_DEBUG_PROFILE.palette[i].name,
-            rgb: [color.r, color.g, color.b]
-          }))
-        )
-      : paletteToCustomColors(profile.palette)
-    const patch = {
-      calibrationProfileIndex: profileIndex,
-      calibrationProfileId: profile.id,
-      calibrationProfileName: profile.name,
-      calibrationProfileNote: profile.note,
-      customColors
-    }
-    if (typeof saved.dither === 'boolean') {
-      patch.debugDither = saved.dither
-    }
-    if (Number.isFinite(saved.contrastPercent)) {
-      patch.debugContrastPercent = saved.contrastPercent
-      patch.debugContrastText = this.formatTuningValue(saved.contrastPercent)
-    }
-    if (Number.isFinite(saved.saturationPercent)) {
-      patch.debugSaturationPercent = saved.saturationPercent
-      patch.debugSaturationText = this.formatTuningValue(
-        saved.saturationPercent
-      )
+  // 发包窗口：发满多少包等一次累计应答(0x23)。设备侧 2026-08-07 起可缓 50 包（此前 10）。
+  onWindowInput(e) {
+    const text = String(e.detail.value).replace(/[^0-9]/g, '')
+    const value = Number(text)
+    const patch = { windowInput: text }
+    if (Number.isFinite(value) && value >= 1) {
+      // 夹到 [1, TRANSFER_WINDOW_MAX]：超过设备收包缓冲会溢出丢包，device-ble 也会再夹一次
+      patch.windowSize = Math.min(deviceBle.TRANSFER_WINDOW_MAX, Math.round(value))
     }
     this.setData(patch)
-    this.appendLog({
-      type: 'act',
-      text: `已恢复本电子纸设备校准配置：${profile.name}（含自定义六色）`
-    })
   },
 
-  saveDeviceCalibrationProfile() {
-    if (!this.data.deviceId) {
-      toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
+  // 0x21 每包图片数据字节数。设备侧 2026-08-07 由 236 放宽到 489
+  //（0x21 的 PAYLOAD = PKT_SEQ(2) + 数据，故 PAYLOAD 最大 491 字节）。
+  onChunkInput(e) {
+    const text = String(e.detail.value).replace(/[^0-9]/g, '')
+    const value = Number(text)
+    const patch = { chunkInput: text }
+    if (Number.isFinite(value) && value >= 1) {
+      patch.dataChunkSize = Math.round(value)
+    }
+    this.setData(patch)
+    this.refreshEffectiveChunk()
+  },
+
+  // 想协商到的 MTU。安卓可在连接存活期间重协商（点「应用 MTU」即时生效）；
+  // iOS 由系统自动协商、setBLEMTU 无效，点了只会把系统给的实际值读回来。
+  onMtuInput(e) {
+    const text = String(e.detail.value).replace(/[^0-9]/g, '')
+    const value = Number(text)
+    const patch = { mtuInput: text }
+    if (Number.isFinite(value) && value > 23) {
+      patch.mtuRequest = Math.round(value)
+    }
+    this.setData(patch)
+  },
+
+  // 把 MTU 输入框的值下发重协商，并回填「实际协商到的 MTU / 本次图传实际每包字节数」。
+  // silent：连接后自动调用的那次不弹 toast，只写控制台。
+  async applyMtuFromInput(options) {
+    const silent = !!(options && options.silent)
+    if (!this.data.connected || !this.data.deviceId) {
+      if (!silent) {
+        toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
+      }
       return
     }
-    if (!wx.setStorageSync) {
-      toast.warn({ title: '当前环境不支持本地保存', icon: 'none' })
+    const requested = Number(this.data.mtuRequest)
+    if (!Number.isFinite(requested) || requested <= 23) {
+      if (!silent) {
+        toast.warn({ title: '请输入有效的 MTU（>23）', icon: 'none' })
+      }
       return
     }
     try {
-      const colors = this.data.customColors.map(color => ({
-        nibble: color.nibble,
-        r: clampChannelInput(color.r),
-        g: clampChannelInput(color.g),
-        b: clampChannelInput(color.b)
-      }))
-      wx.setStorageSync(this.getCalibrationProfileStorageKey(), {
-        v: 2,
-        profileId: this.data.calibrationProfileId,
-        colors,
-        dither: !!this.data.debugDither,
-        contrastPercent: Number(this.data.debugContrastPercent),
-        saturationPercent: Number(this.data.debugSaturationPercent)
-      })
+      const applied = await deviceBle.renegotiateMtu(this.data.deviceId, requested)
+      this.setData({ sessionMtu: applied.mtu })
+      const chunk = this.refreshEffectiveChunk()
+      const capped = chunk < Number(this.data.dataChunkSize)
       this.appendLog({
-        type: 'ok',
-        text: `已保存本电子纸设备校准配置：${this.data.calibrationProfileName}（含自定义六色）`
+        type: capped ? 'err' : 'ok',
+        text:
+          `MTU 已协商：请求 ${requested} → 实际 ${applied.mtu} 字节；` +
+          `本次图传每包数据 ${chunk} 字节` +
+          (capped
+            ? `（输入的 ${this.data.dataChunkSize} 塞不进 MTU ${applied.mtu}，已夹到 MTU-11=${chunk}。iOS 无法手动设 MTU，安卓也可能协商不到请求值）`
+            : '')
       })
-      toast.show({ title: '已保存本电子纸设备配置', icon: 'none' })
+      this.refreshMpConnections()
+      if (!silent) {
+        toast.show({ title: `MTU ${applied.mtu}`, icon: 'none' })
+      }
     } catch (error) {
-      toast.warn({ title: '保存失败：' + error.message, icon: 'none' })
+      this.appendLog({ type: 'err', text: `MTU 协商失败：${error.message}` })
+      if (!silent) {
+        toast.warn({ title: error.message || 'MTU 协商失败', icon: 'none' })
+      }
     }
   },
 
-  getSelectedCalibrationProfile() {
-    return (
-      findDebugCalibrationProfile(this.data.calibrationProfileId) ||
-      DEFAULT_DEBUG_PROFILE
-    )
-  },
-
-  getDebugQuantizeOptions() {
-    const contrast = Number(this.data.debugContrastPercent) / 100
-    const saturation = Number(this.data.debugSaturationPercent) / 100
-    const profile = this.getSelectedCalibrationProfile()
-    return {
-      dither: !!this.data.debugDither,
-      contrast: Number.isFinite(contrast)
-        ? contrast
-        : DEFAULT_DEBUG_QUANTIZE.contrast,
-      saturation: Number.isFinite(saturation)
-        ? saturation
-        : DEFAULT_DEBUG_QUANTIZE.saturation,
-      distanceMetric: DEFAULT_DEBUG_QUANTIZE.distanceMetric,
-      // 量化用「自定义六色」而非套餐原值：套餐只是回填的起点，用户的逐项微调要真正生效
-      palette: customColorsToPalette(this.data.customColors),
-      calibrationProfileId: profile.id,
-      calibrationProfileName: profile.name,
-      achromaticChromaMax: DEFAULT_DEBUG_QUANTIZE.achromaticChromaMax
-    }
-  },
-
-  // 同步到真实投屏：把「自定义六色 + 抖动 + 对比度 + 饱和度」持久化给正式投屏。
-  // 之后在「我的相框」正式投屏(result.js)量化上屏时会优先读这套参数，而不是代码内置默认。
-  // 只写本地存储、不依赖蓝牙连接，所以未连接设备也能同步。
-  cmdSyncQuantizeToProjection() {
-    const contrast = Number(this.data.debugContrastPercent) / 100
-    const saturation = Number(this.data.debugSaturationPercent) / 100
-    const palette = customColorsToPalette(this.data.customColors)
-    try {
-      imageCodec.setTransferQuantizeOptions({
-        dither: !!this.data.debugDither,
-        contrast: Number.isFinite(contrast)
-          ? contrast
-          : DEFAULT_DEBUG_QUANTIZE.contrast,
-        saturation: Number.isFinite(saturation)
-          ? saturation
-          : DEFAULT_DEBUG_QUANTIZE.saturation,
-        palette
-      })
-      const summary = palette
-        .map(p => `${p.name}(${p.rgb.join(',')})`)
-        .join(' · ')
-      this.appendLog({
-        type: 'ok',
-        text: `已同步到真实投屏：抖动${this.data.debugDither ? '开' : '关'} · 对比度${this.data.debugContrastText} · 饱和度${this.data.debugSaturationText}`
-      })
-      this.appendLog({ type: 'act', text: `六色：${summary}` })
-      toast.show({ title: '已同步到真实投屏', icon: 'success' })
-    } catch (error) {
-      toast.warn({ title: error.message || '同步失败', icon: 'none' })
-    }
-  },
-
-  // 清除同步：让正式投屏回到代码内置默认参数（实拍 2026-06-22 校准 + 抖动）。
-  cmdResetProjectionQuantize() {
-    try {
-      imageCodec.clearTransferQuantizeOptions()
-      this.appendLog({
-        type: 'act',
-        text: '已清除真实投屏的同步参数：恢复为代码内置默认（实拍 2026-06-22 校准 + 抖动）'
-      })
-      toast.show({ title: '已恢复默认', icon: 'none' })
-    } catch (error) {
-      toast.warn({ title: error.message || '操作失败', icon: 'none' })
-    }
+  // 按当前会话的实际 MTU 算出「本次图传真正会用的每包数据字节数」并回显（与 uploadImage 内部同一套夹取规则）。
+  refreshEffectiveChunk() {
+    const requested = Number(this.data.dataChunkSize)
+    // 未连接时没有会话可参照，直接回显输入值（连上后会按真实 MTU 再夹一次）
+    const effective =
+      this.data.connected && this.data.deviceId
+        ? deviceBle.getEffectiveChunkSize(this.data.deviceId, requested)
+        : requested
+    this.setData({ effectiveChunk: effective })
+    return effective
   },
 
   // 上传彩条测试图：不依赖任何图片，数据尺寸天然正确，最适合首次验证图传链路是否打通
@@ -1353,78 +911,276 @@ Page(fold.adapt({
     this.uploadFrame(frame, '上传彩条测试图(0x20~0x22)')
   },
 
-  // 上传相册里选的图片：把图片画到目标尺寸 canvas → 量化成六色帧缓存 → 走图传协议上传
+  // 本次要用的屏幕规格（大尺寸 / 小尺寸）。
+  // 口径：**按广播ID(广播名)判大小尺寸**——EF6-370 = 小尺寸 480×720、EF6-589 = 大尺寸 680×960；
+  // 广播名认不出（无名设备/从别处跳进来只带了 deviceId）时回落 0x01 自报的 screenType。
+  // 两者都拿得到却不一致时以 0x01 为准并告警：0x20 帧头的宽高与帧字节数(宽×高÷2)必须与设备
+  // 实际屏幕严格对齐，否则设备直接拒收；广播名只是外壳标识，不能盖过设备自报。
+  getScreenSpec() {
+    const info = this.data.info || {}
+    const fromInfo = {
+      screenType: info.screenType,
+      width: info.width,
+      height: info.height,
+      label: info.screen || '',
+      source: '0x01 设备信息'
+    }
+    const fromBroadcast = screenSpecByBroadcastName(this.data.deviceName)
+    if (!fromBroadcast) {
+      return fromInfo
+    }
+    if (fromBroadcast.screenType !== info.screenType) {
+      this.appendLog({
+        type: 'err',
+        text: `尺寸判定冲突：广播ID「${fromBroadcast.model}」= ${fromBroadcast.label} ${fromBroadcast.width}×${fromBroadcast.height}，但 0x01 自报 ${info.screen} ${info.width}×${info.height}。以 0x01 为准（帧头/帧长必须跟设备实际屏幕走），请核对这台机子的广播名。`
+      })
+      return fromInfo
+    }
+    return {
+      screenType: fromBroadcast.screenType,
+      width: fromBroadcast.width,
+      height: fromBroadcast.height,
+      label: fromBroadcast.label,
+      source: `广播ID ${fromBroadcast.model}`
+    }
+  },
+
+  // 上传相册图片 = 真实投屏的**竖向**链路（2026-08-07 起与「我的相框」正式投屏同源）：
+  //   ① 选图：sizeType=original 取原图（与 utils/media.chooseFromAlbum 同参，走同一个入口）；
+  //   ② 竖向构图：按设备物理分辨率做 aspectFill 中心裁切，并按设备竖向导出角旋转后导出 jpg
+  //      （几何与预览页 coverCropOne 一致；调试台没有后端设备记录，verticalRotation 取缺省 0=不旋转）；
+  //   ③ 统一压缩：长边缩到设备长边（②的产物恰为设备分辨率 → 原样通过，不二次降质），
+  //      与 result.js compressForUpload 同口径；
+  //   ④ 第三方 seekink 抖动接口出六色 4bpp 帧：type 按大/小尺寸取（dithering.typeForDevice）；
+  //   ⑤ 铁闸校验字节数 = 宽×高÷2，然后走 0x20→0x21→0x22 图传。
+  // 与正式投屏唯一的差别：**不调设备管理/投屏记录接口**（setUserProductUpload、
+  // editUserProductImgRecord 一概不发），联调不会在真实环境留下投屏记录和图库图片。
   async cmdUploadAlbum() {
     if (!this.ensureUploadReady()) {
       return
     }
-    const info = this.data.info
-    let media
+    const spec = this.getScreenSpec()
+    if (!(spec.width > 0) || !(spec.height > 0)) {
+      toast.warn({ title: '未取到设备分辨率，请先点「获取设备信息」', icon: 'none' })
+      return
+    }
+
+    // ① 选图（与真实投屏同一个入口：原图，不要微信压缩版，压缩版是「上屏发糊」最大来源）
+    let picked
     try {
-      media = await new Promise((resolve, reject) => {
-        // sizeType 取 'original'：拿原图而不是微信压缩过的低清版。'compressed' 会先被微信降分辨率+重压一遍，
-        // 是「上屏发糊」最大的源头(APP 走的就是原图)。原图偏大时由下面 shrinkIfHuge 仅做防 OOM 的轻量预缩。
-        wx.chooseMedia({
-          count: 1,
-          mediaType: ['image'],
-          sizeType: ['original'],
+      picked = await media.chooseFromAlbum(1)
+    } catch (error) {
+      return // 用户取消选择
+    }
+    const source = picked && picked[0] && picked[0].tempFilePath
+    if (!source) {
+      return
+    }
+
+    const verticalDegree = deviceRotation.verticalDegreeFor(this.data.device)
+    this.appendLog({
+      type: 'act',
+      text: `点击：上传相册图片（真实投屏竖向链路）｜尺寸判定 ${spec.source} → ${spec.label || '--'} ${spec.width}×${spec.height}｜竖向导出角 ${verticalDegree}°｜不调用设备管理/投屏记录接口`
+    })
+
+    wx.showLoading({ title: '处理图片中', mask: true })
+    let frameData
+    try {
+      // ② 竖向构图 → 设备物理分辨率
+      const composed = await this.coverCropPortrait(source, spec, verticalDegree)
+      // ③ 统一压缩（长边 > 设备长边才压；②的产物恰好等于设备分辨率，正常都会原样通过）
+      const shrunk = await this.compressForUpload(composed, spec)
+      this.appendLog({
+        type: 'act',
+        text: `已按设备物理分辨率出图：${spec.width}×${spec.height}（${EXPORT_FILE_TYPE} q${EXPORT_QUALITY}），上传 ${(shrunk.bytes / 1024).toFixed(0)}KB${shrunk.compressed ? `（统一压缩 ${shrunk.compressMs}ms）` : '（已不大于设备尺寸，未二次压缩）'}`
+      })
+      // ④ 第三方抖动接口出帧：客户端不做任何量化/调色，拿到什么就发什么
+      const type = dithering.typeForDevice(spec)
+      this.appendLog({
+        type: 'act',
+        text: `调用第三方抖动接口出帧：color=BWRYGB imageDitheringModes=2 type=${type}（${type === '1' ? '小尺寸' : '大尺寸'}）`
+      })
+      const ditherStartedAt = Date.now()
+      frameData = await dithering.requestFrameBin({
+        filePath: shrunk.filePath,
+        type
+      })
+      // ⑤ 铁闸校验：字节数必须 = 宽×高÷2，对不上一律不发（与 result.js 主循环同一道闸）
+      const expected = Math.floor((spec.width * spec.height) / 2)
+      const head = protocol.bytesToHex(frameData.subarray(0, 16))
+      this.appendLog({
+        type: frameData.length === expected ? 'ok' : 'err',
+        text: `第三方出帧完成 ${Date.now() - ditherStartedAt}ms：${frameData.length} 字节（设备需六色4bpp ${expected} 字节）头16=${head}`
+      })
+      if (frameData.length !== expected) {
+        throw new Error(
+          `第三方返回的不是电子纸设备要的六色4bpp帧：收到 ${frameData.length} 字节，${spec.width}×${spec.height} 需要 ${expected} 字节`
+        )
+      }
+    } catch (error) {
+      wx.hideLoading()
+      const text = `上传相册图片失败：${error.message}`
+      this.appendLog({ type: 'err', text })
+      this.setData({ uploadStatus: text, uploadStatusType: 'err' })
+      toast.warn({ title: error.message || '处理失败', icon: 'none' })
+      return
+    }
+    wx.hideLoading()
+    this.uploadFrame(
+      {
+        data: frameData,
+        width: spec.width,
+        height: spec.height,
+        dataSize: frameData.length
+      },
+      '上传相册图片(真实投屏竖向链路 0x20~0x22)'
+    )
+  },
+
+  // 竖向构图：按设备物理分辨率做 aspectFill 中心裁切 + 按竖向导出角旋转，导出 jpg 临时文件。
+  // 几何与预览页 coverCropOne 逐行对齐（含「奇数直角要对调目标矩形宽高」那条），改前先核对那边。
+  // 导出画布恒为设备物理分辨率：第三方按上传图的像素量化成六色帧(字节数=宽×高÷2)，
+  // 上传图必须正好是设备尺寸，否则帧大小对不上设备、图传必失败。
+  coverCropPortrait(src, spec, rotateDegree) {
+    return new Promise((resolve, reject) => {
+      wx.getImageInfo({
+        src,
+        success: info => {
+          const natW = info.width
+          const natH = info.height
+          // 导出角是奇数直角(90/270)时画面在画布上会宽高对调：中心裁切的目标比例与目标矩形都要跟着换
+          const quarterTurn = deviceRotation.isQuarterTurn(rotateDegree)
+          const destW = quarterTurn ? spec.height : spec.width
+          const destH = quarterTurn ? spec.width : spec.height
+          const targetRatio = destW / destH
+          if (!(natW > 0) || !(natH > 0) || !(targetRatio > 0)) {
+            reject(new Error('图片尺寸不可用'))
+            return
+          }
+          // aspectFill 中心裁切：从原图中心取「设备比例」的最大矩形，超出的边裁掉
+          let sw
+          let sh
+          let sx
+          let sy
+          if (natW / natH > targetRatio) {
+            sh = natH // 原图偏宽：高取满，裁掉左右
+            sw = Math.round(natH * targetRatio)
+            sx = Math.round((natW - sw) / 2)
+            sy = 0
+          } else {
+            sw = natW // 原图偏高（或相等）：宽取满，裁掉上下
+            sh = Math.round(natW / targetRatio)
+            sx = 0
+            sy = Math.round((natH - sh) / 2)
+          }
+          this.appendLog({
+            type: 'act',
+            text: `竖向中心裁切：原图 ${natW}×${natH} → 取样 ${sw}×${sh} → 画布 ${spec.width}×${spec.height}${rotateDegree ? `（整幅旋转 ${rotateDegree}°）` : ''}`
+          })
+          this.exportCanvas(spec.width, spec.height, src, (ctx, img) => {
+            const rotateRad = (rotateDegree * Math.PI) / 180
+            ctx.save()
+            ctx.translate(spec.width / 2, spec.height / 2)
+            ctx.rotate(rotateRad)
+            ctx.drawImage(img, sx, sy, sw, sh, -destW / 2, -destH / 2, destW, destH)
+            ctx.restore()
+          }).then(resolve, reject)
+        },
+        fail: () => reject(new Error('图片读取失败'))
+      })
+    })
+  },
+
+  // 离屏画布导出（与预览页 _exportCanvas 同源）：把 src 载入后交给 draw(ctx, img) 绘制，
+  // 导出为 outW×outH 的 jpg 临时文件。用页面里那块定位到屏幕外的 #cropCanvas，串行使用。
+  exportCanvas(outW, outH, src, draw) {
+    return new Promise((resolve, reject) => {
+      const query = wx.createSelectorQuery()
+      query
+        .select('#cropCanvas')
+        .fields({ node: true })
+        .exec(res => {
+          const node = res && res[0] && res[0].node
+          if (!node) {
+            reject(new Error('画布不可用'))
+            return
+          }
+          node.width = outW
+          node.height = outH
+          const ctx = node.getContext('2d')
+          const img = node.createImage()
+          img.onload = () => {
+            ctx.clearRect(0, 0, outW, outH)
+            fillWhite(ctx, outW, outH)
+            draw(ctx, img)
+            wx.canvasToTempFilePath({
+              canvas: node,
+              fileType: EXPORT_FILE_TYPE,
+              quality: EXPORT_QUALITY,
+              success: r => resolve(r.tempFilePath),
+              fail: () => reject(new Error('画布导出失败'))
+            })
+          }
+          img.onerror = () => reject(new Error('图片解码失败'))
+          img.src = src
+        })
+    })
+  },
+
+  // 上传前统一压缩（与 result.js compressForUpload 同口径）：长边缩到「设备长边」、只缩分辨率不改比例。
+  // 竖向构图出的图恰为设备分辨率 → 原样通过，不会二次降质。任何失败都原样返回原文件，不阻断联调。
+  async compressForUpload(filePath, spec) {
+    const bytes = await this.readFileSize(filePath)
+    const original = { filePath, bytes, compressMs: 0, compressed: false }
+    if (!wx.compressImage || !(spec.width > 0) || !(spec.height > 0)) {
+      return original
+    }
+    const startedAt = Date.now()
+    try {
+      const size = await new Promise((resolve, reject) => {
+        wx.getImageInfo({ src: filePath, success: resolve, fail: reject })
+      })
+      const longEdge = Math.max(size.width, size.height)
+      const deviceLongEdge = Math.max(spec.width, spec.height)
+      if (!(longEdge > deviceLongEdge)) {
+        return Object.assign({}, original, { compressMs: Date.now() - startedAt })
+      }
+      const ratio = deviceLongEdge / longEdge
+      const compressed = await new Promise((resolve, reject) => {
+        wx.compressImage({
+          src: filePath,
+          quality: UPLOAD_COMPRESS_QUALITY,
+          compressedWidth: Math.max(1, Math.round(size.width * ratio)),
+          compressedHeight: Math.max(1, Math.round(size.height * ratio)),
           success: resolve,
           fail: reject
         })
       })
+      const shrunkBytes = await this.readFileSize(compressed.tempFilePath)
+      return {
+        filePath: compressed.tempFilePath,
+        bytes: shrunkBytes,
+        compressMs: Date.now() - startedAt,
+        compressed: true
+      }
     } catch (error) {
-      return // 用户取消选择
+      return Object.assign({}, original, { compressMs: Date.now() - startedAt })
     }
-    const tempPath = media.tempFiles[0].tempFilePath
+  },
 
-    wx.showLoading({ title: '转换图片中', mask: true })
-    let frame
-    try {
-      // 大图先按比例压一遍再解码：超大原图(几千万像素)在离屏 canvas 全分辨率解码时易内存吃紧/失败。
-      // 注意：这步只为让解码更稳，不改变上传量——上传的是定长六色帧缓存(宽×高÷2)，与原图大小无关。
-      const skipCompressImage = !!this.data.debugSkipCompressImage
-      const srcPath = skipCompressImage
-        ? tempPath
-        : await this.shrinkIfHuge(tempPath, info.width, info.height)
-      if (skipCompressImage) {
-        this.appendLog({
-          type: 'act',
-          text: '已跳过 wx.compressImage：直接使用 chooseMedia 原图进入 canvas 解码缩放'
+  // 读文件字节数；读不到按 0 处理（只用于日志与压缩判断，不参与正确性）
+  readFileSize(filePath) {
+    return new Promise(resolve => {
+      try {
+        wx.getFileSystemManager().getFileInfo({
+          filePath,
+          success: res => resolve(Number(res.size) || 0),
+          fail: () => resolve(0)
         })
+      } catch (error) {
+        resolve(0)
       }
-      const cropMode = this.data.cropMode === 'contain' ? 'contain' : 'cover'
-      const resizeMode =
-        this.data.debugResizeMode === 'single' ? 'single' : 'staged'
-      const quantize = this.getDebugQuantizeOptions()
-      const decoded = await this.imageToImageData(
-        srcPath,
-        info.width,
-        info.height,
-        cropMode,
-        resizeMode
-      )
-      const imageData = decoded.imageData
-      if (decoded.resampleLog) {
-        this.appendLog({ type: 'act', text: decoded.resampleLog })
-      }
-      this.appendLog({
-        type: 'act',
-        text: `调试页色准量化：${quantize.calibrationProfileName} / ${quantize.distanceMetric} / 裁剪${cropMode} / 缩放${resizeMode === 'single' ? 'APP单步' : '分阶段'} / 预压缩${skipCompressImage ? '跳过' : '自动'} / 抖动${quantize.dither ? '开' : '关'}${quantize.dither ? `(${DEFAULT_DEBUG_QUANTIZE.ditherStrength})` : ''} / 对比度${quantize.contrast.toFixed(2)} / 饱和度${quantize.saturation.toFixed(2)} / 低饱和保护${quantize.achromaticChromaMax >= 0 ? `≤${quantize.achromaticChromaMax}` : '关'}`
-      })
-      frame = fromImageDataWithDebugCalibration(
-        imageData,
-        info.width,
-        info.height,
-        quantize,
-        info.screenType
-      )
-    } catch (error) {
-      wx.hideLoading()
-      toast.warn({ title: '图片转换失败：' + error.message, icon: 'none' })
-      return
-    }
-    wx.hideLoading()
-    this.uploadFrame(frame, '上传相册图片(0x20~0x22)')
+    })
   },
 
   // 上传手机上的 .raw/.bin 文件，直发设备。.bin 即后端转换生成的 frame.bin（正式投屏下载的那份），
@@ -1596,236 +1352,6 @@ Page(fold.adapt({
     return true
   },
 
-  computeAppLikeSample(width, height, targetW, targetH) {
-    let sample = 1
-    while (
-      width / (sample * 2) >= targetW &&
-      height / (sample * 2) >= targetH
-    ) {
-      sample *= 2
-    }
-    return sample
-  },
-
-  setupImageSmoothing(ctx) {
-    ctx.imageSmoothingEnabled = true
-    ctx.imageSmoothingQuality = 'high'
-  },
-
-  createResizeCanvas(width, height) {
-    const canvas = wx.createOffscreenCanvas({
-      type: '2d',
-      width: Math.max(1, Math.round(width)),
-      height: Math.max(1, Math.round(height))
-    })
-    const ctx = canvas.getContext('2d')
-    this.setupImageSmoothing(ctx)
-    return { canvas, ctx }
-  },
-
-  getImageDrawPlan(iw, ih, width, height, cropMode) {
-    if (cropMode === 'contain') {
-      const scale = Math.min(width / iw, height / ih)
-      const dw = iw * scale
-      const dh = ih * scale
-      return {
-        sx: 0,
-        sy: 0,
-        sw: iw,
-        sh: ih,
-        dx: (width - dw) / 2,
-        dy: (height - dh) / 2,
-        dw,
-        dh
-      }
-    }
-    // 中心裁剪「覆盖」：先算目标画布在原图上的等比例取样区域，再分阶段缩到目标尺寸。
-    // 对正常照片这与 APP 的「先缩放整图再居中裁剪」等价；对超宽/超高图则避免创建超大中间画布。
-    const scale = Math.max(width / iw, height / ih)
-    const sw = width / scale
-    const sh = height / scale
-    return {
-      sx: (iw - sw) / 2,
-      sy: (ih - sh) / 2,
-      sw,
-      sh,
-      dx: 0,
-      dy: 0,
-      dw: width,
-      dh: height
-    }
-  },
-
-  drawImageResampled(ctx, image, plan) {
-    let source = image
-    let sx = plan.sx
-    let sy = plan.sy
-    let sw = plan.sw
-    let sh = plan.sh
-    const finalW = Math.max(1, Math.round(plan.dw))
-    const finalH = Math.max(1, Math.round(plan.dh))
-    const stages = []
-
-    while (
-      sw > finalW * 2 ||
-      sh > finalH * 2 ||
-      Math.max(sw, sh) > DEBUG_RESAMPLE.maxStageEdge
-    ) {
-      const maxEdge = Math.max(sw, sh)
-      const capScale =
-        maxEdge > DEBUG_RESAMPLE.maxStageEdge
-          ? DEBUG_RESAMPLE.maxStageEdge / maxEdge
-          : 1
-      const stepScale = Math.min(DEBUG_RESAMPLE.stageScale, capScale)
-      const nextW = Math.max(finalW, Math.round(sw * stepScale))
-      const nextH = Math.max(finalH, Math.round(sh * stepScale))
-      if (nextW >= Math.round(sw) && nextH >= Math.round(sh)) {
-        break
-      }
-
-      const stage = this.createResizeCanvas(nextW, nextH)
-      stage.ctx.clearRect(0, 0, nextW, nextH)
-      stage.ctx.drawImage(source, sx, sy, sw, sh, 0, 0, nextW, nextH)
-      stages.push(`${Math.round(sw)}×${Math.round(sh)}→${nextW}×${nextH}`)
-
-      source = stage.canvas
-      sx = 0
-      sy = 0
-      sw = nextW
-      sh = nextH
-    }
-
-    ctx.drawImage(source, sx, sy, sw, sh, plan.dx, plan.dy, plan.dw, plan.dh)
-    return stages
-  },
-
-  // 大图预采样：模拟 APP Android 端 BitmapFactory.inSampleSize 的 power-of-two 下采样。
-  // 小程序不能直接控制解码采样，只能用 compressImage 生成一个接近 inSampleSize 后尺寸的临时图。
-  // 这样比按固定长边硬压更接近 APP：普通图保持原图；超大图只降到「仍大于目标」的 2 的倍数。
-  // 任何环节失败（老版本不支持 / 取不到尺寸 / 压缩报错）都退回用原图，绝不阻断上传。
-  shrinkIfHuge(path, targetW, targetH) {
-    return new Promise(resolve => {
-      if (!wx.compressImage) {
-        resolve(path) // 基础库过老不支持 compressImage，直接用原图，后续分阶段 canvas 缩放兜底
-        return
-      }
-      wx.getImageInfo({
-        src: path,
-        success: ({ width, height }) => {
-          const sample = this.computeAppLikeSample(
-            width,
-            height,
-            targetW,
-            targetH
-          )
-          if (sample <= 1) {
-            resolve(path) // APP 也不会下采样的尺寸，直接保留原图细节
-            return
-          }
-          const compressedWidth = Math.max(targetW, Math.round(width / sample))
-          const compressedHeight = Math.max(
-            targetH,
-            Math.round(height / sample)
-          )
-          wx.compressImage({
-            src: path,
-            compressedWidth,
-            compressedHeight,
-            quality: DEBUG_RESAMPLE.predecodeQuality,
-            success: res => {
-              this.appendLog({
-                type: 'act',
-                text: `APP式预采样：原图 ${width}×${height}，sample=${sample}，预解码约 ${compressedWidth}×${compressedHeight}`
-              })
-              resolve(res.tempFilePath)
-            },
-            fail: () => resolve(path) // 压缩失败退回原图
-          })
-        },
-        fail: () => resolve(path) // 取尺寸失败退回原图
-      })
-    })
-  },
-
-  // 用离屏 canvas 把图片解码并缩放到目标尺寸，取出 RGBA 像素（ImageData）
-  imageToImageData(path, width, height, cropMode, resizeMode) {
-    return new Promise((resolve, reject) => {
-      if (!wx.createOffscreenCanvas) {
-        reject(new Error('当前微信版本不支持离屏 canvas'))
-        return
-      }
-      const canvas = wx.createOffscreenCanvas({ type: '2d', width, height })
-      const ctx = canvas.getContext('2d')
-      this.setupImageSmoothing(ctx)
-      const img = canvas.createImage()
-      img.onload = () => {
-        ctx.clearRect(0, 0, width, height)
-        const iw = img.width || width
-        const ih = img.height || height
-        const plan = this.getImageDrawPlan(iw, ih, width, height, cropMode)
-        let stages = []
-        let fallbackLog = ''
-        try {
-          ctx.clearRect(0, 0, width, height)
-          if (cropMode === 'contain') {
-            ctx.fillStyle = '#fff'
-            ctx.fillRect(0, 0, width, height)
-          }
-          if (resizeMode === 'single') {
-            ctx.drawImage(
-              img,
-              plan.sx,
-              plan.sy,
-              plan.sw,
-              plan.sh,
-              plan.dx,
-              plan.dy,
-              plan.dw,
-              plan.dh
-            )
-          } else {
-            try {
-              stages = this.drawImageResampled(ctx, img, plan)
-            } catch (resampleError) {
-              ctx.clearRect(0, 0, width, height)
-              if (cropMode === 'contain') {
-                ctx.fillStyle = '#fff'
-                ctx.fillRect(0, 0, width, height)
-              }
-              ctx.drawImage(
-                img,
-                plan.sx,
-                plan.sy,
-                plan.sw,
-                plan.sh,
-                plan.dx,
-                plan.dy,
-                plan.dw,
-                plan.dh
-              )
-              fallbackLog = `分阶段缩放不可用，已退回单步缩放：${resampleError.message || resampleError}`
-            }
-          }
-          const imageData = ctx.getImageData(0, 0, width, height)
-          const sourceText = `${Math.round(plan.sw)}×${Math.round(plan.sh)}`
-          const targetText = `${Math.round(plan.dw)}×${Math.round(plan.dh)}`
-          const resampleLog =
-            fallbackLog ||
-            (resizeMode === 'single'
-              ? `APP单步缩放：原图 ${iw}×${ih}，${cropMode} 取样 ${sourceText} → ${targetText}`
-              : stages.length
-                ? `分阶段缩放：原图 ${iw}×${ih}，${cropMode} 取样 ${sourceText} → ${stages.join(' → ')} → ${targetText}`
-                : `分阶段缩放未触发：原图 ${iw}×${ih}，${cropMode} 取样 ${sourceText} → ${targetText}`)
-          resolve({ imageData, resampleLog })
-        } catch (error) {
-          reject(error)
-        }
-      }
-      img.onerror = () => reject(new Error('图片解码失败'))
-      img.src = path
-    })
-  },
-
   // 图传前置诊断：把连接间隔设到目标值并复读确认（0x05 读 → 0x13 设 → 0x05 复读）。
   // 这一步专门用来区分两类「停在第N包」的根因：
   //   ① 连接间隔指令根本没生效（设备不支持 / 0x13 被拒 / 设了复读没变）；
@@ -1918,7 +1444,10 @@ Page(fold.adapt({
       }
     }
 
-    const totalPackets = Math.ceil(frame.dataSize / 236)
+    // 每包数据字节数取「0x21 数据字节」输入框的值，并按当前会话 MTU 夹一次（塞不进就自动降到
+    // MTU-11）——与 uploadImage 内部同一套规则，故这里算出的包数就是实际包数。
+    const chunkSize = this.refreshEffectiveChunk()
+    const totalPackets = Math.ceil(frame.dataSize / chunkSize)
     this._uploadAborted = false // 重置中止标记
     // 上传期间保持屏幕常亮：避免自动息屏导致蓝牙被挂起、传输中断
     wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: true })
@@ -1930,7 +1459,7 @@ Page(fold.adapt({
     })
     this.appendLog({
       type: 'act',
-      text: `${label} → 槽位 ${index}，数据 ${frame.dataSize} 字节 / ${totalPackets} 包`
+      text: `${label} → 槽位 ${index}，数据 ${frame.dataSize} 字节 / ${totalPackets} 包（每包 ${chunkSize} 字节 · 窗口 ${this.data.windowSize} 包 · 每包间隔 ${this.data.pace}ms · MTU ${this.data.sessionMtu || '--'}）`
     })
 
     // 图传前：按「连接间隔」输入框的值把链路间隔设好并复读确认。卡住时据此区分
@@ -1951,11 +1480,14 @@ Page(fold.adapt({
       const summary = await deviceBle.uploadImage(this.data.deviceId, {
         screenType: info.screenType,
         index,
-        width: info.width,
-        height: info.height,
+        // 0x20 帧头必须描述**正在发的这份数据**：取帧自带的宽高（三条上传路径都按它出的数据），
+        // 缺省才回落设备自报值。帧长与宽高对不上时设备会在 0x22 拒收。
+        width: frame.width || info.width,
+        height: frame.height || info.height,
         data: frame.data,
         pace: this.data.pace, // 发送速度（每包间隔 ms），由页面"发送速度"档位决定
-        window: this.data.windowSize, // 图传窗口(发满多少包等一次累计应答)，由页面"发包窗口"档位决定
+        window: this.data.windowSize, // 图传窗口(发满多少包等一次累计应答)，由页面"发包窗口"输入框决定
+        chunkSize, // 0x21 每包图片数据字节数，由页面"0x21 数据字节"输入框决定（真实投屏不传此项）
         shouldAbort: () => this._uploadAborted, // 息屏/切后台时由 onHide 置为 true
         onProgress: (done, total, phase, detail) => {
           const patch = { uploadPercent: Math.floor((done / total) * 100) }
