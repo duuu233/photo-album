@@ -116,3 +116,13 @@
   font-weight: 600;
   line-height: 1.2;
 }
+
+/* 翻页脚注：上拉加载更多 / 加载中 / 没有更多了。
+   高度固定，三种文案切换时列表底部不跳动。 */
+.record-more {
+  padding: 32rpx 0 8rpx;
+  color: #9aa0a8;
+  font-size: 24rpx;
+  line-height: 1.2;
+  text-align: center;
+}

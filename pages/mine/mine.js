@@ -103,8 +103,9 @@ Page({
         api.getUserProfile(),
         api.getDevices(),
         api.getProjectionSuccessCount(),
-        // ⚠️ 收藏数与 Token 余额目前来自本地 mock（gallery-api / token-api），后端接口尚未提供。
-        // 两者都做了自身的失败兜底，不让它们把整个 Promise.all 拖挂——用户信息才是这页的主数据。
+        // ⚠️ 收藏数仍来自本地 mock（gallery-api），后端接口尚未提供；Token 余额已走真实接口
+        // （/Client/Order/getUserAccount）。两者都做了自身的失败兜底，不让它们把整个
+        // Promise.all 拖挂——用户信息才是这页的主数据。
         galleryApi.getFavoriteCount().catch(() => 0),
         tokenApi.getAccount().catch(() => ({ balance: 0 }))
       ])

@@ -20,7 +20,13 @@
     >消费记录</view>
   </view>
 
-  <scroll-view class="fold-scroll" scroll-y="{{true}}">
+  <!-- lower-threshold 给 120px 提前量：记录卡片矮，贴到底再拉会让用户看见一段空白 -->
+  <scroll-view
+    class="fold-scroll"
+    scroll-y="{{true}}"
+    lower-threshold="{{120}}"
+    bindscrolltolower="onScrollToLower"
+  >
     <view class="fold-scroll-body token-scroll-body record-scroll-body">
 
       <!-- 购买记录：时间 / 金额 · Token 描述 · 支付方式 / 状态 -->
@@ -51,6 +57,11 @@
 
       <view wx:if="{{!loading && !currentCount}}" class="token-empty">
         {{tab === 'purchase' ? '还没有购买记录' : '还没有消费记录'}}
+      </view>
+
+      <!-- 翻页脚注：只在已有内容时出现，空态不叠一行「没有更多了」 -->
+      <view wx:if="{{!loading && currentCount}}" class="record-more">
+        {{loadingMore ? '加载中…' : (hasMore ? '上拉加载更多' : '没有更多了')}}
       </view>
 
     </view>

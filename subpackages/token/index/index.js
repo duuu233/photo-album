@@ -1,7 +1,8 @@
 // Token 管理（设计稿：assets/ai/UI页面/Token管理.png）
 //
-// ⚠️ 余额、套餐、订单都还没有后端接口，数据由 utils/token-api.js 的 mock 提供，
-//    接口就位后只改那一层，本页不用动。详见该模块顶部说明。
+// 余额取 `/Client/Order/getUserAccount`、套餐取 `/Client/Order/getGoodsList`，
+// 都封装在 utils/token-api.js。套餐的 `id` 是后端 goodsId 的字符串形态，
+// 经 URL 传给确认页后由那边下单（见该模块顶部的整条支付链路说明）。
 const fold = require('../../../utils/fold-adapt')
 const tokenApi = require('../../../utils/token-api')
 const toast = require('../../../utils/toast')
