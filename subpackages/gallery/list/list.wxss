@@ -38,6 +38,7 @@
 
 /* 底栏是 `position: fixed`、bottom = 26rpx + 安全区、高 112rpx，
    滚动内容要把这段高度让出来，否则最后一排卡片会被底栏压住。 */
+/* 去掉底栏后不再为 custom-tabbar 预留高度，收敛到与「我的收藏」同一档（.fav-scroll-body） */
 .list-scroll-body {
-  padding-bottom: calc(178rpx + var(--safe-bottom, 0px));
+  padding-bottom: calc(48rpx + var(--safe-bottom, 0px));
 }

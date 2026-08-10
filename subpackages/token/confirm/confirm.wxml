@@ -33,19 +33,12 @@
           bindtap="onSelectChannel"
         >
           <image class="pay-icon" src="/assets/images/pay-wechat.png" mode="aspectFit"></image>
-          <text class="pay-name">微信支付</text>
+          <text class="pay-name">微信虚拟支付</text>
           <image class="pay-chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
         </view>
-        <view
-          class="pay-row {{channel === 'paypal' ? 'pay-row--active' : ''}}"
-          data-channel="paypal"
-          hover-class="none"
-          bindtap="onSelectChannel"
-        >
-          <image class="pay-icon" src="/assets/images/pay-paypal.png" mode="aspectFit"></image>
-          <text class="pay-name">PayPal</text>
-          <image class="pay-chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
-        </view>
+        <!-- PayPal 支付选项按产品要求隐藏：小程序内无原生 SDK，通道尚未接入
+             （token-api.purchase 仍会 reject PAYPAL_UNAVAILABLE，addOrder 的 payType=3 保留备用）。
+             接入后把下面这行恢复成 pay-row 即可。 -->
       </view>
 
     </view>

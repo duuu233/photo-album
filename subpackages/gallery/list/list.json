@@ -2,8 +2,7 @@
   "navigationStyle": "custom",
   "navigationBarTitleText": "官方图库",
   "usingComponents": {
-    "page-nav": "/components/page-nav/page-nav",
-    "custom-tabbar": "/components/custom-tabbar/custom-tabbar"
+    "page-nav": "/components/page-nav/page-nav"
   },
   "disableScroll": true,
   "backgroundColor": "#f8f5ef"

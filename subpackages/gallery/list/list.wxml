@@ -3,7 +3,7 @@
      折叠屏：根容器锁一屏高，导航栏、分类条与底栏留在滚动区外，
      瀑布流交给 .fold-scroll 滚动（方案见 styles/fold-adapt.wxss）。 -->
 <view class="gallery-shell fold-viewport" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
-  <page-nav title="官方图库" show-back="{{false}}"></page-nav>
+  <page-nav title="官方图库"></page-nav>
 
   <!-- 分类条常驻不滚。横向可滑，分类多了也不换行。 -->
   <scroll-view class="category-scroll" scroll-x="{{true}}" enable-flex="{{true}}">
@@ -44,7 +44,5 @@
     </view>
   </scroll-view>
 
-  <!-- 固定底栏：必须留在滚动区外，否则会跟着瀑布流一起滚 -->
-  <custom-tabbar active="gallery" safe-bottom="{{safeBottom}}"></custom-tabbar>
   <global-toast id="globalToast"></global-toast>
 </view>
