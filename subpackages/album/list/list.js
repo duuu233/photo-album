@@ -7,17 +7,23 @@
 //   · 底部第一枚由原「刷新屏幕」改为投屏记录页的「再次投屏」：单选=再投这一张（可在预览页重新构图），
 //     多选/全选=按批量传输走同一条链路（一次最多 utils/upload-limit 张）；
 //   · 底部第二枚是删除：先删设备槽位(0x12)，再删来源投屏记录，删完不会「还在列表里」。
-//     （中间那步「删图库相册记录」2026-08-10 起暂时屏蔽，见 confirmDeleteSelected 第 4 步。）
+//     （中间那步「删图库相册记录」2026-08-10 起暂时屏蔽，见 confirmDeleteSelected 第 5 步。）
 //
 // ⚠️ 删除索引的唯一来源是**本页这条投屏记录自己的 imgIndex**（2026-08-10 改；原先绕一层
 //    uProductImgId 关联图库照片、只认图库列表的 imgIndex，图库列表不回该字段时整批删不掉）。
 //    列表本就是投屏记录铺的，记录里的 imgIndex 正是投屏成功时 editUserProductImgRecord 写进去的那份。
 //    取到后直接交给 deviceBle.deleteImage 转成协议规定的 12 字节 IMG_INDEX_MASK 并发送 0x12。
-//    不读取设备掩码预判、不按列表顺序推算，也不在设备报错后改走其它槽位。
+//    不按列表顺序推算，也不在设备报错后改走其它槽位。
+//
+// ⚠️ 多手机共用一台设备（2026-08-10 下午补）：另一部手机删过图后，本机列表里那条记录还在，
+//    它的槽位在设备上已经空了。此时**删除必须照样能删掉**——设备侧按真实 IMG_MASK 过滤后再发
+//    0x12，空槽位跳过、槽位上换了别的图也照删，后端记录一律删掉。详见 confirmDeleteSelected 第 3 步。
 const api = require('../../../utils/api')
 const media = require('../../../utils/media')
 const system = require('../../../utils/system')
 const deviceBle = require('../../../utils/device-ble')
+const deviceInfo = require('../../../utils/device-info')
+const protocol = require('../../../utils/frame-protocol')
 const activeDevice = require('../../../utils/active-device')
 const uploadLimit = require('../../../utils/upload-limit')
 const toast = require('../../../utils/toast')
@@ -665,12 +671,46 @@ Page(fold.adapt({
     }, 220)
   },
 
+  // 选中的记录 id → 待删目标 { id, photoId, slot }。slot 只认这条投屏记录自己的 imgIndex
+  // （0 是合法槽位；缺失/非法一律 -1，由调用方整批终止，绝不推算）。
+  // photoId(uProductImgId) 一并带出，只在恢复图库删除（confirmDeleteSelected 第 5 步）时才用得上。
+  resolveDeleteTargets(ids) {
+    return (ids || []).map(id => {
+      const record = this.findRecord(id)
+      return {
+        id: String(id),
+        photoId: recordPhotoId(record),
+        slot: parseImgIndex(record && record.imgIndex)
+      }
+    })
+  },
+
+  // 把待删槽位按设备真实 IMG_MASK 分成两拨（见 confirmDeleteSelected 第 3 步）：
+  //   onDevice = 掩码里有这一位 → 设备上确实还有图，照常发 0x12 删掉
+  //              （哪怕现在躺在这个位置的是另一端后传的另一张图，也按索引删，产品口径）；
+  //   gone     = 掩码里没有这一位 → 另一端已经删过，设备侧跳过，只删后端记录。
+  // ⚠️ 掩码缺失（读不到 / 不是字节数组）时**一张都不能判 gone**，否则会变成「记录全删了、图还留在
+  //    设备上」。这种情况整体按 onDevice 返回，交给 0x12 的良性结果码兜底。
+  //    注意与「设备真的一张图都没有」区分：那时 imgMask 是 12 个 0 的合法掩码，全判 gone 才是对的。
+  splitSlotsByDeviceMask(slots, imgMask) {
+    const list = (slots || []).slice()
+    const mask = protocol.toBytes(imgMask)
+    if (!mask.length) {
+      return { onDevice: list, gone: [] }
+    }
+    const existing = protocol.maskToIndexes(mask)
+    return {
+      onDevice: list.filter(slot => existing.indexOf(slot) !== -1),
+      gone: list.filter(slot => existing.indexOf(slot) === -1)
+    }
+  },
+
   // 删除选中照片：直接读这条投屏记录自己的 imgIndex（网格就是按投屏成功记录铺的）；
   // deviceBle.deleteImage 会把这些索引按 bit 位转换成固定 12 字节、低字节在前的 IMG_INDEX_MASK，
   // 然后发送 CMD=0x12。协议示例：[0, 2] → 05 00 00 00 00 00 00 00 00 00 00 00。
   //
-  // 这里刻意不读 0x01、不检查设备当前 IMG_MASK、不推算缺失索引，也不在 0x12 报错后重读或放行。
-  // 记录没给有效 imgIndex 就直接终止；设备返回 0x01/0x02/0x07 等错误也原样终止，不删除后端记录。
+  // 这里刻意不推算缺失索引，也不在 0x12 报错后改删别的槽位：记录没给有效 imgIndex 就直接终止。
+  // 但 0x01 的 IMG_MASK 会读一次，只用来判断「这个槽位设备上还有没有图」——见第 3 步。
   async confirmDeleteSelected() {
     const ids = this.selectedIdsInOrder()
 
@@ -682,13 +722,7 @@ Page(fold.adapt({
     // 1) 只认投屏记录里的 imgIndex。任意一张缺索引就整批终止，绝不按设备掩码/列表顺序猜位置。
     //    photoId(uProductImgId) 也从记录上取，但**不参与校验**——它只在恢复图库删除时才用得上，
     //    图库那条链路缺字段不该拦住「删设备 + 删投屏记录」。
-    const targets = ids.map(id => {
-      const record = this.findRecord(id)
-      return {
-        photoId: recordPhotoId(record),
-        slot: parseImgIndex(record && record.imgIndex)
-      }
-    })
+    const targets = this.resolveDeleteTargets(ids)
     if (targets.some(item => item.slot < 0)) {
       this.hideDeleteDialog()
       toast.warn({
@@ -701,7 +735,7 @@ Page(fold.adapt({
     const photoIds = []
     const slotIndexes = []
     targets.forEach(item => {
-      // 记录没带 uProductImgId 时为 ''，不能塞进待删图库 id 列表（当前该调用已屏蔽，见下方第 4 步）
+      // 记录没带 uProductImgId 时为 ''，不能塞进待删图库 id 列表（当前该调用已屏蔽，见下方第 5 步）
       if (item.photoId && photoIds.indexOf(item.photoId) === -1) {
         photoIds.push(item.photoId)
       }
@@ -720,28 +754,77 @@ Page(fold.adapt({
     //（原先只在提前 return 的分支关，成功路径上弹窗会一直挂着）
     this.hideDeleteDialog()
 
-    // 3) 索引数组在 deviceBle.deleteImage 内直接转成 12 字节 IMG_INDEX_MASK 后发送 0x12。
+    // 3) 先读一次设备当前 IMG_MASK(0x01)，把选中的槽位分成「设备上还在的」和「已经不在的」两拨。
+    //
+    //    为什么要读：同一台设备可能被两部手机连过。另一部手机删掉了 A，设备上只剩 B、C，
+    //    而本机列表是按后端投屏记录铺的，A 那条记录还在 → 网格里仍是 A/B/C 三张。
+    //    这时把 A 的空槽位一起塞进 0x12 的掩码，固件回 0x07，**整批**删除被打回，
+    //    用户看到的就是「电子纸设备-掩码不一致(该位置已有图/索引越界)」——B、C 也跟着删不掉。
+    //
+    //    口径（2026-08-10 产品确认）：删除以「从我的相册里消失」为准，设备侧尽力而为——
+    //      · 槽位在设备上已空 → 跳过设备侧，后端记录照删；
+    //      · 槽位上现在躺着另一端后传的别的图 → 仍按索引删掉，不做内容比对（产品明确接受）；
+    //      · 掩码读不到（刚断连/回读失败）→ 不拦，按选中槽位原样下发，仍由第 4 步的良性结果码兜底。
     wx.showLoading({ title: '删除中', mask: true })
+    let slotsOnDevice = slotIndexes
+    let slotsGone = []
     try {
+      const info = await deviceInfo.read(device.deviceId, { force: true })
+      const split = this.splitSlotsByDeviceMask(slotIndexes, info && info.imgMask)
+      slotsOnDevice = split.onDevice
+      slotsGone = split.gone
       console.log(
-        '[相册删除] 投屏记录 imgIndex=',
+        '[相册删除] 设备 IMG_MASK=',
+        protocol.bytesToHex(info && info.imgMask),
+        '待删槽位',
         slotIndexes,
-        '按 12 字节 IMG_INDEX_MASK 发送 0x12'
+        '→ 设备上仍在',
+        slotsOnDevice,
+        '设备上已无(跳过)',
+        slotsGone
       )
-      await deviceBle.deleteImage(device.deviceId, slotIndexes)
     } catch (error) {
-      wx.hideLoading()
-      toast.warn({
-        title: activeDevice.friendlyConnectMessage(
-          (error && error.message) || '电子纸设备删除失败'
-        ),
-        icon: 'none'
-      })
-      return
+      console.warn(
+        '[相册删除] 回读设备掩码(0x01)失败，按选中槽位原样下发：',
+        (error && error.message) || error
+      )
+    }
+
+    // 4) 剩下的槽位交给 deviceBle.deleteImage，内部转成 12 字节 IMG_INDEX_MASK 后发送 0x12。
+    if (slotsOnDevice.length) {
+      try {
+        console.log(
+          '[相册删除] 投屏记录 imgIndex=',
+          slotsOnDevice,
+          '按 12 字节 IMG_INDEX_MASK 发送 0x12'
+        )
+        await deviceBle.deleteImage(device.deviceId, slotsOnDevice)
+      } catch (error) {
+        // 「图片不存在(0x05) / 掩码不一致(0x07)」：要删的图设备上本来就没有——上一步的掩码回读
+        // 与真正下发之间，另一端仍可能再删一张，所以这里还要兜一次。这类结果码按已删继续走记录删除。
+        // 设备忙(0x0B)、Flash 写入失败(0x04)、传输中断(0x09)、断连/应答超时仍如实中止：
+        // 那些是「可能真的没删掉」，放行会变成记录删了、图还挂在相框上。
+        if (!protocol.isSkippableDeleteError(error)) {
+          wx.hideLoading()
+          toast.warn({
+            title: activeDevice.friendlyConnectMessage(
+              (error && error.message) || '电子纸设备删除失败'
+            ),
+            icon: 'none'
+          })
+          return
+        }
+        console.log(
+          '[相册删除] 0x12 回了「图片不存在/掩码不一致」，按设备侧已无此图继续删记录：',
+          (error && error.message) || error
+        )
+      }
+    } else {
+      console.log('[相册删除] 选中照片在设备上都已不存在，跳过 0x12，直接删后端记录')
     }
     wx.hideLoading()
 
-    // 4) 【2026-08-10 暂时屏蔽】设备删成功后原本要调 delUserProductImg 删后端图库记录。
+    // 5) 【2026-08-10 暂时屏蔽】设备删成功后原本要调 delUserProductImg 删后端图库记录。
     //    先不调，只删设备 + 投屏记录，观察后端是否已由投屏记录侧级联清理图库照片。
     //    恢复时把下面整段放开即可：photoIds 仍在上面照常算好（取自记录的 uProductImgId），
     //    但它可能为空数组——记录没带该字段时删不了图库照片，放开前要先确认后端会回。
@@ -755,8 +838,10 @@ Page(fold.adapt({
     //   return
     // }
 
-    // 5) 最后删掉本页列表的来源——投屏成功记录。不删的话照片虽已从设备消失，
+    // 6) 最后删掉本页列表的来源——投屏成功记录。不删的话照片虽已从设备消失，
     //    「我的相册」下次进来仍会把它列出来（列表就是按成功记录铺的）。
+    //    这一步对「设备上已经没有的那几张」同样要执行：它们本就是另一端删过、只剩记录的幽灵条目，
+    //    删掉记录正是用户点这个按钮想要的结果。
     //    允许部分失败：设备上的图已经删掉，不能因为记录没删干净就整体报错回滚。
     let recordResult = { total: ids.length, failed: 0 }
     wx.showLoading({ title: '删除中', mask: true })

@@ -1080,9 +1080,13 @@ async function deleteImage(deviceId, indexes, timeout) {
   const count = indexes ? indexes.length : 0
   const waitMs = timeout || Math.min(180000, Math.max(6000, count * 2000))
   const ack = await request(deviceId, protocol.CMD.DELETE_IMG, mask, waitMs)
-  // 设备拒绝(result≠0)时抛设备结果码的协议含义，避免「设备没删成功却显示成功」
+  // 设备拒绝(result≠0)时抛设备结果码的协议含义，避免「设备没删成功却显示成功」。
+  // 同时把原始结果码挂在错误上：上层要放行 0x05/0x07 这类「设备上本来就没这张图」时，
+  // 靠 protocol.isSkippableDeleteError 认码，不必再匹配中文文案（prefixDeviceError 只改 message，属性保留）。
   if (ack.result !== 0x00) {
-    throw new Error(protocol.resultText(ack.result))
+    const error = new Error(protocol.resultText(ack.result))
+    error.resultCode = ack.result
+    throw error
   }
   return Object.assign(
     { result: ack.result },

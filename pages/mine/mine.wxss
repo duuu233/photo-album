@@ -148,84 +148,84 @@
   margin: 92rpx 0 24rpx 0;
 }
 
-.quick-grid {
+/* 2026-08-06：常用功能由「两张并排卡片」改为单列列表（设计稿 assets/ai/UI页面/我的.png）。
+   条目数从 2 涨到 4，并排卡片再塞就得换行，也放不下「剩余 1280 Token」这类右对齐的值。
+   行样式与下方「服务与帮助」的 .service-row 同源（同一种毛玻璃白卡），只是多了图标底色和右值。 */
+.feature-list {
   position: relative;
-  padding: 0;
   z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  /* 2026-08-04 三卡（我的设备/设备照片/投屏管理）合并为两卡（我的设备/我的相册）：
-     卡片改为等分剩余宽度，间距沿用原来的 21rpx，两卡各约 316rpx，不再留出大片空白。 */
-  gap: 21rpx;
 }
 
-.quick-card {
-  position: relative;
-  flex: 1 1 0;
-  min-width: 0;
-  height: 296rpx;
-
+.feature-row {
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-direction: column;
-
-  border-radius: 20px;
-
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.31);
-  background: linear-gradient(
-    326deg,
-    rgba(255, 255, 255, 0.24) 6.29%,
-    rgba(255, 255, 255, 0.43) 97.85%
-  );
-  box-shadow: 0 4px 12px 0 rgba(44, 63, 97, 0.03);
-  backdrop-filter: blur(10.550000190734863px);
-}
-
-/* 卡片背景图：铺满卡片，置于内容下方 */
-.quick-card-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: -1;
   width: 100%;
-  height: 100%;
+  height: 128rpx;
+  margin-bottom: 24rpx;
+  padding: 0 28rpx;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.7);
+  border: 2rpx solid rgba(255, 255, 255, 0.88);
+  border-radius: 22rpx;
+  box-shadow: 0 16rpx 38rpx rgba(125, 148, 181, 0.1);
 }
 
-.quick-icon,
-.service-icon {
-  position: relative;
+.feature-icon-bg {
+  flex: 0 0 76rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto;
-  border-radius: 50%;
+  width: 76rpx;
+  height: 76rpx;
+  background-color: rgba(255, 175, 139, 0.16);
+  border-radius: 22rpx;
 }
 
-.quick-icon {
-  width: 68rpx;
-  height: 68rpx;
-  border-radius: 0;
-}
-.quick-icon-bg {
-  width: 112rpx;
-  height: 112rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background-color: rgba(255, 175, 139, 0.1);
-}
-.quick-icon-bg-blue {
+.feature-icon-bg--blue {
   background-color: #e7f2ff;
 }
+
+.feature-icon {
+  width: 40rpx;
+  height: 40rpx;
+}
+
+.feature-label {
+  flex: 0 0 auto;
+  margin-left: 24rpx;
+  color: #2a2d32;
+  font-size: 30rpx;
+  font-weight: 500;
+}
+
+/* 右侧的值吃掉中间剩余宽度并右对齐；过长（余额位数多）时省略而不是把 chevron 顶出去 */
+.feature-value {
+  flex: 1;
+  min-width: 0;
+  margin: 0 16rpx 0 24rpx;
+  overflow: hidden;
+  color: #777e88;
+  font-size: 26rpx;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feature-list .chevron {
+  width: 24rpx;
+  height: 24rpx;
+}
+
 .service-icon {
+  position: relative;
   flex: 0 0 52rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 52rpx;
   height: 52rpx;
   margin: 0 28rpx 0 0;
+  border-radius: 50%;
 }
 
 .orange-icon {
@@ -236,21 +236,6 @@
 .blue-icon {
   color: #287dff;
   background: rgba(40, 125, 255, 0.1);
-}
-
-.quick-title {
-  margin-top: 22rpx;
-  color: #2a2d32;
-  font-size: 28rpx;
-  font-weight: 500;
-  line-height: 1;
-}
-
-.quick-desc {
-  margin-top: 12rpx;
-  color: #777e88;
-  font-size: 22rpx;
-  line-height: 1;
 }
 
 .icon-picture,

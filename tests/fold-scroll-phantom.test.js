@@ -51,7 +51,10 @@ const viewportFillers = [
   { file: 'styles/fold-adapt.wxss', selector: '.fold-scroll-body' },
   // 首页两个场景块（在 .home-scroll 里）：.home-content 是 flex，.binding-content 是块级
   { file: 'pages/home/home.wxss', selector: '.home-content' },
-  { file: 'pages/home/home.wxss', selector: '.binding-content' }
+  { file: 'pages/home/home.wxss', selector: '.binding-content' },
+  // 官方图库-图片详情页（2026-08-06）：没套公共的 .fold-scroll-body，
+  // 因为它要「留白 + 白卡吃掉剩余高度」，用 flex 列更直接（flex 容器本来就不与子元素合并外边距）
+  { file: 'subpackages/gallery/detail/detail.wxss', selector: '.detail-body' }
 ]
 
 viewportFillers.forEach(({ file, selector }) => {

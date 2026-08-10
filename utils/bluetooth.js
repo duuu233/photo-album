@@ -86,7 +86,7 @@ function systemSettingsPath() {
 // 「小程序自己的蓝牙开关没开」的统一文案（2026-08-01 产品拍板）。
 // 场景：手机蓝牙是开着的，但微信里这个小程序的「蓝牙」授权被关/未授予（iOS 尤其常见，
 // 微信 → 设置 → 小程序 → 蓝牙）。这一类和「手机蓝牙没开」用户分不清，用同一句覆盖两种可能。
-const BLUETOOTH_SWITCH_MESSAGE = '请检查并打开手机或小程序蓝牙开关'
+const BLUETOOTH_SWITCH_MESSAGE = '请检查打开手机或小程序蓝牙开关'
 
 // 是否是「小程序蓝牙授权被拒」类错误（区别于微信本体缺系统级「附近设备」权限）。
 // 微信在这类失败上回的 errMsg 形态不统一：auth deny / auth denied / authorize:fail /

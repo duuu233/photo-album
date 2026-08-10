@@ -1,0 +1,9 @@
+{
+  "navigationStyle": "custom",
+  "navigationBarTitleText": "图片详情",
+  "usingComponents": {
+    "page-nav": "/components/page-nav/page-nav"
+  },
+  "disableScroll": true,
+  "backgroundColor": "#f8f5ef"
+}

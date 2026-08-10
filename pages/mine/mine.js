@@ -1,4 +1,6 @@
 const api = require('../../utils/api')
+const galleryApi = require('../../utils/gallery-api')
+const tokenApi = require('../../utils/token-api')
 
 const app = getApp()
 
@@ -28,6 +30,9 @@ Page({
     userId: '--',
     photoCount: 0,
     deviceCount: 0,
+    // 2026-08-06 新增两行入口（设计稿 assets/ai/UI页面/我的.png）
+    favoriteCount: 0,
+    tokenBalance: 0,
     bgReady: false
   },
 
@@ -86,16 +91,23 @@ Page({
         nickName: '微信用户',
         userId: '--',
         photoCount: 0,
-        deviceCount: 0
+        deviceCount: 0,
+        favoriteCount: 0,
+        tokenBalance: 0
       })
       return
     }
 
     try {
-      const [userInfo, devices, castSuccessCount] = await Promise.all([
+      const [userInfo, devices, castSuccessCount, favoriteCount, tokenAccount] = await Promise.all([
         api.getUserProfile(),
         api.getDevices(),
-        api.getProjectionSuccessCount()
+        api.getProjectionSuccessCount(),
+        // ⚠️ 收藏数仍来自本地 mock（gallery-api），后端接口尚未提供；Token 余额已走真实接口
+        // （/Client/Order/getUserAccount）。两者都做了自身的失败兜底，不让它们把整个
+        // Promise.all 拖挂——用户信息才是这页的主数据。
+        galleryApi.getFavoriteCount().catch(() => 0),
+        tokenApi.getAccount().catch(() => ({ balance: 0 }))
       ])
       const displayUserId = userInfo.id || userInfo.userNo || '--'
       const displayName = displayNickname(userInfo.nickName) || '微信用户'
@@ -108,7 +120,9 @@ Page({
         // 看到的列表同一个口径。不再用用户信息里的 imgCount（相册口径：投屏失败的、已从设备
         // 删掉的都算在内），那个数和列表对不上。
         photoCount: castSuccessCount,
-        deviceCount: Number(userInfo.productCount) || devices.length
+        deviceCount: Number(userInfo.productCount) || devices.length,
+        favoriteCount,
+        tokenBalance: (tokenAccount && tokenAccount.balance) || 0
       })
     } catch (error) {
       // 失败保留上次成功值：弱网切到「我的」页把照片/设备数清零，用户会误以为数据没了。
@@ -118,7 +132,9 @@ Page({
           nickName: '微信用户',
           userId: '--',
           photoCount: 0,
-          deviceCount: 0
+          deviceCount: 0,
+          favoriteCount: 0,
+          tokenBalance: 0
         })
       }
     }
@@ -161,6 +177,27 @@ Page({
 
   // goRecords（投屏管理入口）已于 2026-08-04 随模块合并移除：投屏成功的照片进「我的相册」，
   // 投屏记录页（含失败记录/重新投屏）仍保留，由投屏结果页的「投屏明细」进入。
+  // 2026-08-06 的「我的」设计稿里又画了这一行，未恢复，原因见 mine.wxml 里的注释。
+
+  // 2026-08-06 新增：官方图库的收藏列表
+  goFavorites() {
+    if (!app.requireLogin()) {
+      return
+    }
+    wx.navigateTo({
+      url: '/subpackages/gallery/favorites/favorites'
+    })
+  },
+
+  // 2026-08-06 新增：Token 管理（余额 / 套餐 / 购买与消费记录）
+  goToken() {
+    if (!app.requireLogin()) {
+      return
+    }
+    wx.navigateTo({
+      url: '/subpackages/token/index/index'
+    })
+  },
 
   goGuide() {
     if (!app.requireLogin()) {

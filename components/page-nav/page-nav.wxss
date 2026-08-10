@@ -130,6 +130,15 @@
   pointer-events: none;
 }
 
+/* 沉浸式（`immersive` 属性）：导航栏压在整屏大图上，标题改白字并补一层弱投影
+   ——官方图库的图片详情页背景是任意照片，纯白字遇到浅色天空会糊掉。
+   属性和 `page-nav--immersive` 类此前就在组件里，只是一直没有配套样式；
+   2026-08-06 图片详情页第一次真正用上。 */
+.page-nav--immersive .nav-title {
+  color: #ffffff;
+  text-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.32);
+}
+
 .nav-title {
   position: absolute;
   top: 50%;

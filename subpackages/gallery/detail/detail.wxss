@@ -1,0 +1,242 @@
+@import "../shared.wxss";
+/* 贴底的「开始投屏」用公共类 .cta-button（styles/cta-button.wxss，已由 app.wxss 全局 @import）。
+   ⚠️ 不要改成 @import 另一个分包的 wxss：本页在 gallery 分包，那枚按钮的样式此前写在 token 分包里，
+      分包之间不能互相引用，所以公共部分统一落在主包的 styles/。 */
+
+/* 大图不参与滚动，垫在 z-index:0；.fold-scroll 是透明的 z-index:1 层，
+   白卡随内容上滑时正好从大图上盖过去。 */
+.detail-shell {
+  background: #f8f5ef;
+}
+
+.detail-hero {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 0;
+  width: 100%;
+  height: 46vh;
+  background: #dfe3e9;
+}
+
+/* 滚动内容块：这里**不用** .fold-scroll-body。
+   那个类靠 `display: flow-root` 断开外边距合并，但本页要的是「留白 + 白卡吃掉剩余高度」，
+   用 flex 列更直接；flex 容器本来就不与子元素合并外边距，flow-root 想防的问题不存在。
+   min-height:100% 保证内容不足一屏时白卡仍铺到底部，不会在底部露出大图。 */
+.detail-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 100%;
+}
+
+/* 让出大图的可见高度。比 .detail-hero 的 46vh 略小，白卡的圆角正好压在图上（设计稿如此）。 */
+.detail-spacer {
+  flex: 0 0 43vh;
+}
+
+.detail-card {
+  flex: 1 1 auto;
+  padding: 44rpx 48rpx 0;
+  background: #ffffff;
+  border-radius: 32rpx 32rpx 0 0;
+}
+
+.detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.detail-title {
+  flex: 1;
+  min-width: 0;
+  margin-right: 24rpx;
+  color: #2a2d32;
+  font-size: 44rpx;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+/* 收藏按钮：未收藏是灰描边 + 空心心；已收藏是橙描边 + 实心心。
+   两态文字长度不同（收藏 / 取消收藏），宽度按内容撑开，不写死。 */
+.detail-fav {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 72rpx;
+  padding: 0 26rpx;
+  border: 2rpx solid rgba(160, 166, 174, 0.5);
+  border-radius: 999rpx;
+}
+
+.detail-fav--on {
+  border-color: rgba(255, 106, 30, 0.5);
+}
+
+.detail-fav-icon {
+  width: 32rpx;
+  height: 32rpx;
+}
+
+.detail-fav-text {
+  margin-left: 12rpx;
+  color: #2a2d32;
+  font-size: 28rpx;
+  line-height: 1;
+}
+
+.detail-fav--on .detail-fav-text {
+  color: #f2621f;
+}
+
+.detail-desc {
+  margin-top: 26rpx;
+  color: #8b8f96;
+  font-size: 28rpx;
+  line-height: 1.65;
+}
+
+.detail-divider {
+  height: 1rpx;
+  margin: 36rpx 0 34rpx;
+  background: rgba(207, 214, 224, 0.7);
+}
+
+.detail-section-title {
+  color: #2a2d32;
+  font-size: 32rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.detail-sizes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20rpx;
+  margin-top: 26rpx;
+  /* 让开贴底的「开始投屏」按钮：按钮是 absolute、留在滚动区外，
+     不预留这段高度的话，尺寸标签多到换行时会从按钮底下穿过去。 */
+  padding-bottom: calc(196rpx + var(--safe-bottom, 0px));
+}
+
+.detail-size-tag {
+  height: 68rpx;
+  padding: 0 28rpx;
+  color: #6b7078;
+  border: 2rpx solid rgba(160, 166, 174, 0.45);
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  line-height: 64rpx;
+}
+
+/* ── 设备选择弹层 ───────────────────────────────────────────────────────── */
+.picker-mask {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(20, 23, 28, 0.42);
+}
+
+.picker-sheet {
+  width: 100%;
+  padding: 40rpx 40rpx calc(32rpx + var(--safe-bottom, 0px));
+  background: #ffffff;
+  border-radius: 32rpx 32rpx 0 0;
+}
+
+.picker-title {
+  color: #2a2d32;
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+}
+
+.picker-desc {
+  margin-top: 18rpx;
+  color: #9aa0a8;
+  font-size: 26rpx;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.picker-divider {
+  height: 1rpx;
+  margin: 28rpx 0 8rpx;
+  background: rgba(207, 214, 224, 0.7);
+}
+
+.picker-loading {
+  padding: 60rpx 0;
+  color: #9aa0a8;
+  font-size: 26rpx;
+  text-align: center;
+}
+
+/* 设备多时列表内部滚动，弹层本身高度封顶，不至于顶到状态栏 */
+.picker-list {
+  max-height: 46vh;
+}
+
+.picker-item {
+  display: flex;
+  align-items: center;
+  height: 112rpx;
+  padding: 0 8rpx;
+}
+
+.picker-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: #2a2d32;
+  font-size: 30rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-item--selected .picker-item-name {
+  color: #f2621f;
+  font-weight: 600;
+}
+
+.picker-radio {
+  flex: 0 0 40rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40rpx;
+  height: 40rpx;
+  border: 2rpx solid rgba(160, 166, 174, 0.6);
+  border-radius: 50%;
+}
+
+.picker-radio--selected {
+  border-color: #f2621f;
+}
+
+.picker-radio-check {
+  width: 22rpx;
+  height: 22rpx;
+  background: #f2621f;
+  border-radius: 50%;
+}
+
+.picker-cancel {
+  margin-top: 16rpx;
+  height: 100rpx;
+  color: #6b7078;
+  background: #f4f6f9;
+  border-radius: 999rpx;
+  font-size: 30rpx;
+  line-height: 100rpx;
+  text-align: center;
+}

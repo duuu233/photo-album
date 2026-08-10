@@ -1,0 +1,21 @@
+@import "../shared.wxss";
+
+/* 计数行留在滚动区外（跟着导航栏常驻）。z-index:2 压在 z-index:1 的 .fold-scroll 之上。 */
+.fav-count {
+  position: relative;
+  z-index: 2;
+  margin: 4rpx 0 28rpx;
+  color: #8b8f96;
+  font-size: 28rpx;
+  line-height: 1;
+  text-align: center;
+}
+
+.fav-count-num {
+  color: #f2621f;
+  font-weight: 600;
+}
+
+.fav-scroll-body {
+  padding-bottom: calc(48rpx + var(--safe-bottom, 0px));
+}

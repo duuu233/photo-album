@@ -114,7 +114,7 @@
         <button class="btn btn-mini btn-compact" disabled="{{busy}}" bindtap="cmdSetConnInterval">应用 0x13</button>
         <button class="btn btn-mini btn-compact btn-sync" bindtap="cmdSyncTransferToProjection">同步投屏</button>
       </view>
-      <view class="row-tip">BLE 连接间隔单位为 1.25ms，允许 7.5~4000ms；图传默认按平台取值：安卓/鸿蒙 7.5ms(最小值/最快)、iOS 15ms（Apple 规范拒绝 &lt;15ms 的请求，强设 7.5ms 反而会停在系统自选的 30/45ms 上）。每次图传前会自动按此值设置并复读确认（0x05→0x13→0x05），卡住时据此区分「间隔没生效」还是「电子纸设备吃不下速率」。<text class="row-tip-strong">「同步投屏」</text>把当前调好的三项——连接间隔 / 发送速度 / 发包窗口——一并写给真实投屏：之后正式投屏就按这些值传，不点则维持默认(安卓 7.5ms / iOS 15ms · 极速3ms · 10包)。当前投屏：连接间隔 {{projectionConnIntervalMs}}ms · 每包间隔 {{projectionPaceMs}}ms · 窗口 {{projectionWindow}} 包。</view>
+      <view class="row-tip">BLE 连接间隔单位为 1.25ms，允许 7.5~4000ms；图传默认按平台取值：安卓/鸿蒙 7.5ms(最小值/最快)、iOS 15ms（Apple 规范拒绝小于 15ms 的请求，强设 7.5ms 反而会停在系统自选的 30/45ms 上）。每次图传前会自动按此值设置并复读确认（0x05→0x13→0x05），卡住时据此区分「间隔没生效」还是「电子纸设备吃不下速率」。<text class="row-tip-strong">「同步投屏」</text>把当前调好的三项——连接间隔 / 发送速度 / 发包窗口——一并写给真实投屏：之后正式投屏就按这些值传，不点则维持默认(安卓 7.5ms / iOS 15ms · 极速3ms · 10包)。当前投屏：连接间隔 {{projectionConnIntervalMs}}ms · 每包间隔 {{projectionPaceMs}}ms · 窗口 {{projectionWindow}} 包。</view>
       <view class="row">
         <text class="row-label">系统校时</text>
         <text class="row-hint">把手机当前时间同步给电子纸设备 RTC</text>

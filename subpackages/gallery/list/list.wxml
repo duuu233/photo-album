@@ -1,0 +1,50 @@
+<!-- 官方图库（设计稿：assets/ai/UI页面/官方图库.png）
+     底栏第三格进入，是分包页面而非原生 tab（同 AI 聊天页）。
+     折叠屏：根容器锁一屏高，导航栏、分类条与底栏留在滚动区外，
+     瀑布流交给 .fold-scroll 滚动（方案见 styles/fold-adapt.wxss）。 -->
+<view class="gallery-shell fold-viewport" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <page-nav title="官方图库" show-back="{{false}}"></page-nav>
+
+  <!-- 分类条常驻不滚。横向可滑，分类多了也不换行。 -->
+  <scroll-view class="category-scroll" scroll-x="{{true}}" enable-flex="{{true}}">
+    <view class="category-row">
+      <view
+        wx:for="{{categories}}"
+        wx:key="id"
+        class="category-chip {{item.id === activeCategory ? 'category-chip--active' : ''}}"
+        data-id="{{item.id}}"
+        hover-class="none"
+        bindtap="onSelectCategory"
+      >{{item.name}}</view>
+    </view>
+  </scroll-view>
+
+  <scroll-view class="fold-scroll" scroll-y="{{true}}">
+    <view class="fold-scroll-body gallery-scroll-body list-scroll-body">
+      <view class="waterfall">
+        <view wx:for="{{columns}}" wx:for-item="column" wx:for-index="colIndex" wx:key="colIndex" class="waterfall-column">
+          <view
+            wx:for="{{column}}"
+            wx:for-item="photo"
+            wx:key="id"
+            class="photo-card"
+            data-id="{{photo.id}}"
+            hover-class="none"
+            bindtap="goDetail"
+          >
+            <view class="photo-media" style="height: {{photo.imgHeight}}rpx;">
+              <image class="photo-image" src="{{photo.url}}" mode="aspectFill" lazy-load="{{true}}"></image>
+            </view>
+            <view class="photo-title">{{photo.title}}</view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{!loading && !total}}" class="gallery-empty">该分类下还没有图片</view>
+    </view>
+  </scroll-view>
+
+  <!-- 固定底栏：必须留在滚动区外，否则会跟着瀑布流一起滚 -->
+  <custom-tabbar active="gallery" safe-bottom="{{safeBottom}}"></custom-tabbar>
+  <global-toast id="globalToast"></global-toast>
+</view>

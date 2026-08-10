@@ -310,6 +310,32 @@ function isBusyResult(code) {
   return (code & 0xff) === RESULT_BUSY
 }
 
+// 删除指令(0x12)的「可跳过」结果码：设备上本来就没有这张图，对「把它删掉」这个目标而言已经达成。
+//   0x05 图片不存在
+//   0x07 掩码不一致(该位置已有图/索引越界)
+// 典型场景（2026-08-10 产品口径）：同一台设备被两部手机连过，另一端删过图，本机列表里那条记录
+// 还在（后端记录未同步删掉），它的 imgIndex 在设备上已经是空槽位；空槽位一起进 0x12 的掩码，
+// 固件就回 0x07，整批删除被打回，用户看到的正是「电子纸设备-掩码不一致(该位置已有图/索引越界)」。
+// ⚠️ 只放行这两类：设备忙(0x0B)、Flash 写入失败(0x04)、传输中断(0x09)、断连/应答超时都必须如实中止——
+//    它们代表设备可能真的没删干净，放行会让记录删了、图还留在相框上。
+const SKIPPABLE_DELETE_RESULTS = [0x05, 0x07]
+
+function isSkippableDeleteResult(code) {
+  return SKIPPABLE_DELETE_RESULTS.indexOf(code & 0xff) !== -1
+}
+
+// 错误对象版：优先认 device-ble 挂在错误上的 `resultCode`（机器可读，不受前缀/文案改动影响）；
+// 拿不到时退回关键词匹配，兼容只剩文案的老链路（RESULT_TEXT 原文 + 常见英文写法）。
+function isSkippableDeleteError(error) {
+  if (error && error.resultCode !== undefined && error.resultCode !== null) {
+    return isSkippableDeleteResult(Number(error.resultCode))
+  }
+  const message = String((error && error.message) || error || '')
+  return /图片不存在|照片.*(不存在|异常)|掩码不一致|越界|索引.*(无效|不存在)|not[\s_-]*(found|exist)|out[\s_-]*of[\s_-]*(range|bounds|index)/i.test(
+    message
+  )
+}
+
 // ── 小端写入工具（组帧时把多字节数字按低字节在前压入数组）──
 function pushUint16LE(arr, value) {
   arr.push(value & 0xff, (value >> 8) & 0xff)
@@ -554,6 +580,8 @@ module.exports = {
   RESULT_BUSY,
   BUSY_MESSAGE,
   isBusyResult,
+  isSkippableDeleteResult,
+  isSkippableDeleteError,
   indexesToMask,
   maskToIndexes,
   firstFreeIndex,

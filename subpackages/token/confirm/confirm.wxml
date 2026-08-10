@@ -1,0 +1,64 @@
+<!-- 确认购买（设计稿：assets/ai/UI页面/确认购买.png）
+     折叠屏：同 Token 管理页，贴底按钮留在滚动区外并显式抬到 z-index:2。 -->
+<view class="token-shell fold-viewport" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <page-nav title="确认购买"></page-nav>
+  <scroll-view class="fold-scroll" scroll-y="{{true}}">
+    <view class="fold-scroll-body token-scroll-body cta-button-gap">
+
+      <view class="summary-card">
+        <view class="summary-head">
+          <view class="summary-tokens">
+            <text class="summary-tokens-num">{{pkg.tokens}}</text>
+            <text class="summary-tokens-unit">Token</text>
+          </view>
+          <view class="summary-price">¥{{pkg.priceText}}</view>
+        </view>
+        <view wx:if="{{pkg.gift > 0}}" class="summary-gift">赠送 {{pkg.gift}}</view>
+        <view class="summary-divider"></view>
+        <view class="summary-total">
+          <text class="summary-total-label">合计获得</text>
+          <view class="summary-total-value">
+            <text class="summary-total-num">{{pkg.totalTokens}}</text>
+            <text class="summary-total-unit">Token</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="token-section-title">选择支付方式</view>
+      <view class="pay-list">
+        <view
+          class="pay-row {{channel === 'wechat' ? 'pay-row--active' : ''}}"
+          data-channel="wechat"
+          hover-class="none"
+          bindtap="onSelectChannel"
+        >
+          <image class="pay-icon" src="/assets/images/pay-wechat.png" mode="aspectFit"></image>
+          <text class="pay-name">微信支付</text>
+          <image class="pay-chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
+        </view>
+        <view
+          class="pay-row {{channel === 'paypal' ? 'pay-row--active' : ''}}"
+          data-channel="paypal"
+          hover-class="none"
+          bindtap="onSelectChannel"
+        >
+          <image class="pay-icon" src="/assets/images/pay-paypal.png" mode="aspectFit"></image>
+          <text class="pay-name">PayPal</text>
+          <image class="pay-chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
+        </view>
+      </view>
+
+    </view>
+  </scroll-view>
+
+  <view
+    class="cta-button {{paying ? 'cta-button--disabled' : ''}}"
+    hover-class="none"
+    bindtap="onPay"
+  >
+    <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
+    {{paying ? '支付中…' : '立即购买'}}
+  </view>
+
+  <global-toast id="globalToast"></global-toast>
+</view>

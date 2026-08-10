@@ -146,12 +146,11 @@ function prefixDeviceError(error) {
 // 这几类的共同点是——要删的那张图设备上本来就没有，对「把图删掉」这个目标而言已经达成，
 // 抛出来只会让用户在一个其实成功了的操作上看到红字。
 // ⚠️ 只放行这一类：设备忙(0x0B)、Flash 写入失败(0x04)、传输中断(0x09)、连接断开/应答超时
-//    仍必须如实中止，它们代表设备可能真的没删干净。与图库页 isMissingDevicePhotoError 同口径。
+//    仍必须如实中止，它们代表设备可能真的没删干净。
+// 判定本身 2026-08-10 收归 utils/frame-protocol.js（「我的相册」删除也要同一套口径，
+// 见 list.js confirmDeleteSelected 第 4 步）：优先认结果码，拿不到再退回文案匹配。
 function isBenignDeleteError(error) {
-  const message = String((error && error.message) || error || '')
-  return /图片不存在|照片.*(不存在|异常)|掩码不一致|越界|索引.*(无效|不存在)|not[\s_-]*(found|exist)|out[\s_-]*of[\s_-]*(range|bounds|index)/i.test(
-    message
-  )
+  return protocol.isSkippableDeleteError(error)
 }
 
 function isUpdateFlag(device) {
