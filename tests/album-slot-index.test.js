@@ -1,6 +1,10 @@
 // 图库「照片 → 设备物理槽位」解析（album/list.js resolveDeviceImageIndex）。
-// 删除(0x12)与刷新屏幕(0x24)都按它定位，错一位就是删错/刷错图，故锁成回归用例。
+// 删除(0x12)按它定位要删设备上哪个位置，错一位就是删错图，故锁成回归用例。
 // 规则与 Flutter state.dart _resolveDeviceImageIndex 逐条对齐（2026-08-03）。
+//
+// ⚠️ 唯一例外见下方「① 之二」：2026-08-10 小程序去掉了「真实 imgIndex 必须命中固件掩码」这道闸门
+//    （它是「后端删成功、设备上没删」的根因）。Flutter 侧尚未同步 —— 在「记录槽位已空」这一种
+//    情况下两端行为目前不同，App 侧跟进前请勿把这条改回去。
 const assert = require('assert')
 
 // 小程序页面文件要在 wx / Page / getApp 存在时才能 require：这里只取 Page 注册的方法对象。
@@ -36,9 +40,14 @@ const photo = (id, deviceId, imgIndex, uProductImgId) => ({
 ctx.photos = [photo('a', 'D1', '2', 10)]
 assert.strictEqual(ctx.resolveDeviceImageIndex('a', device, [0, 2]), 2)
 
-// ① 之二：记录指向的槽位已空（在另一端删过 / 一键清空过）→ -1，不能照着旧记录删/刷别人的图
+// ① 之二：记录指向的槽位在固件掩码里是空的 → **仍然直接用这个槽位**（2026-08-10 改，原为 -1）。
+// 返回 -1 会让 slotIndexes 为空 → 0x12 一条都不发，可后端记录照删，正是「后端删成功、设备上没删」。
+// 掩码只有 96 个 bit，只记「有没有图」、不记「是哪张图」，拿它当放行闸门两头不讨好：旧槽位被新图
+// 占上时照样放行（该挡的没挡住），对不上时又静默放弃（不该挡的误伤）。真正的护栏挪到删除**之后**：
+// 用 0x12 应答里的最新掩码核对目标槽位是否真的清空，没清空就不删后端记录
+// （见 list.js confirmDeleteSelected 第 3 步）。
 ctx.photos = [photo('a', 'D1', '2', 10)]
-assert.strictEqual(ctx.resolveDeviceImageIndex('a', device, [0, 1]), -1)
+assert.strictEqual(ctx.resolveDeviceImageIndex('a', device, [0, 1]), 2)
 
 // ① 之三：0 是合法槽位，绝不能被当成「无索引」
 ctx.photos = [photo('a', 'D1', '0', 10)]

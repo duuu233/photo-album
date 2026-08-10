@@ -47,7 +47,9 @@
         <text class="photo-count">共 {{totalCount}} 张</text>
       </view>
     </view>
-    <view wx:if="{{filters.length}}" class="album-hint">
+    <!-- 操作提示：与上面的工具栏同条件（有设备**且有照片**才渲染）。只判 filters.length 的话，
+         空态页顶上会浮一句「选中照片可再次投屏或删除」——一张照片都没有，没什么可选（2026-08-10）。 -->
+    <view wx:if="{{filters.length && filteredPhotos.length}}" class="album-hint">
       <view class="album-hint__dot"></view>
       <text>选中照片可再次投屏或删除，支持多选/全选</text>
     </view>
