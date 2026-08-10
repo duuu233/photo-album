@@ -1319,8 +1319,11 @@ Page(fold.adapt({
         logClearDeviceData(traceId, '设备本地没有图片，不发送删除指令(0x12)', { indexes })
       }
 
+      // 后端文档里这个接口叫「一键删除我的图库」，端上保持只调它一个，不额外补删投屏记录：
+      // 后端会在同一次调用里同步删掉该设备的投屏记录（2026-08-10 确认）。
+      // 注意名实之差——「我的相册」渲染的是投屏成功记录，所以真正让相册变空的是这层级联。
       await api.clearUserProductImg(this.data.id)
-      logClearDeviceData(traceId, '后端清空记录完成', { id: this.data.id })
+      logClearDeviceData(traceId, '后端清空记录完成（含级联删投屏记录）', { id: this.data.id })
       clearSucceeded = true
     } catch (error) {
       const rawMsg = (error && error.message) || String(error)

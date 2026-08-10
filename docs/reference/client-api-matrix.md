@@ -149,13 +149,13 @@
 | 我的设备 | 设备电量 | ➖ | ✅ | - | 缓存优先：最近一次有效值跨页/落盘保留，同一设备 15 秒内复用；超窗后台发送 BLE `0x04 GET_BATTERY`，旧值持续展示，成功后平滑替换，失败/非法值保留旧值，从未成功读取才显示 `--`（2026-07-27 最终口径） |
 | 我的设备 | 设备名称编辑 | `POST /Client/UserProduct/editUserProduct` | ✅ | `editUserProduct` | - |
 | 我的设备 | 删除设备 | `POST /Client/UserProduct/delUserProduct` | ✅ | `delUserProduct` | id=userProductId |
-| 我的设备 | 一键清空（格式化设备） | `POST /Client/UserProduct/clearUserProductImg` | ✅ | `clearUserProductImg` | 同步删除“我的相册”和设备内照片 |
+| 我的设备 | 一键清空（格式化设备） | `POST /Client/UserProduct/clearUserProductImg` | ✅ | `clearUserProductImg` | 后端文档口径是「一键删除我的图库」，端上**保持调它不变**。**2026-08-10 后端确认**：这一次调用会由后端**同步删掉该设备的投屏记录**（不只是图库照片）。名字与实际影响面有差：「我的相册」渲染的是投屏成功记录，所以一键清空后相册随之清空，不会留幽灵条目；端上仍先发设备 `0x12` 全删，再调本接口 |
 | 我的设备 | 开启\关闭轮播模式 | ➖ | ✅ | - | 顺序/随机轮播、关闭轮播；纯设备控制 |
 | 我的图库 | 列表 | `GET /Client/UserProduct/getUserProductImgList` | ✅ | `getUserProductImgList` | 2026-08-04 起不再直接渲染；2026-08-10 下午起**删除也不再读它的 `imgIndex`**（实测该字段不稳定回传，索引改取投屏记录那份），现仅作「我的相册」的原图来源与默认设备判断依据 |
 | 我的图库 | 删除 | `POST /Client/UserProduct/delUserProductImg` | ✅ | `delUserProductImg` | id=uProductImgId，支持多选。删除前先按 `imgIndex` 发 BLE `0x12` 删掉设备对应槽位 |
 | 投屏管理 | 投屏记录图片列表（成功/失败） | `GET /Client/UserProduct/getUserProductImgRecordList` | ✅ | `getUserProductImgRecordList` | **Swagger 新增**。出参含 `imgIndex`(String)，记录页本身不消费，仅排查用。2026-08-04 起「我的相册」也用它（只取成功、按 `userProductId` 分类）；投屏记录页保留，入口改为投屏结果页「投屏明细」 |
 | 投屏管理 | 新增投屏记录（历史接口） | `POST /Client/UserProduct/addUserProductImgRecord` | ➖ | `addUserProductImgRecord`（无调用方） | 小程序已删除 `imgBle` 直传和补记链路；再次/重新投屏统一走正常投屏流程，由 `setUserProductUpload` 建立新记录 |
-| 投屏管理 | 操作：投屏\删除 | `POST /Client/UserProduct/delUserProductImgRecord` | ✅ | `delUserProductImgRecord`、`deleteProjectionRecords` | id=upirId，**Swagger 新增**。批量版 `deleteProjectionRecords` 串行逐条调用（后端无批量接口），供「我的相册」删照片时连同来源记录一并删。⚠️ `clearUserProductImg` / `delUserProductImg` 是否级联删除投屏记录：**待后端确认** |
+| 投屏管理 | 操作：投屏\删除 | `POST /Client/UserProduct/delUserProductImgRecord` | ✅ | `delUserProductImgRecord`、`deleteProjectionRecords` | id=upirId，**Swagger 新增**。批量版 `deleteProjectionRecords` 串行逐条调用（后端无批量接口），供「我的相册」删照片时连同来源记录一并删。**级联问题（2026-08-04 挂起）已部分有结论**：`clearUserProductImg`（一键清空）后端**会**同步删投屏记录（2026-08-10 确认），一键清空链路无需端上再删记录；`delUserProductImg` 是否级联仍**待后端确认**，但该调用自 2026-08-10 起已在相册删除链路屏蔽（见 144 行），暂时不影响 |
 | 操作指南 | 查看帮助文档（**不分设备，全局**） | `GET /Client/Product/getProductFaqList` | ✅ | `getProductFaqList` | 详情 `getProductFaqDetail`；按 `pageCount`/`recordCount` 翻页**全量**读取；Client 侧接口无 productId 参数，不做设备过滤；权重 `grade` 只在后台 DTO，排序由后端负责，前端不重排；随 `language` 走（2026-07-19） |
 | 设置 | 关于我们/联系方式/隐私政策/用户协议 | ➖ | ✅ | - | 静态页面 |
 | 设置 | 语种设置（简中\繁中\英\日） | ➖ | ✅ | - | 小程序默认中文；App 跟随手机语言（其他默认英语） |
