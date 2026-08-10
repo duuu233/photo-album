@@ -6,11 +6,13 @@
 //   · 沿用原「设备照片」页的整套 UI（网格 + 全选 + 底部三枚圆钮）；
 //   · 底部第一枚由原「刷新屏幕」改为投屏记录页的「再次投屏」：单选=再投这一张（可在预览页重新构图），
 //     多选/全选=按批量传输走同一条链路（一次最多 utils/upload-limit 张）；
-//   · 底部第二枚沿用图库的删除：先删设备槽位(0x12)，再删相册记录，最后删来源投屏记录，
-//     三处一致，删完不会「还在列表里」。
+//   · 底部第二枚是删除：先删设备槽位(0x12)，再删来源投屏记录，删完不会「还在列表里」。
+//     （中间那步「删图库相册记录」2026-08-10 起暂时屏蔽，见 confirmDeleteSelected 第 4 步。）
 //
-// ⚠️ 删除索引的唯一来源是后端图库记录的 imgIndex：投屏记录先按 uProductImgId 关联图库照片，
-//    再把 imgIndex 直接交给 deviceBle.deleteImage 转成协议规定的 12 字节 IMG_INDEX_MASK 并发送 0x12。
+// ⚠️ 删除索引的唯一来源是**本页这条投屏记录自己的 imgIndex**（2026-08-10 改；原先绕一层
+//    uProductImgId 关联图库照片、只认图库列表的 imgIndex，图库列表不回该字段时整批删不掉）。
+//    列表本就是投屏记录铺的，记录里的 imgIndex 正是投屏成功时 editUserProductImgRecord 写进去的那份。
+//    取到后直接交给 deviceBle.deleteImage 转成协议规定的 12 字节 IMG_INDEX_MASK 并发送 0x12。
 //    不读取设备掩码预判、不按列表顺序推算，也不在设备报错后改走其它槽位。
 const api = require('../../../utils/api')
 const media = require('../../../utils/media')
@@ -663,12 +665,12 @@ Page(fold.adapt({
     }, 220)
   },
 
-  // 删除选中照片：投屏记录按 uProductImgId 关联到后端图库记录，直接读取每张的 imgIndex；
+  // 删除选中照片：直接读这条投屏记录自己的 imgIndex（网格就是按投屏成功记录铺的）；
   // deviceBle.deleteImage 会把这些索引按 bit 位转换成固定 12 字节、低字节在前的 IMG_INDEX_MASK，
   // 然后发送 CMD=0x12。协议示例：[0, 2] → 05 00 00 00 00 00 00 00 00 00 00 00。
   //
   // 这里刻意不读 0x01、不检查设备当前 IMG_MASK、不推算缺失索引，也不在 0x12 报错后重读或放行。
-  // 后端没给有效 imgIndex 就直接终止；设备返回 0x01/0x02/0x07 等错误也原样终止，不删除后端记录。
+  // 记录没给有效 imgIndex 就直接终止；设备返回 0x01/0x02/0x07 等错误也原样终止，不删除后端记录。
   async confirmDeleteSelected() {
     const ids = this.selectedIdsInOrder()
 
@@ -677,19 +679,20 @@ Page(fold.adapt({
       return
     }
 
-    // 1) 只认后端图库记录中的 imgIndex。任意一张缺索引就整批终止，绝不按设备掩码/列表顺序猜位置。
+    // 1) 只认投屏记录里的 imgIndex。任意一张缺索引就整批终止，绝不按设备掩码/列表顺序猜位置。
+    //    photoId(uProductImgId) 也从记录上取，但**不参与校验**——它只在恢复图库删除时才用得上，
+    //    图库那条链路缺字段不该拦住「删设备 + 删投屏记录」。
     const targets = ids.map(id => {
-      const photo = this.findPhotoOfRecord(this.findRecord(id))
-      const photoId = (photo && photo.id) || ''
+      const record = this.findRecord(id)
       return {
-        photoId,
-        slot: this.backendImageIndexOf(photoId)
+        photoId: recordPhotoId(record),
+        slot: parseImgIndex(record && record.imgIndex)
       }
     })
-    if (targets.some(item => !item.photoId || item.slot < 0)) {
+    if (targets.some(item => item.slot < 0)) {
       this.hideDeleteDialog()
       toast.warn({
-        title: '后端未返回有效的图片索引，无法删除',
+        title: '投屏记录未返回有效的图片索引，无法删除',
         icon: 'none'
       })
       return
@@ -698,7 +701,8 @@ Page(fold.adapt({
     const photoIds = []
     const slotIndexes = []
     targets.forEach(item => {
-      if (photoIds.indexOf(item.photoId) === -1) {
+      // 记录没带 uProductImgId 时为 ''，不能塞进待删图库 id 列表（当前该调用已屏蔽，见下方第 4 步）
+      if (item.photoId && photoIds.indexOf(item.photoId) === -1) {
         photoIds.push(item.photoId)
       }
       if (slotIndexes.indexOf(item.slot) === -1) {
@@ -720,7 +724,7 @@ Page(fold.adapt({
     wx.showLoading({ title: '删除中', mask: true })
     try {
       console.log(
-        '[图库删除] 后端 imgIndex=',
+        '[相册删除] 投屏记录 imgIndex=',
         slotIndexes,
         '按 12 字节 IMG_INDEX_MASK 发送 0x12'
       )
@@ -739,7 +743,8 @@ Page(fold.adapt({
 
     // 4) 【2026-08-10 暂时屏蔽】设备删成功后原本要调 delUserProductImg 删后端图库记录。
     //    先不调，只删设备 + 投屏记录，观察后端是否已由投屏记录侧级联清理图库照片。
-    //    恢复时把下面整段放开即可（photoIds 仍在上面照常算好，未参与其它逻辑）。
+    //    恢复时把下面整段放开即可：photoIds 仍在上面照常算好（取自记录的 uProductImgId），
+    //    但它可能为空数组——记录没带该字段时删不了图库照片，放开前要先确认后端会回。
     // try {
     //   await api.deleteAlbumPhotos(photoIds)
     // } catch (error) {
@@ -860,13 +865,6 @@ Page(fold.adapt({
     wx.navigateTo({
       url: '/subpackages/projection/preview/preview'
     })
-  },
-
-  // 图库照片 id → 后端 imgIndex。这里只做类型/协议范围校验，绝不读取设备状态或推算槽位。
-  // 入参仍是图库照片 id(uProductImgId)，不是投屏记录 id；调用方先经 findPhotoOfRecord 换算。
-  backendImageIndexOf(photoId) {
-    const target = (this.photos || []).filter(item => item.id === photoId)[0]
-    return parseImgIndex(target && target.imgIndex)
   },
 
   async chooseForProjection() {
