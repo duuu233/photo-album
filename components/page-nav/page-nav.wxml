@@ -15,7 +15,12 @@
     <view class="nav-title" wx:if="{{title}}">{{title}}</view>
     <view wx:else class="nav-center"><slot></slot></view>
 
-    <view wx:if="{{rightText}}" class="nav-right {{rightText === '+' ? 'nav-right--icon' : ''}}" hover-class="nav-btn--hover" bindtap="handleRight">{{rightText}}</view>
+    <!-- 右侧入口：传 rightIcon 就画图标（图源自带留白，按 .nav-right-image 的几何补偿摆正），
+         否则退回 rightText 文字；两者都没有时占位撑住 flex 布局，标题才不会被挤偏。 -->
+    <view wx:if="{{rightIcon}}" class="nav-right nav-right--image" hover-class="nav-btn--hover" bindtap="handleRight">
+      <image class="nav-right-image" src="{{rightIcon}}" mode="aspectFit"></image>
+    </view>
+    <view wx:elif="{{rightText}}" class="nav-right {{rightText === '+' ? 'nav-right--icon' : ''}}" hover-class="nav-btn--hover" bindtap="handleRight">{{rightText}}</view>
     <view wx:else class="nav-right nav-placeholder"></view>
   </view>
 </view>

@@ -18,13 +18,55 @@
   pointer-events: none;
 }
 
+/* Token 余额行：占「仅保留最近 7 天」原来那一行的位置（该提示整体下移一行）。
+   胶囊样式与聊天页右上角同源，只是这里靠左排、不跟原生胶囊对位，所以尺寸用 rpx 写死。 */
+.sessions-token {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  padding: 28rpx 40rpx 0;
+}
+
+.token-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  height: 58rpx;
+  padding: 0 22rpx;
+  border: 2rpx solid rgba(255, 255, 255, 0.94);
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 4rpx 14rpx rgba(83, 73, 60, 0.1);
+  box-sizing: border-box;
+}
+
+.token-pill__icon {
+  width: 25rpx;
+  height: 25rpx;
+}
+
+.token-pill__value {
+  color: #ff6f25;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.token-pill__unit {
+  color: #777777;
+  font-size: 22rpx;
+  line-height: 1;
+}
+
 .keep-tip {
   position: relative;
   z-index: 1;
   display: flex;
   align-items: center;
   gap: 10rpx;
-  padding: 32rpx 40rpx 12rpx;
+  padding: 16rpx 40rpx 12rpx;
   color: #8b8b8b;
   font-size: 25rpx;
 }
@@ -108,8 +150,10 @@
   will-change: transform;
 }
 
+/* 位移量 = 删除按钮宽 + 它的左外边距，必须与 sessions.js 的 DELETE_REVEAL_RPX 保持一致，
+   否则要么露不全、要么滑过头露出卡片右侧的空轨道。 */
 .session-track--open {
-  transform: translate3d(-152rpx, 0, 0);
+  transform: translate3d(-176rpx, 0, 0);
 }
 
 /* 跟手拖动期间不要过渡，否则位移会慢半拍 */
@@ -117,11 +161,13 @@
   transition: none;
 }
 
+/* 2026-08-10 需求 6：由 136rpx 加宽到 160rpx（点击盒 160×112rpx ≈ 80×56px），
+   与 .session-track--open 的 176rpx 位移、sessions.js 的 DELETE_REVEAL_RPX 三处同步。 */
 .session-delete {
   position: relative;
   z-index: 0;
   display: flex;
-  flex: 0 0 136rpx;
+  flex: 0 0 160rpx;
   align-items: center;
   justify-content: center;
   margin-left: 16rpx;
@@ -131,6 +177,10 @@
   background: #d9755f;
   font-size: 28rpx;
   font-weight: 500;
+}
+
+.session-delete--pressed {
+  opacity: 0.72;
 }
 
 .session-delete__background {

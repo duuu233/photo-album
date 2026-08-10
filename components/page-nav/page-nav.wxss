@@ -58,6 +58,20 @@
   font-weight: 400;
 }
 
+/* 图标型右侧入口：点击盒与返回键同高（＝原生胶囊高度），图本身按各自留白单独补偿。
+   ai-new-chat.png 是画满的方图，不需要像返回键那样放大两倍。 */
+.nav-right--image {
+  min-width: var(--nav-row-height, 32px);
+  width: var(--nav-row-height, 32px);
+  padding: 0;
+}
+
+.nav-right-image {
+  flex: 0 0 auto;
+  width: 44rpx;
+  height: 44rpx;
+}
+
 .nav-placeholder {
   visibility: hidden;
   pointer-events: none;

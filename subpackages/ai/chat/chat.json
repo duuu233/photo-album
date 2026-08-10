@@ -1,7 +1,5 @@
 {
   "navigationStyle": "custom",
   "disableScroll": true,
-  "usingComponents": {
-    "custom-tabbar": "/components/custom-tabbar/custom-tabbar"
-  }
+  "usingComponents": {}
 }

@@ -14,6 +14,11 @@ Component({
       type: String,
       value: ''
     },
+    // 右侧入口的图标路径。传了它就画图标（优先级高于 rightText），空串＝仍按文字走。
+    rightIcon: {
+      type: String,
+      value: ''
+    },
     customBack: {
       type: Boolean,
       value: false

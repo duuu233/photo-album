@@ -1,6 +1,6 @@
 <view
   class="ai-root"
-  style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px; --menu-offset-top: {{menuButtonOffsetTop}}px; --menu-height: {{menuButtonHeight}}px; --token-right: {{tokenRight}}px; --navigation-height: {{navigationHeight}}px;"
+  style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px; --menu-offset-top: {{menuButtonOffsetTop}}px; --menu-height: {{menuButtonHeight}}px; --navigation-height: {{navigationHeight}}px;"
 >
   <image
     class="ai-page-background"
@@ -8,27 +8,32 @@
     mode="aspectFill"
   ></image>
 
+  <!-- 顶栏（2026-08-10 需求 1.3/5 重排）：左侧「返回 + 会话列表」两颗按钮并排，标题**屏幕正中**、
+       定宽超出省略；Token 胶囊已移到「历史会话」页顶部（右上角只剩微信原生胶囊）——
+       原生胶囊左边缘在 375pt 屏上约 281px，Token 胶囊占住 167~273px 时标题根本无法真正居中。
+       ⚠️ Flutter APP 的按钮排布与此不同（会话列表按钮在最右），见
+       docs/changes/2026-08-10-AI助手八项优化.md。 -->
   <view class="ai-header" bindtap="closeTools">
     <view class="ai-header__row">
-      <view class="history-button" hover-class="header-button--pressed" bindtap="goSessions">
-        <image
-          class="history-button__image"
-          src="/assets/images/ai-history-button.png"
-          mode="aspectFit"
-        ></image>
+      <view class="header-buttons">
+        <view class="header-button" hover-class="header-button--pressed" bindtap="goBack">
+          <image
+            class="header-button__image"
+            src="/assets/images/ai-back-button.png"
+            mode="aspectFit"
+          ></image>
+        </view>
+        <view class="header-button" hover-class="header-button--pressed" bindtap="goSessions">
+          <image
+            class="header-button__image"
+            src="/assets/images/ai-history-button.png"
+            mode="aspectFit"
+          ></image>
+        </view>
       </view>
 
-      <view class="ai-header__title">{{sessionTitle || '新对话'}}</view>
-
-      <view class="token-pill">
-        <image
-          class="token-pill__icon"
-          src="/assets/images/ai-token-spark.png"
-          mode="aspectFit"
-        ></image>
-        <text class="token-pill__value">{{tokenBalance}}</text>
-        <text class="token-pill__unit">Token</text>
-      </view>
+      <!-- 默认页（还没建会话）标题留空：需求「进入 AI 默认页，标题不需要显示新对话」 -->
+      <view class="ai-header__title">{{sessionId ? sessionTitle : ''}}</view>
     </view>
   </view>
 
@@ -116,7 +121,7 @@
               <!-- 流式预描述（SSE pre_text）：秒回的一句「正在为您绘制…」，生成完成后保留，当作这条回复的前情提要 -->
               <view wx:if="{{item.preText}}" class="pre-text">
                 <image class="pre-text__icon" src="/assets/images/ai-spark-orange.png" mode="aspectFit"></image>
-                <text class="pre-text__body" user-select>{{item.preText}}</text>
+                <text class="pre-text__body" user-select catchlongpress="noop">{{item.preText}}</text>
               </view>
 
               <!-- 生成中的图片占位（SSE progress，5→45→50→80→85→90→100）。
@@ -149,7 +154,7 @@
                     class="img-box"
                     style="padding-bottom: {{img.pad}}%"
                     catchtap="onImageTap"
-                    catchlongpress="onImageLongPress"
+                    catchlongpress="noop"
                     data-url="{{img.url}}"
                     data-id="{{item.id}}"
                     data-index="{{imgIndex}}"
@@ -165,11 +170,9 @@
                     ></image>
                   </view>
 
-                  <view
-                    wx:if="{{activeImageMessageId === item.id && activeImageIndex === imgIndex}}"
-                    class="image-actions"
-                    catchtap="noop"
-                  >
+                  <!-- 下载/投屏/删除**常驻**在每张图下方（2026-08-10 需求 7），不再靠长按唤起：
+                       长按只留给纯文字气泡（删除确认框）。 -->
+                  <view class="image-actions" catchtap="noop" catchlongpress="noop">
                     <view
                       class="image-action"
                       data-action="download"
@@ -225,28 +228,37 @@
                    之后，先出图、文字再往下续，比原来「文字在上、图从下面顶出来」更贴事件顺序。
                    ⚠️ {{item.content}} 必须紧贴标签写、不能换行缩进：<text> 组件内的空白会原样渲染，
                    换行写就等于给正文顶部平白加一个空行（2026-08-07 修）。 -->
-              <text wx:if="{{item.content}}" class="bubble-text" user-select>{{item.content}}<text wx:if="{{item.typing}}" class="caret">▍</text></text>
+              <text wx:if="{{item.content}}" class="bubble-text" user-select catchlongpress="noop">{{item.content}}<text wx:if="{{item.typing}}" class="caret">▍</text></text>
             </block>
           </view>
 
+          <!-- 长按分区（2026-08-10 需求 2）：正文 <text> 自己 catchlongpress 吃掉长按 —— 长按文字
+               只走系统选字/复制；长按气泡内边距、边缘等空白处才冒泡到 .bubble 上弹删除确认框。
+               两种交互从此不再重叠，也不再用 wx.showActionSheet（样式与其它页面的弹框统一）。 -->
           <view
             wx:elif="{{item.kind === 'text'}}"
             class="bubble bubble--user"
             bindlongpress="onBubbleLongPress"
             data-id="{{item.id}}"
           >
-            <text class="bubble-text" user-select>{{item.content}}</text>
+            <text class="bubble-text" user-select catchlongpress="noop">{{item.content}}</text>
           </view>
 
           <view
             wx:else
             class="bubble bubble--image"
             bindlongpress="onBubbleLongPress"
-            bindtap="onImageTap"
             data-id="{{item.id}}"
-            data-url="{{item.images[0].url}}"
           >
-            <view class="img-box" style="padding-bottom: {{item.images[0].pad}}%">
+            <view
+              class="img-box"
+              style="padding-bottom: {{item.images[0].pad}}%"
+              catchtap="onImageTap"
+              catchlongpress="noop"
+              data-url="{{item.images[0].url}}"
+              data-id="{{item.id}}"
+              data-index="0"
+            >
               <image
                 class="img-el"
                 src="{{item.images[0].url}}"
@@ -256,6 +268,57 @@
                 data-id="{{item.id}}"
                 data-index="0"
               ></image>
+            </view>
+
+            <!-- 用户自己发的图同样常驻三颗按钮：长按菜单撤掉后，这里是「投屏/下载」仅剩的入口 -->
+            <view class="image-actions image-actions--user" catchtap="noop" catchlongpress="noop">
+              <view
+                class="image-action"
+                data-action="download"
+                data-url="{{item.images[0].url}}"
+                data-id="{{item.id}}"
+                data-index="0"
+                bindtap="onImageActionTap"
+              >
+                <image
+                  class="image-action__icon"
+                  src="/assets/images/ai-download.png"
+                  mode="aspectFit"
+                ></image>
+                <text>下载</text>
+              </view>
+              <view class="image-actions__divider"></view>
+              <view
+                class="image-action"
+                data-action="project"
+                data-url="{{item.images[0].url}}"
+                data-id="{{item.id}}"
+                data-index="0"
+                bindtap="onImageActionTap"
+              >
+                <image
+                  class="image-action__icon"
+                  src="/assets/images/ai-project.png"
+                  mode="aspectFit"
+                ></image>
+                <text>投屏</text>
+              </view>
+              <view class="image-actions__divider"></view>
+              <view
+                class="image-action image-action--danger"
+                data-action="delete"
+                data-url="{{item.images[0].url}}"
+                data-id="{{item.id}}"
+                data-index="0"
+                bindtap="onImageActionTap"
+              >
+                <image
+                  class="image-action__icon"
+                  src="/assets/images/ai-delete-red.png"
+                  mode="aspectFit"
+                ></image>
+                <text>删除</text>
+              </view>
             </view>
           </view>
         </view>
@@ -362,7 +425,7 @@
         <input
           class="chat-input"
           value="{{inputValue}}"
-          placeholder="{{banned ? '账号已被限制' : (pendingImages.length ? '描述您想对图片做什么…' : '输入您的想法…')}}"
+          placeholder="{{banned ? '账号已被限制' : (pendingImages.length ? '描述您想对图片做什么…' : '按住说话或输入您的想法...')}}"
           disabled="{{banned || recording}}"
           confirm-type="send"
           bindinput="onInput"
@@ -380,13 +443,31 @@
         bindtouchcancel="onVoiceEnd"
       >{{recording ? (voiceCancel ? '松开取消' : '松开发送') : '按住 说话'}}</view>
 
+      <!-- 右侧那一颗按钮的三态（2026-08-10 需求 4）。三态**同一个盒子、同一张图的尺寸位置**，
+           切换时不位移：
+             · 语音模式  → 点它切回键盘，画 ai-send-active（原先是灰底「键」字占位块，UI 没同步）；
+             · 有草稿    → 发送；
+             · 空输入框  → 麦克风，点它进语音模式。 -->
       <view
-        wx:if="{{inputValue && !voiceMode}}"
+        wx:if="{{voiceMode}}"
+        class="send-image-button"
+        hover-class="quick-tool--pressed"
+        bindtap="toggleVoice"
+      >
+        <image
+          class="send-image-button__icon"
+          src="/assets/images/ai-send-active.png"
+          mode="aspectFit"
+        ></image>
+      </view>
+      <view
+        wx:elif="{{inputValue}}"
         class="send-image-button {{sending || submitting || banned ? 'send-image-button--disabled' : ''}}"
         hover-class="quick-tool--pressed"
         bindtap="onSendTap"
       >
         <image
+          class="send-image-button__icon"
           src="/assets/images/ai-send-active.png"
           mode="aspectFit"
         ></image>
@@ -397,9 +478,7 @@
         hover-class="quick-tool--pressed"
         bindtap="toggleVoice"
       >
-        <view wx:if="{{voiceMode}}" class="voice-placeholder voice-placeholder--keyboard">键</view>
         <image
-          wx:else
           class="voice-placeholder__image"
           src="/assets/images/ai-microphone.png"
           mode="aspectFit"
@@ -408,6 +487,7 @@
     </view>
 
     <view wx:if="{{showOrientationPicker}}" class="tool-popover orientation-popover" catchtap="noop">
+      <view class="orientation-popover__title">设置文生图比例</view>
       <view
         wx:for="{{orientationOptions}}"
         wx:key="key"
@@ -472,7 +552,36 @@
     </view>
   </view>
 
-  <custom-tabbar active="ai" safe-bottom="{{safeBottom}}"></custom-tabbar>
+  <!-- 底部 tabbar 已移除（2026-08-10 需求 5）：从 tabbar 进 AI 后就是「沉浸在 AI 助手里」，
+       底栏留着既遮挡对话又和顶部返回键功能重复；腾出来的 166rpx 由 .ai-root 的下内边距一并收掉，
+       输入卡片顺势下移贴到安全区。返回上一个 tab 走顶部返回键（goBack）。 -->
+
+  <!-- 删除消息确认框（2026-08-10 需求 2）：与「我的相册」删除弹窗同一套版式，
+       替换原来的 wx.showActionSheet（原生面板样式和全站弹框对不上）。 -->
+  <view
+    wx:if="{{deleteDialog.show}}"
+    class="confirm-mask"
+    catchtouchmove="noop"
+    bindtap="closeDeleteDialog"
+  >
+    <view class="confirm-dialog" catchtap="noop">
+      <view class="confirm-icon">
+        <image
+          class="confirm-icon__image"
+          src="/assets/images/ai-delete-red.png"
+          mode="aspectFit"
+        ></image>
+      </view>
+      <view class="confirm-copy">
+        <view class="confirm-title">{{deleteDialog.title}}</view>
+        <view class="confirm-desc">{{deleteDialog.desc}}</view>
+      </view>
+      <view class="confirm-actions">
+        <view class="confirm-cancel" hover-class="none" bindtap="closeDeleteDialog">取消</view>
+        <view class="confirm-primary" hover-class="none" bindtap="confirmDeleteMessage">确认</view>
+      </view>
+    </view>
+  </view>
 
   <view wx:if="{{devicePicker.show}}" class="sheet-mask" bindtap="closeDevicePicker">
     <view class="device-sheet" catchtap="noop">

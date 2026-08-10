@@ -4,7 +4,9 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  padding-bottom: calc(166rpx + var(--safe-bottom));
+  /* 原来这里留 166rpx 给底部 tabbar。tabbar 在 AI 页已移除（2026-08-10 需求 5），
+     内边距一并收掉，输入卡片就顺势下移贴到安全区 —— 需求「把当前操作对话框往下移」。 */
+  padding-bottom: var(--safe-bottom);
   overflow: hidden;
   color: #292929;
   background: #f8f5ef;
@@ -33,25 +35,34 @@
   height: var(--navigation-height);
 }
 
-/* 历史记录入口：图标 PNG(136×136) 里「看得见的白色圆角方块」只占 48.5%，四周是透明投影留白，
-   所以按 44px 画出来实际只有 ~21px，比右侧胶囊(32px)小一大截 —— 图放到 64px，
-   白块才 31px 与胶囊等高；left:4px 让白块左边缘落在 20px = 聊天区左内边距上。
-   投影往下糊，白块在画布里偏上 5.15%，所以图再下推 5.15% 自身高度，让白块（而不是图+投影）居中。
-   点击盒保持 44px 高，溢出的图 pointer-events:none，免得吃掉聊天区顶部的触摸。
-   —— 与 components/page-nav 的返回按钮同款处理，两张图几何完全一致。*/
-.history-button {
+/* 左上角按钮组：[返回][会话列表] 并排（2026-08-10 需求 5）。
+   两张图标 PNG 都是 136×136、几何完全一致（与 components/page-nav 的返回键同源）：
+   「看得见的白色圆角方块」只占画布 48.5%，四周是透明投影留白 ——
+     · 图放到 64px，白块才 31px，与右侧微信原生胶囊(32px)等高；
+     · 点击盒收到 44px 宽，两颗按钮的白块间距才是 44−31=13px（盒子 64px 宽会拉开到 33px，散架）；
+       溢出的图 pointer-events:none，只由 44px 的盒子收点击，免得吃掉聊天区顶部的触摸；
+     · 组左边距 13px → 第一个白块左边缘落在 13+(44−31)/2 ≈ 20px = 聊天区左内边距上；
+     · 投影往下糊，白块在画布里偏上 5.15%，所以图再下推 5.15% 自身高度，
+       让「白块」而不是「图+投影」上下居中。*/
+.header-buttons {
   position: absolute;
   top: 50%;
-  left: 4px;
+  left: 13px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 64px;
-  height: 44px;
   transform: translateY(-50%);
 }
 
-.history-button__image {
+.header-button {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+}
+
+.header-button__image {
   flex: 0 0 auto;
   width: 64px;
   height: 64px;
@@ -64,64 +75,30 @@
   opacity: 0.68;
 }
 
+/* 标题**屏幕正中**（2026-08-10 需求 1.3）：left/right 双 0 + margin auto 才是真居中，
+   靠「right: 某个宽度」去挤只会把中心点推偏（同 components/page-nav 的 .nav-center 注释）。
+   max-width 定死 250rpx(125px)：左边按钮组到 101px、右边微信原生胶囊从 ~281px 起，
+   居中元素两侧等距，125px 宽时占 [125,250]，两头都不碰 —— 需求「固定标题长度 超出隐藏」。
+   pointer-events 关掉：这块盖在按钮组上方，开着会让返回/会话按钮点不动。*/
 .ai-header__title {
   position: absolute;
   top: 0;
-  right: calc(var(--token-right) + 114px);
+  right: 0;
   bottom: 0;
-  left: 72px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  left: 0;
+  max-width: 250rpx;
+  margin: 0 auto;
   overflow: hidden;
   color: #111111;
   font-size: 34rpx;
   font-weight: 700;
-  line-height: 1.2;
+  /* 行高＝导航行高，就地垂直居中。⚠️ 不能改回 display:flex + align-items 居中：
+     flex 容器里的裸文本是匿名 flex item，text-overflow 对它不生效，超长标题会被硬裁没有省略号。*/
+  line-height: var(--navigation-height);
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* 高度/垂直位置 1:1 取自原生胶囊 getMenuButtonBoundingClientRect()：
-   top = 胶囊 top、height = 胶囊 height，两者严格同高同轴。
-   之前看着比胶囊「矮一截」是因为底色只有 0.76 太透 + 投影往下糊了 14px，
-   这里提高填充、收紧投影，让它读起来就是胶囊那个高度。*/
-.token-pill {
-  position: absolute;
-  top: var(--menu-offset-top);
-  right: var(--token-right);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  width: 106px;
-  height: var(--menu-height);
-  min-height: var(--menu-height);
-  padding: 0 9px;
-  border: 2rpx solid rgba(255, 255, 255, 0.94);
-  border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 4rpx 14rpx rgba(83, 73, 60, 0.1);
-  box-sizing: border-box;
-}
-
-.token-pill__icon {
-  width: 25rpx;
-  height: 25rpx;
-}
-
-.token-pill__value {
-  color: #ff6f25;
-  font-size: 28rpx;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.token-pill__unit {
-  color: #777777;
-  font-size: 22rpx;
-  line-height: 1;
+  pointer-events: none;
 }
 
 /* ==================== 聊天区 ==================== */
@@ -459,17 +436,46 @@
   }
 }
 
+/* 常驻在每张图下方（2026-08-10 需求 7），不再是长按唤起的浮层，所以去掉了投影
+   ——常驻元素带 28rpx 的投影会把每张图下面都糊出一道灰边。 */
 .image-actions {
   display: flex;
   align-items: center;
   align-self: flex-start;
-  height: 76rpx;
+  height: 68rpx;
   margin-top: 12rpx;
-  padding: 0 18rpx;
+  padding: 0 14rpx;
   border: 2rpx solid rgba(255, 255, 255, 0.92);
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 12rpx 28rpx rgba(74, 62, 46, 0.12);
+  background: rgba(255, 255, 255, 0.86);
+}
+
+/* .bubble-imgs 是 gap:14rpx 的纵向 flex：操作条再叠 margin-top 就会离**自己那张图** 26rpx、
+   离下一张图只有 14rpx，多图气泡里分不清这条属于谁。改成上边距归零、下边距补 10rpx，
+   一眼就是「贴着上面那张图」。*/
+.bubble-imgs .image-actions {
+  margin-top: 0;
+  margin-bottom: 10rpx;
+}
+
+/* 用户自己发的图气泡只有 430rpx 宽（内容区 410rpx），三颗按钮要收一收才不撑破气泡。
+   .bubble--image 是块级容器，这条自然铺满内容区，靠 space-between 把三颗按钮摊开。
+   它长在白色气泡**内部**，所以不再画自己的白底白框（白压白看不出边界），
+   改成一条顶部细分隔线，读起来就是气泡的一部分。 */
+.image-actions--user {
+  justify-content: space-between;
+  height: 64rpx;
+  margin-top: 8rpx;
+  padding: 0 6rpx;
+  border: 0;
+  border-top: 2rpx solid rgba(60, 50, 40, 0.08);
+  border-radius: 0;
+  background: transparent;
+}
+
+.image-actions--user .image-action {
+  padding: 0 8rpx;
+  font-size: 23rpx;
 }
 
 .image-action {
@@ -871,29 +877,23 @@
   height: 70rpx;
 }
 
-.send-image-button image {
-  width: 70rpx;
-  height: 70rpx;
+/* ai-send-active.png 是 141×141 的画布，实心橙圆只占中间 64px = 45.4%，其余全是外发光/投影：
+   原来图按 70rpx 画，圆实际只有 31.8rpx，比左邻的麦克风(48rpx)还小一圈 —— 需求「放大一点」。
+   图放到 114rpx，圆就是 114×45.4% ≈ 52rpx；外发光(占画布 70.2%)展开 80rpx，只比 70rpx 的
+   点击盒探出 5rpx，落在 .input-line 右侧 6rpx 内边距里，不会溢出输入条的圆角边框。
+   圆在画布里的中心是 y=63.5 而不是 70（投影往下糊），直接居中会看着偏上 ——
+   再下推 (70−63.5)/141 = 4.61% 自身高度，让「圆」而不是「圆+阴影」上下居中（需求原话）。
+   点击命中仍只认 70rpx 的盒子，溢出的发光 pointer-events:none，免得压住输入框右端。*/
+.send-image-button__icon {
+  flex: 0 0 auto;
+  width: 114rpx;
+  height: 114rpx;
+  transform: translateY(4.61%);
+  pointer-events: none;
 }
 
 .send-image-button--disabled {
   opacity: 0.42;
-}
-
-.voice-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48rpx;
-  height: 48rpx;
-  border-radius: 15rpx;
-  color: #ffffff;
-  background: #7c7c7c;
-  font-size: 20rpx;
-}
-
-.voice-placeholder--keyboard {
-  color: #ffffff;
 }
 
 .voice-placeholder__image {
@@ -913,11 +913,21 @@
 
 /* 居中对齐到方向按钮：quick-tools 是 1fr 1fr 1.35fr 1.75fr + 8rpx 间距，
    算下来第 3 格中心在距 .input-area padding box 左边 360rpx 处，
-   弹层宽 250rpx → left = 360 - 125 = 235rpx（原来写 252rpx，整体偏右 17rpx）。*/
+   left 恒等于「360 − 弹层宽/2」。2026-08-10 加了标题后弹层由 250rpx 放宽到 304rpx，
+   left 随之从 235rpx 改到 208rpx —— 改宽度必须同步改 left，否则整体偏右。*/
 .orientation-popover {
-  left: 235rpx;
-  width: 250rpx;
+  left: 208rpx;
+  width: 304rpx;
   padding: 12rpx;
+}
+
+/* 弹层标题（2026-08-10 需求 3）：「设置文生图比例」7 个字按 26rpx 约 182rpx，
+   原来 250rpx 的弹层减去 32rpx 内边距只剩 226rpx，勉强够但顶到边，所以一并放宽到 304rpx。*/
+.orientation-popover__title {
+  padding: 8rpx 16rpx 12rpx;
+  color: #2c2c2c;
+  font-size: 26rpx;
+  font-weight: 600;
 }
 
 .orientation-option {
@@ -1221,6 +1231,94 @@
   font-weight: 500;
   line-height: 84rpx;
   text-align: center;
+}
+
+/* ==================== 删除消息确认框 ====================
+   版式与 subpackages/album/list 的删除弹窗一致（图标 + 标题/说明 + 取消/确认），
+   全站弹框保持同一套观感；原来这里用的是 wx.showActionSheet 原生面板。*/
+.confirm-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48rpx;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.confirm-dialog {
+  display: grid;
+  grid-template-columns: 80rpx 1fr;
+  column-gap: 28rpx;
+  width: 100%;
+  padding: 60rpx 48rpx 40rpx;
+  border-radius: 28rpx;
+  background: #ffffff;
+  animation: consent-dialog-in 0.24s ease-out;
+}
+
+.confirm-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 18rpx;
+  background: rgba(255, 106, 32, 0.08);
+}
+
+.confirm-icon__image {
+  width: 34rpx;
+  height: 34rpx;
+}
+
+.confirm-copy {
+  min-width: 0;
+}
+
+.confirm-title {
+  color: #25282d;
+  font-size: 38rpx;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.confirm-desc {
+  margin-top: 12rpx;
+  color: #6f7782;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.confirm-actions {
+  grid-column: 1 / 3;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24rpx;
+  margin-top: 42rpx;
+  padding-left: 118rpx;
+}
+
+.confirm-cancel,
+.confirm-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72rpx;
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.confirm-cancel {
+  color: #32363c;
+  background: #eeeeee;
+}
+
+.confirm-primary {
+  color: #ffffff;
+  background: linear-gradient(180deg, #ff9140 0%, #ff6a20 100%);
 }
 
 /* ==================== AI 服务协议确认框 ==================== */

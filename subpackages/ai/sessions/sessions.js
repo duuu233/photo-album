@@ -17,13 +17,15 @@
 //    要清理一律长按逐条删（列表底部已有「长按会话可删除」提示）。
 const aiApi = require('../../../utils/ai-api')
 const aiI18n = require('../../../utils/ai-i18n')
+const aiToken = require('../../../utils/ai-token')
 const system = require('../../../utils/system')
 const toast = require('../../../utils/toast')
 const fold = require('../../../utils/fold-adapt')
 
 const PAGE_SIZE = 20
-// 删除图是 136×112 的完整圆角按钮；多留 16rpx 间距，让它像 APP 一样与滑开的卡片分离。
-const DELETE_REVEAL_RPX = 152
+// 删除图是 160×112 的完整圆角按钮；多留 16rpx 间距，让它像 APP 一样与滑开的卡片分离。
+// ⚠️ 与 sessions.wxss 的 .session-delete 宽度 + .session-track--open 位移是同一组数，改一处要改三处。
+const DELETE_REVEAL_RPX = 176
 
 const CHAT_ROUTE = 'subpackages/ai/chat/chat'
 
@@ -115,6 +117,7 @@ Page(fold.adapt({
     statusBarHeight: 20,
     safeBottom: 0,
     loading: true,
+    tokenBalance: aiToken.DEFAULT_BALANCE, // 顶部 Token 余额（与聊天页同源，见 utils/ai-token.js）
     sessions: [], // 当前已展示（分页追加）
     hasMore: false,
     currentId: '', // 聊天页当前会话，高亮标记
@@ -124,10 +127,17 @@ Page(fold.adapt({
   },
 
   onLoad(options) {
-    this.setData(Object.assign({ currentId: (options && options.current) || '' }, system.getLayoutMetrics()))
+    this.setData(Object.assign(
+      {
+        currentId: (options && options.current) || '',
+        tokenBalance: aiToken.readBalance()
+      },
+      system.getLayoutMetrics()
+    ))
     this._all = [] // 接口一次回全部，前端按 20 条/页分段展示（需求分页交互）
     this._counted = {} // sessionId → 已试过补数（不论成败只试一次，防翻页来回反复打接口）
     this._navigating = false // 在途的跳转，防连点叠出两页聊天页
+    this._deleting = false // 在途的删除，删除期间不接第二次点击（见 deleteSession）
     this._lastOpened = '' // 上次从本页打开的会话：退回本页时只重新补它的条数（它才刚变过）
     this._deleteActionWidth = getDeleteRevealWidth()
     this._swipeStart = null
@@ -142,6 +152,11 @@ Page(fold.adapt({
   // 都可能变了，所以每次重新可见都静默刷一遍。首次 onShow 紧跟 onLoad，跳过以免重复请求。
   onShow() {
     this._navigating = false
+    // 余额可能在聊天页扣过（LIMIT_ENABLED 打开后），退回本页要对齐
+    const balance = aiToken.readBalance()
+    if (balance !== this.data.tokenBalance) {
+      this.setData({ tokenBalance: balance })
+    }
     if (this.data.openedSessionId || this.data.swipingSessionId) {
       this.setData({
         openedSessionId: '',
@@ -427,7 +442,14 @@ Page(fold.adapt({
     })
   },
 
+  // 删除一条会话。接口是一次真实往返，慢的时候界面毫无反馈、用户会以为没点上而反复点
+  //（2026-08-10 需求 6）：这里加 loading 遮罩 + _deleting 闸，删除期间不再接第二次点击。
   async deleteSession(session) {
+    if (this._deleting) {
+      return
+    }
+    this._deleting = true
+    wx.showLoading({ title: '删除中', mask: true })
     try {
       await aiApi.deleteSession(session.sessionId)
       const shown = this.data.sessions.length
@@ -456,6 +478,9 @@ Page(fold.adapt({
       }
     } catch (error) {
       aiI18n.handleAiError(error)
+    } finally {
+      wx.hideLoading()
+      this._deleting = false
     }
   },
 

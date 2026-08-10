@@ -8,7 +8,22 @@
     mode="aspectFill"
   ></image>
 
-  <page-nav title="历史会话" right-text="新建" bind:righttap="createNew"></page-nav>
+  <page-nav title="历史会话" right-icon="/assets/images/ai-new-chat.png" bind:righttap="createNew"></page-nav>
+
+  <!-- Token 余额占「仅保留最近 7 天」原来那一行（2026-08-10 需求 1.1），保留提示整体下移一行。
+       余额本身与聊天页共用 utils/ai-token.js；聊天页顶栏那颗胶囊已撤（标题要屏幕居中，
+       两者在几何上放不下），所以**这里是余额唯一的展示位**。 -->
+  <view class="sessions-token">
+    <view class="token-pill">
+      <image
+        class="token-pill__icon"
+        src="/assets/images/ai-token-spark.png"
+        mode="aspectFit"
+      ></image>
+      <text class="token-pill__value">{{tokenBalance}}</text>
+      <text class="token-pill__unit">Token</text>
+    </view>
+  </view>
 
   <view wx:if="{{!loading && sessions.length}}" class="keep-tip">
     <image
@@ -41,14 +56,7 @@
         <text>{{item.groupLabel}}</text>
       </view>
 
-      <view
-        class="session-swipe"
-        data-id="{{item.sessionId}}"
-        bindtouchstart="onSessionTouchStart"
-        bindtouchmove="onSessionTouchMove"
-        bindtouchend="onSessionTouchEnd"
-        bindtouchcancel="onSessionTouchEnd"
-      >
+      <view class="session-swipe">
         <!-- 卡片和删除按钮同在一条 flex 轨道上一起位移：删除按钮排在卡片右侧的轨道外，
              由 .session-swipe 的 overflow:hidden 裁掉，没左滑就看不见。
              ⚠️ 别改回「删除按钮绝对定位垫在卡片底下」——卡片是半透明毛玻璃(0.74)，垫在
@@ -57,11 +65,18 @@
           class="session-track {{openedSessionId === item.sessionId ? 'session-track--open' : ''}} {{swipingSessionId === item.sessionId ? 'session-track--dragging' : ''}}"
           style="{{swipingSessionId === item.sessionId ? swipeTransform : ''}}"
         >
+          <!-- 左滑手势挂在**卡片**上，不再挂在 .session-swipe 整条轨道上（2026-08-10 需求 6）：
+               挂在轨道上时，手指落在已滑开的删除按钮上也会被当成新一轮滑动 —— 点按时那一两像素
+               的抖动就足以把卡片吸附回去，表现就是「删除按钮点不动」。 -->
           <view
             class="session-card {{item.sessionId === currentId ? 'session-card--current' : ''}}"
             data-id="{{item.sessionId}}"
             bindtap="onSessionTap"
             bindlongpress="onSessionLongPress"
+            bindtouchstart="onSessionTouchStart"
+            bindtouchmove="onSessionTouchMove"
+            bindtouchend="onSessionTouchEnd"
+            bindtouchcancel="onSessionTouchEnd"
           >
             <view class="session-title">{{item.title}}</view>
             <view class="session-time">{{item.timeText}}</view>
@@ -73,6 +88,7 @@
           </view>
           <view
             class="session-delete"
+            hover-class="session-delete--pressed"
             data-id="{{item.sessionId}}"
             catchtap="onSessionDeleteTap"
           >

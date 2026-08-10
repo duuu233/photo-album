@@ -21,6 +21,7 @@
 //   6 AI 气泡去头像、按屏宽铺满（用户侧气泡维持原样）。
 const aiApi = require('../../../utils/ai-api')
 const aiI18n = require('../../../utils/ai-i18n')
+const aiToken = require('../../../utils/ai-token')
 const api = require('../../../utils/api')
 const media = require('../../../utils/media')
 const system = require('../../../utils/system')
@@ -59,15 +60,9 @@ const INPUT_HOLD_MS = 350
 // 长按判定的位移容差(px)：按住期间移动超过它就当作滑动/选字，取消长按计时
 const INPUT_HOLD_MOVE_PX = 10
 
-// Token 余额 demo：支付体系（Java 后端）未接，先用本地存储模拟「余额展示 + 每次对话扣 1 + 不足拦截」，
-// 接入真实接口后把 readTokenBalance/spendToken 换成后端调用即可。
-const TOKEN_STORAGE_KEY = 'aiTokenBalanceDemo'
-const TOKEN_DEFAULT = 100
-// 2026-08-03 起先屏蔽这套限制：余额是本地假的，支付又没上线，扣满 100 次就再也发不出消息，
-// 纯粹卡住体验/测试。开关关掉后 —— 不扣费、不拦截，右上角 Token 恒显示 TOKEN_DEFAULT
-// （storage 里可能留着历史扣到 0 的旧值，一并忽略，否则会显示 0 Token 像坏了）。
-// 接后端时把它改回 true，readTokenBalance/spendToken 换成接口调用即可，其余逻辑原样还在。
-const TOKEN_LIMIT_ENABLED = false
+// Token 余额 demo 已提取到 utils/ai-token.js（2026-08-10）：会话列表页顶部也要显示同一份余额。
+// 余额展示本身已从本页顶栏移除（需求 1.3：标题要屏幕居中，Token 胶囊占着位置就居不了中），
+// 这里只剩「扣费 + 不足拦截」两处调用；LIMIT_ENABLED=false 时两处都是空操作。
 
 // 打字机（2026-07-27 优化顺滑度）。原实现是 setInterval(30ms) 每帧追 3 字 —— 30ms 一跳、
 // 一跳 3 字，肉眼能看出「一顿一顿」。现在按 ~60fps 出字、每帧尽量只追 1 字，视觉上连续得多：
@@ -254,14 +249,14 @@ const IMAGE_PAD_DEFAULT = 177.78 // 历史消息取不到方向时按默认的�
 const IMAGE_PAD_MIN = 40 // 过于扁/长的图钳一下，免得占位盒把整屏撑没了
 const IMAGE_PAD_MAX = 240
 
-// AI 页右上 Token 必须避开微信原生胶囊。把原生胶囊的实际 top/height/right 换成页面变量，
-// Token 固定放在它左侧 8px，并与它垂直居中；取不到 API 时回退到普通自定义导航尺寸。
+// AI 页顶栏要与微信原生胶囊同高同轴：把原生胶囊的实际 top/height 换成页面变量，
+// 导航行高取「胶囊上下留白 + 胶囊高」；取不到 API 时回退到普通自定义导航尺寸。
+// （2026-08-10 Token 胶囊移到会话列表页后，这里不再需要算它的右偏移。）
 function getAiLayoutMetrics() {
   const metrics = system.getLayoutMetrics()
   const fallback = Object.assign({}, metrics, {
     menuButtonOffsetTop: 6,
     menuButtonHeight: 32,
-    tokenRight: 16,
     navigationHeight: 44
   })
   if (!wx.getMenuButtonBoundingClientRect) {
@@ -269,7 +264,6 @@ function getAiLayoutMetrics() {
   }
   try {
     const rect = wx.getMenuButtonBoundingClientRect()
-    const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
     if (!rect || !(rect.left >= 0) || !(rect.height > 0)) {
       return fallback
     }
@@ -277,7 +271,6 @@ function getAiLayoutMetrics() {
     return Object.assign({}, metrics, {
       menuButtonOffsetTop: offsetTop,
       menuButtonHeight: rect.height,
-      tokenRight: Math.max(12, (info.windowWidth || rect.right) - rect.left + 8),
       navigationHeight: Math.max(44, offsetTop * 2 + rect.height)
     })
   } catch (error) {
@@ -324,14 +317,6 @@ function describeDownloadFail(err) {
     return '图片下载超时，请重试'
   }
   return '图片下载失败，请检查网络后重试'
-}
-
-function readTokenBalance() {
-  if (!TOKEN_LIMIT_ENABLED) {
-    return TOKEN_DEFAULT
-  }
-  const value = wx.getStorageSync(TOKEN_STORAGE_KEY)
-  return typeof value === 'number' ? value : TOKEN_DEFAULT
 }
 
 // 会话标题经 URL 传参进来（会话列表页 encodeURIComponent），这里解回来。
@@ -396,12 +381,13 @@ Page(fold.adapt({
     safeBottom: 0,
     menuButtonOffsetTop: 6,
     menuButtonHeight: 32,
-    tokenRight: 16,
     navigationHeight: 44,
 
     sessionId: '',
+    // 顶栏只在**有会话时**显示标题（wxml 里按 sessionId 判），默认页留空不写「新对话」。
+    // 这里仍保留默认值：会话建出来之前若已从列表带了标题，切过去就是它。
     sessionTitle: '新对话',
-    tokenBalance: TOKEN_DEFAULT,
+    tokenBalance: aiToken.DEFAULT_BALANCE,
     consentDialogVisible: false,
     consentDialogTitle: aiServiceConsent.CONSENT_TITLE,
     consentServiceDescription: aiServiceConsent.CONSENT_SERVICE_DESCRIPTION,
@@ -447,9 +433,9 @@ Page(fold.adapt({
     orientation: 'vertical', // 默认竖向（电子相框主流为竖屏）
     orientationLabel: '竖向',
 
-    // 长按 AI 图片后显示视觉稿里的「下载 / 投屏 / 删除」内联操作条。
-    activeImageMessageId: 0,
-    activeImageIndex: -1,
+    // 长按气泡空白处弹出的删除确认框（2026-08-10 需求 2）：
+    // { show, messageId(要删的消息本地 id), imageIndex(>=0 只删该张图，-1 删整条), title, desc }
+    deleteDialog: { show: false, messageId: 0, imageIndex: -1, title: '', desc: '' },
 
     // 投屏设备选择弹窗（未连接时弹出已绑定设备列表，需求「投屏流程」）
     devicePicker: { show: false, loading: false, devices: [], selectedId: '' },
@@ -462,7 +448,7 @@ Page(fold.adapt({
   },
 
   onLoad(options) {
-    this.setData(Object.assign({ tokenBalance: readTokenBalance() }, getAiLayoutMetrics()))
+    this.setData(Object.assign({ tokenBalance: aiToken.readBalance() }, getAiLayoutMetrics()))
     this._uid = 0 // 本地消息自增 id
     this._pid = 0 // 待发送图片自增 id
     this._typeTimer = null
@@ -649,8 +635,7 @@ Page(fold.adapt({
       inputValue: '',
       showOrientationPicker: false,
       showStylePicker: false,
-      activeImageMessageId: 0,
-      activeImageIndex: -1,
+      deleteDialog: { show: false, messageId: 0, imageIndex: -1, title: '', desc: '' },
       // 有可能是在某条会话「还没定位完」时被重置的（聊天页正载入时列表页把这条删了），
       // 漏了这一下招呼语就一直透明着，看着像白屏
       chatReady: true
@@ -682,8 +667,7 @@ Page(fold.adapt({
       inputValue: '',
       showOrientationPicker: false,
       showStylePicker: false,
-      activeImageMessageId: 0,
-      activeImageIndex: -1
+      deleteDialog: { show: false, messageId: 0, imageIndex: -1, title: '', desc: '' }
     })
     this.openSession(sessionId, title)
   },
@@ -814,6 +798,18 @@ Page(fold.adapt({
       })
     })
     return messages
+  },
+
+  // 顶栏返回键（2026-08-10 需求 5：AI 页去掉底部 tabbar 后，返回上一个 tab 只剩这一个出口）。
+  // 与 components/page-nav 的 handleBack 同口径：能退就退，本页是栈底（从 tabbar navigateTo 进来
+  // 且中途被重定向过等情况）就切回首页 tab —— navigateBack 在栈底是静默失败，点了没反应。
+  goBack() {
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+    if (pages.length > 1) {
+      wx.navigateBack()
+      return
+    }
+    wx.switchTab({ url: '/pages/home/home' })
   },
 
   goSessions() {
@@ -1630,9 +1626,9 @@ Page(fold.adapt({
   },
 
   // Token 权限控制 demo（文档 §5.5）：不足时弹窗引导购买并拦截 AI 调用
-  // TOKEN_LIMIT_ENABLED=false 时整条限制屏蔽，一律放行（见常量处注释）
+  // aiToken.LIMIT_ENABLED=false 时整条限制屏蔽，一律放行（见 utils/ai-token.js 注释）
   guardToken() {
-    if (!TOKEN_LIMIT_ENABLED || this.data.tokenBalance > 0) {
+    if (!aiToken.LIMIT_ENABLED || this.data.tokenBalance > 0) {
       return true
     }
     wx.showModal({
@@ -1645,12 +1641,10 @@ Page(fold.adapt({
   },
 
   spendToken() {
-    if (!TOKEN_LIMIT_ENABLED) {
-      return
+    const balance = aiToken.spend(this.data.tokenBalance)
+    if (balance !== this.data.tokenBalance) {
+      this.setData({ tokenBalance: balance })
     }
-    const balance = Math.max(0, this.data.tokenBalance - 1)
-    wx.setStorageSync(TOKEN_STORAGE_KEY, balance)
-    this.setData({ tokenBalance: balance })
   },
 
   // ==================== 工具面板 ====================
@@ -1667,15 +1661,12 @@ Page(fold.adapt({
     if (
       this.data.showTools ||
       this.data.showOrientationPicker ||
-      this.data.showStylePicker ||
-      this.data.activeImageMessageId
+      this.data.showStylePicker
     ) {
       this.setData({
         showTools: false,
         showOrientationPicker: false,
-        showStylePicker: false,
-        activeImageMessageId: 0,
-        activeImageIndex: -1
+        showStylePicker: false
       })
     }
   },
@@ -2136,60 +2127,71 @@ Page(fold.adapt({
     return touch ? touch.clientX : 0
   },
 
-  // ==================== 消息长按菜单 ====================
+  // ==================== 消息长按 / 图片操作 ====================
 
-  // 长按气泡本体：用户纯图气泡→下载/投屏/删除；其余（文字 / AI 图文气泡）→删除整条。
-  // AI 气泡里**某一张图**的长按走 onImageLongPress（在图上 catchlongpress，不冒泡到这里），
-  // 否则「图文同一个气泡」之后就没法只针对某张图下载/投屏了。
+  // 长按气泡的**空白处**（内边距、边缘）→ 删除确认框。
+  //
+  // 2026-08-10 需求 2 重做：原先长按整个气泡弹 wx.showActionSheet，而气泡里的正文又开着
+  // user-select —— 同一次长按同时触发「系统选字菜单」和「原生操作面板」，两种交互叠在一起。
+  // 现在按**区域**分工，互不重叠：
+  //   · 正文 <text> 自己 catchlongpress 吃掉长按 → 只走系统选字/复制（wxml 里那两处 catchlongpress="noop"）；
+  //   · 气泡空白处冒泡到这里 → 弹本页自绘的删除确认框（版式与「我的相册」删除弹窗一致）。
+  // 图片的下载/投屏/删除不再靠长按，改成常驻在图下方的操作条（需求 7，见 onImageActionTap）。
   onBubbleLongPress(event) {
     const id = event.currentTarget.dataset.id
     const message = this.data.messages.find(item => item.id === id)
-    if (!message || message.loading || message.typing) {
+    // 生成中的气泡不给删：请求还在途，删了本地这条也停不下服务端那边（要停用「停止生成」）
+    if (!message || message.loading || message.typing || message.streaming) {
       return
     }
-
-    const onlyImage = message.kind === 'image' && message.images.length === 1
-    const items = onlyImage ? ['下载', '投屏', '删除'] : ['删除']
-    wx.showActionSheet({
-      itemList: items,
-      success: res => {
-        const action = items[res.tapIndex]
-        if (action === '删除') {
-          this.deleteMessage(message)
-        } else if (action === '下载') {
-          this.downloadImage(message.images[0].url)
-        } else if (action === '投屏') {
-          this.projectImage(message.images[0].url)
-        }
-      }
-    })
+    this.openDeleteDialog(id, -1, '删除消息', (message.images && message.images.length)
+      ? '删除后这条消息和其中的图片都会从对话中移除，且无法恢复'
+      : '删除后这条消息会从对话中移除，且无法恢复')
   },
 
-  // 长按 AI 气泡里的单张图：展开视觉稿中的内联操作条。
-  onImageLongPress(event) {
-    const { id, index } = event.currentTarget.dataset
-    const message = this.data.messages.find(item => item.id === id)
-    if (!message || message.loading || message.typing) {
-      return
-    }
-    const image = message.images[index]
-    if (!image) {
-      return
-    }
+  // imageIndex >= 0 = 只删气泡里的那一张图；-1 = 删整条消息
+  openDeleteDialog(messageId, imageIndex, title, desc) {
     this.setData({
-      activeImageMessageId: message.id,
-      activeImageIndex: Number(index),
       showOrientationPicker: false,
-      showStylePicker: false
+      showStylePicker: false,
+      deleteDialog: { show: true, messageId, imageIndex, title, desc }
     })
   },
 
+  closeDeleteDialog() {
+    if (this.data.deleteDialog.show) {
+      this.setData({ deleteDialog: { show: false, messageId: 0, imageIndex: -1, title: '', desc: '' } })
+    }
+  },
+
+  // 确认删除。删除是一次真实往返（历史消息要逐个 message_id 打接口），
+  // 期间加 loading 遮罩挡住重复点击，与会话列表页删除同款。
+  async confirmDeleteMessage() {
+    const { messageId, imageIndex } = this.data.deleteDialog
+    const message = this.data.messages.find(item => item.id === messageId)
+    this.closeDeleteDialog()
+    if (!message) {
+      return
+    }
+    wx.showLoading({ title: '删除中', mask: true })
+    try {
+      if (imageIndex >= 0) {
+        await this.deleteBubbleImage(message, imageIndex)
+      } else {
+        await this.deleteMessage(message)
+      }
+    } finally {
+      wx.hideLoading()
+    }
+  },
+
+  // 图下方常驻操作条（需求 7）。AI 回复里的每张图、用户自己发的图气泡共用这一个入口。
+  // 删除仍要过一次确认框：按钮从「长按才出现」变成常驻后，误触一下就少一张图，代价太大。
   onImageActionTap(event) {
     const { action, url } = event.currentTarget.dataset
     const id = Number(event.currentTarget.dataset.id)
     const index = Number(event.currentTarget.dataset.index)
     const message = this.data.messages.find(item => item.id === id)
-    this.setData({ activeImageMessageId: 0, activeImageIndex: -1 })
     if (!message || !message.images[index]) {
       return
     }
@@ -2198,7 +2200,7 @@ Page(fold.adapt({
     } else if (action === 'project') {
       this.projectImage(url)
     } else if (action === 'delete') {
-      this.deleteBubbleImage(message, index)
+      this.openDeleteDialog(id, index, '删除图片', '删除后这张图片会从对话中移除，且无法恢复')
     }
   },
 
@@ -2252,11 +2254,7 @@ Page(fold.adapt({
     if (this._retryByMessage) {
       delete this._retryByMessage[id]
     }
-    const clearsImageMenu = this.data.activeImageMessageId === id
     this.setData({ messages: this.data.messages.filter(item => item.id !== id) })
-    if (clearsImageMenu) {
-      this.setData({ activeImageMessageId: 0, activeImageIndex: -1 })
-    }
   },
 
   onImageTap(event) {

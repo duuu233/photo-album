@@ -737,20 +737,22 @@ Page(fold.adapt({
     }
     wx.hideLoading()
 
-    // 4) 设备明确返回 0x12 成功后，再删除后端图库记录。
-    try {
-      await api.deleteAlbumPhotos(photoIds)
-    } catch (error) {
-      toast.warn({
-        title: (error && error.message) || '删除照片记录失败',
-        icon: 'none'
-      })
-      return
-    }
+    // 4) 【2026-08-10 暂时屏蔽】设备删成功后原本要调 delUserProductImg 删后端图库记录。
+    //    先不调，只删设备 + 投屏记录，观察后端是否已由投屏记录侧级联清理图库照片。
+    //    恢复时把下面整段放开即可（photoIds 仍在上面照常算好，未参与其它逻辑）。
+    // try {
+    //   await api.deleteAlbumPhotos(photoIds)
+    // } catch (error) {
+    //   toast.warn({
+    //     title: (error && error.message) || '删除照片记录失败',
+    //     icon: 'none'
+    //   })
+    //   return
+    // }
 
-    // 5) 最后删掉本页列表的来源——投屏成功记录。不删的话照片虽已从设备和相册消失，
+    // 5) 最后删掉本页列表的来源——投屏成功记录。不删的话照片虽已从设备消失，
     //    「我的相册」下次进来仍会把它列出来（列表就是按成功记录铺的）。
-    //    允许部分失败：设备与相册记录已经删掉，不能因为记录没删干净就整体报错回滚。
+    //    允许部分失败：设备上的图已经删掉，不能因为记录没删干净就整体报错回滚。
     let recordResult = { total: ids.length, failed: 0 }
     wx.showLoading({ title: '删除中', mask: true })
     try {
