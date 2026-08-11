@@ -75,6 +75,15 @@ try {
           userProductId: 'record-short',
           productName: '短设备ID',
           deviceId: 'C21ED428'
+        },
+        {
+          // 老记录：历史 4 字节短 ID 存在 deviceNo，完整 6 字节在 deviceId。
+          // 候选按「第一个非空」取会取到短的 → 身份归零 → 设备明明有完整 ID，
+          // 连接/OTA 仍被报「缺少完整的6字节设备ID，请删除后重新绑定」。完整值必须优先。
+          userProductId: 'record-legacy-short-first',
+          productName: '短ID在前的老记录',
+          deviceNo: 'C21ED428',
+          deviceId: 'e948c21ed42a'
         }
       ])
     const devices = await api.getDevices()
@@ -83,6 +92,9 @@ try {
     assert.strictEqual(devices[1].productDeviceId, '')
     assert.strictEqual(devices[2].productDeviceId, '')
     assert.strictEqual(devices[2].deviceIdentityInvalid, true)
+    assert.strictEqual(devices[3].productDeviceId, 'E9:48:C2:1E:D4:2A')
+    assert.strictEqual(devices[3].deviceNo, 'E9:48:C2:1E:D4:2A')
+    assert.strictEqual(devices[3].deviceIdentityInvalid, false)
   } finally {
     api.getUserProductList = originalGetUserProductList
   }

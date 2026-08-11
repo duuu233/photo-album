@@ -43,6 +43,15 @@
 登记时机：设备列表接口返回记录时、连接后 0x01 校验通过时。
 清除时机：解绑该设备 `forget(userProductId)`、退出登录 `clear()`。
 
+**凡是自己拉后端记录再发起连接的页面都必须走 `inheritStableIdentity`**：详情
+`detail.js`、设备列表 `list.js`、轮播设置 `slideshow.js`、首页 `home.js`、固件升级 `ota.js`
+（升级页 2026-08-11 补上，此前漏掉，表现为「点升级必报请删除后重新绑定」，见
+[当日变更记录](../changes/2026-08-11-OTA删除测试模块与真实升级修复.md)）。
+
+`utils/api.js normalizeDevice` 取设备 ID 时**完整 6 字节候选优先**：老记录同时带历史 4 字节
+`deviceNo` 和完整 `deviceId` 时，按「第一个非空」会取到短的并被 `canonical` 归零，等于把一台
+有完整身份的设备判成无身份。
+
 Flutter 对应实现：`flutter/lib/src/device/device_identity_registry.dart`（同语义，
 SharedPreferences 落盘）。**触发路径两端不同**：小程序是详情页 `selectedDevice` 继承落空；
 Flutter 是 `refreshDevices` 整体替换列表而 `_carryOverBleFields` 不搬 `serialNumber`，

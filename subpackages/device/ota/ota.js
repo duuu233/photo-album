@@ -67,9 +67,10 @@ function sameDevice(a, b) {
 
 function mergeSelectedDevice(device) {
   const selected = (app.globalData && app.globalData.selectedDevice) || null
+  const isSelected = sameDevice(device, selected)
   let merged = device
 
-  if (sameDevice(device, selected)) {
+  if (isSelected) {
     merged = Object.assign({}, device, {
       deviceId: device.deviceId || selected.deviceId || selected.bleDeviceId,
       bleDeviceId:
@@ -77,6 +78,13 @@ function mergeSelectedDevice(device) {
       firmwareVersion: device.firmwareVersion || selected.firmwareVersion
     })
   }
+
+  // 本页记录来自 getUserProductDetail，而详情接口不返回设备 ID：不补齐的话这条记录永远没有
+  // 完整 6 字节身份。后果不只是显示——deviceSerials 为空时 findConnectedDeviceId 直接返回 ''
+  //（设备连着也显示未连接、电量不刷），点升级还会被 ensureDeviceConnected 的身份闸报
+  //「记录缺少完整的6字节设备ID，请删除后重新绑定」，把一台好设备说成要重新绑定。
+  // 与详情/列表/首页同一套补齐链：记录自身 > selectedDevice（确认是同一台才传） > 身份登记表。
+  merged = activeDevice.inheritStableIdentity(merged, isSelected ? selected : null)
 
   // OTA 属于不可逆风险较高的设备操作，绝不能只凭 selectedDevice 里的旧 BLE 句柄判断连接。
   // 只有完整设备身份与当前详情记录一致的活动会话才可进入真实升级。

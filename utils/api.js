@@ -121,13 +121,20 @@ function normalizeDevice(device = {}) {
     device.bluetoothDeviceId,
     device.bleId
   )
-  const rawProductDeviceId = firstValue(
+  const deviceIdCandidates = [
     device.productDeviceId,
     device.deviceNo,
     device.serialNo,
     device.productSerialNo,
     bleDeviceId ? device.backendDeviceId : device.deviceId
-  )
+  ]
+  // 完整 6 字节的候选优先，不让靠前但残缺的字段把它挡掉：老记录常同时带历史 4 字节
+  // deviceNo(广播短 ID) 与完整的 deviceId，按「第一个非空」取会取到短的、canonical 归零，
+  // 于是设备明明有完整 ID，连接/升级仍被身份闸报「缺少完整的6字节设备ID，请删除后重新绑定」。
+  // 一个完整候选都没有时保持原样取第一个非空值，留给 rawProductDeviceId/deviceIdentityInvalid 排查。
+  const rawProductDeviceId =
+    deviceIdCandidates.filter(deviceIdUtil.isComplete)[0] ||
+    firstValue.apply(null, deviceIdCandidates)
   // 后端稳定设备身份只接收完整 6 字节 ID。历史 4 字节广播短 ID 保留在
   // rawProductDeviceId 便于排查，但不得继续进入匹配、展示或后续绑定链路。
   const productDeviceId = deviceIdUtil.canonical(rawProductDeviceId)
