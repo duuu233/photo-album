@@ -201,7 +201,7 @@ function buildPackage(payloadSize, overrides = {}) {
 
     const result = await otaBle.upgradeFirmware('DEV-1', {
       buffer: buildPackage(PAYLOAD_SIZE)
-    }, { pace: 0 })
+    }, { pace: 0, headerDelayMs: 0 })
 
     assert.strictEqual(result.confirmed, true)
     assert.strictEqual(result.totalPackets, TOTAL_PACKETS)
@@ -222,7 +222,7 @@ function buildPackage(payloadSize, overrides = {}) {
 
     let failed = null
     try {
-      await otaBle.upgradeFirmware('DEV-1', { buffer: buildPackage(PAYLOAD_SIZE) }, { pace: 0 })
+      await otaBle.upgradeFirmware('DEV-1', { buffer: buildPackage(PAYLOAD_SIZE) }, { pace: 0, headerDelayMs: 0 })
     } catch (error) {
       failed = error
     }
@@ -265,7 +265,7 @@ function buildPackage(payloadSize, overrides = {}) {
 
     const result = await otaBle.upgradeFirmware('DEV-1', {
       buffer: buildPackage(PAYLOAD_SIZE)
-    }, { pace: 0, headerTimeout: 200, stateResetWaitMs: 60 })
+    }, { pace: 0, headerTimeout: 120, headerDelayMs: 0, headerAttempts: 2, stateResetWaitMs: 60 })
 
     assert.strictEqual(result.confirmed, true)
     assert.strictEqual(device.sessions, 2, '第一轮头信息无应答，复位后应重来一轮')
@@ -286,7 +286,7 @@ function buildPackage(payloadSize, overrides = {}) {
     try {
       await otaBle.upgradeFirmware('DEV-1', {
         buffer: buildPackage(PAYLOAD_SIZE)
-      }, { pace: 0, headerTimeout: 200, stateResetWaitMs: 60 })
+      }, { pace: 0, headerTimeout: 120, headerDelayMs: 0, headerAttempts: 2, stateResetWaitMs: 60 })
     } catch (error) {
       failed = error
     }
@@ -306,7 +306,7 @@ function buildPackage(payloadSize, overrides = {}) {
     const reject = async (buffer, opts, pattern) => {
       let failed = null
       try {
-        await otaBle.upgradeFirmware('DEV-1', { buffer }, Object.assign({ pace: 0 }, opts))
+        await otaBle.upgradeFirmware('DEV-1', { buffer }, Object.assign({ pace: 0, headerDelayMs: 0 }, opts))
       } catch (error) {
         failed = error
       }
@@ -325,7 +325,7 @@ function buildPackage(payloadSize, overrides = {}) {
     // 合法包 + 面板对得上：照常升级，预检不能误伤
     const result = await otaBle.upgradeFirmware('DEV-1', {
       buffer: buildPackage(PAYLOAD_SIZE, { panel: 2 })
-    }, { pace: 0, expectPanel: 2, expectVersion: 'V1.0.2' })
+    }, { pace: 0, headerDelayMs: 0, expectPanel: 2, expectVersion: 'V1.0.2' })
     assert.strictEqual(result.confirmed, true)
   }
 

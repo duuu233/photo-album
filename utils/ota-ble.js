@@ -61,9 +61,11 @@ const OTA_PANELS = {
 const OBJ_TYPE_FIRMWARE = 0x00
 const DEFAULT_PRN = 3 // 信用窗口：每发这么多包等一次 DATA ACK（START ACK 里固件回 3）
 const DEFAULT_DEVICE_MTU = 251 // 设备声明支持的 MTU；真实可写量仍以协商结果为准
-// bin payload 合法范围（v1.5 §6.3：FW_SIZE 范围 0x30000 ~ 0x3C000，约 192KB ~ 240KB）。越界只告警不强拦，
-// 最终以设备应答为准。注意 v1.5 已从旧的 0x3000 更正为 0x30000。
-const MIN_FW_SIZE = 0x30000
+// bin payload 合法范围：**照规格书原文取 0x3000 ~ 0x3C000**（§6.3.3 START 请求表，v1.5 文档与
+// 2026-08-11 的文档截图两处印的都是 0x3000）。此前端上自作主张把下限"更正"成 0x30000（192KB），
+// 而现场固件的 bin payload 约 164KB —— 落在原文范围内，却被这个更正判成"超出建议范围"，
+// 每次升级都打一条误导性告警。越界一律只告警不拦，最终以设备应答（0x08 固件大小超限）为准。
+const MIN_FW_SIZE = 0x3000
 const MAX_FW_SIZE = 0x3c000
 
 // OTA 结果码 → 中文（规格书 v1.5 §6.3.2 OTA 专用码表，与图传 0x7F 通用应答码表不同！）。
@@ -1063,21 +1065,58 @@ async function transferData(session, bytes, options) {
   // 这段忙碌期不回应答是常见的。5s 曾把「设备还在准备」误判成握手失败。
   // ⚠️ 文案不要暗示「面板/型号不匹配」：那种情况设备会明确回 0x0C，能走到超时只可能是它没应答。
   const headerTimeout = Number.isFinite(options.headerTimeout) ? options.headerTimeout : 10000
-  let headerAck
-  try {
-    headerAck = await sendFrameAwaitAck(
-      session,
-      buildDataFrame(header),
-      OP.DATA,
-      headerTimeout,
-      `头信息握手超时：${Math.round(headerTimeout / 1000)}s 内未收到电子纸设备对 128 字节头信息的校验应答`
-    )
-  } catch (error) {
-    // 打上 code：此刻设备一个 payload 字节都没收下，上层可以安全地断链复位后整轮重来。
-    if (/头信息握手超时/.test((error && error.message) || '')) {
-      error.code = 'OTA_HEADER_TIMEOUT'
+  // START ACK 一回来设备就开始初始化写入区（擦 Flash），这段时间它可能顾不上收包——
+  // 无应答写（writeNoResponse）在这时被丢掉是静默的，谁都不会报错。先让它喘一口气再发头信息。
+  const headerDelay = Number.isFinite(options.headerDelayMs) ? options.headerDelayMs : 800
+  // 同一条会话内重发几次头信息。设备**按首包长度识别头信息**（§6.3.4），只要它还没收下过头信息，
+  // 重发的这一包依然会被当成头信息处理；比断链重连再来一轮便宜得多，也不用惊动用户。
+  // 代价：万一设备其实收下了、只是应答帧丢了，重发的 128 字节会被算进 bin 数据，
+  // END 的整包校验会以 0x09 暴露出来（下面据此给出提示），不会把错的固件刷进去。
+  const headerAttempts = Math.max(1, Number.isFinite(options.headerAttempts) ? options.headerAttempts : 3)
+  const headerFrame = buildDataFrame(header)
+  console.log('[OTA] 头信息握手包：', {
+    帧长: headerFrame.length, // = 1(opcode) + 128(头信息) + 1(checksum)
+    头信息字节数: header.length,
+    前12字节: bytesToHex(headerFrame.slice(0, 12))
+  })
+  if (headerDelay > 0) {
+    await sleep(headerDelay)
+  }
+  let headerAck = null
+  let headerError = null
+  for (let attempt = 1; attempt <= headerAttempts; attempt++) {
+    try {
+      headerAck = await sendFrameAwaitAck(
+        session,
+        headerFrame,
+        OP.DATA,
+        headerTimeout,
+        `头信息握手超时：${Math.round(headerTimeout / 1000)}s 内未收到电子纸设备对 128 字节头信息的校验应答`
+      )
+      break
+    } catch (error) {
+      if (!/头信息握手超时/.test((error && error.message) || '')) {
+        throw error // 连接断开等致命错误直接上抛
+      }
+      headerError = error
+      if (attempt < headerAttempts) {
+        session.headerResent = true
+        console.warn(`[OTA] 头信息第 ${attempt} 次无应答，重发（共 ${headerAttempts} 次）`)
+        emit(onProgress, {
+          phase: 'header',
+          percent: 15,
+          sent: 0,
+          total: payloadLen,
+          message: `头信息未收到应答，重发第 ${attempt + 1} 次…`
+        })
+      }
     }
-    throw error
+  }
+  if (!headerAck) {
+    // 打上 code：此刻设备一个 payload 字节都没收下，上层可以安全地断链复位后整轮重来。
+    headerError.message += `（同一连接内已重发 ${headerAttempts} 次）`
+    headerError.code = 'OTA_HEADER_TIMEOUT'
+    throw headerError
   }
   if (headerAck.result !== 0x00) {
     // 0x0A~0x0E 明确指向「包不对/头版本/面板/CRC16/版本号」——直接把设备语义透传给用户。
@@ -1178,7 +1217,13 @@ async function transferData(session, bytes, options) {
   }
 
   if (final.result !== 0x00) {
-    throw new Error('电子纸设备整包校验失败：' + otaResultText(final.result))
+    // 0x09 = total_bytes/CRC32 对不上。若本轮重发过头信息，最可能的解释是「设备其实收下了第一包、
+    // 只是应答丢了」，重发的 128 字节被算进了 bin 数据——把这条线索一并给出，免得又去查信号。
+    const hint =
+      final.result === 0x09 && session.headerResent
+        ? '（本轮重发过头信息包：若设备其实已收下第一包，重发的 128 字节会被计入 bin 数据而导致本校验失败，请重试一次）'
+        : ''
+    throw new Error('电子纸设备整包校验失败：' + otaResultText(final.result) + hint)
   }
 
   emit(onProgress, { phase: 'done', percent: 100, sent: payloadLen, total: payloadLen, message: '升级完成，电子纸设备校验通过，约 100ms 后复位运行新固件' })
