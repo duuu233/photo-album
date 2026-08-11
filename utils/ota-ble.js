@@ -1066,8 +1066,11 @@ async function transferData(session, bytes, options) {
   // ⚠️ 文案不要暗示「面板/型号不匹配」：那种情况设备会明确回 0x0C，能走到超时只可能是它没应答。
   const headerTimeout = Number.isFinite(options.headerTimeout) ? options.headerTimeout : 10000
   // START ACK 一回来设备就开始初始化写入区（擦 Flash），这段时间它可能顾不上收包——
-  // 无应答写（writeNoResponse）在这时被丢掉是静默的，谁都不会报错。先让它喘一口气再发头信息。
-  const headerDelay = Number.isFinite(options.headerDelayMs) ? options.headerDelayMs : 800
+  // FF11 只有无应答写（§6.3.2），这时丢包是静默的，谁都不会报错。先让它喘一口气再发头信息。
+  // ⚠️ 只等一小会儿(300ms)：等太久有反向风险——若固件也有「超过约 1s 没等到下一包就中断」
+  // 的口径（§6.4 图传就是 1s），长延时反而会让设备先把这轮 DFU 判死、再收到头信息就回 0x05。
+  // 「设备还在忙」那一侧交给下面的退避重发覆盖，两种可能都不押死。
+  const headerDelay = Number.isFinite(options.headerDelayMs) ? options.headerDelayMs : 300
   // 同一条会话内重发几次头信息。设备**按首包长度识别头信息**（§6.3.4），只要它还没收下过头信息，
   // 重发的这一包依然会被当成头信息处理；比断链重连再来一轮便宜得多，也不用惊动用户。
   // 代价：万一设备其实收下了、只是应答帧丢了，重发的 128 字节会被算进 bin 数据，
@@ -1082,45 +1085,70 @@ async function transferData(session, bytes, options) {
   if (headerDelay > 0) {
     await sleep(headerDelay)
   }
+  const headerRetryDelay = Number.isFinite(options.headerRetryDelayMs)
+    ? options.headerRetryDelayMs
+    : 1500
   let headerAck = null
   let headerError = null
   for (let attempt = 1; attempt <= headerAttempts; attempt++) {
+    if (attempt > 1) {
+      session.headerResent = true
+      // 退避重发：设备刚说「状态不对」或干脆没应答，多半还没从上一轮 DFU / 擦写忙态里出来，
+      // 立刻重发只会再撞一次。等一等再来，一次比一次久。
+      await sleep(headerRetryDelay * (attempt - 1))
+      emit(onProgress, {
+        phase: 'header',
+        percent: 15,
+        sent: 0,
+        total: payloadLen,
+        message: `头信息未通过，重发第 ${attempt} 次…`
+      })
+    }
+
+    let ack = null
     try {
-      headerAck = await sendFrameAwaitAck(
+      ack = await sendFrameAwaitAck(
         session,
         headerFrame,
         OP.DATA,
         headerTimeout,
         `头信息握手超时：${Math.round(headerTimeout / 1000)}s 内未收到电子纸设备对 128 字节头信息的校验应答`
       )
-      break
     } catch (error) {
       if (!/头信息握手超时/.test((error && error.message) || '')) {
         throw error // 连接断开等致命错误直接上抛
       }
+      console.warn(`[OTA] 头信息第 ${attempt} 次无应答（共 ${headerAttempts} 次）`)
       headerError = error
-      if (attempt < headerAttempts) {
-        session.headerResent = true
-        console.warn(`[OTA] 头信息第 ${attempt} 次无应答，重发（共 ${headerAttempts} 次）`)
-        emit(onProgress, {
-          phase: 'header',
-          percent: 15,
-          sent: 0,
-          total: payloadLen,
-          message: `头信息未收到应答，重发第 ${attempt + 1} 次…`
-        })
-      }
+      continue
     }
+
+    if (ack.result === 0x00) {
+      headerAck = ack
+      break
+    }
+    if (ack.result === 0x05) {
+      // 「设备状态错误」说的是**此刻不能受理**，不是「这个包不对」——包不对是 0x0A~0x0E。
+      // 属于可重试：等设备从忙态/上一轮 DFU 状态里出来再发一次。
+      console.warn(`[OTA] 头信息第 ${attempt} 次被回 0x05（设备状态错误），退避后重发：`, ack.rawHex)
+      headerError = new Error(
+        '头信息校验未通过：' + otaResultText(0x05) + `（ACK=${ack.rawHex}）`
+      )
+      continue
+    }
+    // 0x0A~0x0E 明确指向「包不对/头版本/面板/CRC16/版本号」：重发一万次也一样，
+    // 直接把设备语义透传给用户。
+    throw new Error(
+      '头信息校验未通过：' +
+        otaResultText(ack.result) +
+        (ack.rawHex ? `（ACK=${ack.rawHex}）` : '')
+    )
   }
   if (!headerAck) {
     // 打上 code：此刻设备一个 payload 字节都没收下，上层可以安全地断链复位后整轮重来。
-    headerError.message += `（同一连接内已重发 ${headerAttempts} 次）`
-    headerError.code = 'OTA_HEADER_TIMEOUT'
+    headerError.message += `（同一连接内已发 ${headerAttempts} 次头信息）`
+    headerError.code = 'OTA_HEADER_STUCK'
     throw headerError
-  }
-  if (headerAck.result !== 0x00) {
-    // 0x0A~0x0E 明确指向「包不对/头版本/面板/CRC16/版本号」——直接把设备语义透传给用户。
-    throw new Error('头信息校验未通过：' + otaResultText(headerAck.result))
   }
 
   // ── 步骤 4：后续 bin payload，PRN 信用窗口 ──
@@ -1369,11 +1397,11 @@ const DFU_STATE_RESET_WAIT_MS = 3000 // 断链后留给设备退出 DFU 状态�
 // 「设备侧 OTA 状态没复位」的两种表现，共同点是**一个 payload 字节都还没被设备收下**，
 // 因此整轮从 START 重来是安全的（START 本身会重置设备的写入区与 total_bytes）：
 //   · START 被回 0x05：上一轮 DFU 半途中断，状态机还停在升级态；
-//   · 头信息握手无应答：START 应答正常，却不回 128 字节头信息的校验结果。
-//     ——规格书 §8 步骤 2 明确设备要回 ACK；面板/型号/CRC 不对是回 0x0A~0x0E，
-//     不应答只可能是设备端状态没复位。
+//   · 头信息握手过不去（无应答，或一直被回 0x05 设备状态错误）：START 应答正常，
+//     却收不下这 128 字节头信息。——规格书 §8 步骤 2 明确设备要回 ACK；
+//     面板/型号/CRC 不对是回 0x0A~0x0E，所以「不应答」和「0x05」都只能是设备端状态没复位。
 function isWedgedDfuSession(error) {
-  return isStuckDfuState(error) || !!(error && error.code === 'OTA_HEADER_TIMEOUT')
+  return isStuckDfuState(error) || !!(error && error.code === 'OTA_HEADER_STUCK')
 }
 
 function wedgedRetryError(error) {
@@ -1384,10 +1412,16 @@ function wedgedRetryError(error) {
         '）。请把电子纸设备断电重启后再试。'
     )
   }
-  if (error && error.code === 'OTA_HEADER_TIMEOUT') {
+  if (error && error.code === 'OTA_HEADER_STUCK') {
+    const rejected = /状态错误/.test((error && error.message) || '')
     return new Error(
-      '头信息握手无应答：电子纸设备接受了 START，却两次都没有回复 128 字节头信息的校验结果。' +
-        '请把电子纸设备断电重启后再试（升级包与面板/型号不匹配时设备会明确回 0x0C，而不是不应答）。'
+      rejected
+        ? '电子纸设备一直报「设备状态错误」：它接受了 START，却在两轮连接、多次重发里始终不肯受理' +
+          ' 128 字节头信息，说明设备端的 OTA 状态没有复位。请把电子纸设备断电重启后再试。' +
+          '（升级包本身不对时设备会回 0x0A~0x0E，而不是 0x05。）'
+        : '头信息握手无应答：电子纸设备接受了 START，却在两轮连接、多次重发里都没有回复' +
+          ' 128 字节头信息的校验结果。请把电子纸设备断电重启后再试' +
+          '（升级包与面板/型号不匹配时设备会明确回 0x0C，而不是不应答）。'
     )
   }
   return error

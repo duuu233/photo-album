@@ -45,6 +45,10 @@ function createFakeDevice(options = {}) {
     dropTailPacket: !!options.dropTailPacket, // 模拟收尾真丢包：END 必须报 0x09
     silentHeaderInSession: options.silentHeaderInSession || 0, // 第 N 轮 DFU 不应答头信息
     silentHeaderAlways: !!options.silentHeaderAlways, // 每一轮都不应答头信息
+    // 头信息前 N 次回 0x05「设备状态错误」（忙态/上一轮 DFU 没退出），之后才正常受理
+    busyHeaderTimes: options.busyHeaderTimes || 0,
+    busyHeaderAlways: !!options.busyHeaderAlways,
+    headerRejects: 0,
     sessions: 0,
     startAcks: 0,
     endResult: null
@@ -87,6 +91,11 @@ function installFakeBle(device) {
       if (!device.headerSeen) {
         if (device.silentHeaderAlways || device.sessions === device.silentHeaderInSession) {
           return // 设备状态没复位：START 应答了，却不回头信息校验结果
+        }
+        if (device.busyHeaderAlways || device.headerRejects < device.busyHeaderTimes) {
+          device.headerRejects += 1
+          notify(withChecksum([0xfc, 0xf2, 0x05])) // 此刻不能受理：状态错误
+          return
         }
         device.headerSeen = true
         assert.strictEqual(dataLen, HEADER_SIZE, '首个 DATA 包必须是 128 字节头信息')
@@ -154,6 +163,7 @@ function installFakeBle(device) {
       handleFrame(bytes)
     }
   }
+  global.__otaListeners = listeners // 个别用例要自己塞一帧应答
   return listeners
 }
 
@@ -295,7 +305,91 @@ function buildPackage(payloadSize, overrides = {}) {
     assert.strictEqual(device.sessions, 2, '只重试一轮，不无限重来')
   }
 
-  // ⑥ 传错文件/下载截断/刷错面板：必须在发第一帧之前就本地拦住（刷错固件不可逆），
+  // ⑥ 头信息被回 0x05「设备状态错误」：这是「此刻不能受理」不是「包不对」（包不对回 0x0A~0x0E），
+  //    退避重发即可自愈，不该当场判死让用户去重刷。
+  {
+    const device = createFakeDevice({
+      expectedPayload: PAYLOAD_SIZE,
+      busyHeaderTimes: 2 // 前两次忙，第三次才受理
+    })
+    installFakeBle(device)
+    delete require.cache[require.resolve('../utils/ota-ble')]
+    const otaBle = require('../utils/ota-ble')
+
+    const result = await otaBle.upgradeFirmware('DEV-1', {
+      buffer: buildPackage(PAYLOAD_SIZE)
+    }, { pace: 0, headerDelayMs: 0, headerRetryDelayMs: 20, headerAttempts: 3 })
+
+    assert.strictEqual(result.confirmed, true)
+    assert.strictEqual(device.headerRejects, 2)
+    assert.strictEqual(device.sessions, 1, '同一连接内重发即可，不必断链重来')
+  }
+
+  // ⑦ 一直回 0x05：两轮连接都过不去，提示必须指向「断电重启」，且说清是设备状态而不是包不对
+  {
+    const device = createFakeDevice({
+      expectedPayload: PAYLOAD_SIZE,
+      busyHeaderAlways: true
+    })
+    installFakeBle(device)
+    delete require.cache[require.resolve('../utils/ota-ble')]
+    const otaBle = require('../utils/ota-ble')
+
+    let failed = null
+    try {
+      await otaBle.upgradeFirmware('DEV-1', {
+        buffer: buildPackage(PAYLOAD_SIZE)
+      }, { pace: 0, headerDelayMs: 0, headerRetryDelayMs: 20, headerAttempts: 2, stateResetWaitMs: 60 })
+    } catch (error) {
+      failed = error
+    }
+    assert.ok(failed, '一直状态错误必须失败')
+    assert.ok(/断电重启/.test(failed.message), failed.message)
+    assert.ok(/状态/.test(failed.message), failed.message)
+    assert.strictEqual(device.sessions, 2, '断链复位整轮重来一次后收手')
+  }
+
+  // ⑧ 头信息回 0x0A~0x0E（包本身不对）：立即停止，不许重发浪费时间，也不许被复位逻辑接管
+  {
+    const device = createFakeDevice({ expectedPayload: PAYLOAD_SIZE })
+    installFakeBle(device)
+    delete require.cache[require.resolve('../utils/ota-ble')]
+    const otaBle = require('../utils/ota-ble')
+    const original = global.wx.writeBLECharacteristicValue
+    global.wx.writeBLECharacteristicValue = params => {
+      const bytes = Array.from(new Uint8Array(params.value))
+      if (bytes[0] === 0xf2 && !device.headerSeen) {
+        device.headerSeen = true
+        params.success({})
+        setTimeout(() => {
+          const listeners = global.__otaListeners
+          listeners.value({
+            deviceId: 'DEV-1',
+            serviceId: SERVICE_UUID,
+            characteristicId: CONTROL_UUID,
+            value: toArrayBuffer(withChecksum([0xfc, 0xf2, 0x0c])) // 固件类型与面板不匹配
+          })
+        }, 0)
+        return
+      }
+      return original(params)
+    }
+
+    let failed = null
+    try {
+      await otaBle.upgradeFirmware('DEV-1', {
+        buffer: buildPackage(PAYLOAD_SIZE)
+      }, { pace: 0, headerDelayMs: 0, headerRetryDelayMs: 20, headerAttempts: 3, stateResetWaitMs: 60 })
+    } catch (error) {
+      failed = error
+    }
+    global.wx.writeBLECharacteristicValue = original
+    assert.ok(failed, '包不对必须失败')
+    assert.ok(/固件类型与面板不匹配/.test(failed.message), failed.message)
+    assert.strictEqual(device.sessions, 1, '确定性拒绝不该触发复位重来')
+  }
+
+  // ⑨ 传错文件/下载截断/刷错面板：必须在发第一帧之前就本地拦住（刷错固件不可逆），
   //    且提示要说清是哪一种，不能笼统报「升级失败」。
   {
     const device = createFakeDevice({ expectedPayload: PAYLOAD_SIZE })
