@@ -793,6 +793,7 @@ function applyStartAck(session, ack) {
         (ack.rawHex ? `（ACK=${ack.rawHex}）` : '')
     )
     rejected.code = 'OTA_START_REJECTED'
+    rejected.result = ack.result // 供上层识别 0x05「设备状态错误」并做复位重试
     throw rejected
   }
 
@@ -961,6 +962,10 @@ async function transferData(session, bytes, options) {
     }
 
     const batchEnd = Math.min(seq + prn, totalPackets)
+    // 收尾不足一个信用窗口的那一批：设备按 PRN 每收满 prn 包才回一次 ACK，最后凑不满窗口的
+    // 1~2 包本来就等不到 DATA ACK。673 包 / PRN=3 时最后一窗只有 1 包，现场表现正是
+    // 「已发送 673/673 包后，设备未在 1.5s 内应答（疑似丢包）」——数据其实已全部发出。
+    const isTailWindow = batchEnd === totalPackets && batchEnd - seq < prn
     session.ackInbox = []
     for (let k = seq; k < batchEnd; k++) {
       const chunk = payload.subarray(k * chunkSize, Math.min((k + 1) * chunkSize, payloadLen))
@@ -977,13 +982,22 @@ async function transferData(session, bytes, options) {
       ack = await waitAck(session, OP.DATA, 1500)
     } catch (error) {
       if (error.message === 'OTA_ACK_TIMEOUT') {
-        throw new Error(
-          `OTA 传输中断：已发送 ${batchEnd}/${totalPackets} 包后，电子纸设备未在 1.5s 内应答（疑似丢包），请重试整个升级`
-        )
+        if (isTailWindow) {
+          // 收尾窗口的 ACK 一律按「可选」处理，直接进 END：整包完不完整由 END(0xF3) 的
+          // total_bytes == bin_size 与 CRC32 校验裁决（不匹配设备回 0x09），真丢包一样会被抓住，
+          // 不会因为放过这次等待而误报升级成功。
+          console.warn('[OTA] 收尾窗口未收到 DATA ACK（不足一个 PRN 窗口，属预期），继续发送结束包')
+          ack = null
+        } else {
+          throw new Error(
+            `OTA 传输中断：已发送 ${batchEnd}/${totalPackets} 包后，电子纸设备未在 1.5s 内应答（疑似丢包），请重试整个升级`
+          )
+        }
+      } else {
+        throw error
       }
-      throw error
     }
-    if (ack.result !== 0x00) {
+    if (ack && ack.result !== 0x00) {
       throw new Error('电子纸设备接收数据报错：' + otaResultText(ack.result))
     }
 
@@ -1154,15 +1168,24 @@ function prefixDeviceError(error) {
 // upgradeFirmware(deviceId, pkg, options)
 //   pkg:     { packageUrl | localPath | inlineBase64, sizeBytes?, checksum?, version? }
 //   options: { onProgress(patch), shouldAbort(), pace?, objType?, startTimeout?, finalTimeout? }
+// 设备 DFU 状态机停在上一次没走完的升级里：START 会被回 0x05「设备状态错误」。
+// 复用同一条 GATT 连接再怎么重发都是 0x05，必须先把链路断掉让设备复位。
+function isStuckDfuState(error) {
+  return !!(error && error.code === 'OTA_START_REJECTED' && error.result === 0x05)
+}
+
+const DFU_STATE_RESET_WAIT_MS = 3000 // 断链后留给设备退出 DFU 状态的时间
+
 async function upgradeFirmware(deviceId, pkg, options = {}) {
   const onProgress = options.onProgress
+  const shouldAbort = typeof options.shouldAbort === 'function' ? options.shouldAbort : () => false
 
   // 真机 DFU：读包 + 握手 + 传输全程与设备/蓝牙交互，出错统一补「设备-」前缀（OTA_ABORTED 等内部信号除外）。
   try {
     const prepared = await prepareFirmware(pkg, options)
 
     emit(onProgress, { phase: 'connecting', percent: 12, message: '连接 OTA 服务(FF10)' })
-    const session = await ensureOtaConnection(deviceId)
+    let session = await ensureOtaConnection(deviceId)
 
     emit(onProgress, {
       phase: 'starting',
@@ -1170,11 +1193,55 @@ async function upgradeFirmware(deviceId, pkg, options = {}) {
       message: `握手中（MTU ${session.mtu}）`
     })
     // START 携带 FW_SIZE = bin payload 大小（文件大小 - 128 头，见 computeFwSize）。
-    await doStart(session, prepared.payloadSize, options)
+    try {
+      await doStart(session, prepared.payloadSize, options)
+    } catch (error) {
+      if (!isStuckDfuState(error) || shouldAbort()) {
+        throw error
+      }
+      // 上一轮升级中断后设备还停在 DFU 状态：断链 → 等它复位 → 重连重发 START，
+      // 让用户「再点一次升级」就能自愈，而不是从此每次都被 0x05 挡住、只能去重启设备。
+      console.warn('[OTA] START 被回 0x05（设备仍在上一次 DFU 状态），断链复位后重试一次')
+      emit(onProgress, {
+        phase: 'starting',
+        percent: 13,
+        message: '电子纸设备仍停在上一次升级状态，正在断开复位后重试…'
+      })
+      disconnect(deviceId)
+      await sleep(
+        Number.isFinite(options.stateResetWaitMs)
+          ? options.stateResetWaitMs
+          : DFU_STATE_RESET_WAIT_MS
+      )
+      if (shouldAbort()) {
+        throw new Error('OTA_ABORTED')
+      }
+      session = await ensureOtaConnection(deviceId)
+      try {
+        await doStart(session, prepared.payloadSize, options)
+      } catch (retryError) {
+        if (isStuckDfuState(retryError)) {
+          throw new Error(
+            'OTA 启动被拒绝：电子纸设备仍停在上一次未完成的升级状态（' +
+              otaResultText(0x05) +
+              '）。请把电子纸设备断电重启后再试。'
+          )
+        }
+        throw retryError
+      }
+    }
 
     const result = await transferData(session, prepared.bytes, Object.assign({}, options, { crc32: prepared.crc32 }))
     return Object.assign({ size: prepared.size, crc32: prepared.crc32 }, result)
   } catch (error) {
+    // 失败/中断后必须断开 OTA 链路：设备的 DFU 状态机停在半途，留着同一条连接再 START 必被回
+    // 0x05「设备状态错误」——现场实测就是第一次传输超时后，之后每次点升级都是 0x05。
+    // 断链让设备自行复位；下次升级由 ota.js 的 ensureConnectedDevice 重新扫连。
+    try {
+      disconnect(deviceId)
+    } catch (closeError) {
+      // 连接已经没了，忽略
+    }
     throw prefixDeviceError(error)
   }
 }
