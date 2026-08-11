@@ -99,16 +99,25 @@ Page({
     }
 
     try {
-      const [userInfo, devices, castSuccessCount, favoriteCount, tokenAccount] = await Promise.all([
+      const [userInfo, devices, castSuccessCount, favoriteCount] = await Promise.all([
         api.getUserProfile(),
         api.getDevices(),
         api.getProjectionSuccessCount(),
-        // ⚠️ 收藏数仍来自本地 mock（gallery-api），后端接口尚未提供；Token 余额已走真实接口
-        // （/Client/Order/getUserAccount）。两者都做了自身的失败兜底，不让它们把整个
-        // Promise.all 拖挂——用户信息才是这页的主数据。
-        galleryApi.getFavoriteCount().catch(() => 0),
-        tokenApi.getAccount().catch(() => ({ balance: 0 }))
+        // ⚠️ 收藏数仍来自本地 mock（gallery-api），后端接口尚未提供。它做了自身的失败兜底，
+        // 不让它把整个 Promise.all 拖挂——用户信息才是这页的主数据。
+        galleryApi.getFavoriteCount().catch(() => 0)
       ])
+
+      // Token 余额（2026-08-11 接口对账）：`getUserInfo` 的出参已带 `availableToken`，
+      // 本页不再固定多打一次 `/Client/Order/getUserAccount`。
+      // 只有该字段缺失（null = 老后端灰度期没下发）才回退查账户；余额真的是 0 时照常显示 0。
+      let tokenBalance = userInfo.availableToken
+      if (tokenBalance === null || tokenBalance === undefined) {
+        tokenBalance = await tokenApi
+          .getAccount({ showError: false })
+          .then(account => (account && account.balance) || 0)
+          .catch(() => 0)
+      }
       const displayUserId = userInfo.id || userInfo.userNo || '--'
       const displayName = displayNickname(userInfo.nickName) || '微信用户'
       this._mineLoaded = true
@@ -122,7 +131,7 @@ Page({
         photoCount: castSuccessCount,
         deviceCount: Number(userInfo.productCount) || devices.length,
         favoriteCount,
-        tokenBalance: (tokenAccount && tokenAccount.balance) || 0
+        tokenBalance
       })
     } catch (error) {
       // 失败保留上次成功值：弱网切到「我的」页把照片/设备数清零，用户会误以为数据没了。

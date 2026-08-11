@@ -83,6 +83,18 @@ function imgIndexParam(value) {
   return Number.isInteger(index) && index >= 0 ? String(index) : undefined
 }
 
+// 可用 Token 余额（2026-08-11 起后端在 UserInfoApiOut / UserInfoDetailApiOut 里下发，String 类型）。
+// ⚠️ 必须区分「后端没给这个字段」和「余额真的是 0」：
+//    前者返回 null，调用方据此回退去调 /Client/Order/getUserAccount（灰度期间老后端仍可能不下发）；
+//    后者是合法的 0，绝不能被当成缺失去多打一次接口，更不能显示成上一次的旧余额。
+function normalizeAvailableToken(value) {
+  if (value === undefined || value === null || value === '') {
+    return null
+  }
+  const number = Number(value)
+  return Number.isFinite(number) ? Math.max(0, number) : null
+}
+
 function normalizeUserProfile(user = {}) {
   return {
     id: firstValue(user.userNo, user.userId, user.id),
@@ -95,6 +107,8 @@ function normalizeUserProfile(user = {}) {
     phone: firstValue(user.userMobile, user.phone, ''),
     imgCount: normalizeNumber(user.imgCount, 0),
     productCount: normalizeNumber(user.productCount, 0),
+    // 可用 Token 余额；null = 本次响应没带这个字段（见 normalizeAvailableToken）
+    availableToken: normalizeAvailableToken(user.availableToken),
     userToken: user.userToken || ''
   }
 }

@@ -128,13 +128,18 @@ FC F3 RESULT CHECKSUM
 
 ## 小程序端入口
 
-- 设备详情页「固件升级」行：`detail.js goOtaUpgrade` —— 检测版本 → 二次确认 → 进升级页；
-  长按走 `goOtaTest` 本地固件测试流程。
-- 设备详情页「OTA测试升级」行：`detail.js startOtaTest` —— 用详情接口下发的 `downloadPath`
-  边下边走 DFU（未连接则干跑），全程逐帧打印到 console。**属调试入口，发版前可按需隐藏。**
+- 设备详情页「固件升级」行：`detail.js goOtaUpgrade` —— 检测版本（**走后端接口，不需要蓝牙**）
+  → 有新版本弹二次确认 → 「立刻更新」经 `enterOtaUpgrade` 确保连上设备后进升级页（`auto=1`）。
 - 启动强制升级拦截：`app.js checkForcedFirmwareUpgrade` —— 选中设备 `upgradeMode === 'force'`
   时弹窗阻断，「稍后」关闭小程序 /「立刻更新」进升级页。
-- 升级页：`subpackages/device/ota/ota.js`（`auto=1` 自动开始，`test=1` 本地测试，`dry=1` 强制干跑）。
+- 升级页：`subpackages/device/ota/ota.js`，唯一入参 `auto=1`（进页面自动开始）。
+  升级前若未连接会**就地自动扫连**（`ensureConnectedDevice` → `activeDevice.ensureConnectedForAction`），
+  连不上如实提示并保留「连接并升级」重试。
+
+> 2026-08-11 **测试入口整套删除**：详情页「OTA测试升级」行、「固件升级」长按的本地固件测试
+> （`goOtaTest`/`startOtaTest`）、升级页的 `test=1`/`dry=1` 参数、`ota-ble.dryRunFirmware` 与
+> `mockFirmwareBuffer` 全部移除。真机 DFU 只此一条路：详情页「固件升级」→「立刻更新」。
+> 见 [2026-08-11 OTA 删除测试模块与真实升级修复](../changes/2026-08-11-OTA删除测试模块与真实升级修复.md)。
 
 ## 历史来源
 

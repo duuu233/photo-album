@@ -16,12 +16,12 @@
 ## 操作日志（最新在上）
 - **2026-08-08**：**支付体系（Token）由 mock 切到真实后端，微信支付走小程序虚拟支付**。
   新增章节「支付体系（Token）」，接入 `/Client/Order/getUserAccount`、`getGoodsList`、
-  `getUserAccountTrade`、`addOrder` 与 `/Client/Pay/getWxVirtualPayQueryOrder`；
+  `getUserAccountTrade`、`addOrder` 与支付查单（2026-08-11 改为 `/Client/Pay/getPayQuery`）；
   新增 `utils/wx-virtual-pay.js` 封装 `wx.requestVirtualPayment`，`utils/token-api.js` 全量改写
   （`createOrder` → `purchase`，`getRecords` 改为分页返回 `{list,hasMore,pageIndex}`）。
   到账判据是**服务端余额变多**（退避轮询 ~9.4s），不是支付 success 回调。
   记录页补上拉翻页（后端默认一页 10 条，不翻页等于记录只显示第一页）。
-  ⚠️ `addOrder` 出参还缺 `signData`/`paySig`/`signature`，见该章节末尾的待办。
+  ~~⚠️ `addOrder` 出参还缺 `signData`/`paySig`/`signature`~~ → 2026-08-11 核对：后端已补齐。
   关联：`utils/token-api.js`、`utils/wx-virtual-pay.js`、`subpackages/token/*`、
   `tests/token-pay.test.js`。详见 `docs/changes/2026-08-08-微信虚拟支付对接.md`。Flutter 未同步。
 - **2026-08-05**：「我的」页「我的相册」卡片的张数改为**全部设备的投屏成功记录条数**，与该页列表同口径
@@ -183,22 +183,21 @@
 | Token管理 | 账户概览 | `GET /Client/Order/getUserAccount` | ✅ | `getAccount` | 出参 `availableToken`/`totalToken`/`consumeToken` 均为 **String**，端上归一为数字 `balance`/`totalPurchased`/`totalSpent` |
 | Token管理 | 商品（套餐）列表 | `GET /Client/Order/getGoodsList` | ✅ | `getPackages` | 出参 `goodsId`/`num`/`giveNum`/`amount`/`wxProductId`/`appleProductId`。`wxProductId` 即微信侧道具 id，**由服务端签进 signData**，端上不直接使用。`unitPrice`(integer) 端上不用，单价按「含赠送总数」自算 |
 | Token管理 | 购买 & 消费记录 | `GET /Client/Order/getUserAccountTrade` | ✅ | `getRecords` | `inOutType` 1=购买 2=消费；分页 `pageIndex`/`pageSize`，判停优先 `pageCount`。出参**无主键**，wx:key 由端上按「类型+页码+下标」拼 |
-| 确认购买 | 创建订单 | `POST /Client/Order/addOrder` | ✅ | `addOrder` | 入参 `goodsId` + `payType`(1=微信支付 2=IOS内购 3=payPal)。⚠️ 出参需补虚拟支付签名参数，见下 |
+| 确认购买 | 创建订单 | `POST /Client/Order/addOrder` | ✅ | `addOrder` | 入参 `goodsId` + `payType`(1=微信支付 2=IOS内购 3=payPal)；`device`/`terminal`/`language`/`userToken` 走 header。出参 `amount`/`orderId`/`orderNo` + **`signData`/`paySig`/`signature`**（2026-08-11 核对：后端已补齐，08-08 记的缺口关闭） |
 | 确认购买 | 拉起支付 | `wx.requestVirtualPayment`（端能力） | ✅ | `purchase` | 只传微信文档列出的 `mode`/`signData`/`paySig`/`signature`；`env`、`offerId`、`productId`、`outTradeNo` 都在 signData 内 |
-| 确认购买 | 查微信侧订单 | `GET /Client/Pay/getWxVirtualPayQueryOrder` | ✅ | `queryVirtualPayOrder` | 兜底用：余额轮询超时后查一次 `payStatus`(1=已支付)，把提示分成「稍后到账」和「结果确认中」 |
+| 确认购买 | 查支付侧订单 | `GET /Client/Pay/getPayQuery` | ✅ | `queryPayOrder` | 兜底用：余额轮询超时后查一次。入参 `payType` + **`orderNo`（我们平台的订单号）**，出参 `payState`/`payNo`/`exceptionMsg`。⚠️ 2026-08-11 核对：原先调的 `getWxVirtualPayQueryOrder` **在当前 swagger 里已不存在**，字段也由 `payStatus` 改名 `payState`；`payState` 的枚举文档未给，端上沿用「1=已支付」判定，待后端明确 |
 | — | 虚拟支付-扣减代币 | `POST /Client/Pay/setWxVirtualPay` | ⛔ | - | 代币模式（`short_series_coin`）的**服务端**接口，端上不调 |
 | — | 虚拟支付-余额/取消/退款 | `GET /Client/Pay/getWxVirtualPayBalance`、`POST /Client/Pay/setWxVirtualPayCancel`、`POST /Client/Pay/setWxVirtualPayRefund` | ⛔ | - | 服务端/客服侧使用 |
 | — | Apple Pay 三件套 | `/Client/Pay/setApplePayVerify*`、`getApplePayQuery*` | ⛔ | - | iOS APP 内购专用，属 Flutter 端 |
-| — | 支付查询 | `GET /Client/Pay/getPayQuery` | ⛔ | - | `payType` 只有 WxPay=1/AliPay=2，不覆盖虚拟支付；虚拟支付查单用 `getWxVirtualPayQueryOrder` |
+| — | 用户信息 / 登录 | `GET /Client/User/getUserInfo`、`POST /Client/User/setWechatAppLogin` | ✅ | `api.getUserProfile` / `app.applyWechatSession` | 出参新增 **`availableToken`(String，可用 Token 数)**：「我的」页与 AI 模块直接取它，不必再固定打一次 `getUserAccount`。⚠️ 端上按 `null`=未下发 / `0`=真的没余额 区分，缺失才回退查账户 |
 
-⚠️ **待后端补齐（当前唯一阻塞项）**：`addOrder` 的出参 `ClientAddOrderApiOut` 目前只有
-`amount`/`orderId`/`orderNo`，缺 `signData` / `paySig` / `signature`（可选带 `mode`、`env`、`offerId`）。
-这三个值只能服务端算——`paySig` 要虚拟支付 `appKey`、`signature` 要 `session_key`，都是服务端秘密：
+✅ **2026-08-11 已关闭**：`addOrder` 的出参 `ClientAddOrderApiOut` 现已包含
+`signData` / `paySig` / `signature`（连同 `amount`/`orderId`/`orderNo`）。这三个值只能服务端算——
+`paySig` 要虚拟支付 `appKey`、`signature` 要 `session_key`，都是服务端秘密：
 
 ```
 paySig    = hex(hmac_sha256(appKey,      'requestVirtualPayment&' + signData))
 signature = hex(hmac_sha256(session_key, signData))
-```
 
 `signData` 必须把**服务端签名时用的那个字符串**原样下发（端上重新序列化会因键顺序/空格差异导致微信回 `-15005`）。
 端上已按「平铺或包一层（`payParams`/`payData`/`virtualPay`…）都认」解析，后端就位后无需再改客户端；

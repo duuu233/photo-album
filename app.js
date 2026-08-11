@@ -179,7 +179,18 @@ App({
   },
 
   // 兼容旧页面字段：BoltFox 用 avatar/userEmail，旧页面读 avatarUrl/email，这里两套都给。
+  //
+  // availableToken（2026-08-11）：登录响应 UserInfoDetailApiOut 里就带着可用 Token 余额，
+  // 落到会话里，「我的」页与 AI 模块进页面即可直接显示，不必先打一次 getUserAccount。
+  // ⚠️ 用 null 表示「这次响应没带该字段」（老后端灰度期），与「余额真的是 0」区分开——
+  //    调用方据此决定要不要回退去调 /Client/Order/getUserAccount。
   normalizeUserInfo(profile = {}) {
+    const available =
+      profile.availableToken === undefined ||
+      profile.availableToken === null ||
+      profile.availableToken === ''
+        ? null
+        : Number(profile.availableToken)
     return {
       nickName: profile.nickName || '',
       avatar: profile.avatar || '',
@@ -188,7 +199,8 @@ App({
       email: profile.userEmail || '',
       userNo: profile.userNo || '',
       imgCount: profile.imgCount || 0,
-      productCount: profile.productCount || 0
+      productCount: profile.productCount || 0,
+      availableToken: Number.isFinite(available) ? Math.max(0, available) : null
     }
   },
 

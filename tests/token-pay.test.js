@@ -225,16 +225,36 @@ const FAST_DELAYS = [1, 1, 1]
       payParams: { signData, paySig: 'sig', signature: 'usersig', env: 0 }
     })
 
+    // 超时兜底查的是我们平台的订单号 + payType（/Client/Pay/getPayQuery，2026-08-11 接口对账：
+    // 旧的 /Client/Pay/getWxVirtualPayQueryOrder 在 swagger 里已不存在，字段也由 payStatus 改成 payState）
+    const payQueryCalls = []
+    routes['/Client/Pay/getPayQuery'] = options => {
+      payQueryCalls.push(options.data || {})
+      return { payState: 1, payNo: 'wx-流水号' }
+    }
+
     // 支付成功但后端回调还没到 → 余额没变 → pending，绝不能报「已到账」
     payCalls.length = 0
     payBehavior = null
-    const pendingResult = await tokenApi.confirmPurchase({ outTradeNo: 'NO9', env: 0 }, 100, FAST_DELAYS)
+    const pendingResult = await tokenApi.confirmPurchase(
+      { orderNo: 'NO9', payType: tokenApi.PAY_TYPE.wechat },
+      100,
+      FAST_DELAYS
+    )
     assert.equal(pendingResult.pending, true)
     assert.equal(pendingResult.gained, null)
+    assert.equal(pendingResult.payState, 1, 'pending 时要带上支付侧状态，供页面区分措辞')
+    assert.equal(payQueryCalls.length, 1)
+    assert.equal(payQueryCalls[0].orderNo, 'NO9', '查的是我们平台的订单号，不是微信 outTradeNo')
+    assert.equal(payQueryCalls[0].payType, 1)
 
     // 回调到了、余额涨了 → 报出真实增量
     balance = 620
-    const doneResult = await tokenApi.confirmPurchase({ outTradeNo: 'NO9', env: 0 }, 100, FAST_DELAYS)
+    const doneResult = await tokenApi.confirmPurchase(
+      { orderNo: 'NO9', payType: tokenApi.PAY_TYPE.wechat },
+      100,
+      FAST_DELAYS
+    )
     assert.equal(doneResult.pending, false)
     assert.equal(doneResult.gained, 520)
 

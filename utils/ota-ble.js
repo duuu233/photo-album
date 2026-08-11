@@ -19,7 +19,7 @@
 //   5) END(0xF3)：payload 发完后 APP 主动发结束包 [0xF3,checksum]，设备校验 total_bytes==bin_size 且
 //      CRC32(payload)==bin_crc32 → 回 ACK[0xFC,0xF3,RESULT]。RESULT==0 即升级成功，设备约 100ms 后复位运行新固件。
 //
-// 真机注意（开发者工具蓝牙模拟不可靠，务必真机联调，工具内可用 dryRun 校验编码）：
+// 真机注意（开发者工具的蓝牙模拟不可靠，OTA 必须真机联调）：
 //   - 安卓默认 ATT MTU 仅 23（单次可写 20 字节），必须 wx.setBLEMTU 拉高，否则大 DATA 包写不进；
 //     iOS 由系统自动协商。每包数据大小按真实协商到的 MTU 动态算（MTU - 3 ATT头 - 2 帧开销[操作码+校验]）。
 //   - FF11 用 writeType:'writeNoResponse'，且需先 notifyBLECharacteristicValueChange 打开通知。
@@ -1080,22 +1080,12 @@ function downloadFirmware(url) {
   })
 }
 
-function mockFirmwareBuffer(size, version) {
-  const total = Math.max(MIN_FW_SIZE, Number(size) || 65536)
-  const seed = String(version || 'mock')
-  const bytes = new Uint8Array(total)
-  for (let i = 0; i < total; i++) {
-    bytes[i] = (i * 31 + seed.charCodeAt(i % seed.length)) & 0xff
-  }
-  return bytes.buffer
-}
-
 async function loadFirmwareBuffer(pkg) {
   if (pkg.buffer) {
     return pkg.buffer
   }
   if (pkg.localPath) {
-    return readFileBuffer(pkg.localPath) // 代码包内本地固件（测试流程用 docs/ 下的 .bin）
+    return readFileBuffer(pkg.localPath) // 代码包内的本地固件（当前没有调用方）
   }
   if (pkg.tempFilePath) {
     return readFileBuffer(pkg.tempFilePath)
@@ -1107,10 +1097,7 @@ async function loadFirmwareBuffer(pkg) {
     const filePath = await downloadFirmware(pkg.packageUrl)
     return readFileBuffer(filePath)
   }
-  if (pkg.mock) {
-    return mockFirmwareBuffer(pkg.sizeBytes, pkg.version)
-  }
-  throw new Error('缺少固件包来源（localPath / packageUrl / inlineBase64）')
+  throw new Error('缺少固件包来源（packageUrl / localPath / inlineBase64）')
 }
 
 async function prepareFirmware(pkg, options = {}) {
@@ -1146,68 +1133,8 @@ async function prepareFirmware(pkg, options = {}) {
   return { buffer, bytes, size, payloadSize, crc32 }
 }
 
-// ── 干跑（无 BLE）：开发者工具里校验「读包 + 拆头/payload + 组帧 + 校验 + 分包」，蓝牙真机才能跑真实传输。──
-async function dryRunFirmware(prepared, options = {}) {
-  const onProgress = options.onProgress
-  const bytes = prepared.bytes
-  const total = prepared.size
-  const header = bytes.subarray(0, OTA_HEADER_SIZE)
-  const payload = bytes.subarray(OTA_HEADER_SIZE)
-  const payloadLen = payload.length
-  const chunkSize = chunkFromMtu(DEFAULT_DEVICE_MTU) // 246：按设备满 MTU 估算
-  const totalPackets = Math.ceil(payloadLen / chunkSize)
-  const prn = DEFAULT_PRN
-
-  const startFrame = buildStartFrame(prepared.payloadSize, OBJ_TYPE_FIRMWARE)
-  const headerFrame = buildDataFrame(header) // 首个 DATA = 128 字节头信息
-  const firstPayloadFrame = buildDataFrame(payload.subarray(0, Math.min(chunkSize, payloadLen)))
-  const endFrame = buildEndFrame()
-
-  // 头信息帧自检
-  if (checksum8(headerFrame.slice(0, headerFrame.length - 1)) !== headerFrame[headerFrame.length - 1]) {
-    throw new Error('头信息帧校验位自检失败')
-  }
-
-  // 逐包「发送」并自校验累加校验位是否正确，模拟窗口节奏推进进度。
-  let sent = 0
-  for (let seq = 0; seq < totalPackets; seq++) {
-    if (options.shouldAbort && options.shouldAbort()) {
-      throw new Error('OTA_ABORTED')
-    }
-    const chunk = payload.subarray(seq * chunkSize, Math.min((seq + 1) * chunkSize, payloadLen))
-    const frame = buildDataFrame(chunk)
-    if (checksum8(frame.slice(0, frame.length - 1)) !== frame[frame.length - 1]) {
-      throw new Error(`第 ${seq} 包校验位自检失败`)
-    }
-    sent = Math.min((seq + 1) * chunkSize, payloadLen)
-    if (seq % prn === 0 || seq === totalPackets - 1) {
-      emit(onProgress, {
-        phase: 'transferring',
-        percent: progressPercent(sent, payloadLen),
-        sent,
-        total: payloadLen,
-        message: `干跑：${sent}/${payloadLen} 字节（${seq + 1}/${totalPackets} 包）`
-      })
-      await sleep(8)
-    }
-  }
-
-  emit(onProgress, { phase: 'done', percent: 100, sent: payloadLen, total: payloadLen, message: '干跑完成（未经过真实蓝牙）' })
-
-  return {
-    dryRun: true,
-    size: total,
-    payloadSize: payloadLen,
-    crc32: prepared.crc32,
-    totalPackets,
-    chunkSize,
-    prn,
-    startFrameHex: bytesToHex(startFrame),
-    headerFrameHex: bytesToHex(headerFrame),
-    firstDataFrameHex: bytesToHex(firstPayloadFrame),
-    endFrameHex: bytesToHex(endFrame)
-  }
-}
+// （2026-08-11：`dryRunFirmware` 随「OTA测试升级」模块一并删除。它只在开发者工具里
+//   校验读包/组帧/分包，从不碰蓝牙；留着会让「升级成功」有两种含义，真机联调时反而误导。）
 
 // 给「设备返回 / 蓝牙链路 / OTA」类错误统一加「设备-」前缀（与 device-ble.js 一致），
 // 便于和接口错误(「接口-」)、小程序本地错误(「小程序-」)区分来源。
@@ -1225,17 +1152,10 @@ function prefixDeviceError(error) {
 
 // ── 对外主流程 ────────────────────────────────────────────
 // upgradeFirmware(deviceId, pkg, options)
-//   pkg:     { localPath | packageUrl | inlineBase64 | mock, sizeBytes?, checksum?, version? }
-//   options: { onProgress(patch), shouldAbort(), pace?, objType?, dryRun?, startTimeout?, finalTimeout? }
+//   pkg:     { packageUrl | localPath | inlineBase64, sizeBytes?, checksum?, version? }
+//   options: { onProgress(patch), shouldAbort(), pace?, objType?, startTimeout?, finalTimeout? }
 async function upgradeFirmware(deviceId, pkg, options = {}) {
   const onProgress = options.onProgress
-
-  // dryRun：纯本地校验编码与分包，不连蓝牙（开发者工具蓝牙模拟不可靠时用）。
-  // 干跑错误属小程序本地计算，不加「设备-」前缀，交由上层按需加「小程序-」。
-  if (options.dryRun) {
-    const prepared = await prepareFirmware(pkg, options)
-    return dryRunFirmware(prepared, options)
-  }
 
   // 真机 DFU：读包 + 握手 + 传输全程与设备/蓝牙交互，出错统一补「设备-」前缀（OTA_ABORTED 等内部信号除外）。
   try {

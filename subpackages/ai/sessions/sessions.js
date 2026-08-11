@@ -117,7 +117,9 @@ Page(fold.adapt({
     statusBarHeight: 20,
     safeBottom: 0,
     loading: true,
-    tokenBalance: aiToken.DEFAULT_BALANCE, // 顶部 Token 余额（与聊天页同源，见 utils/ai-token.js）
+    // 顶部 Token 余额（真实账户值，见 utils/ai-token.js）。'--' = 还没取到 / 取不到，
+    // 不用 0 兜底：有余额的用户看到「0 Token」会以为不能用了。
+    tokenBalance: '--',
     sessions: [], // 当前已展示（分页追加）
     hasMore: false,
     currentId: '', // 聊天页当前会话，高亮标记
@@ -130,7 +132,8 @@ Page(fold.adapt({
     this.setData(Object.assign(
       {
         currentId: (options && options.current) || '',
-        tokenBalance: aiToken.readBalance()
+        // 先用登录时落在会话里的余额把数字显示出来，再异步取权威值刷新（见 refreshTokenBalance）
+        tokenBalance: aiToken.displayBalance(aiToken.cachedBalance())
       },
       system.getLayoutMetrics()
     ))
@@ -146,17 +149,24 @@ Page(fold.adapt({
     this._swipeOffset = 0
     this._suppressTapUntil = 0
     this.loadSessions()
+    this.refreshTokenBalance()
+  },
+
+  // 从后端取权威余额（/Client/Order/getUserAccount，失败回退用户信息接口）。
+  // 静默：取不到就保持当前显示，不弹错误——余额只是顶部一个数字，不该盖住列表。
+  async refreshTokenBalance() {
+    const balance = aiToken.displayBalance(await aiToken.fetchBalance())
+    if (balance !== this.data.tokenBalance) {
+      this.setData({ tokenBalance: balance })
+    }
   },
 
   // 本页现在会留在页面栈里（点会话是新开聊天页，见 goChat），用户聊完退回来时标题/时间/条数
   // 都可能变了，所以每次重新可见都静默刷一遍。首次 onShow 紧跟 onLoad，跳过以免重复请求。
   onShow() {
     this._navigating = false
-    // 余额可能在聊天页扣过（LIMIT_ENABLED 打开后），退回本页要对齐
-    const balance = aiToken.readBalance()
-    if (balance !== this.data.tokenBalance) {
-      this.setData({ tokenBalance: balance })
-    }
+    // 余额在聊天页生成过图之后会变（扣费在服务端），退回本页重取一次对齐
+    this.refreshTokenBalance()
     if (this.data.openedSessionId || this.data.swipingSessionId) {
       this.setData({
         openedSessionId: '',

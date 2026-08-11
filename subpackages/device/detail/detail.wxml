@@ -141,13 +141,12 @@
         </view>
         <view class="thin-divider">
         </view>
-        <!-- 固件升级入口（规格书 v1.5 §6.3.2~§6.3.4 OTA/DFU）：点击走「检测版本 → 二次确认 → 进升级页」，
-             长按进本地固件测试流程（见 detail.js goOtaUpgrade / goOtaTest） -->
+        <!-- 固件升级入口（规格书 v1.5 §6.3.2~§6.3.4 OTA/DFU）：点击走「检测版本 → 二次确认 → 进升级页」。
+             2026-08-11 删除「长按进本地固件测试」与下方的「OTA测试升级」行，只留真实升级这一条路。 -->
         <view
           class="detail-row"
           hover-class="none"
           bindtap="goOtaUpgrade"
-          bindlongpress="goOtaTest"
         >
           <view class="row-left">
             <image
@@ -159,27 +158,6 @@
           <view class="row-right">
             <!-- 未连接/无版本号时 newVersionNo 为 -- 占位，此时不带「版本」前缀 -->
             <text>{{newVersionNo === '--' ? '--' : '版本' + newVersionNo}}</text>
-            <view class="ui-chevron">
-            </view>
-          </view>
-        </view>
-        <view class="thin-divider">
-        </view>
-        <!-- OTA 测试按钮：一点即用详情接口下发的 downloadPath 走真实 DFU（未连接则干跑），交互与设备应答全程打印到 console -->
-        <view
-          class="detail-row ota-test-row {{otaTesting ? 'is-testing' : ''}}"
-          hover-class="none"
-          bindtap="startOtaTest"
-        >
-          <view class="row-left">
-            <image
-              class="row-icon"
-              src="/assets/images/device-detail-icon04.png"
-              mode="aspectFit" />
-            <text>OTA测试升级</text>
-          </view>
-          <view class="row-right">
-            <text class="ota-test-status">{{otaTestStatus}}</text>
             <view class="ui-chevron">
             </view>
           </view>

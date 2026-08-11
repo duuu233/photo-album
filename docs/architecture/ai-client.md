@@ -73,10 +73,10 @@
 ## 当前未完成能力
 
 - 语音转文字仍依赖未接入的小程序插件/服务。
-- Token 支付体系仍是客户端演示逻辑，需等待后端接口。
-  2026-08-06 已按设计稿补齐 Token 管理 / 购买与消费记录 / 确认购买三个页面
-  （`subpackages/token`，数据走 `utils/token-api.js` 的 mock），但**支付通道未接**；
-  余额接口就位后应把聊天页的 `TOKEN_LIMIT_ENABLED` 一并改回 `true`，两处共用同一余额口径。
+- Token 支付体系已接真实后端：2026-08-08 接入 `/Client/Order/*` 与微信虚拟支付，
+  2026-08-11 完成接口对账（AI 侧余额由 demo 切到真实账户，详见
+  `docs/changes/2026-08-11-AI与Token接口对账.md`）。仍待后端明确的只剩「AI 调用的扣费口径」，
+  它定了才谈得上把 `LIMIT_ENABLED` 打开。
   见 [支付体系与官方图库接入](../changes/2026-08-06-支付体系与官方图库接入.md)。
 - AI 图片 URL 有有效期，过期后不能保证下载或再次投屏。
 - UI 部分图标仍可能使用占位资源。
@@ -109,9 +109,14 @@
   它们正文是不定位的普通块、加 `fixed+z-index:0` 图层会盖住内容，所以改走 CSS `background`
   （`subpackages/settings/shared.wxss` 的 `.settings-shell`、`subpackages/device/debug/debug.wxss`
   的 `.debug-page` 各一行）。首页本地占位图 `home-bg-placeholder.jpg` 与新图均值差 2/255，未重做。
-- Token 余额是**客户端演示逻辑**，收口在 `utils/ai-token.js`（`LIMIT_ENABLED=false` 时不扣费、不拦截、
-  恒显示默认值）。展示位在会话列表页顶部；聊天页只保留「扣费 + 不足拦截」两处调用。
-  接后端时只改这一个文件。
+- Token 余额自 2026-08-11 起是**真实账户值**，收口在 `utils/ai-token.js`。两条来源：
+  ① 登录响应 `UserInfoDetailApiOut.availableToken`（进页面即有，`app.globalData.userInfo` 里）；
+  ② `GET /Client/Order/getUserAccount`（权威值，用于刷新）。取不到显示 `--`，**不用 0 兜底**。
+  ⚠️ **端上不扣费**：swagger 的 `/Client/Order` 下没有「消费 Token」端点，而消费记录能从
+  `getUserAccountTrade(inOutType=2)` 查到——扣费在服务端发生，端上自减就是双重记账。
+  聊天页调用一次 AI 之后只做「重取余额」。`LIMIT_ENABLED` 现在只控制**余额不足是否拦截**，
+  仍为 `false`：等后端明确「AI 调用如何扣费、余额为 0 时网关回什么码」再打开，否则会出现
+  「端上放行、网关拒绝」或反过来的割裂。展示位在会话列表页顶部。
   （2026-08-10 前它在聊天页右上角，按 `getMenuButtonBoundingClientRect()` 与原生胶囊同高同轴摆放；
   顶栏改为标题居中后该位置已让出，如需在聊天页恢复展示，务必重新核对与标题的几何冲突。）
 - 圆角方块类图标（`ai-back-button.png`、`ai-history-button.png`，136×136）**不是画满的**：看得见的白块只占

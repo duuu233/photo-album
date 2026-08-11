@@ -9,11 +9,6 @@ const fold = require('../../../utils/fold-adapt')
 
 const app = getApp()
 
-// 本地测试固件（代码包内）：详情页「固件升级」长按进入测试流程时使用。
-// 真机连上设备 → 走真实蓝牙 DFU；未连接（如开发者工具）→ 自动降级为干跑，仅校验编码/分包。
-const TEST_FW_PATH = 'docs/BR1601A02_260609_r8122_5139_5D89_V100_OTA.bin'
-const TEST_FW_NAME = 'BR1601A02_260609_r8122_5139_5D89_V100_OTA.bin'
-
 // 简化版固件升级界面（参照投屏结果页）用的占位插画：进行中 / 失败 / 成功。
 // 暂借用投屏结果页的三张图占位，后续换成 OTA 专用图时只改这里即可。
 const OTA_ART = {
@@ -163,7 +158,6 @@ Page(fold.adapt({
     batteryText: '--',
     minBatteryText: '--',
     releaseNotes: [],
-    testMode: false,
     // ── 简化版界面字段（参照投屏结果页）：图标 + 进度条 + 文案 ──
     screenStatus: 'checking', // checking | ready | progress | success | fail
     statusTitle: '检测版本中',
@@ -174,21 +168,12 @@ Page(fold.adapt({
 
   onLoad(options = {}) {
     this._abortUpgrade = false
-    // test=1：本地固件测试流程；dry=1：强制干跑（不连蓝牙，仅校验编码）。
-    this._testMode = options.test === '1' || options.test === 'true'
-    this._forceDryRun = options.dry === '1' || options.dry === 'true'
+    // auto=1：从详情页「立刻更新」进来，加载完自动开始（本页唯一的入参，2026-08-11 起
+    // test/dry 两个测试开关随「OTA测试升级」模块一并删除）。
     this._autoStart = options.auto === '1' || options.auto === 'true'
     this._autoStartConsumed = false
-    this.setData(Object.assign(system.getLayoutMetrics(), {
-      id: options.id || '',
-      testMode: this._testMode
-    }))
-
-    if (this._testMode) {
-      this.loadLocalTestFirmware()
-    } else {
-      this.loadFirmware()
-    }
+    this.setData(Object.assign(system.getLayoutMetrics(), { id: options.id || '' }))
+    this.loadFirmware()
   },
 
   onShow() {
@@ -207,7 +192,7 @@ Page(fold.adapt({
   onUnload() {
     this._abortUpgrade = true
 
-    // 仅在真的开过 OTA(FF10) 会话时才断开，避免干跑/未升级时误关详情页持有的 FF00 连接。
+    // 仅在真的开过 OTA(FF10) 会话时才断开，避免未升级时误关详情页持有的 FF00 连接。
     const bleDeviceId = this.getBleDeviceId()
     if (bleDeviceId && otaBle.isConnected(bleDeviceId)) {
       otaBle.disconnect(bleDeviceId)
@@ -223,13 +208,16 @@ Page(fold.adapt({
   // 简化界面：按「加载固件信息完成」后的内部 state 生成画面字段（图标 + 标题 + 说明 + 是否显示主按钮）。
   screenForLoaded(state, firmware, viewData) {
     if (state === 'available') {
+      const version =
+        firmware && firmware.latestVersion
+          ? `最新版本 ${firmware.latestVersion}`
+          : '检测到可升级的新固件'
+      // 未连接时把「点了会先连设备」说在前面，别让用户以为按钮卡住（配合 actionText「连接并升级」）
+      const needConnect = !viewData || viewData.actionText === '连接并升级'
       return {
         screenStatus: 'ready',
         statusTitle: '发现新版本',
-        statusDesc:
-          firmware && firmware.latestVersion
-            ? `最新版本 ${firmware.latestVersion}`
-            : '检测到可升级的新固件',
+        statusDesc: needConnect ? `${version}（将先连接电子纸设备）` : version,
         artImage: artFor('ready'),
         showPrimary: true
       }
@@ -253,15 +241,10 @@ Page(fold.adapt({
     }
   },
 
+  // 本页可用的 BLE 连接 id：**只认「与本页设备记录身份一致的活动会话」**。
+  // 绝不退回 selectedDevice 的旧句柄——OTA 是不可逆写设备，连错一台就是刷错固件。
   getBleDeviceId() {
-    const device = this.data.device || {}
-    const selected = (app.globalData && app.globalData.selectedDevice) || {}
-    const pageDeviceId = activeDevice.findConnectedDeviceId(device)
-    if (pageDeviceId) {
-      return pageDeviceId
-    }
-    // 本地测试模式允许没有详情记录，才退回全局选中设备；正常 OTA 不得借用另一台设备的连接。
-    return this._testMode ? activeDevice.findConnectedDeviceId(selected) : ''
+    return activeDevice.findConnectedDeviceId(this.data.device || {})
   },
 
   async refreshDisplayedBattery() {
@@ -292,76 +275,16 @@ Page(fold.adapt({
     }
   },
 
-  // 本地固件测试流程：跳过后台，直接把代码包内的 .bin 当作升级包。
-  // bleDeviceId 取当前全局选中设备（详情页连接后会写入）。已连接走真实蓝牙；未连接则提示将做干跑校验。
-  async loadLocalTestFirmware() {
-    const selected = (app.globalData && app.globalData.selectedDevice) || {}
-    const bleDeviceId = activeDevice.findConnectedDeviceId(selected)
-    const connected = !!bleDeviceId
-    const willDryRun = this._forceDryRun || !connected
-
-    const batteryState = connected
-      ? await batteryUtil.readLatestBattery(bleDeviceId, { fallback: selected })
-      : batteryUtil.stampBattery(null)
-    const device = Object.assign({
-      name: selected.name || '测试设备',
-      connected,
-      deviceId: bleDeviceId
-    }, batteryState)
-    const firmware = {
-      hasUpdate: true,
-      currentVersion: selected.firmwareVersion || '--',
-      latestVersion: 'TEST-LOCAL',
-      bleDeviceId,
-      minBattery: 0,
-      releaseNotes: [
-        `本地固件：${TEST_FW_NAME}`,
-        willDryRun
-          ? '当前未连接电子纸设备：点击将进行「干跑」，仅校验读包/拆头/组帧/分包（不经过真实蓝牙）'
-          : '电子纸设备已连接：点击将通过蓝牙执行真实 DFU 升级',
-        'DFU v1.5：FF10/FF11 · 128字节头握手 + PRN窗口 + END(0xF3)整包校验'
-      ],
-      package: {
-        version: 'TEST-LOCAL',
-        fileName: TEST_FW_NAME,
-        sizeBytes: 0,
-        localPath: TEST_FW_PATH,
-        isLocalTest: true
-      }
-    }
-
-    const batteryText = batteryUtil.batteryText(device)
-    this.setData({
-      loading: false,
-      device,
-      firmware,
-      state: 'available',
-      canUpgrade: true,
-      statusText: willDryRun ? '本地测试(干跑)' : '本地测试',
-      statusClass: 'is-available',
-      actionText: willDryRun ? '开始干跑测试' : '开始本地升级',
-      errorMessage: '',
-      currentVersion: firmware.currentVersion,
-      latestVersion: firmware.latestVersion,
-      packageSizeText: '本地包',
-      batteryText,
-      minBatteryText: '--',
-      releaseNotes: firmware.releaseNotes,
-      // 简化界面：本地测试固件属「可开始」态
-      screenStatus: 'ready',
-      statusTitle: willDryRun ? '本地固件测试(干跑)' : '本地固件升级',
-      statusDesc: `本地包：${TEST_FW_NAME}`,
-      artImage: artFor('ready'),
-      showPrimary: true
-    })
-  },
-
   deriveViewData(device, firmware) {
     const pkg = firmware && firmware.package ? firmware.package : null
     const batteryText = batteryUtil.batteryText(device)
     const hasPackage = !!(firmware && firmware.hasUpdate && pkg)
     const bleDeviceId = (firmware && firmware.bleDeviceId) || (device && device.deviceId) || ''
-    let canUpgrade = hasPackage && !!bleDeviceId && device && device.connected !== false
+    const connected = !!bleDeviceId && device && device.connected !== false
+    // ⚠️ canUpgrade 只表示「有包、可以按下按钮」，**不含「已连接」**：
+    //    未连接时按钮改成「连接并升级」，点了先自动扫连再升（见 startUpgrade / ensureConnectedDevice）。
+    //    2026-08-11 前这里把「未连接」也算进 canUpgrade=false，而按钮照画不误 —— 点了没反应的根因。
+    let canUpgrade = !!hasPackage
     let statusText = '已是最新'
     let statusClass = 'is-latest'
     let actionText = '已是最新'
@@ -381,18 +304,14 @@ Page(fold.adapt({
       actionText = '立即升级'
     }
 
-    if (hasPackage && !bleDeviceId) {
-      canUpgrade = false
-      statusText = '无法升级'
-      statusClass = 'is-error'
-      actionText = '重新绑定设备'
-      errorMessage = '电子纸设备缺少蓝牙连接ID，请重新绑定后再升级。'
-    } else if (hasPackage && device && device.connected === false) {
-      canUpgrade = false
+    // 未连接不是错误态，只是「要先连一下」：按钮改成「连接并升级」，点击走自动扫连。
+    // （`bleDeviceId` 为空就是「此刻没有与本页设备身份一致的活动会话」，与「记录缺身份」不可区分，
+    //   所以一律按未连接处理——真的缺身份时扫连也会失败，那时 ensureConnectedForAction 会如实提示。）
+    if (hasPackage && !connected) {
       statusText = '电子纸设备未连接'
-      statusClass = 'is-error'
-      actionText = '设备未连接'
-      errorMessage = '请先连接电子纸设备，并在升级过程中保持电子纸设备在线。'
+      statusClass = 'is-available'
+      actionText = '连接并升级'
+      errorMessage = ''
     }
 
     return {
@@ -495,41 +414,99 @@ Page(fold.adapt({
     }
   },
 
-  startUpgrade() {
+  // 点主按钮。三种语义按当前画面区分，**任何一条分支都不许静默 return**：
+  //   ① 检查失败且没有固件信息 → 重新检查；
+  //   ② 没有可用升级包（已是最新 / 包信息无效）→ 如实提示 + 重新检查一次；
+  //   ③ 有包 → 交给 runUpgrade（它会先确保连上本页这台设备）。
+  //
+  // ⚠️ 2026-08-11 修：此前这里是 `if (!this.data.canUpgrade) return` —— 而 canUpgrade 在
+  //    「设备未连接」时必为 false，于是按钮画着、点了毫无反应，正是用户反馈的「OTA 没反应」。
+  //    现在未连接不再是拦截理由，而是「先连上再升」。
+  async startUpgrade() {
+    if (this._starting) {
+      return
+    }
+
+    if (this.data.state === 'upgrading') {
+      toast.show({ title: '正在升级中，请稍候', icon: 'none' })
+      return
+    }
+
     if (this.data.state === 'failed' && !this.data.firmware) {
-      if (this._testMode) {
-        this.loadLocalTestFirmware()
-      } else {
-        this.loadFirmware()
-      }
+      this.loadFirmware()
       return
     }
 
-    if (!this.data.canUpgrade || this.data.state === 'upgrading') {
+    const pkg = this.data.firmware && this.data.firmware.package
+    if (!pkg) {
+      toast.warn({
+        title: this.data.errorMessage || '当前没有可用的升级包',
+        icon: 'none'
+      })
+      this.loadFirmware()
       return
     }
 
-    const pkg = (this.data.firmware && this.data.firmware.package) || {}
-    const dryRun = this.willDryRun(pkg)
-
-    if (dryRun) {
-      this.runUpgrade() // 干跑不写设备，无需「保持供电」提示，直接跑
-      return
+    this._starting = true
+    try {
+      await this.runUpgrade()
+    } finally {
+      this._starting = false
     }
-
-    this.runUpgrade()
   },
 
-  // 是否走干跑：强制干跑，或（本地测试包且设备未连接）。
-  willDryRun(pkg) {
-    if (this._forceDryRun) {
-      return true
+  // 确保连上**本页这台**设备并返回可用的 BLE 连接 id；连不上返回 ''（提示已由
+  // ensureConnectedForAction 弹出：请先连接 / 权限引导）。
+  //
+  // 与「我的相册」删除、一键清空同一套做法：断联就地自动扫描重连，不把用户赶回详情页。
+  // ⚠️ 认的是**设备身份**而不是缓存句柄：OTA 写错设备不可逆（刷错固件直接变砖）。
+  async ensureConnectedDevice() {
+    const existing = this.getBleDeviceId()
+    if (existing && deviceBle.isConnected(existing)) {
+      return existing
     }
-    if (!(pkg && pkg.isLocalTest)) {
-      return false
+
+    this.setData({
+      screenStatus: 'progress',
+      statusTitle: '连接电子纸设备中',
+      statusDesc: '正在连接电子纸设备，请保持设备已开机并靠近手机…',
+      artImage: artFor('progress'),
+      progressPercent: 0,
+      progressText: '',
+      showPrimary: false
+    })
+
+    const deviceId = await activeDevice.ensureConnectedForAction(this.data.device)
+    if (!deviceId) {
+      // 连不上：回到可重试画面（提示已弹过，这里不再叠一个 toast）
+      this.setData({
+        state: 'failed',
+        statusText: '电子纸设备未连接',
+        statusClass: 'is-error',
+        canUpgrade: true,
+        actionText: '连接并升级',
+        errorMessage: '未能连接电子纸设备，请确认设备已开机并靠近手机后重试。',
+        screenStatus: 'fail',
+        statusTitle: '无法升级',
+        statusDesc: '未能连接电子纸设备，请确认设备已开机并靠近手机后重试。',
+        artImage: artFor('fail'),
+        showPrimary: true
+      })
+      return ''
     }
-    const bleDeviceId = this.getBleDeviceId()
-    return !(bleDeviceId && deviceBle.isConnected(bleDeviceId))
+
+    // 把当下有效的连接句柄写回本页设备与全局选中设备，后续读电量/断开都用它
+    const device = Object.assign({}, this.data.device, {
+      deviceId,
+      bleDeviceId: deviceId,
+      connected: true
+    })
+    this.setData({ device })
+    const selected = app.globalData && app.globalData.selectedDevice
+    if (selected && sameDevice(selected, device)) {
+      app.setSelectedDevice(Object.assign({}, selected, device))
+    }
+    return deviceId
   },
 
   // 升级中进度回调：按底层阶段(phase)把标题在「固件下载中 / 固件传输中 / 固件升级中」之间切换，
@@ -581,28 +558,33 @@ Page(fold.adapt({
   async runUpgrade() {
     // 防重入：auto=1 的 setTimeout 自动触发（loadFirmware 里）不经过 startUpgrade 的闸门，
     // 与用户点击可能并发出两条 DFU 流——同一 session 上交叉写 DATA 数据流，设备收到乱序字节必败。
-    if (this.data.state === 'upgrading') {
+    // ⚠️ 不能只看 `state === 'upgrading'`：自动扫连（ensureConnectedDevice，可达十几秒）期间
+    //    state 还没置成 upgrading，此时用户点一下按钮就会并发出第二条流。用同步闸门 _running 兜住。
+    if (this._running || this.data.state === 'upgrading') {
       return
     }
+    this._running = true
+    try {
+      await this.doRunUpgrade()
+    } finally {
+      this._running = false
+    }
+  },
+
+  async doRunUpgrade() {
 
     const firmware = this.data.firmware
     const pkg = firmware && firmware.package
-    const bleDeviceId = this.getBleDeviceId()
-    const dryRun = this.willDryRun(pkg)
 
     if (!pkg) {
+      toast.warn({ title: '当前没有可用的升级包', icon: 'none' })
       return
     }
-    // 真实升级（非干跑）必须有可用的 BLE 连接 id；干跑只在本地校验，不需要连设备。
-    if (!dryRun && !bleDeviceId) {
-      this.setData({
-        state: 'failed',
-        statusText: '无法升级',
-        statusClass: 'is-error',
-        canUpgrade: true,
-        actionText: '重新升级',
-        errorMessage: '未获取到电子纸设备蓝牙连接，请先在详情页连接电子纸设备后再升级。'
-      })
+
+    // 真实升级必须有可用的 BLE 连接：断联就地自动重连（见 ensureConnectedDevice），
+    // 连不上时它已经把画面切成可重试态并提示过，这里直接收手。
+    const bleDeviceId = await this.ensureConnectedDevice()
+    if (!bleDeviceId) {
       return
     }
 
@@ -615,26 +597,24 @@ Page(fold.adapt({
     wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: true })
     this.setData({
       state: 'upgrading',
-      statusText: dryRun ? '干跑中' : '升级中',
+      statusText: '升级中',
       statusClass: 'is-upgrading',
       canUpgrade: false,
-      actionText: dryRun ? '干跑中' : '升级中',
+      actionText: '升级中',
       progressPercent: 0,
-      progressText: dryRun ? '准备干跑' : '准备升级',
+      progressText: '准备升级',
       errorMessage: '',
       // 简化界面：进入进行中画面
       screenStatus: 'progress',
-      statusTitle: dryRun ? '固件校验中' : '固件下载中',
-      statusDesc: dryRun
-        ? '正在本地校验固件包…'
-        : '升级中请保持电子纸设备供电、手机屏幕常亮，勿切后台',
+      statusTitle: '固件下载中',
+      statusDesc: '升级中请保持电子纸设备供电、手机屏幕常亮，勿切后台',
       artImage: artFor('progress'),
       showPrimary: false
     })
 
-    // 升级传输要数分钟且左上角返回始终可点：真实升级期间拦截返回（左上角/安卓物理键/侧滑），
-    // 弹系统确认后才允许离开，防误触一下就静默中断 DFU、用户还以为升级完成了。干跑纯本地不拦。
-    if (!dryRun && wx.enableAlertBeforeUnload) {
+    // 升级传输要数分钟且左上角返回始终可点：升级期间拦截返回（左上角/安卓物理键/侧滑），
+    // 弹系统确认后才允许离开，防误触一下就静默中断 DFU、用户还以为升级完成了。
+    if (wx.enableAlertBeforeUnload) {
       wx.enableAlertBeforeUnload({
         message: '正在升级固件，退出将中断本次升级，确定退出吗？'
       })
@@ -643,15 +623,9 @@ Page(fold.adapt({
     try {
       const result = await otaBle.upgradeFirmware(bleDeviceId, pkg, {
         pace: 20,
-        dryRun,
         onProgress: progress => this.onUpgradeProgress(progress),
         shouldAbort: () => this._abortUpgrade
       })
-
-      if (dryRun) {
-        this.onDryRunDone(result)
-        return
-      }
 
       // v1.5：升级成败以「APP 发 END(0xF3) 后设备回的整包校验 ACK」为准——成功则 ota-ble 返回 confirmed:true，
       // 任何一步(头信息/数据/END)超时或校验失败都会抛错走下方 catch，不再返回"软成功"。故 confirmed:false 仅作
@@ -662,13 +636,11 @@ Page(fold.adapt({
       // 未确认 = 没拿到设备 0xF3：不能假报成功——不上报 success、不把本地版本改成新版、
       // 保留升级包并开放「重新升级」，否则用户既被误导"已升级"又没有任何重试入口，后端记录也是假的。
       if (unconfirmed) {
-        if (!this._testMode) {
-          await api.reportDeviceFirmwareUpgrade(this.data.id, {
-            status: 'fail',
-            version: firmware.latestVersion,
-            message: '数据已全部发送，但未收到电子纸设备 0xF3 确认，升级未确认成功'
-          }).catch(() => {})
-        }
+        await api.reportDeviceFirmwareUpgrade(this.data.id, {
+          status: 'fail',
+          version: firmware.latestVersion,
+          message: '数据已全部发送，但未收到电子纸设备 0xF3 确认，升级未确认成功'
+        }).catch(() => {})
         this.setData({
           state: 'failed',
           statusText: '未确认(请重试)',
@@ -689,91 +661,69 @@ Page(fold.adapt({
         return
       }
 
-      // 真实升级：测试流程不回报后台（无对应设备记录）；正常流程才上报结果。
-      if (!this._testMode) {
-        await api.reportDeviceFirmwareUpgrade(this.data.id, {
-          status: 'success',
-          version: firmware.latestVersion,
-          size: result.size,
-          crc32: result.crc32
-        }).catch(() => {})
+      // 升级成功：回报后台
+      await api.reportDeviceFirmwareUpgrade(this.data.id, {
+        status: 'success',
+        version: firmware.latestVersion,
+        size: result.size,
+        crc32: result.crc32
+      }).catch(() => {})
 
-        const updatedDevice = Object.assign({}, this.data.device, {
-          firmwareVersion: firmware.latestVersion,
-          connected: true
-        })
-        const updatedFirmware = Object.assign({}, firmware, {
-          currentVersion: firmware.latestVersion,
-          hasUpdate: false,
-          invalidUpdate: false,
-          invalidReason: '',
-          package: null
-        })
+      const updatedDevice = Object.assign({}, this.data.device, {
+        firmwareVersion: firmware.latestVersion,
+        connected: true
+      })
+      const updatedFirmware = Object.assign({}, firmware, {
+        currentVersion: firmware.latestVersion,
+        hasUpdate: false,
+        invalidUpdate: false,
+        invalidReason: '',
+        package: null
+      })
 
-        if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === updatedDevice.id) {
-          app.setSelectedDevice(updatedDevice)
-        }
-
-        this.setData(Object.assign({
-          device: updatedDevice,
-          firmware: updatedFirmware,
-          state: 'success',
-          progressPercent: 100,
-          progressText: doneText,
-          statusText: doneText,
-          statusClass: 'is-latest'
-        }, this.deriveViewData(updatedDevice, updatedFirmware), {
-          screenStatus: 'success',
-          statusTitle: '升级成功',
-          statusDesc: '固件已升级到最新版本',
-          artImage: artFor('success'),
-          showPrimary: false
-        }))
-      } else {
-        this.setData({
-          state: 'success',
-          progressPercent: 100,
-          progressText: `${doneText}（${result.size} 字节 / ${result.totalPackets} 包）`,
-          statusText: '测试完成',
-          statusClass: 'is-latest',
-          canUpgrade: false,
-          actionText: '已完成',
-          screenStatus: 'success',
-          statusTitle: '测试完成',
-          statusDesc: `${doneText}（${result.size} 字节 / ${result.totalPackets} 包）`,
-          artImage: artFor('success'),
-          showPrimary: false
-        })
+      if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === updatedDevice.id) {
+        app.setSelectedDevice(updatedDevice)
       }
 
-      toast.show({
-        title: dryRun ? '干跑完成' : doneText,
-        icon: 'none'
-      })
+      this.setData(Object.assign({
+        device: updatedDevice,
+        firmware: updatedFirmware,
+        state: 'success',
+        progressPercent: 100,
+        progressText: doneText,
+        statusText: doneText,
+        statusClass: 'is-latest'
+      }, this.deriveViewData(updatedDevice, updatedFirmware), {
+        screenStatus: 'success',
+        statusTitle: '升级成功',
+        statusDesc: '固件已升级到最新版本',
+        artImage: artFor('success'),
+        showPrimary: false
+      }))
+
+      toast.show({ title: doneText, icon: 'none' })
     } catch (error) {
       const aborted = this._abortUpgrade || (error && error.message === 'OTA_ABORTED')
       const message = aborted
         ? '升级已中断：升级过程中手机切到后台或页面离开。请保持屏幕常亮后重试。'
         : (error.message || '固件升级失败')
 
-      if (!this._testMode) {
-        await api.reportDeviceFirmwareUpgrade(this.data.id, {
-          status: 'fail',
-          version: firmware.latestVersion,
-          message
-        }).catch(() => {})
-      }
+      await api.reportDeviceFirmwareUpgrade(this.data.id, {
+        status: 'fail',
+        version: firmware.latestVersion,
+        message
+      }).catch(() => {})
 
       // 区分「固件下载失败」与「升级失败」：读包/下载阶段(preparing/prepared)出错即下载失败
       const inDownload =
         this._lastPhase === 'preparing' || this._lastPhase === 'prepared' || !this._lastPhase
-      const failTitle = dryRun ? '干跑失败' : inDownload ? '固件下载失败' : '升级失败'
+      const failTitle = inDownload ? '固件下载失败' : '升级失败'
       this.setData({
         state: 'failed',
-        statusText: dryRun ? '干跑失败' : '升级失败',
+        statusText: '升级失败',
         statusClass: 'is-error',
         canUpgrade: true,
-        actionText: dryRun ? '重新干跑' : '重新升级',
+        actionText: '重新升级',
         errorMessage: message,
         screenStatus: 'fail',
         statusTitle: failTitle,
@@ -786,41 +736,6 @@ Page(fold.adapt({
       // 升级已收尾（成功/失败/中断都会走到这），解除返回拦截
       wx.disableAlertBeforeUnload && wx.disableAlertBeforeUnload({ fail: () => {} })
     }
-  },
-
-  // 干跑完成：把组帧/分包结果回显到页面，并打印帧样例方便与硬件日志比对。
-  onDryRunDone(result) {
-    console.log('[OTA] 干跑结果：', result)
-    console.log('[OTA] START 帧：', result.startFrameHex)
-    console.log('[OTA] 128字节头信息帧：', result.headerFrameHex)
-    console.log('[OTA] 首个 payload DATA 帧：', result.firstDataFrameHex)
-    console.log('[OTA] END 帧：', result.endFrameHex)
-
-    const crcHex = `0x${(result.crc32 >>> 0).toString(16).toUpperCase().padStart(8, '0')}`
-    const payloadSize = result.payloadSize != null ? result.payloadSize : result.size
-    this.setData({
-      state: 'success',
-      progressPercent: 100,
-      progressText: `干跑通过：payload ${payloadSize} 字节 / ${result.totalPackets} 包 / 每包 ${result.chunkSize} 字节`,
-      statusText: '干跑通过',
-      statusClass: 'is-latest',
-      canUpgrade: true,
-      actionText: '再次干跑',
-      screenStatus: 'success',
-      statusTitle: '干跑通过',
-      statusDesc: `文件 ${result.size} 字节（含128头）/ payload ${payloadSize} 字节 / ${result.totalPackets} 包`,
-      artImage: artFor('success'),
-      showPrimary: true,
-      releaseNotes: [
-        `文件大小：${result.size} 字节（128 头 + payload ${payloadSize}）`,
-        `本地 CRC32（仅展示）：${crcHex}`,
-        `分包：${result.totalPackets} 包 × ${result.chunkSize} 字节，PRN=${result.prn}`,
-        `START 帧：${result.startFrameHex}`,
-        `128字节头信息帧：${result.headerFrameHex.slice(0, 32)} …`,
-        `END 帧：${result.endFrameHex}`
-      ]
-    })
-    toast.show({ title: '干跑完成', icon: 'none' })
   },
 
   goBack() {

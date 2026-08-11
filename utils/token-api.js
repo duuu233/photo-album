@@ -5,7 +5,8 @@
 //   GET  /Client/Order/getGoodsList          商品（套餐）列表，带 wxProductId / appleProductId
 //   GET  /Client/Order/getUserAccountTrade   购买 & 消费记录（分页，inOutType 区分）
 //   POST /Client/Order/addOrder              在我们平台创建订单，返回 orderId / orderNo / amount
-//   GET  /Client/Pay/getWxVirtualPayQueryOrder  兜底查微信侧订单状态
+//                                            + signData / paySig / signature（虚拟支付签名）
+//   GET  /Client/Pay/getPayQuery             兜底查支付侧订单状态（payType + orderNo → payState）
 // 全部经 utils/request.js（自动带 userToken / terminal=3 / language 与两枚鉴权头）。
 //
 // 微信支付走的是**小程序虚拟支付**（Token 是虚拟商品，普通微信支付不适用），调用封装在
@@ -15,16 +16,15 @@
 //   → ④ 微信把发货通知回调给我们后端，后端加 Token
 //   → ⑤ 端上轮询 getUserAccount 直到余额到账（⑤ 才是「买到了」的判据，③ 的 success 只是弱确认）。
 //
-// ⚠️ 待后端确认（唯一的缺口）：第 ③ 步要的 signData / paySig / signature 目前**不在**
-//   addOrder 的返回里（swagger 的 ClientAddOrderApiOut 只有 amount / orderId / orderNo）。
-//   这三个字段只能服务端算（appKey 与 session_key 都是服务端秘密，见 wx-virtual-pay.js 顶部），
-//   所以要么由 addOrder 一并返回，要么补一个「创建支付」端点。端上已按「平铺或包一层都认」
-//   的方式解析（wxVirtualPay.extractPayParams），后端就位后不用再改端上；
-//   在那之前走到这步会抛 ORDER_PAY_PARAMS_MISSING，报错文案直接点名缺哪几个字段。
+// ✅ 2026-08-11 接口对账（https://api.boltfox.cn/swagger-ui.html#/）：08-08 记的那个「唯一缺口」
+//   **已由后端补齐** —— `ClientAddOrderApiOut` 现在是
+//   `amount / orderId / orderNo / signData / paySig / signature`，第 ③ 步要的三个签名字段
+//   由 addOrder 一并返回。端上本就按「平铺或包一层都认」解析（wxVirtualPay.extractPayParams），
+//   无需改动；ORDER_PAY_PARAMS_MISSING 从「已知缺口」降级为异常兜底（真缺才报）。
 //
-// 另见 `subpackages/ai/chat/chat.js` 的 `TOKEN_LIMIT_ENABLED`：聊天页的扣费拦截仍是关的。
-// 本轮没有一并打开——后端目前没有「消费 Token」的 Client 端点（swagger 里只有购买侧），
-// 扣费口径要和 AI 网关谈定后再开，否则就是把假扣费换成另一种假扣费。
+// ⚠️ 仍然没有的：**「消费 Token」的 Client 端点**（swagger 的 /Client/Order 下只有购买侧四个）。
+//   所以扣费必然发生在服务端（消费记录能从 getUserAccountTrade 的 inOutType=2 查到），
+//   端上**不得**自己扣数——AI 侧只负责「展示真实余额 + 用完后重取」，见 utils/ai-token.js。
 
 const http = require('./request')
 const wxVirtualPay = require('./wx-virtual-pay')
@@ -244,18 +244,27 @@ function addOrder(pkg, channel) {
 }
 
 /**
- * 兜底查微信侧订单状态（payStatus 1=已支付 2=已取消 3=已退款）。
- * 只在余额轮询超时后调一次，用来把提示分成「已付款、稍后到账」和「结果确认中」。
- * 静默失败：这一步只影响提示措辞，不该再弹一个 toast 盖住主流程的弹窗。
+ * 兜底查支付侧订单状态。只在余额轮询超时后调一次，用来把提示分成
+ * 「已付款、稍后到账」和「结果确认中」。静默失败：这一步只影响提示措辞，
+ * 不该再弹一个 toast 盖住主流程的弹窗。
+ *
+ * ⚠️ 2026-08-11 接口对账修正：端上原先调的 `/Client/Pay/getWxVirtualPayQueryOrder`
+ * **在当前 swagger 里已不存在**（`/Client/Pay/` 下只剩 getPayQuery 与 Apple Pay 四个）。
+ * 现按文档改调 `GET /Client/Pay/getPayQuery`：入参是 `payType` + `orderNo`（**我们平台的
+ * 订单号**，不是微信侧 outTradeNo，也不再传 env），出参是
+ * `{ payState, payNo, exceptionMsg, resData }` —— 字段名也从 `payStatus` 变成了 `payState`。
+ *
+ * 「待后端确认」：swagger 对 `payState` 只写了「支付状态」没给枚举。端上沿用旧口径
+ * **1=已支付** 判定（其余值一律按「结果确认中」措辞，不会说成失败），后端给出枚举后再校准。
  */
-function queryVirtualPayOrder(outTradeNo, env) {
-  if (!outTradeNo) {
+function queryPayOrder(orderNo, payType) {
+  if (!orderNo) {
     return Promise.resolve(null)
   }
   return http
     .get(
-      '/Client/Pay/getWxVirtualPayQueryOrder',
-      { outTradeNo, env: env === 1 ? 1 : 0 },
+      '/Client/Pay/getPayQuery',
+      { orderNo, payType: toNumber(payType, PAY_TYPE.wechat) },
       { mock: false, showError: false }
     )
     .catch(() => null)
@@ -268,11 +277,12 @@ function queryVirtualPayOrder(outTradeNo, env) {
  * 这里按 CONFIRM_DELAYS 退避轮询，余额比支付前多了才算到账。
  * 轮询期间不弹接口错误（showError:false）——中途一次网络抖动就弹红字会让用户以为钱没了。
  *
+ * @param {{orderNo?: string, payType?: number}} order 建单结果（超时兜底查订单要用它的 orderNo）
  * @param {number|null} baselineBalance 支付前的余额，读不到时传 null（则不做差值判定）
  * @param {number[]} [delays] 轮询节奏，仅供单测把 9.4 秒压成毫秒级；业务侧一律用默认值
- * @returns {Promise<{account: object|null, gained: number|null, pending: boolean, payStatus: number}>}
+ * @returns {Promise<{account: object|null, gained: number|null, pending: boolean, payState: number}>}
  */
-async function confirmPurchase(payParams, baselineBalance, delays) {
+async function confirmPurchase(order, baselineBalance, delays) {
   const schedule = Array.isArray(delays) && delays.length ? delays : CONFIRM_DELAYS
   let account = null
 
@@ -286,7 +296,7 @@ async function confirmPurchase(payParams, baselineBalance, delays) {
 
     // 拿不到支付前余额时无法算增量，只要账户读得到就当确认完成（金额交给记录页去核对）
     if (baselineBalance === null || baselineBalance === undefined) {
-      return { account, gained: null, pending: false, payStatus: 0 }
+      return { account, gained: null, pending: false, payState: 0 }
     }
 
     if (account.balance > baselineBalance) {
@@ -294,22 +304,22 @@ async function confirmPurchase(payParams, baselineBalance, delays) {
         account,
         gained: account.balance - baselineBalance,
         pending: false,
-        payStatus: 1
+        payState: 1
       }
     }
   }
 
   // 超时不等于失败：钱可能已经付了，只是回调还没到（或到了但处理慢）。
-  // 查一次微信侧订单，把提示说准。
-  const order = await queryVirtualPayOrder(
-    payParams && payParams.outTradeNo,
-    payParams && payParams.env
+  // 查一次支付侧订单，把提示说准。
+  const queried = await queryPayOrder(
+    order && order.orderNo,
+    order && order.payType
   )
   return {
     account,
     gained: null,
     pending: true,
-    payStatus: toNumber(order && order.payStatus, 0)
+    payState: toNumber(queried && queried.payState, 0)
   }
 }
 
@@ -363,7 +373,14 @@ async function purchase(pkg, channel) {
 
   await wxVirtualPay.requestPayment(payParams)
 
-  const confirmed = await confirmPurchase(payParams, baselineBalance)
+  // 超时兜底查的是**我们平台的订单号**（getPayQuery 的 orderNo），不是微信侧 outTradeNo。
+  const confirmed = await confirmPurchase(
+    {
+      orderNo: order.orderNo || payParams.outTradeNo || '',
+      payType: PAY_TYPE[channel] || PAY_TYPE.wechat
+    },
+    baselineBalance
+  )
 
   return Object.assign(
     {
@@ -384,7 +401,7 @@ module.exports = {
   getPackages,
   getRecords,
   addOrder,
-  queryVirtualPayOrder,
+  queryPayOrder,
   confirmPurchase,
   purchase,
   // 归一函数导出供单测直接验字段映射（String→Number、字段改名这类最容易接错的地方）

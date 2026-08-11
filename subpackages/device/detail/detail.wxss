@@ -517,14 +517,4 @@
 }
 
 /* OTA 测试按钮：橙色状态文案，凸显是测试/联调入口；跑测试时整行降透明度表示进行中 */
-.ota-test-row .row-left text {
-  color: #ff6a20;
-}
 
-.ota-test-status {
-  color: #ff6a20;
-}
-
-.ota-test-row.is-testing {
-  opacity: 0.6;
-}

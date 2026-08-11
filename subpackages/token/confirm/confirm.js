@@ -91,9 +91,10 @@ Page(fold.adapt({
     if (pending) {
       wx.showModal({
         title: '支付已完成',
-        // payStatus 1=微信侧确认已支付。查不到状态时也不说「失败」——钱可能已经扣了，
-        // 让用户去记录页核对比让他重复付一次强。
-        content: result.payStatus === 1
+        // payState 1=支付侧确认已支付（/Client/Pay/getPayQuery 的出参，2026-08-11 由
+        // 已下线的 getWxVirtualPayQueryOrder.payStatus 改名而来；枚举待后端明确）。
+        // 查不到状态时也不说「失败」——钱可能已经扣了，让用户去记录页核对比让他重复付一次强。
+        content: result.payState === 1
           ? 'Token 到账稍有延迟，请稍后在「Token管理」查看余额'
           : '支付结果确认中，请稍后在「购买 & 消费记录」查看',
         showCancel: false,

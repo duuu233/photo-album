@@ -60,9 +60,9 @@ const INPUT_HOLD_MS = 350
 // 长按判定的位移容差(px)：按住期间移动超过它就当作滑动/选字，取消长按计时
 const INPUT_HOLD_MOVE_PX = 10
 
-// Token 余额 demo 已提取到 utils/ai-token.js（2026-08-10）：会话列表页顶部也要显示同一份余额。
+// Token 余额收在 utils/ai-token.js（2026-08-10 提取；2026-08-11 由本地 demo 切到**真实账户**）。
 // 余额展示本身已从本页顶栏移除（需求 1.3：标题要屏幕居中，Token 胶囊占着位置就居不了中），
-// 这里只剩「扣费 + 不足拦截」两处调用；LIMIT_ENABLED=false 时两处都是空操作。
+// 展示位在「历史会话」页顶部；这里只剩「不足拦截 + 调用后刷新」两处调用。
 
 // 打字机（2026-07-27 优化顺滑度）。原实现是 setInterval(30ms) 每帧追 3 字 —— 30ms 一跳、
 // 一跳 3 字，肉眼能看出「一顿一顿」。现在按 ~60fps 出字、每帧尽量只追 1 字，视觉上连续得多：
@@ -387,7 +387,9 @@ Page(fold.adapt({
     // 顶栏只在**有会话时**显示标题（wxml 里按 sessionId 判），默认页留空不写「新对话」。
     // 这里仍保留默认值：会话建出来之前若已从列表带了标题，切过去就是它。
     sessionTitle: '新对话',
-    tokenBalance: aiToken.DEFAULT_BALANCE,
+    // 真实账户余额（见 utils/ai-token.js）。本页顶栏已不展示它（2026-08-10 让位给居中标题），
+    // 留着是给「余额不足拦截」用；展示位在「历史会话」页顶部。
+    tokenBalance: aiToken.UNKNOWN_BALANCE,
     consentDialogVisible: false,
     consentDialogTitle: aiServiceConsent.CONSENT_TITLE,
     consentServiceDescription: aiServiceConsent.CONSENT_SERVICE_DESCRIPTION,
@@ -448,7 +450,8 @@ Page(fold.adapt({
   },
 
   onLoad(options) {
-    this.setData(Object.assign({ tokenBalance: aiToken.readBalance() }, getAiLayoutMetrics()))
+    this.setData(Object.assign({ tokenBalance: aiToken.cachedBalance() }, getAiLayoutMetrics()))
+    this.refreshTokenBalance()
     this._uid = 0 // 本地消息自增 id
     this._pid = 0 // 待发送图片自增 id
     this._typeTimer = null
@@ -1625,10 +1628,19 @@ Page(fold.adapt({
     this.stopGenerate(false)
   },
 
-  // Token 权限控制 demo（文档 §5.5）：不足时弹窗引导购买并拦截 AI 调用
-  // aiToken.LIMIT_ENABLED=false 时整条限制屏蔽，一律放行（见 utils/ai-token.js 注释）
+  // 从后端取权威余额（扣费在服务端发生，端上只能重取）。静默失败：读不到就保持当前值。
+  async refreshTokenBalance() {
+    const balance = await aiToken.refreshBalance()
+    if (balance !== this.data.tokenBalance) {
+      this.setData({ tokenBalance: balance })
+    }
+  },
+
+  // Token 权限控制（文档 §5.5）：余额不足时弹窗引导购买并拦截 AI 调用。
+  // aiToken.LIMIT_ENABLED=false 时整条限制屏蔽、一律放行；余额未知（接口挂了）同样放行，
+  // 不能因为读不到数字就把功能锁死（见 utils/ai-token.js）。
   guardToken() {
-    if (!aiToken.LIMIT_ENABLED || this.data.tokenBalance > 0) {
+    if (aiToken.hasBalance(this.data.tokenBalance)) {
       return true
     }
     wx.showModal({
@@ -1640,11 +1652,11 @@ Page(fold.adapt({
     return false
   },
 
+  // 一次 AI 调用完成后对齐余额。
+  // ⚠️ **端上不扣数**：swagger 里没有「消费 Token」的 Client 端点，扣费在服务端发生
+  // （消费记录见 getUserAccountTrade inOutType=2）。端上自减就是双重记账。
   spendToken() {
-    const balance = aiToken.spend(this.data.tokenBalance)
-    if (balance !== this.data.tokenBalance) {
-      this.setData({ tokenBalance: balance })
-    }
+    this.refreshTokenBalance()
   },
 
   // ==================== 工具面板 ====================

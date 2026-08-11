@@ -1,40 +1,94 @@
-// AI Token 余额（**演示逻辑**）——支付体系（Java 后端）未接，先用本地存储模拟
-// 「余额展示 + 每次对话扣 1 + 不足拦截」。接入真实接口后只改本文件的 readBalance/spend 即可，
-// 页面侧无需改动。
+// AI 模块的 Token 余额。
 //
-// 2026-08-10 从 subpackages/ai/chat/chat.js 提取成公共模块：会话列表页也要显示同一份余额
-//（需求「历史会话页顶部显示 token 余额」），常量再复制一份必然会漂。
+// 2026-08-11 接口对账（https://api.boltfox.cn/swagger-ui.html#/）：**已由本地 demo 切到真实后端**。
+// 此前本文件是一套 storage 里的假余额（恒 100、每次对话本地扣 1），AI 侧显示的数字与用户真实
+// 账户毫无关系 —— 支付体系上线后这就是明摆着的错数。
 //
-// LIMIT_ENABLED=false（2026-08-03 起）：余额是本地假的、支付又没上线，扣满 DEFAULT_BALANCE 次
-// 就再也发不出消息，纯粹卡住体验/测试。关掉后 —— 不扣费、不拦截，余额恒显示 DEFAULT_BALANCE
-//（storage 里可能留着历史扣到 0 的旧值，一并忽略，否则会显示 0 Token 像坏了）。
-// 接后端时把它改回 true，其余逻辑原样还在。
-const STORAGE_KEY = 'aiTokenBalanceDemo'
-const DEFAULT_BALANCE = 100
+// 余额来源（两条，都是真实值）：
+//   ① `app.globalData.userInfo.availableToken` —— 登录响应 UserInfoDetailApiOut / 用户信息接口
+//      UserInfoApiOut 里现在都带 `availableToken`（String）。进页面即有，不必先打一次接口；
+//   ② `GET /Client/Order/getUserAccount` —— 权威值，用于刷新（生成完一次图之后余额会变）。
+//
+// ⚠️ **端上不做扣费**。swagger 的 `/Client/Order` 下只有购买侧四个端点，没有「消费 Token」的
+//    Client 端点；而消费记录能从 `getUserAccountTrade(inOutType=2)` 查到 —— 说明扣费发生在
+//    服务端（AI 网关侧）。端上再自己减一次就是双重记账，只会和账户对不上。
+//    所以本模块只有「读」和「刷新」，`spend()` 已删除。
+//
+// LIMIT_ENABLED：余额不足时是否**拦截**发送。仍保持 false，等后端把「AI 调用如何扣费、
+// 余额为 0 时网关返回什么错误码」定下来再打开（否则会出现「端上放行、网关拒绝」或反过来的
+// 割裂）。⚠️ 它现在只控制**拦截**，不再控制余额展示 —— 展示一律是真实值。
+const api = require('./api')
+const tokenApi = require('./token-api')
+
 const LIMIT_ENABLED = false
 
-function readBalance() {
-  if (!LIMIT_ENABLED) {
-    return DEFAULT_BALANCE
+// 读不到余额时页面显示什么：用 null 表示「未知」，页面渲染成 '--'，
+// 绝不用 0 兜底 —— 那会让有余额的用户看到「0 Token」而不敢用。
+const UNKNOWN_BALANCE = null
+
+function toBalance(value) {
+  if (value === undefined || value === null || value === '') {
+    return UNKNOWN_BALANCE
   }
-  const value = wx.getStorageSync(STORAGE_KEY)
-  return typeof value === 'number' ? value : DEFAULT_BALANCE
+  const number = Number(value)
+  return Number.isFinite(number) ? Math.max(0, number) : UNKNOWN_BALANCE
 }
 
-// 扣 1 并落盘，返回扣完的余额。限制关闭时是空操作（返回当前展示值，调用方不必判分支）。
-function spend(current) {
-  if (!LIMIT_ENABLED) {
-    return current
+// 登录时落在会话里的余额（app.applyWechatSession → normalizeUserInfo）。
+// 同步可得，用于进页面时先把数字显示出来，避免空一下再跳。
+function cachedBalance() {
+  const app = typeof getApp === 'function' ? getApp() : null
+  const userInfo = (app && app.globalData && app.globalData.userInfo) || null
+  return toBalance(userInfo && userInfo.availableToken)
+}
+
+// 权威余额：优先查账户接口；失败再退回用户信息接口（两处出参是同一个 availableToken）。
+// 都失败返回 UNKNOWN_BALANCE，页面保持上一次的数字或 '--'，不弹错误——
+// 余额只是页面上的一个数字，为它弹红字会盖住 AI 的主流程。
+async function fetchBalance() {
+  try {
+    const account = await tokenApi.getAccount({ showError: false })
+    const balance = toBalance(account && account.balance)
+    if (balance !== UNKNOWN_BALANCE) {
+      return balance
+    }
+  } catch (error) {
+    // 落到下面的用户信息兜底
   }
-  const balance = Math.max(0, Number(current || 0) - 1)
-  wx.setStorageSync(STORAGE_KEY, balance)
-  return balance
+
+  try {
+    const profile = await api.getUserProfile()
+    return toBalance(profile && profile.availableToken)
+  } catch (error) {
+    return UNKNOWN_BALANCE
+  }
+}
+
+// 生成/对话之后刷新：扣费在服务端发生，端上只能重取。
+function refreshBalance() {
+  return fetchBalance()
+}
+
+// 余额是否足以发起一次 AI 调用。LIMIT_ENABLED=false 时恒 true；
+// 余额未知（接口挂了）也放行——不能因为读不到数字就把功能锁死。
+function hasBalance(balance) {
+  if (!LIMIT_ENABLED) {
+    return true
+  }
+  return balance === UNKNOWN_BALANCE || Number(balance) > 0
+}
+
+// 页面展示：未知显示 '--'，其余显示数字本身（0 就显示 0，那是真实状态）。
+function displayBalance(balance) {
+  return balance === UNKNOWN_BALANCE || balance === undefined ? '--' : String(balance)
 }
 
 module.exports = {
-  STORAGE_KEY,
-  DEFAULT_BALANCE,
   LIMIT_ENABLED,
-  readBalance,
-  spend
+  UNKNOWN_BALANCE,
+  cachedBalance,
+  fetchBalance,
+  refreshBalance,
+  hasBalance,
+  displayBalance
 }
