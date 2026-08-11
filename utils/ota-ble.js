@@ -50,6 +50,13 @@ const OP = {
 // 升级包文件最前面的头信息长度（§6.3.4）：第一个 DATA 包固定承载这 128 字节，设备据首包长度识别为头信息。
 const OTA_HEADER_SIZE = 128
 
+// 头信息里的「固件类型」(偏移 9)：1 = 3D7 面板(3.7 寸 480×720)，2 = 5D89 面板(5.89 寸 680×960)。
+// 与 frame-protocol.SCREEN_TYPES 的 0x01/0x02 一一对应，供本地按设备尺寸预检面板是否刷对。
+const OTA_PANELS = {
+  1: { name: '3D7', label: '3.7寸', width: 480, height: 720 },
+  2: { name: '5D89', label: '5.89寸', width: 680, height: 960 }
+}
+
 // OTA_TODO(b)：START 帧的对象类型。文档只写「当前作为固件对象使用」，未给确切数值，默认 0x00。
 const OBJ_TYPE_FIRMWARE = 0x00
 const DEFAULT_PRN = 3 // 信用窗口：每发这么多包等一次 DATA ACK（START ACK 里固件回 3）
@@ -227,6 +234,128 @@ function buildEndFrame() {
 // START 帧 FW_SIZE：取 bin payload 大小 = 文件总大小 - 128 字节头（见文件头 OTA_TODO(c)）。
 function computeFwSize(fileSize) {
   return Math.max(0, (Number(fileSize) || 0) - OTA_HEADER_SIZE)
+}
+
+function readU16LE(bytes, offset) {
+  return (bytes[offset] | (bytes[offset + 1] << 8)) >>> 0
+}
+
+function readU32LE(bytes, offset) {
+  return (
+    (bytes[offset] |
+      (bytes[offset + 1] << 8) |
+      (bytes[offset + 2] << 16) |
+      (bytes[offset + 3] << 24)) >>>
+    0
+  )
+}
+
+// 解析升级包最前面的 128 字节头信息（§6.3.4 字段表）。**只读不改**：这 128 字节由固件方预先打好，
+// APP 原样发送、不改写任何字段；这里解析只为「发之前先看一眼包对不对」和日志排查。
+function inspectOtaHeader(bytes) {
+  const head = bytes.subarray(0, OTA_HEADER_SIZE)
+  let magic = ''
+  for (let i = 0; i < 7; i++) {
+    magic += String.fromCharCode(head[i])
+  }
+  const versionLength = Math.min(readU16LE(head, 20), 104)
+  let version = ''
+  for (let i = 0; i < versionLength; i++) {
+    const code = head[24 + i]
+    if (!code) {
+      break
+    }
+    version += String.fromCharCode(code)
+  }
+  return {
+    magicOk: magic === 'OTAINFO' && head[7] === 0x00,
+    headerVersion: head[8],
+    panel: head[9],
+    headerLength: readU16LE(head, 10),
+    binSize: readU32LE(head, 12),
+    binCrc32: readU32LE(head, 16),
+    versionLength,
+    headerCrc16: readU16LE(head, 22),
+    version
+  }
+}
+
+function panelText(panel) {
+  const spec = OTA_PANELS[panel]
+  return spec ? `${spec.name}（${spec.label}）` : `未知面板类型 ${panel}`
+}
+
+// 设备记录的屏幕类型/分辨率 → 头信息里的固件类型；判不出返回 0（不参与拦截）。
+// screenType 与面板号同源（0x01 3.7寸=3D7、0x02 5.89寸=5D89，见 frame-protocol.SCREEN_TYPES）。
+function panelOfDevice(device) {
+  const screenType = Number(device && device.screenType) || 0
+  if (OTA_PANELS[screenType]) {
+    return screenType
+  }
+  const w = Number(device && device.width) || 0
+  const h = Number(device && device.height) || 0
+  if (!w || !h) {
+    return 0
+  }
+  const keys = Object.keys(OTA_PANELS)
+  for (let i = 0; i < keys.length; i++) {
+    const spec = OTA_PANELS[keys[i]]
+    if ((w === spec.width && h === spec.height) || (w === spec.height && h === spec.width)) {
+      return Number(keys[i])
+    }
+  }
+  return 0
+}
+
+// 发包前的本地预检：传错文件/下载截断应该在碰蓝牙之前就拦住，而不是刷到设备上再等它回错误码。
+// 只拦「一望即知不对」的三类（缺 OTAINFO 标识、头部长度不是 128、声明 bin 大小与文件对不上）
+// 与「面板明确刷错」；CRC16/CRC32 只记日志不拦——规格书没写这两个校验用的多项式口径，
+// 本地算法与固件不一致时误拦会把好包挡在门外，这两项本来就该由设备校验（0x0D / 0x09）。
+function assertPackageLooksRight(bytes, payloadSize, options) {
+  const header = inspectOtaHeader(bytes)
+  console.log('[OTA] 升级包头信息：', {
+    magicOk: header.magicOk,
+    headerVersion: header.headerVersion,
+    panel: header.panel,
+    headerLength: header.headerLength,
+    binSize: header.binSize,
+    actualPayload: payloadSize,
+    binCrc32: '0x' + header.binCrc32.toString(16).toUpperCase(),
+    localCrc32Mpeg2: '0x' + (imageCodec.crc32Mpeg2(bytes.subarray(OTA_HEADER_SIZE)) >>> 0).toString(16).toUpperCase(),
+    headerCrc16: '0x' + header.headerCrc16.toString(16).toUpperCase(),
+    version: header.version
+  })
+
+  if (!header.magicOk) {
+    throw new Error(
+      '升级包无效：文件开头没有 "OTAINFO" 标识（§6.3.4 头信息），这不是一个 OTA 升级包 —— 多半是传错了文件或下载被截断。'
+    )
+  }
+  if (header.headerLength !== OTA_HEADER_SIZE) {
+    throw new Error(
+      `升级包无效：头信息声明头部长度 ${header.headerLength} 字节，规格固定为 ${OTA_HEADER_SIZE} 字节，文件不是本协议的升级包。`
+    )
+  }
+  if (header.binSize !== payloadSize) {
+    throw new Error(
+      `升级包不完整：头信息声明 bin 大小 ${header.binSize} 字节，文件实际只有 ${payloadSize} 字节（不含 128 字节头）。请重新下载或确认是否传错了包。`
+    )
+  }
+  const expectPanel = Number(options && options.expectPanel) || 0
+  if (expectPanel && header.panel && header.panel !== expectPanel) {
+    throw new Error(
+      `升级包面板不匹配：这是 ${panelText(header.panel)} 的固件，当前电子纸设备是 ${panelText(expectPanel)}。刷错面板会变砖，已终止。`
+    )
+  }
+  const wantVersion = String((options && options.expectVersion) || '').trim()
+  if (wantVersion && header.version && header.version.indexOf(wantVersion) === -1) {
+    // 只告警：后端版本号写法（如 V1.0.2）与包内版本串（BR1601A02_..._V102）本就可能不同形，
+    // 拦下去会误伤；真不匹配设备会在头信息握手回 0x0E。
+    console.warn(
+      `[OTA] 升级包内版本号 "${header.version}" 与后端下发的新版本 "${wantVersion}" 不同形，请留意是否传错包`
+    )
+  }
+  return header
 }
 
 // ── 解帧（设备 → APP，字段布局依规格书 §6.3.3）───────────────
@@ -930,13 +1059,26 @@ async function transferData(session, bytes, options) {
     total: payloadLen,
     message: '发送 128 字节头信息，等待电子纸设备校验头部'
   })
-  const headerAck = await sendFrameAwaitAck(
-    session,
-    buildDataFrame(header),
-    OP.DATA,
-    5000,
-    '头信息握手超时：电子纸设备未应答 128 字节头信息校验（请确认升级包与电子纸设备面板/型号匹配）'
-  )
+  // 超时给到 10s：设备收到 START 后要初始化写入区（含 Flash 擦除），再校验头部 CRC16/版本号，
+  // 这段忙碌期不回应答是常见的。5s 曾把「设备还在准备」误判成握手失败。
+  // ⚠️ 文案不要暗示「面板/型号不匹配」：那种情况设备会明确回 0x0C，能走到超时只可能是它没应答。
+  const headerTimeout = Number.isFinite(options.headerTimeout) ? options.headerTimeout : 10000
+  let headerAck
+  try {
+    headerAck = await sendFrameAwaitAck(
+      session,
+      buildDataFrame(header),
+      OP.DATA,
+      headerTimeout,
+      `头信息握手超时：${Math.round(headerTimeout / 1000)}s 内未收到电子纸设备对 128 字节头信息的校验应答`
+    )
+  } catch (error) {
+    // 打上 code：此刻设备一个 payload 字节都没收下，上层可以安全地断链复位后整轮重来。
+    if (/头信息握手超时/.test((error && error.message) || '')) {
+      error.code = 'OTA_HEADER_TIMEOUT'
+    }
+    throw error
+  }
   if (headerAck.result !== 0x00) {
     // 0x0A~0x0E 明确指向「包不对/头版本/面板/CRC16/版本号」——直接把设备语义透传给用户。
     throw new Error('头信息校验未通过：' + otaResultText(headerAck.result))
@@ -1139,6 +1281,9 @@ async function prepareFirmware(pkg, options = {}) {
     console.warn(`[OTA] bin payload ${payloadSize} 字节超出建议范围 0x${MIN_FW_SIZE.toString(16)}~0x${MAX_FW_SIZE.toString(16)}（仅告警，最终以设备应答为准）`)
   }
 
+  // 发之前先看一眼这个包对不对（传错文件/下载截断/面板刷错），别等刷到设备上才失败。
+  const header = assertPackageLooksRight(bytes, payloadSize, options)
+
   // v1.5：一切校验数据(含 CRC32)由固件方预先打进升级包头信息、并由设备端校验；手机不再计算/携带 CRC32。
   // 这里仅为本地展示/日志算一次 CRC32，不做拦截。
   const crc32 = imageCodec.crc32Mpeg2(bytes)
@@ -1176,6 +1321,55 @@ function isStuckDfuState(error) {
 
 const DFU_STATE_RESET_WAIT_MS = 3000 // 断链后留给设备退出 DFU 状态的时间
 
+// 「设备侧 OTA 状态没复位」的两种表现，共同点是**一个 payload 字节都还没被设备收下**，
+// 因此整轮从 START 重来是安全的（START 本身会重置设备的写入区与 total_bytes）：
+//   · START 被回 0x05：上一轮 DFU 半途中断，状态机还停在升级态；
+//   · 头信息握手无应答：START 应答正常，却不回 128 字节头信息的校验结果。
+//     ——规格书 §8 步骤 2 明确设备要回 ACK；面板/型号/CRC 不对是回 0x0A~0x0E，
+//     不应答只可能是设备端状态没复位。
+function isWedgedDfuSession(error) {
+  return isStuckDfuState(error) || !!(error && error.code === 'OTA_HEADER_TIMEOUT')
+}
+
+function wedgedRetryError(error) {
+  if (isStuckDfuState(error)) {
+    return new Error(
+      'OTA 启动被拒绝：电子纸设备仍停在上一次未完成的升级状态（' +
+        otaResultText(0x05) +
+        '）。请把电子纸设备断电重启后再试。'
+    )
+  }
+  if (error && error.code === 'OTA_HEADER_TIMEOUT') {
+    return new Error(
+      '头信息握手无应答：电子纸设备接受了 START，却两次都没有回复 128 字节头信息的校验结果。' +
+        '请把电子纸设备断电重启后再试（升级包与面板/型号不匹配时设备会明确回 0x0C，而不是不应答）。'
+    )
+  }
+  return error
+}
+
+// 一轮完整的 DFU：连接 FF10 → START → 头信息握手 → 传数据 → END。
+async function runDfuAttempt(deviceId, prepared, options) {
+  const onProgress = options.onProgress
+
+  emit(onProgress, { phase: 'connecting', percent: 12, message: '连接 OTA 服务(FF10)' })
+  const session = await ensureOtaConnection(deviceId)
+
+  emit(onProgress, {
+    phase: 'starting',
+    percent: 14,
+    message: `握手中（MTU ${session.mtu}）`
+  })
+  // START 携带 FW_SIZE = bin payload 大小（文件大小 - 128 头，见 computeFwSize）。
+  await doStart(session, prepared.payloadSize, options)
+
+  return transferData(
+    session,
+    prepared.bytes,
+    Object.assign({}, options, { crc32: prepared.crc32 })
+  )
+}
+
 async function upgradeFirmware(deviceId, pkg, options = {}) {
   const onProgress = options.onProgress
   const shouldAbort = typeof options.shouldAbort === 'function' ? options.shouldAbort : () => false
@@ -1184,24 +1378,16 @@ async function upgradeFirmware(deviceId, pkg, options = {}) {
   try {
     const prepared = await prepareFirmware(pkg, options)
 
-    emit(onProgress, { phase: 'connecting', percent: 12, message: '连接 OTA 服务(FF10)' })
-    let session = await ensureOtaConnection(deviceId)
-
-    emit(onProgress, {
-      phase: 'starting',
-      percent: 14,
-      message: `握手中（MTU ${session.mtu}）`
-    })
-    // START 携带 FW_SIZE = bin payload 大小（文件大小 - 128 头，见 computeFwSize）。
+    let result
     try {
-      await doStart(session, prepared.payloadSize, options)
+      result = await runDfuAttempt(deviceId, prepared, options)
     } catch (error) {
-      if (!isStuckDfuState(error) || shouldAbort()) {
+      if (!isWedgedDfuSession(error) || shouldAbort()) {
         throw error
       }
-      // 上一轮升级中断后设备还停在 DFU 状态：断链 → 等它复位 → 重连重发 START，
-      // 让用户「再点一次升级」就能自愈，而不是从此每次都被 0x05 挡住、只能去重启设备。
-      console.warn('[OTA] START 被回 0x05（设备仍在上一次 DFU 状态），断链复位后重试一次')
+      // 设备还停在上一轮没走完的 DFU 里：断链 → 等它复位 → 重连整轮重来，
+      // 让用户「再点一次升级」就能自愈，而不是从此每次都被挡住、只能去重启设备。
+      console.warn('[OTA] 设备侧 OTA 状态未复位，断链复位后整轮重试一次：', error && error.message)
       emit(onProgress, {
         phase: 'starting',
         percent: 13,
@@ -1216,22 +1402,13 @@ async function upgradeFirmware(deviceId, pkg, options = {}) {
       if (shouldAbort()) {
         throw new Error('OTA_ABORTED')
       }
-      session = await ensureOtaConnection(deviceId)
       try {
-        await doStart(session, prepared.payloadSize, options)
+        result = await runDfuAttempt(deviceId, prepared, options)
       } catch (retryError) {
-        if (isStuckDfuState(retryError)) {
-          throw new Error(
-            'OTA 启动被拒绝：电子纸设备仍停在上一次未完成的升级状态（' +
-              otaResultText(0x05) +
-              '）。请把电子纸设备断电重启后再试。'
-          )
-        }
-        throw retryError
+        throw wedgedRetryError(retryError)
       }
     }
 
-    const result = await transferData(session, prepared.bytes, Object.assign({}, options, { crc32: prepared.crc32 }))
     return Object.assign({ size: prepared.size, crc32: prepared.crc32 }, result)
   } catch (error) {
     // 失败/中断后必须断开 OTA 链路：设备的 DFU 状态机停在半途，留着同一条连接再 START 必被回
@@ -1266,6 +1443,9 @@ module.exports = {
   OTA_CHAR_DATA_UUID,
   OTA_CHAR_ALT_CONTROL_UUID,
   OTA_HEADER_SIZE,
+  OTA_PANELS,
+  inspectOtaHeader,
+  panelOfDevice,
   OBJ_TYPE_FIRMWARE,
   DEFAULT_PRN,
   MIN_FW_SIZE,

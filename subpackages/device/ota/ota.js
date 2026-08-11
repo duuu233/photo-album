@@ -631,6 +631,10 @@ Page(fold.adapt({
     try {
       const result = await otaBle.upgradeFirmware(bleDeviceId, pkg, {
         pace: 20,
+        // 传错包/下载截断/刷错面板在发第一帧前就本地拦住：刷错固件不可逆，不能等设备回错误码。
+        // 判不出面板时 panelOfDevice 返回 0，预检自动跳过这一项，不误伤。
+        expectPanel: otaBle.panelOfDevice(this.data.device),
+        expectVersion: firmware.latestVersion,
         onProgress: progress => this.onUpgradeProgress(progress),
         shouldAbort: () => this._abortUpgrade
       })

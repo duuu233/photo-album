@@ -43,6 +43,9 @@ function createFakeDevice(options = {}) {
     payloadPackets: 0,
     expectedPayload: options.expectedPayload,
     dropTailPacket: !!options.dropTailPacket, // 模拟收尾真丢包：END 必须报 0x09
+    silentHeaderInSession: options.silentHeaderInSession || 0, // 第 N 轮 DFU 不应答头信息
+    silentHeaderAlways: !!options.silentHeaderAlways, // 每一轮都不应答头信息
+    sessions: 0,
     startAcks: 0,
     endResult: null
   }
@@ -72,6 +75,7 @@ function installFakeBle(device) {
         return
       }
       device.dfu = true
+      device.sessions += 1
       device.headerSeen = false
       device.payloadBytes = 0
       device.payloadPackets = 0
@@ -81,6 +85,9 @@ function installFakeBle(device) {
     if (op === 0xf2) {
       const dataLen = bytes.length - 2 // 去掉操作码与校验字节
       if (!device.headerSeen) {
+        if (device.silentHeaderAlways || device.sessions === device.silentHeaderInSession) {
+          return // 设备状态没复位：START 应答了，却不回头信息校验结果
+        }
         device.headerSeen = true
         assert.strictEqual(dataLen, HEADER_SIZE, '首个 DATA 包必须是 128 字节头信息')
         notify(withChecksum([0xfc, 0xf2, 0x00]))
@@ -153,8 +160,35 @@ function installFakeBle(device) {
 // 673 包、最后一窗只有 1 包（673 = 3×224 + 1）—— 与现场失败完全同形。
 const TOTAL_PACKETS = 673
 const PAYLOAD_SIZE = CHUNK * (TOTAL_PACKETS - 1) + 100
-function buildPackage(payloadSize) {
-  return new Uint8Array(HEADER_SIZE + payloadSize).buffer
+
+// 按 §6.3.4 字段表拼一个合法的 128 字节头信息 + payload。
+function buildPackage(payloadSize, overrides = {}) {
+  const file = new Uint8Array(HEADER_SIZE + payloadSize)
+  const head = file.subarray(0, HEADER_SIZE)
+  const magic = overrides.magic === undefined ? 'OTAINFO' : overrides.magic
+  for (let i = 0; i < magic.length && i < 7; i++) {
+    head[i] = magic.charCodeAt(i)
+  }
+  head[7] = 0x00
+  head[8] = 1 // 头部格式版本
+  head[9] = overrides.panel === undefined ? 2 : overrides.panel // 1=3D7 / 2=5D89
+  const headerLength = overrides.headerLength === undefined ? HEADER_SIZE : overrides.headerLength
+  head[10] = headerLength & 0xff
+  head[11] = (headerLength >> 8) & 0xff
+  const binSize = overrides.binSize === undefined ? payloadSize : overrides.binSize
+  head[12] = binSize & 0xff
+  head[13] = (binSize >> 8) & 0xff
+  head[14] = (binSize >> 16) & 0xff
+  head[15] = (binSize >> 24) & 0xff
+  const version = overrides.version === undefined
+    ? 'BR1601A02_260702_r8285_5139_5D89_V100'
+    : overrides.version
+  head[20] = version.length & 0xff
+  head[21] = (version.length >> 8) & 0xff
+  for (let i = 0; i < version.length; i++) {
+    head[24 + i] = version.charCodeAt(i)
+  }
+  return file.buffer
 }
 
 ;(async () => {
@@ -216,6 +250,94 @@ function buildPackage(payloadSize) {
     // 复位前的 START 会被拒 1~2 次（doStart 对另一个 objType 也各给一次机会），
     // 关键是复位重连后还有一次并且成功了。
     assert.ok(device.startAcks >= 2, `复位后应重发 START，实际发了 ${device.startAcks} 次`)
+  }
+
+  // ④ START 应答正常、却不回 128 字节头信息校验（设备状态没复位）：此刻设备一个 payload 字节
+  //    都没收下，断链复位后整轮重来是安全的，用户不该被一句「请确认面板/型号匹配」打发走。
+  {
+    const device = createFakeDevice({
+      expectedPayload: PAYLOAD_SIZE,
+      silentHeaderInSession: 1
+    })
+    installFakeBle(device)
+    delete require.cache[require.resolve('../utils/ota-ble')]
+    const otaBle = require('../utils/ota-ble')
+
+    const result = await otaBle.upgradeFirmware('DEV-1', {
+      buffer: buildPackage(PAYLOAD_SIZE)
+    }, { pace: 0, headerTimeout: 200, stateResetWaitMs: 60 })
+
+    assert.strictEqual(result.confirmed, true)
+    assert.strictEqual(device.sessions, 2, '第一轮头信息无应答，复位后应重来一轮')
+    assert.strictEqual(device.payloadBytes, PAYLOAD_SIZE)
+  }
+
+  // ⑤ 两轮都不回头信息：如实失败，且提示要指向「断电重启」而不是误导成面板/型号不匹配
+  {
+    const device = createFakeDevice({
+      expectedPayload: PAYLOAD_SIZE,
+      silentHeaderAlways: true
+    })
+    installFakeBle(device)
+    delete require.cache[require.resolve('../utils/ota-ble')]
+    const otaBle = require('../utils/ota-ble')
+
+    let failed = null
+    try {
+      await otaBle.upgradeFirmware('DEV-1', {
+        buffer: buildPackage(PAYLOAD_SIZE)
+      }, { pace: 0, headerTimeout: 200, stateResetWaitMs: 60 })
+    } catch (error) {
+      failed = error
+    }
+    assert.ok(failed, '两轮都不应答必须失败')
+    assert.ok(/断电重启/.test(failed.message), failed.message)
+    assert.strictEqual(device.sessions, 2, '只重试一轮，不无限重来')
+  }
+
+  // ⑥ 传错文件/下载截断/刷错面板：必须在发第一帧之前就本地拦住（刷错固件不可逆），
+  //    且提示要说清是哪一种，不能笼统报「升级失败」。
+  {
+    const device = createFakeDevice({ expectedPayload: PAYLOAD_SIZE })
+    installFakeBle(device)
+    delete require.cache[require.resolve('../utils/ota-ble')]
+    const otaBle = require('../utils/ota-ble')
+
+    const reject = async (buffer, opts, pattern) => {
+      let failed = null
+      try {
+        await otaBle.upgradeFirmware('DEV-1', { buffer }, Object.assign({ pace: 0 }, opts))
+      } catch (error) {
+        failed = error
+      }
+      assert.ok(failed, '本地预检应当拒绝：' + pattern)
+      assert.ok(pattern.test(failed.message), failed.message)
+      assert.strictEqual(device.sessions, 0, '预检不通过时不该碰蓝牙')
+    }
+
+    // 不是 OTA 包（没有 OTAINFO 标识）——最典型的「传错文件」
+    await reject(buildPackage(PAYLOAD_SIZE, { magic: '' }), {}, /OTAINFO/)
+    // 下载截断：头信息声明的 bin 大小与实际文件对不上
+    await reject(buildPackage(PAYLOAD_SIZE, { binSize: PAYLOAD_SIZE + 4096 }), {}, /升级包不完整/)
+    // 刷错面板：5D89 的包刷到 3D7 设备
+    await reject(buildPackage(PAYLOAD_SIZE, { panel: 2 }), { expectPanel: 1 }, /面板不匹配/)
+
+    // 合法包 + 面板对得上：照常升级，预检不能误伤
+    const result = await otaBle.upgradeFirmware('DEV-1', {
+      buffer: buildPackage(PAYLOAD_SIZE, { panel: 2 })
+    }, { pace: 0, expectPanel: 2, expectVersion: 'V1.0.2' })
+    assert.strictEqual(result.confirmed, true)
+  }
+
+  // ⑦ 屏幕尺寸/screenType → 面板号的换算（判不出必须返回 0，不参与拦截）
+  {
+    delete require.cache[require.resolve('../utils/ota-ble')]
+    const otaBle = require('../utils/ota-ble')
+    assert.strictEqual(otaBle.panelOfDevice({ screenType: 2 }), 2)
+    assert.strictEqual(otaBle.panelOfDevice({ width: 680, height: 960 }), 2)
+    assert.strictEqual(otaBle.panelOfDevice({ width: 960, height: 680 }), 2, '横竖屏不影响')
+    assert.strictEqual(otaBle.panelOfDevice({ width: 480, height: 720 }), 1)
+    assert.strictEqual(otaBle.panelOfDevice({ name: '没有尺寸的记录' }), 0)
   }
 
   console.log('ota-dfu-transfer.test.js 通过')
