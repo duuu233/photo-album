@@ -41,6 +41,8 @@ function createFakeDevice(options = {}) {
     headerSeen: false,
     payloadBytes: 0,
     payloadPackets: 0,
+    endPayloadBytes: 0, // 收到 END 那一刻的快照（断链复位会把活计数清零）
+    endPayloadPackets: 0,
     expectedPayload: options.expectedPayload,
     dropTailPacket: !!options.dropTailPacket, // 模拟收尾真丢包：END 必须报 0x09
     silentHeaderInSession: options.silentHeaderInSession || 0, // 第 N 轮 DFU 不应答头信息
@@ -48,6 +50,10 @@ function createFakeDevice(options = {}) {
     // 头信息前 N 次回 0x05「设备状态错误」（忙态/上一轮 DFU 没退出），之后才正常受理
     busyHeaderTimes: options.busyHeaderTimes || 0,
     busyHeaderAlways: !!options.busyHeaderAlways,
+    // 第 N 轮 DFU 传数据传到一半时，某个信用窗口回 0x05「设备状态错误」
+    //（真机现象：反复对同一台设备升级，传输途中冒出「接收数据报错：设备状态错误」）
+    dataStateErrorInSession: options.dataStateErrorInSession || 0,
+    dataStateErrorAtPacket: options.dataStateErrorAtPacket || DEVICE_PRN * 3,
     headerRejects: 0,
     sessions: 0,
     startAcks: 0,
@@ -110,6 +116,13 @@ function installFakeBle(device) {
       device.payloadBytes += dataLen
       // 信用窗口：收满 PRN 包才回一次 ACK；不足一窗的收尾包不应答。
       if (device.payloadPackets % DEVICE_PRN === 0) {
+        if (
+          device.sessions === device.dataStateErrorInSession &&
+          device.payloadPackets === device.dataStateErrorAtPacket
+        ) {
+          notify(withChecksum([0xfc, 0xf2, 0x05])) // 传到一半：此刻不能受理
+          return
+        }
         notify(withChecksum([0xfc, 0xf2, 0x00]))
       }
       return
@@ -118,6 +131,11 @@ function installFakeBle(device) {
       // 整包校验：total_bytes == bin_size 才算成功，否则 0x09 参数错误
       const ok = device.payloadBytes === device.expectedPayload
       device.endResult = ok ? 0x00 : 0x09
+      // 收到 END 这一刻的收包快照：升级收尾（成功或失败）端上一律会断链复位，
+      // 而断链会把下面 closeBLEConnection 里的计数清零（真机口径：设备退出 DFU 态）。
+      // 用例要断言的是「到底收到了多少包」，所以在这里定格，别在断链之后再去读活计数。
+      device.endPayloadPackets = device.payloadPackets
+      device.endPayloadBytes = device.payloadBytes
       device.dfu = false
       notify(withChecksum([0xfc, 0xf3, device.endResult]))
     }
@@ -215,8 +233,8 @@ function buildPackage(payloadSize, overrides = {}) {
 
     assert.strictEqual(result.confirmed, true)
     assert.strictEqual(result.totalPackets, TOTAL_PACKETS)
-    assert.strictEqual(device.payloadPackets, TOTAL_PACKETS, '所有数据包都要发出去')
-    assert.strictEqual(device.payloadBytes, PAYLOAD_SIZE)
+    assert.strictEqual(device.endPayloadPackets, TOTAL_PACKETS, '所有数据包都要发出去')
+    assert.strictEqual(device.endPayloadBytes, PAYLOAD_SIZE)
     assert.strictEqual(device.endResult, 0x00)
   }
 
@@ -279,7 +297,7 @@ function buildPackage(payloadSize, overrides = {}) {
 
     assert.strictEqual(result.confirmed, true)
     assert.strictEqual(device.sessions, 2, '第一轮头信息无应答，复位后应重来一轮')
-    assert.strictEqual(device.payloadBytes, PAYLOAD_SIZE)
+    assert.strictEqual(device.endPayloadBytes, PAYLOAD_SIZE)
   }
 
   // ⑤ 两轮都不回头信息：如实失败，且提示要指向「断电重启」而不是误导成面板/型号不匹配
@@ -347,6 +365,61 @@ function buildPackage(payloadSize, overrides = {}) {
     assert.ok(/断电重启/.test(failed.message), failed.message)
     assert.ok(/状态/.test(failed.message), failed.message)
     assert.strictEqual(device.sessions, 2, '断链复位整轮重来一次后收手')
+  }
+
+  // ⑦-2 传数据传到一半被回 0x05「设备状态错误」（2026-08-11 现场）：
+  //     这是「此刻不能受理」而不是「数据不对」，必须断链复位后整轮从 START 重来一次，
+  //     而不是直接把「电子纸设备接收数据报错：电子纸设备状态错误」甩给用户。
+  //     从 START 重来是安全的：START 会重置设备的写入区与 total_bytes。
+  {
+    const device = createFakeDevice({
+      expectedPayload: PAYLOAD_SIZE,
+      dataStateErrorInSession: 1
+    })
+    installFakeBle(device)
+    delete require.cache[require.resolve('../utils/ota-ble')]
+    const otaBle = require('../utils/ota-ble')
+
+    const result = await otaBle.upgradeFirmware('DEV-1', {
+      buffer: buildPackage(PAYLOAD_SIZE)
+    }, { pace: 0, headerDelayMs: 0, stateResetWaitMs: 60 })
+
+    assert.strictEqual(result.confirmed, true, '断链复位后重来一轮应当升级成功')
+    assert.strictEqual(device.sessions, 2, '传输途中的 0x05 必须触发断链复位 + 整轮重来')
+    assert.strictEqual(device.endPayloadPackets, TOTAL_PACKETS)
+    assert.strictEqual(device.endPayloadBytes, PAYLOAD_SIZE)
+  }
+
+  // ⑦-3 每一轮都在传输途中回 0x05：两轮都过不去时，提示要指向「断电重启」并说清不是包的问题
+  {
+    const device = createFakeDevice({
+      expectedPayload: PAYLOAD_SIZE,
+      dataStateErrorInSession: -1 // 占位，下面直接改成「每轮都触发」
+    })
+    device.dataStateErrorInSession = 0
+    installFakeBle(device)
+    // 每一轮的第 9 包都回 0x05
+    const originalWrite = global.wx.writeBLECharacteristicValue
+    global.wx.writeBLECharacteristicValue = params => {
+      device.dataStateErrorInSession = device.sessions // 当前轮永远命中
+      return originalWrite(params)
+    }
+    delete require.cache[require.resolve('../utils/ota-ble')]
+    const otaBle = require('../utils/ota-ble')
+
+    let failed = null
+    try {
+      await otaBle.upgradeFirmware('DEV-1', {
+        buffer: buildPackage(PAYLOAD_SIZE)
+      }, { pace: 0, headerDelayMs: 0, stateResetWaitMs: 60 })
+    } catch (error) {
+      failed = error
+    }
+    global.wx.writeBLECharacteristicValue = originalWrite
+    assert.ok(failed, '两轮都被回 0x05 必须如实失败')
+    assert.ok(/断电重启/.test(failed.message), failed.message)
+    assert.ok(!/升级包/.test(failed.message) || /不是升级包的问题/.test(failed.message), failed.message)
+    assert.strictEqual(device.sessions, 2, '只重来一轮，不无限重试')
   }
 
   // ⑧ 头信息回 0x0A~0x0E（包本身不对）：立即停止，不许重发浪费时间，也不许被复位逻辑接管

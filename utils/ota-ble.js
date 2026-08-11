@@ -1345,7 +1345,18 @@ async function transferData(session, bytes, options) {
     }
     if (ack && ack.result !== 0x00) {
       otaWarn(`步骤4 窗口 [${seq + 1}~${batchEnd}] 被设备判错，终止传输`, resultDesc(ack.result))
-      throw new Error('电子纸设备接收数据报错：' + otaResultText(ack.result))
+      const dataError = new Error('电子纸设备接收数据报错：' + otaResultText(ack.result))
+      if (ack.result === 0x05) {
+        // 0x05「设备状态错误」= **此刻不能受理**，不是「这批数据不对」（数据不对是 0x01/0x09）。
+        // 传输途中冒出来通常是设备端的 DFU 状态机被上一轮没走完的升级卡住了（反复对同一台设备升级时最常见）。
+        // 与 START/头信息的 0x05 同一套处理：打上 code → 上层断链复位 → 等设备退出 DFU 态 → 整轮从 START 重来。
+        // 从 START 重来是安全的：START 本身会重置设备的写入区与 total_bytes，不存在「接着上次的半截数据写」。
+        // 此前这里是直接判死，用户看到的就是「电子纸设备-电子纸设备接收数据报错：电子纸设备状态错误」，
+        // 只能自己再点一次升级，而不断链的话下一次 START 照样被回 0x05。
+        dataError.code = 'OTA_DATA_STATE_ERROR'
+        dataError.result = ack.result
+      }
+      throw dataError
     }
 
     seq = batchEnd
@@ -1563,14 +1574,22 @@ function isStuckDfuState(error) {
 
 const DFU_STATE_RESET_WAIT_MS = 3000 // 断链后留给设备退出 DFU 状态的时间
 
-// 「设备侧 OTA 状态没复位」的两种表现，共同点是**一个 payload 字节都还没被设备收下**，
-// 因此整轮从 START 重来是安全的（START 本身会重置设备的写入区与 total_bytes）：
+// 「设备侧 OTA 状态没复位」的三种表现。前两种连一个 payload 字节都还没被设备收下；
+// 第三种收下了一部分，但整轮从 START 重来同样安全——START 本身会重置设备的写入区与 total_bytes，
+// 不存在「接着上次的半截数据往下写」：
 //   · START 被回 0x05：上一轮 DFU 半途中断，状态机还停在升级态；
 //   · 头信息握手过不去（无应答，或一直被回 0x05 设备状态错误）：START 应答正常，
 //     却收不下这 128 字节头信息。——规格书 §8 步骤 2 明确设备要回 ACK；
 //     面板/型号/CRC 不对是回 0x0A~0x0E，所以「不应答」和「0x05」都只能是设备端状态没复位。
+//   · 传数据途中某个信用窗口被回 0x05（2026-08-11 补）：同样是「此刻不能受理」而不是「数据不对」，
+//     反复对同一台设备升级时最常见。此前直接判死，用户只看到「接收数据报错：设备状态错误」，
+//     而不断链复位的话下一次点升级连 START 都过不去。
 function isWedgedDfuSession(error) {
-  return isStuckDfuState(error) || !!(error && error.code === 'OTA_HEADER_STUCK')
+  return (
+    isStuckDfuState(error) ||
+    !!(error && error.code === 'OTA_HEADER_STUCK') ||
+    !!(error && error.code === 'OTA_DATA_STATE_ERROR')
+  )
 }
 
 function wedgedRetryError(error) {
@@ -1579,6 +1598,12 @@ function wedgedRetryError(error) {
       'OTA 启动被拒绝：电子纸设备仍停在上一次未完成的升级状态（' +
         otaResultText(0x05) +
         '）。请把电子纸设备断电重启后再试。'
+    )
+  }
+  if (error && error.code === 'OTA_DATA_STATE_ERROR') {
+    return new Error(
+      '电子纸设备在传输途中一直报「设备状态错误」：断电重启电子纸设备后再升一次。' +
+        '（这是设备端 OTA 状态没有复位，不是升级包的问题——包不对时设备回的是 0x01/0x09/0x0A~0x0E。）'
     )
   }
   if (error && error.code === 'OTA_HEADER_STUCK') {
@@ -1653,7 +1678,8 @@ async function upgradeFirmware(deviceId, pkg, options = {}) {
         percent: 13,
         message: '电子纸设备仍停在上一次升级状态，正在断开复位后重试…'
       })
-      disconnect(deviceId)
+      // 断链 + 清掉这条链路上的所有缓存，别让重试轮沿用上一轮的会话/读数
+      resetAfterUpgrade(deviceId, '设备状态未复位，准备整轮重来')
       await sleep(
         Number.isFinite(options.stateResetWaitMs)
           ? options.stateResetWaitMs
@@ -1677,17 +1703,15 @@ async function upgradeFirmware(deviceId, pkg, options = {}) {
       每包字节: result && result.chunkSize,
       MTU: result && result.mtu
     })
+    // 成功同样要收尾：设备约 100ms 后复位，这条连接与本机所有关于它的缓存立刻全部作废（见 resetAfterUpgrade）
+    resetAfterUpgrade(deviceId, '升级成功，设备即将复位')
     return Object.assign({ size: prepared.size, crc32: prepared.crc32 }, result)
   } catch (error) {
     otaWarn('====== 固件升级失败/中断 ======', (error && error.message) || error)
     // 失败/中断后必须断开 OTA 链路：设备的 DFU 状态机停在半途，留着同一条连接再 START 必被回
     // 0x05「设备状态错误」——现场实测就是第一次传输超时后，之后每次点升级都是 0x05。
     // 断链让设备自行复位；下次升级由 ota.js 的 ensureConnectedDevice 重新扫连。
-    try {
-      disconnect(deviceId)
-    } catch (closeError) {
-      // 连接已经没了，忽略
-    }
+    resetAfterUpgrade(deviceId, '升级失败/中断')
     throw prefixDeviceError(error)
   }
 }
@@ -1697,6 +1721,38 @@ function disconnect(deviceId) {
   cleanupSession(deviceId, '已主动断开 OTA 连接')
   if (wx.closeBLEConnection && deviceId) {
     wx.closeBLEConnection({ deviceId })
+  }
+}
+
+// 一轮 OTA 收尾后的统一复位（2026-08-11）：**无论成功还是失败都要走一遍**。
+//
+// 为什么成功也要清：END 校验通过后设备约 100ms 就复位运行新固件，这条 GATT 连接随即作废。
+// 但端上此刻还留着一整套「看着都还在」的状态：
+//   · ota-ble 的 OTA 会话（ready=true）；
+//   · device-ble 的 FF00 会话——它与 FF10 是**同一条物理连接**，OTA 走的就是它；
+//   · device-info 里 0x01 的读数、battery 的 15 秒电量缓存；
+//   · device-conn-cache 里「稳定ID → 上次的微信 deviceId」直连句柄。
+// 这些残留正是现场那两个偶发症状的来源：升级完回去点「获取设备信息」一直超时（写进了一条死链路，
+// 要等微信的断开回调姗姗来迟才作废）、以及紧接着重连时直连快路径拿旧句柄去连一台正在重启的设备。
+//
+// 失败/中断同样清：设备的 DFU 状态机可能停在半途，链路留着只会让下一次 START 继续被回 0x05。
+//
+// 全部 best-effort：清缓存失败绝不能影响「这一轮 OTA 到底成没成」的结论。
+function resetAfterUpgrade(deviceId, reason) {
+  otaLog(`收尾复位（${reason}）：断开链路并清掉本机所有与这台设备相关的缓存`, { deviceId })
+  try {
+    disconnect(deviceId)
+  } catch (error) {
+    // 连接已经没了，忽略
+  }
+  // 惰性 require：与 ensureOtaConnection 里同一个理由——两个模块互相引用，顶部 require 会拿到半成品。
+  try {
+    const deviceBle = require('./device-ble')
+    deviceBle.disconnect(deviceId) // 同一条物理连接上的 FF00 会话，一并作废
+    require('./device-info').clear() // 0x01 读数（张数/掩码/播放配置）随重启全部作废
+    require('./battery').forget(deviceId) // 15 秒电量缓存：设备重启后旧值只会误导
+  } catch (error) {
+    otaWarn('收尾复位时清缓存失败（不影响升级结果）：', (error && error.message) || error)
   }
 }
 

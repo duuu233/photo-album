@@ -145,6 +145,18 @@ function readLatestBattery(deviceId, options) {
   return inflightReads[id]
 }
 
+// 丢掉这台设备的电量缓存与在途读取（2026-08-11）。
+// 用于「设备刚被重启」这类缓存必然失真的时刻——典型是 OTA 升级结束：设备约 100ms 后复位，
+// 15 秒 TTL 内的旧电量会被继续展示，而链路其实已经断了。
+function forget(deviceId) {
+  const id = String(deviceId || '')
+  if (!id) {
+    return
+  }
+  delete cachedReads[id]
+  delete inflightReads[id]
+}
+
 // 单测隔离用；业务代码不调用。
 function clearCacheForTest() {
   Object.keys(cachedReads).forEach(key => delete cachedReads[key])
@@ -182,5 +194,6 @@ module.exports = {
   batteryText,
   getBatteryIcon,
   batteryIconOf,
+  forget,
   clearCacheForTest
 }

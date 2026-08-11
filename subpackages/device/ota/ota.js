@@ -5,6 +5,7 @@ const toast = require('../../../utils/toast')
 const system = require('../../../utils/system')
 const batteryUtil = require('../../../utils/battery')
 const activeDevice = require('../../../utils/active-device')
+const connCache = require('../../../utils/device-conn-cache')
 const fold = require('../../../utils/fold-adapt')
 
 const app = getApp()
@@ -593,6 +594,46 @@ Page(fold.adapt({
     this.setData(payload)
   },
 
+  // 一轮 OTA 结束后（**成功或失败都要走**）把页面/全局侧的设备状态与缓存复位。
+  //
+  // 链路层的缓存由 ota-ble.resetAfterUpgrade 清（OTA 会话、FF00 会话、0x01 读数、电量），
+  // 这里清的是「记录级」的那两处，它们按后端稳定设备ID 存、ota-ble 拿不到：
+  //   · device-conn-cache：稳定ID → 上次的微信 deviceId。设备刚复位，这个句柄多半连不上，
+  //     留着只会让下一次连接先白花 3 秒直连探测，再回落扫描（现场「OTA 完连不上」的一部分）；
+  //   · 本页 device 与 app.globalData.selectedDevice 里的 connected/bleDeviceId —— 设备已经重启，
+  //     再把它当「已连接」会让详情页/首页拿着死句柄发指令，表现就是「读不到设备信息」。
+  // 下次要用这台设备时正常走一遍扫描重连即可（多花一次扫描，换来状态一定是真的）。
+  resetDeviceStateAfterUpgrade(reason) {
+    const device = this.data.device || {}
+    const stableId = device.productDeviceId || device.deviceNo || ''
+    console.log(`[OTA页] 收尾复位（${reason}）：清直连缓存 + 把设备标记为未连接`, {
+      稳定设备ID: stableId || '(无)',
+      原BLE句柄: device.deviceId || device.bleDeviceId || '(无)'
+    })
+    try {
+      if (stableId) {
+        connCache.remove(stableId)
+      }
+    } catch (error) {
+      // 清缓存失败不影响升级结论
+    }
+    const reset = Object.assign({}, device, {
+      deviceId: '',
+      bleDeviceId: '',
+      connected: false
+    })
+    this.setData({ device: reset })
+    const selected = app.globalData && app.globalData.selectedDevice
+    if (selected && sameDevice(selected, reset) && typeof app.setSelectedDevice === 'function') {
+      app.setSelectedDevice(Object.assign({}, selected, {
+        deviceId: '',
+        bleDeviceId: '',
+        connected: false
+      }))
+    }
+    return reset
+  },
+
   async runUpgrade() {
     // 防重入：auto=1 的 setTimeout 自动触发（loadFirmware 里）不经过 startUpgrade 的闸门，
     // 与用户点击可能并发出两条 DFU 流——同一 session 上交叉写 DATA 数据流，设备收到乱序字节必败。
@@ -717,6 +758,7 @@ Page(fold.adapt({
         })
         // 未确认是失败语义（没拿到设备 0xF3 确认）：按约定走 warn 加「设备-」来源前缀
         toast.warn({ title: '电子纸设备-' + doneText, icon: 'none' })
+        this.resetDeviceStateAfterUpgrade('升级未确认')
         return
       }
 
@@ -734,9 +776,12 @@ Page(fold.adapt({
         console.warn('[OTA页] 升级结果上报失败（不影响设备侧升级结果）：', (error && error.message) || error)
       })
 
-      const updatedDevice = Object.assign({}, this.data.device, {
-        firmwareVersion: firmware.latestVersion,
-        connected: true
+      // ⚠️ connected 必须置 false：设备在 END 校验通过约 100ms 后就复位运行新固件，这条连接已经没了。
+      // 之前这里写 connected:true，页面/首页会拿着一条死链路的旧句柄继续发指令，
+      // 表现就是「升级完读不到设备信息」。链路层缓存由 ota-ble.resetAfterUpgrade 清，
+      // 记录级缓存（直连句柄、selectedDevice 连接态）由下面这行清。
+      const updatedDevice = Object.assign({}, this.resetDeviceStateAfterUpgrade('升级成功，设备正在重启'), {
+        firmwareVersion: firmware.latestVersion
       })
       const updatedFirmware = Object.assign({}, firmware, {
         currentVersion: firmware.latestVersion,
@@ -761,7 +806,9 @@ Page(fold.adapt({
       }, this.deriveViewData(updatedDevice, updatedFirmware), {
         screenStatus: 'success',
         statusTitle: '升级成功',
-        statusDesc: '固件已升级到最新版本',
+        // 如实告诉用户「设备正在重启、连接已断开」：升级成功后设备约 100ms 复位，
+        // 重新广播要等几秒。不说清楚的话，用户立刻回去点投屏/读信息会以为是升级把设备弄坏了。
+        statusDesc: '固件已升级到最新版本。电子纸设备正在重启，请稍等几秒后重新连接。',
         artImage: artFor('success'),
         showPrimary: false
       }))
@@ -777,6 +824,8 @@ Page(fold.adapt({
         最后阶段: this._lastPhase || '(未进入任何阶段)',
         错误: message
       })
+      // 失败同样复位：链路已被 ota-ble 断掉，页面再显示「已连接」就会误导下一次操作
+      this.resetDeviceStateAfterUpgrade('升级失败/中断')
 
       await api.reportDeviceFirmwareUpgrade(this.data.id, {
         status: 'fail',
