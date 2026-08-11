@@ -387,11 +387,17 @@ async function createConnectionWithRetry(deviceId, attempts = CONNECT_ATTEMPTS) 
   throw lastError || new Error('蓝牙连接失败')
 }
 
-// 会话序列号登记：把这台设备的稳定标识（扫描广播里的 Device_ID 4 字节 / 0x01 读到的固件 6 字节）
+// 会话序列号登记：把这台设备的稳定标识（扫描广播里的 Device_ID 4/6 字节 / 0x01 读到的固件 6 字节）
 // 归一化后记到会话上。BLE deviceId 是扫描会话临时值、后端只存序列号，页面刷新/切换后记录常丢 deviceId——
 // 有了序列号，上层(active-device.findConnectedDeviceId)才能用「设备ID×广播ID」交叉匹配认出活动会话，
 // 避免「假断联 → 重扫（设备被自己占线不广播）→ 未搜索到该设备」。
-function attachSessionSerial(deviceId, serial) {
+//
+// verified：这个值是不是**连上后 0x01 GET_INFO 从设备真身读回来的**。
+// 2026-08-11 补这个标记：广播 Device_ID 从 4 字节扩到 6 字节后，广播值也长得像「完整身份」了，
+// 上层若继续只按长度判断，就等于让**明文可伪造的广播**去认领活动会话（一台设备播的 ID 恰好等于
+// 另一条记录的完整 ID，操作就会打到错的设备上，OTA 尤其不可逆）。
+// 老固件时代广播只有 4 字节、天然被 isComplete 挡在门外，这道闸是隐式的；现在必须显式记下来源。
+function attachSessionSerial(deviceId, serial, verified) {
   const session = sessions[deviceId]
   const value = String(serial == null ? '' : serial)
     .replace(/[:\-\s]/g, '')
@@ -402,6 +408,13 @@ function attachSessionSerial(deviceId, serial) {
   session.serials = session.serials || []
   if (session.serials.indexOf(value) === -1) {
     session.serials.push(value)
+  }
+  if (!verified) {
+    return
+  }
+  session.verifiedSerials = session.verifiedSerials || []
+  if (session.verifiedSerials.indexOf(value) === -1) {
+    session.verifiedSerials.push(value)
   }
 }
 
@@ -798,8 +811,9 @@ async function readTransferInfo(deviceId) {
   const infoAck = await request(deviceId, protocol.CMD.GET_INFO)
   const info = protocol.parseDeviceInfo(infoAck.data)
   // 固件返回的真实 Device_ID(6 字节)登记到会话：即使连接时没带广播序列号（如直连旧 deviceId），
-  // 读过一次设备信息后也能被「设备ID×广播ID」交叉匹配认出来
-  attachSessionSerial(deviceId, info.deviceId)
+  // 读过一次设备信息后也能被「设备ID×广播ID」交叉匹配认出来。
+  // 这一条是**已核实**的身份来源（0x01 从设备真身读回），只有它有资格认领活动会话。
+  attachSessionSerial(deviceId, info.deviceId, true)
 
   return info
 }
@@ -1409,6 +1423,9 @@ function getActiveConnections() {
         // 已登记的稳定序列号（广播/固件 Device_ID）：active-device 据此把「丢了 deviceId 的设备记录」
         // 与活动会话交叉匹配，认出「其实还连着」的设备
         serials: (session.serials || []).slice(),
+        // 其中经 0x01 GET_INFO 核实过的那部分。认领会话/回写身份只认这一份——
+        // 广播 ID 自 2026-08-04 起也有 6 字节，长度不再能证明它是可信身份（见 attachSessionSerial）。
+        verifiedSerials: (session.verifiedSerials || []).slice(),
         // 广播登记的屏幕类型：active-device 交叉匹配时据此按型号/尺寸再校验，防串到不同型号设备
         screenType: session.screenType || 0,
         mtu: session.mtu,

@@ -115,6 +115,54 @@ function reportFrame(dir, deviceId, bytes, note) {
   }
 }
 
+// ── 全链路 console 日志（2026-08-11）────────────────────────────
+// 真机 OTA 出问题时最缺的是「端上到底发了什么、设备到底回了什么、卡在哪一步、隔了多久」。
+// 这里把从点「升级」到「升级成功」的每个节点都打到 console，一行一个节点：
+//   [OTA#3 +12.4s] START 应答 { result: 0, 含义: '成功', prn: 3, ... }
+// 编号 #n 区分同一次会话里的多轮升级（失败重试会重新编号），+时间是从本轮开始起算的相对耗时——
+// 排查「卡了多久才超时」「设备隔多久才应答」全靠它，比绝对时间戳好读。
+//
+// 数据帧(0xF2 payload 分片)默认按 PRN 信用窗口聚合打印：673 包逐帧打 hex 会把控制台冲爆、
+// 反而看不见控制流。需要逐帧原文时传 options.verboseFrames = true（会额外打每包的前 12 字节）。
+let logRun = 0
+let logStartedAt = 0
+
+function otaLogReset() {
+  logRun += 1
+  logStartedAt = Date.now()
+  return logRun
+}
+
+function elapsedText() {
+  if (!logStartedAt) {
+    return '+0.00s'
+  }
+  return '+' + ((Date.now() - logStartedAt) / 1000).toFixed(2) + 's'
+}
+
+function otaLog(step, detail) {
+  const prefix = `[OTA#${logRun} ${elapsedText()}] ${step}`
+  if (detail === undefined) {
+    console.log(prefix)
+  } else {
+    console.log(prefix, detail)
+  }
+}
+
+function otaWarn(step, detail) {
+  const prefix = `[OTA#${logRun} ${elapsedText()}] ${step}`
+  if (detail === undefined) {
+    console.warn(prefix)
+  } else {
+    console.warn(prefix, detail)
+  }
+}
+
+// 结果码统一打成「0x00 成功」这种可读形式，免得对着裸数字翻码表
+function resultDesc(result) {
+  return `0x${(result & 0xff).toString(16).padStart(2, '0')} ${otaResultText(result)}`
+}
+
 // ── 基础工具 ──────────────────────────────────────────────
 function wxp(fn, options) {
   return new Promise((resolve, reject) => {
@@ -315,7 +363,7 @@ function panelOfDevice(device) {
 // 本地算法与固件不一致时误拦会把好包挡在门外，这两项本来就该由设备校验（0x0D / 0x09）。
 function assertPackageLooksRight(bytes, payloadSize, options) {
   const header = inspectOtaHeader(bytes)
-  console.log('[OTA] 升级包头信息：', {
+  otaLog('步骤0 升级包头信息（本地预检，只读不改）：', {
     magicOk: header.magicOk,
     headerVersion: header.headerVersion,
     panel: header.panel,
@@ -414,6 +462,11 @@ function ensureGlobalListener() {
       }
       const bytes = Array.from(new Uint8Array(res.value || new ArrayBuffer(0)))
       reportFrame('RX', res.deviceId, bytes, res.characteristicId)
+      // 设备回的每一帧原文都打出来：结果码之外，帧头/回显操作码对不对也常是问题所在
+      otaLog('RX 收到电子纸设备应答', {
+        原文: bytesToHex(bytes),
+        特征: res.characteristicId
+      })
       dispatchNotification(session, bytes)
     })
   }
@@ -421,6 +474,9 @@ function ensureGlobalListener() {
   if (wx.onBLEConnectionStateChange) {
     wx.onBLEConnectionStateChange(res => {
       if (!res.connected) {
+        if (sessions[res.deviceId]) {
+          otaWarn('连接状态变化：电子纸设备已断开（OTA 会话作废）', { deviceId: res.deviceId })
+        }
         cleanupSession(res.deviceId, '电子纸设备连接已断开')
       }
     })
@@ -629,11 +685,17 @@ async function enableNotifyIfSupported(deviceId, serviceId, char) {
 // 建立 OTA 连接并发现 FF10/FF11、打开通知、协商 MTU，缓存会话。已就绪直接复用。
 async function ensureOtaConnection(deviceId) {
   if (sessions[deviceId] && sessions[deviceId].ready) {
+    otaLog('步骤1 连接：复用已就绪的 OTA 会话', {
+      deviceId,
+      MTU: sessions[deviceId].mtu,
+      每包字节: sessions[deviceId].chunkSize
+    })
     return sessions[deviceId]
   }
   if (!wx.createBLEConnection) {
     throw new Error('当前微信版本不支持蓝牙 OTA')
   }
+  otaLog('步骤1 连接：建立 OTA 连接并发现 FF10 服务', { deviceId })
 
   // 单连接跨模块释放：OTA(FF10) 与普通会话(FF00) 是两个独立的 sessions 池，各自只清自己那本账。
   // 不清的话，「连着 A → 进 B 的 OTA 页」会把 A 一直占着，A 从此不广播、哪儿都搜不到。
@@ -653,8 +715,20 @@ async function ensureOtaConnection(deviceId) {
   // 页面退出时 isConnected() 判不到它、无人清理——设备被这条「无主连接」占住不再广播，
   // 之后怎么扫都「未搜索到该设备」，直到重启蓝牙才恢复。（与 device-ble 的失败清理策略对齐）
   try {
-    return await buildOtaSession(deviceId)
+    const session = await buildOtaSession(deviceId)
+    otaLog('步骤1 连接：OTA 会话就绪', {
+      服务: session.serviceId,
+      控制特征: session.controlCharId,
+      数据特征: session.dataCharId,
+      备用控制特征: session.altControlCharId || 'none',
+      已开通知: (session.notifyCharIds || []).join('|') || 'none',
+      MTU: session.mtu,
+      每包字节: session.chunkSize,
+      写入方式: session.controlWriteType
+    })
+    return session
   } catch (error) {
+    otaWarn('步骤1 连接失败：', (error && error.message) || error)
     if (wx.closeBLEConnection) {
       try {
         await wxp(wx.closeBLEConnection, { deviceId })
@@ -752,6 +826,24 @@ async function writeFrame(session, bytes, target, writeTypeOverride) {
           ? session.altControlWriteType
           : session.controlWriteType
 
+  // 控制类帧(START/END/头信息)每帧都打原文；bin payload 分片默认按窗口聚合（见文件头日志说明），
+  // session.verboseFrames 打开后逐包也打（只打前 12 字节，够核对帧头/操作码/校验位就行）。
+  const isPayloadChunk = bytes[0] === OP.DATA && bytes.length !== OTA_HEADER_SIZE + 2
+  if (!isPayloadChunk) {
+    otaLog('TX 发送帧', {
+      操作码: '0x' + (bytes[0] & 0xff).toString(16),
+      长度: bytes.length,
+      原文: bytes.length > 24 ? bytesToHex(bytes.slice(0, 24)) + ' …' : bytesToHex(bytes),
+      特征: characteristicId,
+      写入方式: writeType || 'default'
+    })
+  } else if (session.verboseFrames) {
+    otaLog('TX 数据分片', {
+      长度: bytes.length,
+      前12字节: bytesToHex(bytes.slice(0, 12))
+    })
+  }
+
   let attempt = 0
   for (;;) {
     try {
@@ -769,11 +861,14 @@ async function writeFrame(session, bytes, target, writeTypeOverride) {
       return
     } catch (error) {
       if (isUnsupportedWriteError(error)) {
+        otaWarn('TX 写入被拒绝（特征不支持该写入方式）', (error && error.message) || error)
         throw error
       }
       if (++attempt > 4) {
+        otaWarn(`TX 写入连续失败 ${attempt} 次，放弃`, (error && error.message) || error)
         throw error
       }
+      otaWarn(`TX 写入失败，80ms 后第 ${attempt} 次重试`, (error && error.message) || error)
       await sleep(80)
     }
   }
@@ -966,22 +1061,35 @@ async function doStart(session, size, options) {
     const frame = buildStartFrame(size, attempt.objType)
     const waiter = createStartAckWaiter(session, timeout, attempt)
 
-    console.log('[OTA] START 尝试：', {
-      target: attempt.target,
-      writeType: attempt.writeType,
-      objType: attempt.objType,
-      frame: bytesToHex(frame)
+    otaLog(`步骤2 START(0xF1) 第 ${i + 1}/${attempts.length} 次尝试`, {
+      特征: attempt.target,
+      写入方式: attempt.writeType,
+      objType: '0x' + attempt.objType.toString(16).padStart(2, '0'),
+      FW_SIZE: size,
+      帧原文: bytesToHex(frame),
+      应答超时ms: timeout
     })
 
     try {
       await writeFrame(session, frame, attempt.target, attempt.writeType)
       const ack = await waiter.promise
+      otaLog('步骤2 START 应答', {
+        原文: ack.rawHex,
+        结果: resultDesc(ack.result),
+        设备MTU: ack.mtu || '(未给,用默认)',
+        PRN信用窗口: ack.prn || '(未给,用默认)'
+      })
       applyStartAck(session, ack)
       // 关键：设备在哪条特征上应答了 START，后续 DATA 就走同一条（本机 OTA 全程在 FF11 上收发，
       // 规格书 §6.3.3）。此前 DATA 硬编码写到 FF12(dataChar)，设备收不到 → 永远不回 DATA ACK → 卡在 -1。
       session.transferTarget = attempt.target
       session.transferWriteType = attempt.writeType
-      console.log('[OTA] START 应答：', ack)
+      otaLog('步骤2 START 握手通过，后续 DATA 沿用同一条特征', {
+        特征: session.transferTarget,
+        写入方式: session.transferWriteType,
+        生效每包字节: session.chunkSize,
+        生效PRN: session.prn
+      })
       return ack
     } catch (error) {
       waiter.cancel()
@@ -995,7 +1103,7 @@ async function doStart(session, size, options) {
           timeoutError = error
         }
       }
-      console.warn('[OTA] START 尝试失败：', error && error.message)
+      otaWarn(`步骤2 START 第 ${i + 1} 次尝试失败：`, (error && error.message) || error)
     }
   }
 
@@ -1077,10 +1185,16 @@ async function transferData(session, bytes, options) {
   // END 的整包校验会以 0x09 暴露出来（下面据此给出提示），不会把错的固件刷进去。
   const headerAttempts = Math.max(1, Number.isFinite(options.headerAttempts) ? options.headerAttempts : 3)
   const headerFrame = buildDataFrame(header)
-  console.log('[OTA] 头信息握手包：', {
+  otaLog('步骤3 头信息握手：准备发送 128 字节头信息包', {
     帧长: headerFrame.length, // = 1(opcode) + 128(头信息) + 1(checksum)
     头信息字节数: header.length,
-    前12字节: bytesToHex(headerFrame.slice(0, 12))
+    前12字节: bytesToHex(headerFrame.slice(0, 12)),
+    发送前延时ms: Number.isFinite(options.headerDelayMs) ? options.headerDelayMs : 300,
+    最多重发次数: Math.max(1, Number.isFinite(options.headerAttempts) ? options.headerAttempts : 3),
+    单次等待ms: Number.isFinite(options.headerTimeout) ? options.headerTimeout : 10000,
+    待传bin字节: payloadLen,
+    分包: `${totalPackets} 包 × ${chunkSize} 字节`,
+    PRN窗口: prn
   })
   if (headerDelay > 0) {
     await sleep(headerDelay)
@@ -1118,11 +1232,15 @@ async function transferData(session, bytes, options) {
       if (!/头信息握手超时/.test((error && error.message) || '')) {
         throw error // 连接断开等致命错误直接上抛
       }
-      console.warn(`[OTA] 头信息第 ${attempt} 次无应答（共 ${headerAttempts} 次）`)
+      otaWarn(`步骤3 头信息第 ${attempt}/${headerAttempts} 次无应答（等满 ${headerTimeout}ms）`)
       headerError = error
       continue
     }
 
+    otaLog(`步骤3 头信息第 ${attempt} 次应答`, {
+      原文: ack.rawHex,
+      结果: resultDesc(ack.result)
+    })
     if (ack.result === 0x00) {
       headerAck = ack
       break
@@ -1130,7 +1248,7 @@ async function transferData(session, bytes, options) {
     if (ack.result === 0x05) {
       // 「设备状态错误」说的是**此刻不能受理**，不是「这个包不对」——包不对是 0x0A~0x0E。
       // 属于可重试：等设备从忙态/上一轮 DFU 状态里出来再发一次。
-      console.warn(`[OTA] 头信息第 ${attempt} 次被回 0x05（设备状态错误），退避后重发：`, ack.rawHex)
+      otaWarn(`步骤3 头信息第 ${attempt} 次被回 0x05（设备状态错误），退避后重发：`, ack.rawHex)
       headerError = new Error(
         '头信息校验未通过：' + otaResultText(0x05) + `（ACK=${ack.rawHex}）`
       )
@@ -1152,6 +1270,13 @@ async function transferData(session, bytes, options) {
   }
 
   // ── 步骤 4：后续 bin payload，PRN 信用窗口 ──
+  otaLog('步骤4 数据传输开始', {
+    总包数: totalPackets,
+    每包字节: chunkSize,
+    PRN窗口: prn,
+    总字节: payloadLen,
+    每包间隔ms: pace
+  })
   emit(onProgress, {
     phase: 'transferring',
     percent: progressPercent(0, payloadLen),
@@ -1185,19 +1310,31 @@ async function transferData(session, bytes, options) {
       }
     }
 
+    otaLog(`步骤4 已发窗口 [${seq + 1}~${batchEnd}]/${totalPackets} 包`, {
+      本窗包数: batchEnd - seq,
+      字节区间: `${seq * chunkSize}~${Math.min(batchEnd * chunkSize, payloadLen)}`,
+      收尾窗口: isTailWindow ? '是（不足一个 PRN 窗口，ACK 可选）' : '否',
+      等待DATA_ACK: isTailWindow ? '可选' : '必须（1.5s）'
+    })
+
     let ack
     try {
       // 每发 PRN 个 DATA 包等一次设备应答；1s 收不到即判中断（§6.4 传输超时红线，OTA 同样适用），留 1.5s 余量。
       ack = await waitAck(session, OP.DATA, 1500)
+      otaLog(`步骤4 窗口 [${seq + 1}~${batchEnd}] DATA 应答`, {
+        原文: ack.rawHex,
+        结果: resultDesc(ack.result)
+      })
     } catch (error) {
       if (error.message === 'OTA_ACK_TIMEOUT') {
         if (isTailWindow) {
           // 收尾窗口的 ACK 一律按「可选」处理，直接进 END：整包完不完整由 END(0xF3) 的
           // total_bytes == bin_size 与 CRC32 校验裁决（不匹配设备回 0x09），真丢包一样会被抓住，
           // 不会因为放过这次等待而误报升级成功。
-          console.warn('[OTA] 收尾窗口未收到 DATA ACK（不足一个 PRN 窗口，属预期），继续发送结束包')
+          otaWarn('步骤4 收尾窗口未收到 DATA ACK（不足一个 PRN 窗口，属预期），继续发送结束包')
           ack = null
         } else {
+          otaWarn(`步骤4 传输中断：已发 ${batchEnd}/${totalPackets} 包，1.5s 内没等到 DATA ACK`)
           throw new Error(
             `OTA 传输中断：已发送 ${batchEnd}/${totalPackets} 包后，电子纸设备未在 1.5s 内应答（疑似丢包），请重试整个升级`
           )
@@ -1207,6 +1344,7 @@ async function transferData(session, bytes, options) {
       }
     }
     if (ack && ack.result !== 0x00) {
+      otaWarn(`步骤4 窗口 [${seq + 1}~${batchEnd}] 被设备判错，终止传输`, resultDesc(ack.result))
       throw new Error('电子纸设备接收数据报错：' + otaResultText(ack.result))
     }
 
@@ -1225,6 +1363,12 @@ async function transferData(session, bytes, options) {
   emit(onProgress, { phase: 'verifying', percent: 98, sent: payloadLen, total: payloadLen, message: '数据已发完，发送结束包(0xF3)，等待电子纸设备整包校验' })
   // 校验窗口需覆盖「设备最后一批落盘 + CRC32 计算」，给足时长（默认 15s，可由 finalTimeout 覆盖）。
   const finalTimeout = Number.isFinite(options.finalTimeout) ? options.finalTimeout : 15000
+  otaLog('步骤5 数据已全部发出，发送结束包 END(0xF3)，等待整包校验', {
+    已发字节: payloadLen,
+    已发包数: totalPackets,
+    校验等待ms: finalTimeout,
+    本轮是否重发过头信息: !!session.headerResent
+  })
   let final
   try {
     final = await sendFrameAwaitAck(
@@ -1244,6 +1388,11 @@ async function transferData(session, bytes, options) {
     throw error
   }
 
+  otaLog('步骤5 END 应答（设备整包校验结果）', {
+    原文: final.rawHex,
+    结果: resultDesc(final.result)
+  })
+
   if (final.result !== 0x00) {
     // 0x09 = total_bytes/CRC32 对不上。若本轮重发过头信息，最可能的解释是「设备其实收下了第一包、
     // 只是应答丢了」，重发的 128 字节被算进了 bin 数据——把这条线索一并给出，免得又去查信号。
@@ -1254,6 +1403,12 @@ async function transferData(session, bytes, options) {
     throw new Error('电子纸设备整包校验失败：' + otaResultText(final.result) + hint)
   }
 
+  otaLog('步骤5 整包校验通过：升级成功，设备约 100ms 后复位运行新固件', {
+    总包数: totalPackets,
+    总字节: payloadLen,
+    每包字节: chunkSize,
+    MTU: session.mtu
+  })
   emit(onProgress, { phase: 'done', percent: 100, sent: payloadLen, total: payloadLen, message: '升级完成，电子纸设备校验通过，约 100ms 后复位运行新固件' })
   return { totalPackets, mtu: session.mtu, chunkSize, payloadSize: payloadLen, confirmed: true }
 }
@@ -1311,19 +1466,25 @@ function downloadFirmware(url) {
 
 async function loadFirmwareBuffer(pkg) {
   if (pkg.buffer) {
+    otaLog('步骤0 固件包来源：内存 buffer')
     return pkg.buffer
   }
   if (pkg.localPath) {
+    otaLog('步骤0 固件包来源：代码包内本地文件', pkg.localPath)
     return readFileBuffer(pkg.localPath) // 代码包内的本地固件（当前没有调用方）
   }
   if (pkg.tempFilePath) {
+    otaLog('步骤0 固件包来源：已下载的临时文件', pkg.tempFilePath)
     return readFileBuffer(pkg.tempFilePath)
   }
   if (pkg.inlineBase64 && wx.base64ToArrayBuffer) {
+    otaLog('步骤0 固件包来源：内联 base64')
     return wx.base64ToArrayBuffer(pkg.inlineBase64)
   }
   if (pkg.packageUrl) {
+    otaLog('步骤0 固件包来源：开始下载', pkg.packageUrl)
     const filePath = await downloadFirmware(pkg.packageUrl)
+    otaLog('步骤0 固件包下载完成', filePath)
     return readFileBuffer(filePath)
   }
   throw new Error('缺少固件包来源（packageUrl / localPath / inlineBase64）')
@@ -1361,6 +1522,14 @@ async function prepareFirmware(pkg, options = {}) {
   // 这里仅为本地展示/日志算一次 CRC32，不做拦截。
   const crc32 = imageCodec.crc32Mpeg2(bytes)
 
+  otaLog('步骤0 固件包就绪', {
+    文件总字节: size,
+    bin字节: payloadSize,
+    头信息字节: OTA_HEADER_SIZE,
+    本地CRC32: '0x' + (crc32 >>> 0).toString(16).toUpperCase(),
+    包内版本: header.version,
+    面板: panelText(header.panel)
+  })
   emit(onProgress, { phase: 'prepared', percent: 10, message: '固件包已就绪', size, payloadSize, crc32 })
   return { buffer, bytes, size, payloadSize, crc32 }
 }
@@ -1433,6 +1602,8 @@ async function runDfuAttempt(deviceId, prepared, options) {
 
   emit(onProgress, { phase: 'connecting', percent: 12, message: '连接 OTA 服务(FF10)' })
   const session = await ensureOtaConnection(deviceId)
+  // 逐帧原文开关（默认按窗口聚合，见文件头日志说明）
+  session.verboseFrames = !!options.verboseFrames
 
   emit(onProgress, {
     phase: 'starting',
@@ -1453,6 +1624,16 @@ async function upgradeFirmware(deviceId, pkg, options = {}) {
   const onProgress = options.onProgress
   const shouldAbort = typeof options.shouldAbort === 'function' ? options.shouldAbort : () => false
 
+  // 本轮日志计时归零：下面每条 [OTA#n +x.xxs] 的相对耗时都从这里起算
+  otaLogReset()
+  otaLog('====== 开始固件升级 ======', {
+    deviceId,
+    目标版本: pkg && pkg.version,
+    包地址: (pkg && pkg.packageUrl) || (pkg && pkg.localPath) || '(内存/内联)',
+    声明大小: (pkg && pkg.sizeBytes) || '(未给)',
+    逐帧日志: !!options.verboseFrames
+  })
+
   // 真机 DFU：读包 + 握手 + 传输全程与设备/蓝牙交互，出错统一补「设备-」前缀（OTA_ABORTED 等内部信号除外）。
   try {
     const prepared = await prepareFirmware(pkg, options)
@@ -1466,7 +1647,7 @@ async function upgradeFirmware(deviceId, pkg, options = {}) {
       }
       // 设备还停在上一轮没走完的 DFU 里：断链 → 等它复位 → 重连整轮重来，
       // 让用户「再点一次升级」就能自愈，而不是从此每次都被挡住、只能去重启设备。
-      console.warn('[OTA] 设备侧 OTA 状态未复位，断链复位后整轮重试一次：', error && error.message)
+      otaWarn('设备侧 OTA 状态未复位，断链复位后整轮重试一次：', (error && error.message) || error)
       emit(onProgress, {
         phase: 'starting',
         percent: 13,
@@ -1481,6 +1662,7 @@ async function upgradeFirmware(deviceId, pkg, options = {}) {
       if (shouldAbort()) {
         throw new Error('OTA_ABORTED')
       }
+      otaLog('断链复位完成，整轮重来（第 2 轮）')
       try {
         result = await runDfuAttempt(deviceId, prepared, options)
       } catch (retryError) {
@@ -1488,8 +1670,16 @@ async function upgradeFirmware(deviceId, pkg, options = {}) {
       }
     }
 
+    otaLog('====== 固件升级成功 ======', {
+      文件字节: prepared.size,
+      bin字节: prepared.payloadSize,
+      总包数: result && result.totalPackets,
+      每包字节: result && result.chunkSize,
+      MTU: result && result.mtu
+    })
     return Object.assign({ size: prepared.size, crc32: prepared.crc32 }, result)
   } catch (error) {
+    otaWarn('====== 固件升级失败/中断 ======', (error && error.message) || error)
     // 失败/中断后必须断开 OTA 链路：设备的 DFU 状态机停在半途，留着同一条连接再 START 必被回
     // 0x05「设备状态错误」——现场实测就是第一次传输超时后，之后每次点升级都是 0x05。
     // 断链让设备自行复位；下次升级由 ota.js 的 ensureConnectedDevice 重新扫连。
@@ -1503,6 +1693,7 @@ async function upgradeFirmware(deviceId, pkg, options = {}) {
 }
 
 function disconnect(deviceId) {
+  otaLog('主动断开 OTA 链路（让设备的 DFU 状态机复位）', { deviceId })
   cleanupSession(deviceId, '已主动断开 OTA 连接')
   if (wx.closeBLEConnection && deviceId) {
     wx.closeBLEConnection({ deviceId })

@@ -431,22 +431,36 @@ Page(fold.adapt({
   //    「设备未连接」时必为 false，于是按钮画着、点了毫无反应，正是用户反馈的「OTA 没反应」。
   //    现在未连接不再是拦截理由，而是「先连上再升」。
   async startUpgrade() {
+    // 全链路日志的起点：用户点了什么、当时页面处在什么状态。
+    // 后面每个节点由 utils/ota-ble.js 以 [OTA#n +x.xxs] 打印，两段合起来就是一次完整升级的时间线。
+    console.log('[OTA页] 点击主按钮', {
+      按钮文案: this.data.actionText,
+      当前状态: this.data.state,
+      设备记录: this.data.id,
+      已连接: !!(this.data.device && this.data.device.connected),
+      当前版本: this.data.currentVersion,
+      目标版本: this.data.latestVersion
+    })
     if (this._starting) {
+      console.log('[OTA页] 忽略：上一次点击仍在处理中')
       return
     }
 
     if (this.data.state === 'upgrading') {
+      console.log('[OTA页] 忽略：正在升级中')
       toast.show({ title: '正在升级中，请稍候', icon: 'none' })
       return
     }
 
     if (this.data.state === 'failed' && !this.data.firmware) {
+      console.log('[OTA页] 检查失败且无固件信息 → 重新检查版本')
       this.loadFirmware()
       return
     }
 
     const pkg = this.data.firmware && this.data.firmware.package
     if (!pkg) {
+      console.log('[OTA页] 没有可用升级包 → 提示并重新检查', this.data.errorMessage || '')
       toast.warn({
         title: this.data.errorMessage || '当前没有可用的升级包',
         icon: 'none'
@@ -471,8 +485,13 @@ Page(fold.adapt({
   async ensureConnectedDevice() {
     const existing = this.getBleDeviceId()
     if (existing && deviceBle.isConnected(existing)) {
+      console.log('[OTA页] 设备已连接，直接使用当前会话', { bleDeviceId: existing })
       return existing
     }
+    console.log('[OTA页] 设备未连接 → 就地扫描重连', {
+      设备记录: this.data.id,
+      记录设备ID: (this.data.device && (this.data.device.productDeviceId || this.data.device.deviceNo)) || '(无)'
+    })
 
     this.setData({
       screenStatus: 'progress',
@@ -486,6 +505,7 @@ Page(fold.adapt({
 
     const deviceId = await activeDevice.ensureConnectedForAction(this.data.device)
     if (!deviceId) {
+      console.warn('[OTA页] 连接失败，升级未开始（失败原因已由连接层提示）')
       // 连不上：回到可重试画面（提示已弹过，这里不再叠一个 toast）
       this.setData({
         state: 'failed',
@@ -514,6 +534,7 @@ Page(fold.adapt({
     if (selected && sameDevice(selected, device)) {
       app.setSelectedDevice(Object.assign({}, selected, device))
     }
+    console.log('[OTA页] 连接成功，可以开始升级', { bleDeviceId: deviceId })
     return deviceId
   },
 
@@ -539,6 +560,15 @@ Page(fold.adapt({
     }
     const statusTitle = STAGE_TITLE[phase] || this.data.statusTitle
     const progressText = progress.message || ''
+    // 阶段切换各打一条（不打每个百分比，否则窗口 ACK 驱动的高频回调会刷屏）：
+    // 页面看到的阶段与 ota-ble 打的协议节点能对上，出问题时一眼看出卡在哪一段。
+    if (phase && phase !== this._loggedPhase) {
+      this._loggedPhase = phase
+      console.log(`[OTA页] 进度阶段 → ${phase}（${statusTitle}）`, {
+        百分比: percent,
+        说明: progressText
+      })
+    }
     // 去重：进度回调由 PRN 窗口 ACK 驱动、频率较高，三个展示值都没变就不 setData；
     // 静态字段(标题/插画/screenStatus)只在标题切换时才重传（参照 result.js 的进度节流思路）
     if (
@@ -596,8 +626,17 @@ Page(fold.adapt({
       return
     }
 
+    console.log('[OTA页] 开始升级流程', {
+      bleDeviceId,
+      当前版本: firmware.currentVersion,
+      目标版本: firmware.latestVersion,
+      包大小: pkg.sizeBytes || '(下载后确认)',
+      包地址: pkg.packageUrl || '(本地)',
+      期望面板: otaBle.panelOfDevice(this.data.device) || '(判不出，跳过面板预检)'
+    })
     this._abortUpgrade = false
     this._lastPhase = '' // 重置阶段，供失败时区分下载/升级
+    this._loggedPhase = '' // 重置阶段日志去重
     // 重置进度去重追踪器（onUpgradeProgress），避免「重新升级」时与上一轮的值误判为未变化
     this._lastProgressPercent = -1
     this._lastProgressTitle = ''
@@ -644,6 +683,14 @@ Page(fold.adapt({
       // 兜底：万一走到这里说明未拿到设备最终确认 → 升级未确认，如实提示重试，绝不谎报"升级完成"。
       const unconfirmed = result && result.confirmed === false
       const doneText = unconfirmed ? '未确认(请重试)' : '升级完成'
+      console.log('[OTA页] 底层升级返回', {
+        设备已确认: !unconfirmed,
+        文件字节: result && result.size,
+        bin字节: result && result.payloadSize,
+        总包数: result && result.totalPackets,
+        每包字节: result && result.chunkSize,
+        CRC32: result && result.crc32 !== undefined ? '0x' + (result.crc32 >>> 0).toString(16).toUpperCase() : '--'
+      })
 
       // 未确认 = 没拿到设备 0xF3：不能假报成功——不上报 success、不把本地版本改成新版、
       // 保留升级包并开放「重新升级」，否则用户既被误导"已升级"又没有任何重试入口，后端记录也是假的。
@@ -674,12 +721,18 @@ Page(fold.adapt({
       }
 
       // 升级成功：回报后台
+      console.log('[OTA页] 升级成功，上报后端 reportDeviceFirmwareUpgrade(success)', {
+        设备记录: this.data.id,
+        版本: firmware.latestVersion
+      })
       await api.reportDeviceFirmwareUpgrade(this.data.id, {
         status: 'success',
         version: firmware.latestVersion,
         size: result.size,
         crc32: result.crc32
-      }).catch(() => {})
+      }).catch(error => {
+        console.warn('[OTA页] 升级结果上报失败（不影响设备侧升级结果）：', (error && error.message) || error)
+      })
 
       const updatedDevice = Object.assign({}, this.data.device, {
         firmwareVersion: firmware.latestVersion,
@@ -719,6 +772,11 @@ Page(fold.adapt({
       const message = aborted
         ? '升级已中断：升级过程中手机切到后台或页面离开。请保持屏幕常亮后重试。'
         : (error.message || '固件升级失败')
+      console.warn('[OTA页] 升级失败/中断', {
+        是否用户中断: !!aborted,
+        最后阶段: this._lastPhase || '(未进入任何阶段)',
+        错误: message
+      })
 
       await api.reportDeviceFirmwareUpgrade(this.data.id, {
         status: 'fail',

@@ -79,7 +79,7 @@ function findConnectedDeviceId(device) {
     if (
       directConnection &&
       sameScreen(device, directConnection.screenType) &&
-      sessionMatchesSerials(directConnection.serials, serials)
+      sessionMatchesSerials(sessionVerifiedSerials(directConnection), serials)
     ) {
       return directId
     }
@@ -87,13 +87,27 @@ function findConnectedDeviceId(device) {
   const hit = connections.find(conn =>
     // 先按型号/尺寸过一道闸：会话广播 screenType 与设备记录尺寸对不上（不同型号）直接跳过，防串台
     sameScreen(device, conn.screenType) &&
-    sessionMatchesSerials(conn.serials, serials)
+    sessionMatchesSerials(sessionVerifiedSerials(conn), serials)
   )
   return hit ? hit.deviceId : ''
 }
 
+// 这条会话里**经 0x01 核实过**的序列号。
+// 2026-08-04 广播 Device_ID 扩到 6 字节后，session.serials 里可能混进同样是 12 hex 的广播值，
+// 只按 isComplete 过滤就等于让明文广播去认领会话（见 device-ble.attachSessionSerial 的注释）。
+// 老会话（本次改动前建立的、或旧版本残留）没有 verifiedSerials 字段时回落到 serials，
+// 行为与改动前一致，不至于把正连着的设备判成断联。
+function sessionVerifiedSerials(conn) {
+  if (!conn) {
+    return []
+  }
+  return conn.verifiedSerials && conn.verifiedSerials.length
+    ? conn.verifiedSerials
+    : conn.serials
+}
+
 // 这条活动会话与设备记录是否指同一台：双方都必须带 0x01 的完整 6 字节 ID并精确相等。
-// 广播短 ID 只负责扫描候选，不能认领活动会话。
+// 广播 ID（无论 4 还是 6 字节）只负责扫描候选，不能认领活动会话。
 function sessionMatchesSerials(sessionSerials, deviceSerials) {
   const left = uniqueSerials(sessionSerials).filter(deviceIdUtil.isComplete)
   const right = uniqueSerials(deviceSerials).filter(deviceIdUtil.isComplete)
@@ -239,7 +253,9 @@ function applyConnectedIdentity(device, bleDeviceId, info) {
   const connection = deviceBle
     .getActiveConnections()
     .find(item => item.deviceId === bleDeviceId)
-  const sessionCompleteId = ((connection && connection.serials) || [])
+  // 只取会话里经 0x01 核实过的那份：广播 ID 现在也可能是 12 hex，拿它回写记录/身份登记表
+  // 等于把「明文广播值」升格成稳定身份（见 device-ble.attachSessionSerial）。
+  const sessionCompleteId = sessionVerifiedSerials(connection)
     .map(deviceIdUtil.canonical)
     .find(Boolean)
   const completeId =
@@ -293,6 +309,65 @@ function serialsMatch(a, b) {
   return (
     longer.indexOf(shorter) === 0 ||
     longer.lastIndexOf(shorter) === longer.length - shorter.length
+  )
+}
+
+// ── 广播 Device_ID 的「候选筛选」专用匹配（2026-08-11，治 OTA 把广播 ID 从 4 字节换成 6 字节后连不上）──
+//
+// serialsMatch 的第 ② 条「长度相同却不相等 → 一定是两台设备」在 4 字节广播时代永远命中不到这条路：
+// 广播 8 hex vs 后端 12 hex 是不同长度，走的是前缀/后缀锚定。固件改播 6 字节后两边都是 12 hex，
+// 只要广播里那 6 字节与 0x01 读到的**不是同一个写法**（字节序反过来、或取的是 MAC 的另一段），
+// 就会被第 ② 条一票否掉 → matchScannedDevice 筛不出候选 → 扫描窗口走满 →「未搜索到该电子纸设备」。
+// 老固件反而能连，新固件连不上，正是这次现场现象。
+//
+// 这里只放宽**候选筛选**，不放宽身份：筛出来的候选连上后照旧要过 0x01 的完整 ID 精确校验
+// （readAndVerifyDeviceIdentity），不匹配就断开、排除、继续找。放宽的代价只是可能多连错一次，
+// 收益是无论固件把广播 ID 换成哪种写法都还能把设备找出来。
+// serialsMatch 本身保持严格：它还被活动会话认领(sessionMatchesSerials/devicesMatch)使用，那里没有 0x01 兜底。
+function reverseHexBytes(hex) {
+  const pairs = String(hex || '').match(/.{2}/g)
+  return pairs ? pairs.reverse().join('') : ''
+}
+
+// 一串 hex 的「4 字节锚段」：首 4 字节与末 4 字节（不足 4 字节的原样返回）。
+// 广播里那几个字节到底取自 MAC 的哪一段，各版固件口径不同，两端都留出来。
+function anchorSegments(hex) {
+  const value = String(hex || '')
+  if (value.length <= 8) {
+    return value ? [value] : []
+  }
+  const head = value.slice(0, 8)
+  const tail = value.slice(-8)
+  return head === tail ? [head] : [head, tail]
+}
+
+// 强匹配：整串对得上（精确相等 / 短的是长的前缀或后缀 / 整串字节序相反）。
+function broadcastStrongMatch(broadcastValue, deviceSerial) {
+  const broadcast = normalizeSerial(broadcastValue)
+  const serial = normalizeSerial(deviceSerial)
+  if (!broadcast || !serial) {
+    return false
+  }
+  // 老口径：精确相等 / 短的是长的前缀或后缀
+  if (serialsMatch(broadcast, serial)) {
+    return true
+  }
+  // 字节序相反（BLE 协议层的 MAC 是小端序，固件若直接内存拷贝进广播就会是倒序）
+  return reverseHexBytes(broadcast) === serial
+}
+
+function broadcastCandidateMatch(broadcastValue, deviceSerial) {
+  if (broadcastStrongMatch(broadcastValue, deviceSerial)) {
+    return true
+  }
+  // 弱匹配：4 字节锚段重合。广播取的是 MAC 的哪 4 个字节、正序还是倒序，各版固件口径不一致。
+  // 要求锚段至少 4 字节(8 hex)，与 serialsMatch 的下限一致，不因更短的巧合并台。
+  // 同批设备前 3 字节是相同的 OUI，前缀锚段确有偶合可能——所以调用方(matchScannedDevice)
+  // 先取强匹配、没有才用它，且连上后一律由 0x01 完整 ID 裁决。
+  const left = anchorSegments(normalizeSerial(broadcastValue)).filter(seg => seg.length >= 8)
+  const right = anchorSegments(normalizeSerial(deviceSerial)).filter(seg => seg.length >= 8)
+  return left.some(a =>
+    right.some(b => a === b || reverseHexBytes(a) === b)
   )
 }
 
@@ -436,13 +511,44 @@ function matchScannedDevice(found, device) {
   if (!serials.length) {
     return null
   }
+  // 扫描项广播 screenType 与设备记录尺寸对不上（不同型号）直接跳过，防扫描重连时误配到别的型号设备
+  const sized = list.filter(item => sameScreen(device, item && item.screenType))
+  // 先要整串对得上的（含新固件 6 字节倒序），没有才退到 4 字节锚段的弱匹配：
+  // 同批设备共享 OUI，锚段偶合并非不可能，让强匹配先挑走正主，弱匹配只在它落空时兜底。
+  // 两者都只是「筛候选」，连上后由 0x01 完整 ID 精确校验裁决（见 broadcastCandidateMatch）。
+  const strong = sized.find(item =>
+    serials.some(serial => broadcastStrongMatch(item && item.deviceNo, serial))
+  )
+  if (strong) {
+    return strong
+  }
   return (
-    list.find(item =>
-      // 扫描项广播 screenType 与设备记录尺寸对不上（不同型号）直接跳过，防扫描重连时误配到别的型号设备
-      sameScreen(device, item && item.screenType) &&
-      serials.some(serial => serialsMatch(item && item.deviceNo, serial))
+    sized.find(item =>
+      serials.some(serial => broadcastCandidateMatch(item && item.deviceNo, serial))
     ) || null
   )
+}
+
+// 扫描窗口走满、按序列号一个候选都没筛出来时的兜底候选（2026-08-11）。
+//
+// 为什么需要它：广播 Device_ID 的长度与写法由固件说了算，OTA 一改（4→6 字节、换段、换字节序），
+// 端上按序列号筛候选就可能全军覆没，用户看到的是「设备明明在那儿，就是搜不到」——
+// 而调试台不做任何匹配、直接按 BLE 句柄连，所以看着「调试台能连、正式入口不能」。
+// 兜底只挑「确定是本产品的广播(Company_ID 0xFFFF 解通) + 屏型/尺寸与本记录一致 + 未被排除」的设备，
+// 按信号最强的一台试连；连上后照旧要过 0x01 完整 ID 校验，不匹配会被断开并排除，下一轮再试。
+// 身份因此没有放宽：放宽的只是「值得一连的候选」的判据。
+function matchScannedDeviceFallback(found, device) {
+  const list = (found || []).filter(
+    item =>
+      item &&
+      item.broadcastCompanyMatched &&
+      item.screenType &&
+      sameScreen(device, item.screenType)
+  )
+  if (!list.length) {
+    return null
+  }
+  return list.slice().sort((a, b) => (Number(b.RSSI) || -999) - (Number(a.RSSI) || -999))[0]
 }
 
 // 重连成功后，若这台正是全局选中设备，用当下有效 deviceId 刷新它（deviceId 每次扫描会变）。
@@ -658,10 +764,23 @@ async function scanForTarget(device, match, rejectedDeviceIds) {
     }
   })
   const target = match(eligible(found), device)
-  if (!target) {
-    throw new Error('未搜索到该电子纸设备，请确认电子纸设备已开机并在附近')
+  if (target) {
+    return target
   }
-  return target
+  // 按序列号一个都没筛出来：退到「本产品广播 + 同型号」兜底候选（见 matchScannedDeviceFallback）。
+  // 只在扫描窗口走满之后才用，绝不放进 until —— 否则第一帧来的邻居设备就会被抢着连上。
+  const fallback = matchScannedDeviceFallback(eligible(found), device)
+  if (fallback) {
+    console.warn('[设备连接] 广播 Device_ID 与本记录对不上，改用「同型号本产品广播」兜底候选试连（连上后仍按 0x01 校验身份）', {
+      expectedDeviceIds: deviceSerials(device),
+      candidateBroadcastId: fallback.deviceNo,
+      broadcastLayoutFallback: !!fallback.broadcastLayoutFallback,
+      screenType: fallback.screenType,
+      RSSI: fallback.RSSI
+    })
+    return fallback
+  }
+  throw new Error('未搜索到该电子纸设备，请确认电子纸设备已开机并在附近')
 }
 
 // 确保这台设备已连接，未连接则自动重连(定位→openAdapter→扫描匹配→连接)。
@@ -885,6 +1004,8 @@ module.exports = {
   deviceInfoMatches,
   sameScreen,
   matchScannedDevice,
+  matchScannedDeviceFallback,
+  broadcastCandidateMatch,
   ensureDeviceConnected,
   connectBoundDevice,
   showConnectError,

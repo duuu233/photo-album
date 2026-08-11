@@ -497,12 +497,20 @@ const AD_DEVICE_ID_LEN_V1 = 4
 //
 // ⚠️ 新旧固件必须同时支持（灰度期两种设备并存）：靠「Company_ID 之后的剩余长度」区分，
 //    这是唯一可靠的判据 —— 老包恒为 6 字节(1+4+1)、新包恒为 8 字节(1+6+1)。
-//    长度够 8 时**只按新版解**，绝不回退老版：回退会把 Device_ID 的第 5 个字节当成电量，
+//    长度够 8 时**优先按新版解**：若回退老版，会把 Device_ID 的第 5 个字节当成电量，
 //    校验碰巧通过时就会**静默显示错误的设备 ID 和错误的电量**（无报错，极难排查）。
+//
+// 2026-08-11 补「优选布局解不通才回退另一种」（原为一律不回退）：
+//   固件把 ID 从 4 字节扩到 6 字节时，字段顺序未必与 2026-08-04 的假设一致（那份变更记录
+//   「待设备方确认」第 1、2 条列的就是顺序与字节序）。顺序一旦不同，按新版解出的电量落在
+//   ID 的字节上、多半 >100 → 整条广播返回 null → 这台设备在正式入口里**没有屏型、没有 ID**，
+//   既筛不出候选也排不进候选，用户看到的就是「OTA 完就搜不到/连不上了」。
+//   回退只在优选布局**解不通**时发生（否则本来就是整条丢弃），因此不会削弱「不给错值」那条：
+//   能解通的仍以长度优选为准；回退出来的结果打上 deviceIdLayoutFallback 标记，供上层辨别。
 function parseAdvertising(advertisData) {
   const b = toBytes(advertisData)
 
-  const attempt = (offset, idLength) => {
+  const attempt = (offset, idLength, companyMatched, layoutFallback) => {
     const screenType = b[offset]
     // 电量紧跟在 Device_ID 之后，位置随 ID 长度浮动
     const battery = b[offset + 1 + idLength]
@@ -519,29 +527,42 @@ function parseAdvertising(advertisData) {
       // ⚠️ 身份判定（判重/认领会话/绑定入库）仍只认连上后 0x01 读到的值，广播明文可伪造，
       //    不因为长度够了就放宽 —— 见 docs/architecture/device-identity-and-connection.md。
       deviceIdComplete: idLength === AD_DEVICE_ID_LEN_V2,
+      // 长度优选的布局没解通、改用另一种才解出来：ID/电量有按错布局取值的可能，
+      // 只可用于「筛候选/展示」，上层如需严格身份仍走 0x01。
+      deviceIdLayoutFallback: !!layoutFallback,
+      // 厂商数据带 0xFFFF Company_ID：能确认是本产品的广播（扫描白名单据此在设备名缺席时放行）
+      companyMatched: !!companyMatched,
       battery
     }
   }
 
-  const attemptAt = offset => {
+  const attemptAt = (offset, companyMatched) => {
     const rest = b.length - offset
-    if (rest >= AD_DEVICE_ID_LEN_V2 + 2) {
-      return attempt(offset, AD_DEVICE_ID_LEN_V2) // 新固件：屏型1 + ID6 + 电量1
+    const canV2 = rest >= AD_DEVICE_ID_LEN_V2 + 2
+    const canV1 = rest >= AD_DEVICE_ID_LEN_V1 + 2
+    if (canV2) {
+      // 新固件：屏型1 + ID6 + 电量1
+      const fresh = attempt(offset, AD_DEVICE_ID_LEN_V2, companyMatched, false)
+      if (fresh || !canV1) {
+        return fresh
+      }
+      // 新版解不通才退老版：布局与假设不符时，宁可给一条标了 fallback 的结果，也好过整台设备消失
+      return attempt(offset, AD_DEVICE_ID_LEN_V1, companyMatched, true)
     }
-    if (rest >= AD_DEVICE_ID_LEN_V1 + 2) {
-      return attempt(offset, AD_DEVICE_ID_LEN_V1) // 老固件：屏型1 + ID4 + 电量1
+    if (canV1) {
+      return attempt(offset, AD_DEVICE_ID_LEN_V1, companyMatched, false) // 老固件：屏型1 + ID4 + 电量1
     }
     return null
   }
 
   // 含 Company_ID：前两字节为 0xFF 0xFF，则从第 2 字节起为 Screen_Type
   if (b[0] === 0xff && b[1] === 0xff) {
-    const withId = attemptAt(2)
+    const withId = attemptAt(2, true)
     if (withId) {
       return withId
     }
   }
-  return attemptAt(0)
+  return attemptAt(0, false)
 }
 
 module.exports = {

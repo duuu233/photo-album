@@ -52,9 +52,19 @@ async function loadAllowedBroadcastIds() {
 
 // 广播名是否命中白名单：大小写不敏感，允许带前后缀，故用包含匹配。
 // name 与 localName 都查，因为真机有时只在后续广播包里带上 localName。
+//
+// 2026-08-11 追加「厂商数据认得出就放行」：Device_ID 从 4 字节扩到 6 字节后厂商数据长了 2 字节，
+// 广播包(31 字节上限)更挤，设备名很容易被固件挪进 scan response 或干脆不播——
+// 此时只按名字过滤会把自家设备整台丢掉，正式入口表现为「搜不到 / 连不上」，
+// 而调试台(allowAll)却看得见，正是这次 OTA 后的现场观感。
+// 放行条件收得很紧：必须带 0xFFFF Company_ID 且屏型/电量都能解通（parseAdvertising 的 companyMatched），
+// 不会把附近的其它蓝牙设备放进列表。
 function isAllowedFrame(device, allowedIds) {
   const name = `${device.name || ''} ${device.localName || ''}`.toUpperCase()
-  return (allowedIds || []).some(allowed => allowed && name.indexOf(allowed) > -1)
+  if ((allowedIds || []).some(allowed => allowed && name.indexOf(allowed) > -1)) {
+    return true
+  }
+  return !!(device && device.broadcastCompanyMatched && device.screenType)
 }
 
 // 检测当前微信运行环境是否具备完整的蓝牙搜索能力
@@ -399,6 +409,12 @@ function normalizeDevice(device) {
     // 上面那个广播 ID 是否已是完整 6 字节（新固件）。⚠️ 仅供展示判断，
     // 身份判定一律仍走连上后 0x01 的完整 ID，不因广播长度够了就放宽。
     broadcastDeviceIdComplete: !!ad.deviceIdComplete,
+    // 厂商数据带 0xFFFF Company_ID 且解通：确认是本产品的广播。设备名被挤出广播包时，
+    // 扫描白名单(isAllowedFrame)据此放行，别把自家设备漏掉。
+    broadcastCompanyMatched: !!ad.companyMatched,
+    // 长度优选的布局没解通、换另一种才解出来（新固件字段顺序与假设不符时会这样）：
+    // ID/电量可能取自错误偏移，仅可用于筛候选与展示，不参与身份判定。
+    broadcastLayoutFallback: !!ad.deviceIdLayoutFallback,
     model: ad.model || '',
     screen: ad.screen || '',
     screenType: ad.screenType || 0,
