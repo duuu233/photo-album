@@ -107,11 +107,18 @@ function sameVersion(a, b) {
 function buildFirmwareFromDevice(device) {
   const version = textValue(device && device.newVersionNo)
   const url = textValue(device && device.downloadPath)
-  const currentVersion =
-    textValue(device && (device.firmwareVersion || device.currentVersion)) || '--'
-  // 当前固件版本已与详情接口下发的 newVersionNo 一致时，视为已是最新，不再触发更新（即便后台 isUpdate=1）。
-  const alreadyLatest = sameVersion(currentVersion, version)
-  const hasUpdate = isUpdateFlag(device) && !alreadyLatest
+  const readVersion = textValue(
+    device && (device.firmwareVersion || device.currentVersion)
+  )
+  const currentVersion = readVersion || '--'
+  // 2026-08-12：判定口径与详情页「固件升级」行统一（subpackages/device/detail/detail.js
+  // evaluateFirmwareUpdate）——以设备实际在跑的固件版本(0x03 GET_SW_VER)与详情接口下发的
+  // newVersionNo 比较为准，版本号不同才算有更新，即便后台 isUpdate=1 也不例外。
+  // 只有**读不到设备当前版本**（未连接/0x03 读失败）时才退回后端 isUpdate 标志——否则详情页
+  // 判定「有版本可更新」、点「立刻更新」进来这里却显示「已是最新版本」，用户永远升不了级。
+  const hasUpdate = readVersion
+    ? !!version && !sameVersion(readVersion, version)
+    : isUpdateFlag(device)
   const hasValidPackage = hasUpdate && !!version && !!url && isBinFirmwareUrl(url)
   let invalidReason = ''
 

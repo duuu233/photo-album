@@ -156,8 +156,10 @@
             <text>固件升级</text>
           </view>
           <view class="row-right">
-            <!-- 未连接/无版本号时 newVersionNo 为 -- 占位，此时不带「版本」前缀 -->
-            <text>{{newVersionNo === '--' ? '--' : '版本' + newVersionNo}}</text>
+            <!-- 2026-08-12：右侧不再显示版本号，改为比对结论——设备当前固件版本(调试台 0x03 那个值)
+                 与详情接口 newVersionNo 不同、且 downloadPath 是有效 .bin 地址时提示「有版本可更新」，
+                 否则「已是最新版本」；未连接/读不到当前版本时按本页约定回落 '--' -->
+            <text>{{firmwareUpdateText}}</text>
             <view class="ui-chevron">
             </view>
           </view>

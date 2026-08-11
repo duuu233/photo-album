@@ -163,11 +163,21 @@ function isBinFirmwareUrl(url) {
 // OTA 逐帧日志助手（describeOtaFrame / decodeFinalResultFrame / OTA_OP）随 2026-08-11 删除的
 // 「OTA测试升级」一并移除：真实升级在 subpackages/device/ota 页里跑，日志由 utils/ota-ble.js 自己打。
 
-function getOtaValidationError(device) {
-  if (!isUpdateFlag(device)) {
-    return '当前已是最新版本'
-  }
+// 「固件升级」行右侧的两种文案（2026-08-12 产品规则）
+const OTA_TEXT_UPDATE = '有版本可更新'
+const OTA_TEXT_LATEST = '已是最新版本'
+const OTA_TEXT_UNKNOWN = '--'
 
+// 版本号比较：去空格 + 不区分大小写（与 ota.js sameVersion 同口径）。
+// 任一为空一律**不算相同**，由调用方按「未知」处理——绝不把「没读到」当成「一样」。
+function sameVersion(a, b) {
+  const na = textValue(a).toUpperCase()
+  const nb = textValue(b).toUpperCase()
+  return !!na && !!nb && na === nb
+}
+
+// 升级包本身是否可用：新版本号 + 有效 .bin 下载地址。缺一不可，否则进了升级页也下不动。
+function firmwarePackageError(device) {
   const version = textValue(device && device.newVersionNo)
   const url = textValue(device && device.downloadPath)
 
@@ -180,6 +190,52 @@ function getOtaValidationError(device) {
   }
 
   return ''
+}
+
+// 固件更新判定（2026-08-12 产品规则）：以**设备实际在跑的固件版本**与详情接口下发的
+// newVersionNo 比较为准，而不是后端 isUpdate 标志。
+// 当前版本只认调试台那条路读回来的值——0x03 GET_SW_VER，详情页由 deviceInfo.read 一并读回、
+// 落在 device.firmwareVersion（见 utils/device-ble.js readDeviceInfo 与 debug.js cmdGetVersion）。
+// 后端不下发设备真正在跑的版本，所以未连接时它必然为空：那种情况只能返回 unknown，
+// 不能拿「空 ≠ 新版本号」当成有更新，也不能反过来说「已是最新」。
+//
+// state：
+//   'unknown' 读不到设备当前固件版本（未连接 / 0x03 读失败）→ 无从比较
+//   'update'  版本号不同且下载地址有效 → 有版本可更新
+//   'invalid' 版本号不同但缺号/缺地址/不是 .bin → 后台数据有问题，点击时如实说明原因
+//   'latest'  其余（版本号相同，或接口压根没给新版本号）→ 已是最新
+//
+// 右侧文案与点击流程必须共用这一个判定，否则会出现「右边写着有版本可更新、点进去弹已是最新」。
+function evaluateFirmwareUpdate(device, currentVersion) {
+  const current = textValue(currentVersion)
+  if (!current) {
+    return { state: 'unknown', reason: '' }
+  }
+
+  const version = textValue(device && device.newVersionNo)
+  if (!version || sameVersion(current, version)) {
+    return { state: 'latest', reason: '' }
+  }
+
+  const packageError = firmwarePackageError(device)
+  return packageError
+    ? { state: 'invalid', reason: packageError }
+    : { state: 'update', reason: '' }
+}
+
+// 「固件升级」行右侧文案：只有确认「版本不同 + 下载地址有效」才提示可更新。
+// 未连接/读不到 0x03 版本时回落 '--'，与本页设备ID、最大照片数量、轮播设置同一套占位约定：
+// 不知道就说不知道，写「已是最新版本」等于在不知情时给用户一个可能是假的结论。
+function firmwareUpdateText(device) {
+  if (!device || !device.connected) {
+    return OTA_TEXT_UNKNOWN
+  }
+
+  const result = evaluateFirmwareUpdate(device, device.firmwareVersion)
+  if (result.state === 'unknown') {
+    return OTA_TEXT_UNKNOWN
+  }
+  return result.state === 'update' ? OTA_TEXT_UPDATE : OTA_TEXT_LATEST
 }
 
 // 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
@@ -197,7 +253,8 @@ Page(fold.adapt({
     resolutionText: '--',
     memoryText: '',
     macAddress: '',
-    newVersionNo: '--',
+    // 「固件升级」行右侧：有版本可更新 / 已是最新版本 / --（未连接、读不到当前固件版本）
+    firmwareUpdateText: '--',
     batteryText: '--',
     playbackLabel: '',
     intervalOptions: [1, 2, 4, 8, 24],
@@ -408,9 +465,8 @@ Page(fold.adapt({
       resolutionText: resolutionText(device),
       memoryText: memoryText(device),
       macAddress: device && device.macAddress ? device.macAddress : '--',
-      newVersionNo: connected
-        ? device.newVersionNo || device.firmwareVersion || '--'
-        : '--',
+      // 固件升级行右侧不再展示版本号，改为「设备当前固件版本 vs 接口 newVersionNo」的比较结论
+      firmwareUpdateText: firmwareUpdateText(device),
       playbackLabel: connected ? getPlaybackLabel(device) : '--',
       intervalIndex: intervalIndex > -1 ? intervalIndex : 1,
       loading: false,
@@ -683,7 +739,8 @@ Page(fold.adapt({
       memoryText: '--',
       memoryPercent: 0,
       playbackLabel: '--',
-      newVersionNo: '--'
+      // 断开后读不到 0x03 当前固件版本，也就无从比较：回落 '--'，不写「已是最新版本」
+      firmwareUpdateText: '--'
     })
     // 断开成功不再弹提示（顶部按钮已切「未连接」态即为反馈）；仅失败时提示。
   },
@@ -783,7 +840,7 @@ Page(fold.adapt({
       // 连上后 0x01 的 screenType 才到手，分辨率这时才可能从「后端宽高/--」升级为权威值
       resolutionText: resolutionText(updated),
       playbackLabel: getPlaybackLabel(updated),
-      newVersionNo: updated.newVersionNo || updated.firmwareVersion || '--',
+      firmwareUpdateText: firmwareUpdateText(updated),
       // 在详情页内点「连接」成功后只展示完整 6 字节 Device_ID。
       deviceCode:
         deviceIdUtil.canonical(updated.firmwareDeviceId) ||
@@ -809,7 +866,8 @@ Page(fold.adapt({
     })
   },
 
-  // 点「固件升级」：调接口检测最新版本 → 有新版本弹二次确认(稍后/立刻更新)，无则提示已是最新、不进升级页。
+  // 点「固件升级」：调接口重拉详情 → 与设备当前固件版本(0x03)比对 → 有新版本弹二次确认
+  //（稍后/立刻更新），无则提示已是最新、不进升级页。判定与右侧文案共用 evaluateFirmwareUpdate。
   //
   // ⚠️ 2026-08-11 去掉了这里的「未连接直接拦住」：版本检测走后端接口、根本不需要蓝牙，
   //    先拦一道只会让用户在「没连设备」时连版本都看不到。真正需要连接的是「立刻更新」那一步，
@@ -832,8 +890,42 @@ Page(fold.adapt({
     }
     wx.hideLoading()
 
-    // 无新版本：弹提示框，不进入固件升级详情页
-    if (!isUpdateFlag(latest)) {
+    // 接口成功但没给记录：不能拿空对象去比对（会一路推导成「已是最新」），如实报检测失败。
+    if (!latest) {
+      toast.warn({ title: '版本检测失败', icon: 'none' })
+      return
+    }
+
+    // 刚拉到的接口数据顺手回写并刷新右侧文案：本行可能还是进页面时拉的，已经过期。
+    const refreshed = Object.assign({}, device, {
+      newVersionNo: latest.newVersionNo,
+      downloadPath: latest.downloadPath,
+      isUpdate: latest.isUpdate
+    })
+    this.setData({
+      device: refreshed,
+      firmwareUpdateText: firmwareUpdateText(refreshed)
+    })
+
+    // 与右侧文案同一套判定：设备实际固件版本(0x03) vs 接口 newVersionNo + 下载地址有效性。
+    const result = evaluateFirmwareUpdate(latest, device.firmwareVersion)
+    let state = result.state
+    let reason = result.reason
+
+    // 读不到设备当前版本（未连接 / 0x03 读失败）时无从比较，退回后端 isUpdate 标志：
+    // 保住 2026-08-11 定下的「版本检测走接口、不连蓝牙也能查」，别把用户拦在门外。
+    // 这一分支下右侧文案是 '--'，不会和这里的结论互相打架。
+    if (state === 'unknown') {
+      if (!isUpdateFlag(latest)) {
+        state = 'latest'
+      } else {
+        reason = firmwarePackageError(latest)
+        state = reason ? 'invalid' : 'update'
+      }
+    }
+
+    // 已是最新：弹提示框，不进入固件升级详情页
+    if (state === 'latest') {
       wx.showModal({
         title: '固件升级',
         content: '当前固件已是最新版本',
@@ -843,12 +935,11 @@ Page(fold.adapt({
       return
     }
 
-    // 有更新但包信息无效（缺版本号/下载地址/非 .bin）：如实提示，不进入
-    const validationError = getOtaValidationError(latest)
-    if (validationError) {
+    // 版本确实不同，但包信息无效（缺版本号/下载地址/非 .bin）：如实提示，不进入
+    if (state === 'invalid') {
       wx.showModal({
         title: '固件升级',
-        content: validationError,
+        content: reason,
         showCancel: false,
         confirmText: '知道了'
       })
