@@ -267,8 +267,13 @@ button {
 }
 
 /* 与同一行内左侧按钮拉开间距 */
-.btn-sync {
-  margin-left: 12rpx;
+/* 唯一会写到「真实投屏」的按钮：独占一行 + 绿色，与只作用于调试台的橙色按钮明显区分 */
+.btn-projection {
+  height: 80rpx;
+  margin-top: 16rpx;
+  color: #ffffff;
+  font-size: 26rpx;
+  font-weight: 600;
   background: linear-gradient(90deg, #36c2a6, #1aa886);
 }
 

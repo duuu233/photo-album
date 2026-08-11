@@ -19,14 +19,27 @@ let globalListenerBound = false
 // 收发监听器：联调调试台用它把每一帧的 16 进制原始字节打印出来，方便和硬件侧日志对照。
 // 业务页面不需要可不设置；setMonitor(null) 取消。
 let monitor = null
+// 图传帧（0x21 数据 / 0x23 累计应答）是否也上报给监听器，默认**不报**。
+// 为什么默认关：一张 5.89 寸图有 600~1400 个 0x21 包，每包都要 bytesToHex 一遍整帧（约 500 字节
+// → 上千字符的字符串），这笔开销正好压在「写一包 → 等 0x23」的热路径上，既拖慢发包又推迟
+// ACK 通知的处理——而调试台的 onMonitorFrame 本来就把这两类帧直接丢掉，纯属白烧。
+// 真要看图传原始字节时：setMonitor(fn, { includeImageFrames: true })。
+let monitorImageFrames = false
 
-function setMonitor(fn) {
+function setMonitor(fn, options) {
   monitor = typeof fn === 'function' ? fn : null
+  monitorImageFrames = !!(options && options.includeImageFrames)
 }
 
 // 向监听器上报一帧收发记录。dir: 'TX' 发送 / 'RX' 接收；cmd: 命令字；bytes: 整帧原始字节。
 function reportFrame(dir, deviceId, cmd, bytes, note) {
   if (!monitor) {
+    return
+  }
+  if (
+    !monitorImageFrames &&
+    (cmd === protocol.CMD.IMG_DATA || cmd === protocol.CMD.IMG_ACK)
+  ) {
     return
   }
   try {
@@ -596,13 +609,13 @@ function sleep(ms) {
 //   2) 设备端（BLE 收包 + 写 Flash）跟不上 → 收一阵就不再前进（ACK_SEQ 卡住）。
 // 默认取「极速」档(3ms)：固件已扩大 MCU 收包内存(可缓 10 包)，配合平台的极速连接间隔
 //（安卓/鸿蒙 7.5ms、iOS 15ms，见下方 TRANSFER_CONN_INTERVAL_MS_*）按最快速率喂数据。
-// 调试页「同步投屏」可把实测调稳的 pace 写进下面的存储键覆盖它；卡顿时窗口内部还会自动缩窗+减速兜底。
+// 调试页「保存给真实投屏」可把实测调稳的 pace 写进下面的存储键覆盖它；卡顿时窗口内部还会自动缩窗+减速兜底。
 const PACKET_PACE_MS = 3
 // 图传前尝试把 BLE 连接间隔调到的默认值：按平台区分（2026-07-10 真机 A/B 数据，iPhone 12）。
 //   安卓：7.5ms（CONN_INTERVAL=6，协议最小值）——安卓中心侧通常批准；
 //   iOS：15ms——Apple 规范拒绝 <15ms 的参数更新请求，请求 7.5ms 会被系统忽略、链路停在
 //        自选的 30/45ms 上（实测请求 15ms 后 dataMs 15.2s→9.6s、吞吐 11.1→17.6KB/s）。
-// 调试页「同步投屏」写入的存储值仍优先于平台默认；设置失败不阻断旧图传链路。
+// 调试页「保存给真实投屏」写入的存储值仍优先于平台默认；设置失败不阻断旧图传链路。
 const TRANSFER_CONN_INTERVAL_MS_ANDROID = 7.5
 const TRANSFER_CONN_INTERVAL_MS_IOS = 15
 const TRANSFER_CONN_INTERVAL_STORAGE_KEY = 'transferConnIntervalMs'
@@ -656,16 +669,117 @@ function defaultTransferConnIntervalMs() {
     return TRANSFER_CONN_INTERVAL_MS_IOS
   }
 }
-// 真实投屏图传每包发送间隔(ms)的存储键：调试页「同步投屏」把实测 pace 写进来，真实投屏优先读它，
+// 真实投屏图传每包发送间隔(ms)的存储键：调试页「保存给真实投屏」把实测 pace 写进来，真实投屏优先读它，
 // 没同步过则回落默认 PACKET_PACE_MS(极速 3ms)。与连接间隔同套「调试台调好→同步到真实场景」的机制。
 const TRANSFER_PACE_STORAGE_KEY = 'transferPaceMs'
 // 图传窗口(发满多少包等一次 0x23 累计应答)。
-//   · 默认仍是 10：真实投屏没被「同步投屏」改过时用的就是它，本轮一字未动；
+//   · 默认仍是 10：真实投屏没被「保存给真实投屏」改过时用的就是它，本轮一字未动；
 //   · 上限 2026-08-07 由 10 放宽到 50（设备侧扩了收包缓冲，确认可缓 50 包）——调试台的
 //     「发包窗口」输入框在 [1,50] 内自由试；超过缓冲仍会溢出丢包，故 normalizeTransferWindow 照旧夹住。
 const DEFAULT_TRANSFER_WINDOW = 10
 const TRANSFER_WINDOW_MAX = 50
 const TRANSFER_WINDOW_STORAGE_KEY = 'transferWindow'
+
+// ── 图传调速策略（pacer）────────────────────────────────────────────────────
+// 图传主循环只管「发包 / 等 0x23 / 记账」，窗口多大、每包隔多久、ACK 等多久全部由 pacer 决定。
+// 两套策略并存，靠 uploadImage 的 options.adaptive 选择：
+//   · legacy（默认，真实投屏走这条）：2026-08-11 之前的原策略，本轮一字未改；
+//   · adaptive（只有调试台传 adaptive:true 才启用）：新的 AIMD 拥塞控制，在调试台实测验证中。
+// 等调试台跑够真机数据、确认稳定更快，再决定要不要把真实投屏也切过去（改一个默认值即可）。
+const LEGACY_ACK_TIMEOUT_MS = 600 // legacy：固定 600ms 等一次 0x23 推进
+const PACE_PROBE_AFTER = 6 // 连续几个干净窗口把每包间隔往下探一档
+const PACE_PROBE_STEP = 0.5
+const MAX_ACK_RETRIES = 15 // 同一位置连续退让这么多次仍不推进 → 判为设备中断
+
+// legacy 策略（真实投屏在用）：窗口/每包间隔恒等于配置值，只在「卡住的那一轮」临时缩窗+加间隔，
+// 一有推进立刻弹回满窗满速；ACK 超时固定 600ms。
+function createLegacyPacer(maxWindow, basePace) {
+  let curPace = basePace
+  let cleanRun = 0
+  return {
+    windowFor: retries => (retries === 0 ? maxWindow : Math.max(1, maxWindow - retries)),
+    paceFor: retries =>
+      retries === 0 ? curPace : Math.min(150, curPace + 30 * retries),
+    ackTimeout: () => LEGACY_ACK_TIMEOUT_MS,
+    // legacy 没有「宽限一轮再判丢包」这一步：超时即整窗重发
+    grace: false,
+    onTimeout() {
+      curPace = Math.min(basePace, curPace + PACE_PROBE_STEP)
+      cleanRun = 0
+    },
+    onClean(advanceMs, retries) {
+      if (retries !== 0) {
+        cleanRun = 0
+      } else if (curPace > 0 && ++cleanRun >= PACE_PROBE_AFTER) {
+        curPace = Math.max(0, curPace - PACE_PROBE_STEP)
+        cleanRun = 0
+      }
+    },
+    state: () => ({ window: maxWindow, pace: curPace, minWindow: maxWindow })
+  }
+}
+
+// adaptive 策略（调试台）：AIMD 拥塞控制。老策略窗口一大反而更慢更容易卡死——
+//   灌满 50 包 → 设备缓冲溢出丢一包 → 其后 49 包全成废包（设备按序累计确认）→ 等满超时
+//   → 从丢包处整窗重发 → 又灌满 50 包 → 再溢出……窗口越大，每转一圈的代价越大。
+//   （老策略的「减速兜底」还写成 curPace = Math.min(配置值, curPace + 步长)，被配置值封顶，
+//     实际永远降不下速，等于只会越跑越快、从不退让。）
+// 这里改成：**起步就用配置的最快值，卡了窗口减半 + 每包间隔翻倍并保持住，稳了再慢慢涨回**，
+// 外加两条：ACK 超时按实测推进耗时自适应（设备只是慢时别误判成丢包）、超时先宽限等一轮再判丢包。
+const ACK_TIMEOUT_START_MS = 600 // 首轮还没有观测值时的超时
+const ACK_TIMEOUT_MIN_MS = 300 // 有观测值后的下限：判早了也只是多等一轮宽限，不会立刻整窗重发
+const ACK_TIMEOUT_MAX_MS = 3000 // 上限：再慢也该判为丢包/中断
+const PACE_BACKOFF_MAX_MS = 40 // 退让时每包间隔的上限
+const WINDOW_RECOVER_AFTER = 2 // 连续几个干净窗口涨一档窗口
+
+function createAdaptivePacer(maxWindow, basePace) {
+  let curPace = basePace
+  let curWindow = maxWindow
+  let minWindow = maxWindow
+  let cleanRun = 0
+  let emaAdvanceMs = 0 // 实测「等一次 0x23 推进」耗时的指数滑动平均
+  return {
+    windowFor: () => curWindow,
+    paceFor: () => curPace,
+    // graceRound=true 是宽限那一轮，等更久：真丢包时多花的这点时间，远小于误判后整窗重发的代价
+    ackTimeout: graceRound => {
+      const base = emaAdvanceMs
+        ? Math.min(
+            ACK_TIMEOUT_MAX_MS,
+            Math.max(ACK_TIMEOUT_MIN_MS, Math.round(emaAdvanceMs * 4) + 150)
+          )
+        : ACK_TIMEOUT_START_MS
+      return graceRound ? Math.min(ACK_TIMEOUT_MAX_MS, base * 2) : base
+    },
+    grace: true,
+    onTimeout() {
+      curWindow = Math.max(1, Math.floor(curWindow / 2))
+      curPace = Math.min(
+        PACE_BACKOFF_MAX_MS,
+        Math.max(1, Math.round((curPace || 1) * 2))
+      )
+      minWindow = Math.min(minWindow, curWindow)
+      cleanRun = 0
+    },
+    onClean(advanceMs) {
+      emaAdvanceMs = emaAdvanceMs
+        ? emaAdvanceMs * 0.75 + advanceMs * 0.25
+        : advanceMs
+      cleanRun++
+      if (curWindow < maxWindow && cleanRun % WINDOW_RECOVER_AFTER === 0) {
+        curWindow = Math.min(
+          maxWindow,
+          curWindow + Math.max(1, Math.floor(maxWindow / 8))
+        )
+      }
+      if (curPace > 0 && cleanRun % PACE_PROBE_AFTER === 0) {
+        // 链路一直干净就继续往下探每包间隔（可以探到 0），配置值只是起点不是下限
+        curPace = Math.max(0, curPace - PACE_PROBE_STEP)
+      }
+    },
+    state: () => ({ window: curWindow, pace: curPace, minWindow })
+  }
+}
 
 // 写一个图传数据包（value 为已组好的完整 0x21 帧 ArrayBuffer，见 buildImgDataFrame/预组包），
 // 带「缓冲忙就退避重试」：写失败(常见 writeValueToCharacteristics error 是缓冲暂满)
@@ -729,14 +843,20 @@ async function buildAllImgDataFrames(bytes, chunkSize) {
 // 把这两块耗时从「拿到帧 → 发 0x20 → 逐包发送」的串行热路径上挪走。
 // 会话未就绪（首张与连接并行预取）时分包大小未知，只算 CRC32、frames 返回 null；
 // uploadImage 收到的 prepared 帧数/分包对不上时会自动回退为逐包现组，不影响正确性。
-async function prepareImageTransfer(deviceId, data) {
+// options.chunkSize：显式指定每包数据字节数（调试台传「0x21 数据字节」的实际生效值）。
+// uploadImage 只认 chunkSize 与本次实际分包一致的 prepared，两边不对齐就白预组了。
+async function prepareImageTransfer(deviceId, data, options) {
   const bytes = data instanceof Uint8Array ? data : new Uint8Array(data)
   const crc32 = imageCodec.crc32Mpeg2(bytes)
   const session = sessions[deviceId]
+  // 会话未就绪（首张预取与连接并行）时分包大小还未知，只算 CRC32
   if (!session || !session.ready || !session.dataChunk) {
     return { crc32, dataSize: bytes.length, chunkSize: 0, frames: null }
   }
-  const chunkSize = session.dataChunk
+  const requested = options && options.chunkSize
+  const chunkSize = Number.isFinite(Number(requested))
+    ? effectiveChunkSize(session, requested)
+    : session.dataChunk
   const frames = await buildAllImgDataFrames(bytes, chunkSize)
   return { crc32, dataSize: bytes.length, chunkSize, frames }
 }
@@ -921,7 +1041,7 @@ async function setConnectionIntervalMs(deviceId, ms, timeout) {
   )
 }
 
-// 真实投屏图传前要用的连接间隔(ms)：优先用调试页「同步投屏」存下的值，
+// 真实投屏图传前要用的连接间隔(ms)：优先用调试页「保存给真实投屏」存下的值，
 // 否则用平台默认（安卓/鸿蒙 7.5ms、iOS 及其他 15ms，见 defaultTransferConnIntervalMs）。
 function getTransferConnIntervalMs() {
   try {
@@ -935,7 +1055,7 @@ function getTransferConnIntervalMs() {
   return defaultTransferConnIntervalMs()
 }
 
-// 把真实投屏图传前要用的连接间隔(ms)持久化（调试页「同步投屏」调用）。
+// 把真实投屏图传前要用的连接间隔(ms)持久化（调试页「保存给真实投屏」调用）。
 // 先按协议 1.25ms 单位归一并校验范围，越界直接抛错，避免把无效值同步给投屏。
 // 返回归一后的 { ms, units }，方便调用方回显「实际生效值」。
 function setTransferConnIntervalMs(ms) {
@@ -947,7 +1067,7 @@ function setTransferConnIntervalMs(ms) {
   return { ms: value, units }
 }
 
-// 真实投屏图传每包发送间隔(ms)：优先用调试页「同步投屏」存下的值，否则用默认极速 3ms。
+// 真实投屏图传每包发送间隔(ms)：优先用调试页「保存给真实投屏」存下的值，否则用默认极速 3ms。
 // uploadImage 未显式收到 pace 时会调它，让真实投屏跟随调试台调稳的发送速度。
 function getTransferPaceMs() {
   try {
@@ -961,7 +1081,7 @@ function getTransferPaceMs() {
   return PACKET_PACE_MS
 }
 
-// 把真实投屏图传每包发送间隔(ms)持久化（调试页「同步投屏」调用）。
+// 把真实投屏图传每包发送间隔(ms)持久化（调试页「保存给真实投屏」调用）。
 // 归一为非负数后落库，返回实际生效值用于回显。
 function setTransferPaceMs(ms) {
   const value = Math.max(0, Number(ms))
@@ -981,7 +1101,7 @@ function normalizeTransferWindow(n) {
   return Math.min(TRANSFER_WINDOW_MAX, value)
 }
 
-// 真实投屏图传窗口包数：优先用调试页「同步投屏」存下的值，否则用默认 10。
+// 真实投屏图传窗口包数：优先用调试页「保存给真实投屏」存下的值，否则用默认 10。
 function getTransferWindow() {
   try {
     const saved = Number(wx.getStorageSync(TRANSFER_WINDOW_STORAGE_KEY))
@@ -994,7 +1114,7 @@ function getTransferWindow() {
   return DEFAULT_TRANSFER_WINDOW
 }
 
-// 把真实投屏图传窗口包数持久化（调试页「同步投屏」调用）。夹到 [1, MAX] 后落库，返回实际生效值用于回显。
+// 把真实投屏图传窗口包数持久化（调试页「保存给真实投屏」调用）。夹到 [1, MAX] 后落库，返回实际生效值用于回显。
 function setTransferWindow(n) {
   const value = normalizeTransferWindow(n)
   wx.setStorageSync(TRANSFER_WINDOW_STORAGE_KEY, value)
@@ -1002,7 +1122,7 @@ function setTransferWindow(n) {
 }
 
 // 图传前的连接参数优化：读当前值，必要时切到更快的连接间隔，并回读验证是否真实生效。
-// 未显式传 ms 时，用「同步投屏」存下的值（没同步过则用平台默认：安卓/鸿蒙 7.5ms、iOS 及其他 15ms）。
+// 未显式传 ms 时，用「保存给真实投屏」存下的值（没同步过则用平台默认：安卓/鸿蒙 7.5ms、iOS 及其他 15ms）。
 // 兼容旧固件/异常链路：调用方可捕获错误后继续走原图传逻辑。
 //
 // 回读探针（性能测量 A 补充，2026-07-10）：0x13 回 result=0 只代表「设备接受了指令」；
@@ -1167,6 +1287,9 @@ async function uploadImage(deviceId, options) {
     ackFrames: 0,
     ackAdvances: 0,
     ackTimeouts: 0,
+    ackGraceWaits: 0, // 「先宽限再等一次」的次数：设备只是慢，没到丢包
+    minWindow: 0, // 自适应过程中退到过的最小窗口
+    finalWindow: 0, // 收尾时的窗口（与配置窗口一对比就知道设备实际吃得下多少）
     retryEvents: 0,
     sentPackets: 0,
     retransmittedPackets: 0,
@@ -1262,11 +1385,15 @@ async function uploadImage(deviceId, options) {
     let nextSeq = 0
     let highestSeqSent = -1
     let retries = 0
-    const PACE_FLOOR = 0
-    const PACE_STEP = 0.5
-    const PACE_PROBE_AFTER = 6
-    let curPace = pace
-    let cleanRun = 0
+    // 调速策略：真实投屏走 legacy（原样不动），只有调试台传 adaptive:true 才启用新的 AIMD。
+    const pacer = options.adaptive
+      ? createAdaptivePacer(WINDOW, pace)
+      : createLegacyPacer(WINDOW, pace)
+    stats.adaptive = !!options.adaptive
+    stats.minWindow = WINDOW
+    stats.finalWindow = WINDOW
+    // 同一卡点是否已用过一次「宽限等待」（仅 adaptive）：先多等一轮再判丢包，别把「慢」当成「丢」
+    let graceUsed = false
     onProgress(0, totalPackets, 'start')
 
     const tracker = createAckTracker(session)
@@ -1277,10 +1404,12 @@ async function uploadImage(deviceId, options) {
           throw new Error('UPLOAD_ABORTED')
         }
 
-        const window = retries === 0 ? WINDOW : Math.max(1, WINDOW - retries)
-        const sendPace =
-          retries === 0 ? curPace : Math.min(150, curPace + 30 * retries)
-        stats.finalPace = curPace
+        const window = pacer.windowFor(retries)
+        const sendPace = pacer.paceFor(retries)
+        const snapshot = pacer.state()
+        stats.finalPace = snapshot.pace
+        stats.finalWindow = snapshot.window
+        stats.minWindow = snapshot.minWindow
 
         while (nextSeq < totalPackets && nextSeq - tracker.last - 1 < window) {
           if (shouldAbort()) {
@@ -1304,7 +1433,7 @@ async function uploadImage(deviceId, options) {
           }
         }
 
-        // 尾包 ACK 可能已在最后一次 write 的回调返回前到达，先复查，避免完成后再空等 600ms。
+        // 尾包 ACK 可能已在最后一次 write 的回调返回前到达，先复查，避免完成后再空等一轮超时。
         if (tracker.last >= totalPackets - 1) {
           break
         }
@@ -1313,7 +1442,7 @@ async function uploadImage(deviceId, options) {
         const ackWaitStartedAt = Date.now()
         let waitError = null
         try {
-          await tracker.waitAdvance(before, 600)
+          await tracker.waitAdvance(before, pacer.ackTimeout(graceUsed))
         } catch (error) {
           waitError = error
         } finally {
@@ -1324,42 +1453,61 @@ async function uploadImage(deviceId, options) {
           // 超时回调和通知可能同时发生；重发前再复查一次，已推进就直接继续填窗。
           if (tracker.last > before) {
             retries = 0
+            graceUsed = false
             stats.confirmedPackets = Math.min(tracker.last + 1, totalPackets)
             onProgress(stats.confirmedPackets, totalPackets, 'data')
             continue
           }
+          // adaptive：第一次超时先宽限等一轮。设备只是慢时整窗重发只会把它压得更死（重发的包同样
+          // 要排队，而它还没消化完上一批）；真丢包也只多等一个超时，远小于误判后反复整窗重发的代价。
+          if (pacer.grace && !graceUsed) {
+            graceUsed = true
+            stats.ackGraceWaits++
+            continue
+          }
           stats.ackTimeouts++
           stats.retryEvents++
-          if (++retries > 15) {
+          if (++retries > MAX_ACK_RETRIES) {
+            const now = pacer.state()
             throw new Error(
-              `图传中断：电子纸设备停在已接收第 ${tracker.last} 包不再前进。可能电子纸设备忙或处理不过来。当前 MTU=${session.mtu}、每包 ${CHUNK} 字节`
+              `图传中断：电子纸设备停在已接收第 ${tracker.last} 包不再前进` +
+                (options.adaptive
+                  ? `（已自动退让到窗口 ${now.window} 包 / 每包间隔 ${now.pace}ms 仍无推进）`
+                  : '') +
+                `。可能电子纸设备忙或处理不过来。当前 MTU=${session.mtu}、每包 ${CHUNK} 字节`
             )
           }
+          pacer.onTimeout()
+          const after = pacer.state()
+          stats.minWindow = after.minWindow
           onProgress(
             Math.min(tracker.last + 1, totalPackets),
             totalPackets,
             'retry',
-            { stuckAt: tracker.last, retries }
+            {
+              stuckAt: tracker.last,
+              retries,
+              window: after.window,
+              pace: after.pace
+            }
           )
           nextSeq = tracker.last + 1
-          curPace = Math.min(pace, curPace + PACE_STEP)
-          cleanRun = 0
+          graceUsed = false
           await sleep(Math.min(150, 50 * retries))
           continue
         }
 
-        if (retries !== 0) {
-          cleanRun = 0
-        } else if (curPace > PACE_FLOOR && ++cleanRun >= PACE_PROBE_AFTER) {
-          curPace = Math.max(PACE_FLOOR, curPace - PACE_STEP)
-          cleanRun = 0
-        }
+        pacer.onClean(Date.now() - ackWaitStartedAt, retries)
+        graceUsed = false
         retries = 0
         stats.confirmedPackets = Math.min(tracker.last + 1, totalPackets)
         onProgress(stats.confirmedPackets, totalPackets, 'data')
       }
       stats.confirmedPackets = totalPackets
-      stats.finalPace = curPace
+      const finalState = pacer.state()
+      stats.finalPace = finalState.pace
+      stats.finalWindow = finalState.window
+      stats.minWindow = finalState.minWindow
     } finally {
       stats.dataMs = Date.now() - dataStartedAt
       stats.ackFrames = tracker.ackFrames
@@ -1589,6 +1737,7 @@ module.exports = {
   applyIdleConnectionInterval,
   getTransferConnIntervalMs,
   setTransferConnIntervalMs,
+  defaultTransferConnIntervalMs, // 平台默认(安卓/鸿蒙 7.5ms、iOS 及其他 15ms)：调试台用它做「最快」默认值
   getTransferPaceMs,
   setTransferPaceMs,
   getTransferWindow,
