@@ -45,6 +45,109 @@ const ERROR_MESSAGES = {
   '-15005': '支付签名校验失败，请联系客服（服务端 paySig/signature 与 signData 不匹配）'
 }
 
+// 排查提示，**只进控制台、不进弹窗文案**（2026-08-12）。
+// 这些含义来自微信开放社区的帖子整理而非官方错误码表，把握不到 ERROR_MESSAGES 的程度：
+// 写进弹窗会把用户和客服按一个可能错的方向带偏，而打在日志里，开发看着它去查、查错了也只损失自己几分钟。
+// 弹窗仍然走「原样带上 errCode」的老口径（见文件头第 4 条「错误码不猜」）。
+const ERROR_HINTS = {
+  '-15001': '参数不合法 / 道具 productId 为空：核对 signData.productId 有没有值、后台道具是否已发布、appid 与虚拟支付商户号是否已绑定。**不是签名问题**（签名是 -15005/-15006）',
+  '-15002': 'outTradeNo 重复：后端换个新单号重试',
+  '-15003': '微信侧系统错误：可重试，连续复现找微信',
+  '-15005': '签名校验失败：signature（session_key 签的）与 signData 不匹配，多半是 signData 被重新序列化过或 session_key 过期',
+  '-15006': 'PAY_SIG_INVALID：paySig（appKey 签的）不对，核对是否漏了 "requestVirtualPayment&" 前缀',
+  '-15007': 'session_key 过期：需要用户重新 wx.login，后端刷新后再签',
+  '-15008': '二级商户进件未完成：小程序后台侧配置，端上无解',
+  '-15009': '代币未发布（coin 模式）',
+  '-15010': '道具 productId 未发布：在虚拟支付后台把这个道具发布掉；注意沙箱(env=1)与正式(env=0)是两套'
+}
+
+// signData 里最容易签错的几个字段。同样**只提示不拦截**：端上无权判定后端签了什么才算对，
+// 猜错了直接拦住比放过去更糟——用户连微信的真实错误码都看不到，排查线索反而少一条。
+const SIGN_DATA_CHECKS = [
+  {
+    key: 'productId',
+    bad: value => !value,
+    hint: 'productId 为空 → 真机稳定回 -15001（后端商品的 wxProductId 没配）'
+  },
+  {
+    key: 'offerId',
+    bad: value => !value,
+    hint: 'offerId 为空 → 米大师应用 id 没填。注意它不是小程序 appid'
+  },
+  {
+    key: 'goodsPrice',
+    bad: value => typeof value !== 'number' || !(value > 0) || value % 1 !== 0,
+    hint: 'goodsPrice 必须是**分**为单位的正整数：传「元」、传字符串都会被判参数不合法'
+  },
+  {
+    key: 'buyQuantity',
+    bad: value => !(Number(value) > 0),
+    hint: 'buyQuantity 缺失或非正数'
+  },
+  {
+    key: 'outTradeNo',
+    bad: value => !value,
+    hint: 'outTradeNo 为空 → 微信侧无从幂等，重复下单会撞 -15002'
+  },
+  {
+    key: 'currencyType',
+    bad: value => value !== 'CNY',
+    hint: "currencyType 通常应为 'CNY'"
+  }
+]
+
+// paySig / signature 是 HMAC 结果不是密钥，但也没有全量打印的必要：前 8 位 + 长度足够和后端对账
+function digest(value) {
+  const text = String(value || '')
+  return text ? `${text.slice(0, 8)}…(共${text.length}位)` : '(空)'
+}
+
+/**
+ * 调起前把参数打全（2026-08-12 加，起因是真机一直 -15001 而端上什么都看不到）。
+ *
+ * `signData` 打的是**原文**，且这么做是安全的：它是被签名的明文（道具 id / 订单号 / 价格 / env），
+ * 里面没有 appKey 也没有 session_key。必须打原文而不是打解析后的对象——签名是对这个字符串
+ * 逐字节算的，键顺序、空格差一点就是 -15005，那种差异只有看原文才看得出来。
+ */
+function logPayParams(params) {
+  const raw = params.signData
+  console.log('[虚拟支付] 调起 wx.requestVirtualPayment', {
+    mode: params.mode,
+    'signData(原文)': raw,
+    'signData(字节数)': raw.length,
+    paySig: digest(params.paySig),
+    signature: digest(params.signature)
+  })
+
+  let parsed = null
+  try {
+    parsed = JSON.parse(raw)
+  } catch (error) {
+    console.warn('[虚拟支付] signData 不是合法 JSON，无法逐字段核对（微信侧同样会判参数不合法）')
+    return
+  }
+
+  console.log('[虚拟支付] signData 字段', {
+    offerId: parsed.offerId,
+    productId: parsed.productId,
+    outTradeNo: parsed.outTradeNo,
+    // 带上类型：goodsPrice 传成字符串或「元」是 -15001 的常见成因，只看数值看不出来
+    goodsPrice: `${parsed.goodsPrice}（${typeof parsed.goodsPrice}）`,
+    buyQuantity: parsed.buyQuantity,
+    env: `${parsed.env}（${Number(parsed.env) === 1 ? '沙箱' : '正式'}）`,
+    currencyType: parsed.currencyType,
+    attach: parsed.attach
+  })
+
+  SIGN_DATA_CHECKS.forEach(check => {
+    if (check.bad(parsed[check.key])) {
+      console.warn(`[虚拟支付] ⚠️ signData.${check.key} 可疑：${check.hint}`, {
+        实际值: parsed[check.key]
+      })
+    }
+  })
+}
+
 function isAvailable() {
   try {
     if (typeof wx === 'undefined' || typeof wx.requestVirtualPayment !== 'function') {
@@ -141,11 +244,19 @@ function describeFail(error) {
 
   // 用户主动取消不是故障：调用方据此只关掉 loading、不弹「支付失败」
   if (/cancel/i.test(errMsg)) {
+    console.log('[虚拟支付] 用户取消支付', { errMsg })
     return {
       code: 'PAY_CANCELED',
       message: '已取消支付'
     }
   }
+
+  console.warn('[虚拟支付] 支付失败', {
+    errCode: rawCode === '' ? '(微信未给码)' : rawCode,
+    errMsg,
+    排查提示: ERROR_HINTS[String(rawCode)] || '(无对照，把上面这行连同 signData 一起发后端核对)',
+    原始错误: error
+  })
 
   const known = ERROR_MESSAGES[String(rawCode)]
   return {
@@ -182,6 +293,8 @@ function requestPayment(params) {
       })
       return
     }
+
+    logPayParams(params)
 
     // 只传微信文档列出的四个参数。env/offerId 都在 signData 里，端上再平铺一份没有意义，
     // 还多一处能和签名内容对不上的地方。

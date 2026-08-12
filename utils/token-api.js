@@ -234,13 +234,45 @@ function addOrder(pkg, channel) {
     })
   }
 
+  const wxProductId = (pkg && pkg.wxProductId) || ''
+  console.log('[虚拟支付] 建单 addOrder', {
+    goodsId,
+    payType,
+    套餐: (pkg && pkg.name) || '',
+    金额: (pkg && pkg.price) || 0,
+    wxProductId: wxProductId || '(空)'
+  })
+  // getGoodsList 的 wxProductId 就是后端要签进 signData 的 productId。它在这里为空，
+  // 基本可以断定后端签出来的 productId 也是空的 → 真机稳定回 -15001。
+  // 只 warn 不拦：签什么由后端决定（也可能后端另有来源），端上凭一个字段就拒绝下单，
+  // 会把「微信给的真实错误码」这条最有价值的线索也一并挡掉。
+  if (payType === PAY_TYPE.wechat && !wxProductId) {
+    console.warn(
+      '[虚拟支付] ⚠️ 该套餐没有 wxProductId（微信侧道具 id），若后端据此签 signData.productId，拉起支付大概率回 -15001'
+    )
+  }
+
   return http
     .post(
       '/Client/Order/addOrder',
       { goodsId, payType },
       { mock: false, loading: true, loadingText: '下单中' }
     )
-    .then(data => data || {})
+    .then(data => {
+      const order = data || {}
+      // 打 key 列表而不是打值：签名三件套后端可能平铺、也可能包在 payParams/virtualPay 里
+      // （extractPayParams 两种都认），出问题时第一件要看的就是「到底放哪了、有没有」。
+      console.log('[虚拟支付] addOrder 返回', {
+        orderNo: order.orderNo || '(空)',
+        orderId: order.orderId || '(空)',
+        amount: order.amount,
+        字段: Object.keys(order).join(', '),
+        'signData 类型': typeof order.signData,
+        有paySig: !!order.paySig,
+        有signature: !!order.signature
+      })
+      return order
+    })
 }
 
 /**
