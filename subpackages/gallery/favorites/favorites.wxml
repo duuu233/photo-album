@@ -23,7 +23,7 @@
               <image class="photo-image" src="{{photo.url}}" mode="aspectFill" lazy-load="{{true}}"></image>
               <!-- catchtap：点角标只取消收藏，不冒泡进详情页 -->
               <view class="photo-fav" data-id="{{photo.id}}" catchtap="onToggleFavorite">
-                <image class="photo-fav-icon" src="/assets/images/gallery-fav-badge.png" mode="aspectFit"></image>
+                <image class="photo-fav-icon" src="/assets/images/heart-solid.png" mode="aspectFit"></image>
               </view>
             </view>
             <view class="photo-title">{{photo.title}}</view>
