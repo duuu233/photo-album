@@ -20,6 +20,7 @@ const aiI18n = require('../../../utils/ai-i18n')
 const aiToken = require('../../../utils/ai-token')
 const system = require('../../../utils/system')
 const toast = require('../../../utils/toast')
+const aiLastSession = require('../../../utils/ai-last-session')
 const fold = require('../../../utils/fold-adapt')
 
 const PAGE_SIZE = 20
@@ -487,6 +488,9 @@ Page(fold.adapt({
       chatPagesInStack()
         .filter(page => page.data && page.data.sessionId === session.sessionId)
         .forEach(page => page.resetFromList())
+      // 底栏 AI 图标的「回到上次那条会话」记录若正指着这条，一并清掉（2026-08-13 需求 5）：
+      // 留着的话下次点 AI 图标会打开一条已经删掉的会话，只能拿到一个报错的空聊天页。
+      aiLastSession.forget(session.sessionId)
       if (session.sessionId === this.data.currentId) {
         this.setData({ currentId: '' })
       }

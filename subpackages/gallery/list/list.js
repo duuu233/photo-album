@@ -38,8 +38,11 @@ Page(fold.adapt({
     }
     // 从详情页/收藏页返回时收藏态可能变了，重进本页按当前分类重拉第一页。
     // 分类还没拉到（首次 onLoad 与 onShow 挨着触发）时不动，交给 loadCategories 起头。
+    //
+    // silent：**返回本页不清屏**。这一次重拉是为了同步收藏态，用户眼里是「回到刚才那一屏」，
+    // 把已经看着的列表清成「加载中…」再长回来，比不刷新还难受（切分类才要清屏，见 loadPhotos）。
     if (this.data.categories.length) {
-      this.loadPhotos(this.data.activeCategory)
+      this.loadPhotos(this.data.activeCategory, { silent: true })
     }
   },
 
@@ -69,9 +72,27 @@ Page(fold.adapt({
   /**
    * 拉某个分类的第一页。切分类、进页面、从详情返回都走这里。
    * 收藏态与图片一起并行取（见文件头缺口③），慢的那个决定这一屏什么时候出。
+   *
+   * ⚠️ 切分类必须**先把上一分类的图清空**（2026-08-12 需求 3）：此前只置 loading=true，
+   * 而瀑布流的数据还是上一分类的，于是「旧图 + 底下一行『加载中…』」同时挂在屏上，
+   * 看起来像新分类已经加载出图了、下面还在转——用户点了 A 却在看 B。
+   * 清屏之后这一屏只有「加载中…」，数据回来才一次性出图。
+   *
+   * options.silent：只有「返回本页时同步收藏态」这一种用法（见 onShow），不清屏也不显示加载中。
    */
-  async loadPhotos(categoryId) {
-    this.setData({ loading: true })
+  async loadPhotos(categoryId, options = {}) {
+    if (options.silent) {
+      this.setData({ loading: false })
+    } else {
+      this.setData({
+        loading: true,
+        // 列表与计数一起清：total 还留着上一分类的数字时，wxml 里的翻页脚注会先按旧数据出一行
+        columns: [[], []],
+        total: 0,
+        hasMore: false,
+        loadingMore: false
+      })
+    }
     try {
       const [page, favoriteIds] = await Promise.all([
         galleryApi.getPhotos({ categoryId, pageIndex: 1 }),

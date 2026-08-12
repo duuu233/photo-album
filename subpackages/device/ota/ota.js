@@ -217,7 +217,16 @@ Page(fold.adapt({
     // 仅在真的开过 OTA(FF10) 会话、或本轮升级正在跑时才收尾，避免未升级时误关详情页持有的 FF00 连接。
     const bleDeviceId = this.getBleDeviceId()
     if (bleDeviceId && (otaBle.isConnected(bleDeviceId) || interrupted)) {
-      otaBle.resetAfterUpgrade(bleDeviceId, interrupted ? '页面退出，中断本轮升级' : '离开升级页')
+      // 页面正在卸载，等不了：收尾里的蓝牙栈硬复位（关适配器 → 重开，见 ota-ble.resetAfterUpgrade）
+      // 交给它自己跑完，失败也只记日志——不能让一个 unhandled rejection 打断卸载。
+      Promise.resolve(
+        otaBle.resetAfterUpgrade(
+          bleDeviceId,
+          interrupted ? '页面退出，中断本轮升级' : '离开升级页'
+        )
+      ).catch(error => {
+        console.warn('[OTA页] 离开升级页时的收尾复位失败：', (error && error.message) || error)
+      })
     }
     if (interrupted) {
       // 记录级复位：直连缓存 + 全局选中设备的连接态。页面已在卸载，跳过 setData。
@@ -407,20 +416,45 @@ Page(fold.adapt({
           ? 'available'
           : 'latest'
 
+      // auto=1（详情页「立刻更新」直接进来升级）时，「发现新版本」这一屏只是**路过**：
+      // 80ms 后 runUpgrade 就把画面切成进行中。但这一帧照旧会把底部按钮区渲染出来，
+      // 用户看到的就是「页面下方闪一下『立即升级』和『返回』」（2026-08-12 需求 2）。
+      // 所以这条路直接以进行中画面落地——按钮区一次都不出现，与随后的「连接电子纸设备中」无缝接上。
+      const willAutoStart = !!(
+        this._autoStart &&
+        !this._autoStartConsumed &&
+        viewData.canUpgrade
+      )
       this.setData(Object.assign({
         loading: false,
         device,
         firmware,
         state: nextState
-      }, viewData, this.screenForLoaded(nextState, firmware, viewData)))
+      }, viewData, willAutoStart ? {
+        screenStatus: 'progress',
+        statusTitle: '准备升级',
+        statusDesc: '正在准备固件升级，请保持电子纸设备已开机并靠近手机…',
+        artImage: artFor('progress'),
+        progressPercent: 0,
+        progressText: '',
+        showPrimary: false
+      } : this.screenForLoaded(nextState, firmware, viewData)))
 
-      if (
-        this._autoStart &&
-        !this._autoStartConsumed &&
-        viewData.canUpgrade
-      ) {
+      if (willAutoStart) {
         this._autoStartConsumed = true
-        setTimeout(() => this.runUpgrade(), 80)
+        setTimeout(() => {
+          // 自动开始这条路没有调用方兜底：万一 runUpgrade 抛到这里，得把画面退回可操作态，
+          // 否则用户会一直卡在没有任何按钮的「准备升级」上（上面刚把按钮区收起来了）。
+          Promise.resolve(this.runUpgrade()).catch(error => {
+            console.warn('[OTA页] 自动开始升级失败：', (error && error.message) || error)
+            this.setData(
+              Object.assign(
+                { state: 'available' },
+                this.screenForLoaded('available', this.data.firmware, this.data)
+              )
+            )
+          })
+        }, 80)
       }
     } catch (error) {
       const message = error.message || '固件版本检查失败'

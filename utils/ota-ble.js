@@ -448,6 +448,10 @@ function parseAckResult(bytes) {
 }
 
 // ── 连接 / 会话 ────────────────────────────────────────────
+// 两个回调都留引用：蓝牙栈硬复位后要先 off 再重挂（理由见 device-ble.rebindGlobalListeners）
+let valueChangeHandler = null
+let connectionStateHandler = null
+
 function ensureGlobalListener() {
   if (globalListenerBound) {
     return
@@ -455,7 +459,7 @@ function ensureGlobalListener() {
   globalListenerBound = true
 
   if (wx.onBLECharacteristicValueChange) {
-    wx.onBLECharacteristicValueChange(res => {
+    valueChangeHandler = res => {
       const session = sessions[res.deviceId]
       if (!session || !isSessionCharacteristic(session, res.characteristicId)) {
         return // 非本模块管理的设备/特征（如 FF00 图传通知）一律忽略
@@ -468,19 +472,40 @@ function ensureGlobalListener() {
         特征: res.characteristicId
       })
       dispatchNotification(session, bytes)
-    })
+    }
+    wx.onBLECharacteristicValueChange(valueChangeHandler)
   }
 
   if (wx.onBLEConnectionStateChange) {
-    wx.onBLEConnectionStateChange(res => {
+    connectionStateHandler = res => {
       if (!res.connected) {
         if (sessions[res.deviceId]) {
           otaWarn('连接状态变化：电子纸设备已断开（OTA 会话作废）', { deviceId: res.deviceId })
         }
         cleanupSession(res.deviceId, '电子纸设备连接已断开')
       }
-    })
+    }
+    wx.onBLEConnectionStateChange(connectionStateHandler)
   }
+}
+
+// 蓝牙栈硬复位后重挂本模块的全局监听。做法与理由完全同 device-ble.rebindGlobalListeners
+//（必须先 off 再 on；off 不可用就什么都不做，绝不能让 OTA 的每帧应答被派发两遍）。
+function rebindGlobalListeners() {
+  if (!wx.offBLECharacteristicValueChange || !wx.offBLEConnectionStateChange) {
+    return false
+  }
+  if (valueChangeHandler) {
+    wx.offBLECharacteristicValueChange(valueChangeHandler)
+  }
+  if (connectionStateHandler) {
+    wx.offBLEConnectionStateChange(connectionStateHandler)
+  }
+  valueChangeHandler = null
+  connectionStateHandler = null
+  globalListenerBound = false
+  ensureGlobalListener()
+  return true
 }
 
 function isSessionCharacteristic(session, characteristicId) {
@@ -707,6 +732,9 @@ async function ensureOtaConnection(deviceId) {
   // 惰性 require 而非顶部引入：两个模块会互相引用，顶部 require 在加载期会拿到半成品导出对象。
   // 反向（普通连接释放 OTA 会话）不需要——OTA 页 onUnload 已自行断开。
   require('./device-ble').disconnectOthers(deviceId)
+  // OTA 的 FF10 连接不经过 device-ble 的 createConnectionWithRetry，得自己登记「碰过 BLE」，
+  // 否则它留下的残留连接会因为 bleTouched=false 被判成「没什么可复位的」（见 device-ble.noteBleTouched）
+  require('./device-ble').noteBleTouched()
 
   ensureGlobalListener()
   await createConnectionWithRetry(deviceId)
@@ -1690,8 +1718,10 @@ async function upgradeFirmware(deviceId, pkg, options = {}) {
         percent: 13,
         message: '电子纸设备仍停在上一次升级状态，正在断开复位后重试…'
       })
-      // 断链 + 清掉这条链路上的所有缓存，别让重试轮沿用上一轮的会话/读数
-      resetAfterUpgrade(deviceId, '设备状态未复位，准备整轮重来')
+      // 断链 + 清掉这条链路上的所有缓存，别让重试轮沿用上一轮的会话/读数。
+      // ⚠️ hardReset:false —— 这条路紧接着就要用同一个适配器重连设备（runDfuAttempt 直接
+      //    createBLEConnection、不走扫描主链），把适配器关掉会让整轮重试必然失败。
+      await resetAfterUpgrade(deviceId, '设备状态未复位，准备整轮重来', { hardReset: false })
       await sleep(
         Number.isFinite(options.stateResetWaitMs)
           ? options.stateResetWaitMs
@@ -1715,8 +1745,10 @@ async function upgradeFirmware(deviceId, pkg, options = {}) {
       每包字节: result && result.chunkSize,
       MTU: result && result.mtu
     })
-    // 成功同样要收尾：设备约 100ms 后复位，这条连接与本机所有关于它的缓存立刻全部作废（见 resetAfterUpgrade）
-    resetAfterUpgrade(deviceId, '升级成功，设备即将复位')
+    // 成功同样要收尾：设备约 100ms 后复位，这条连接与本机所有关于它的缓存立刻全部作废（见 resetAfterUpgrade）。
+    // await：收尾里含蓝牙栈硬复位，必须在 upgradeFirmware 返回之前落地——否则页面已经显示
+    // 「升级成功」、用户马上回详情页点连接，适配器却正在关闭途中，又是一次「连不上」。
+    await resetAfterUpgrade(deviceId, '升级成功，设备即将复位')
     return Object.assign({ size: prepared.size, crc32: prepared.crc32 }, result)
   } catch (error) {
     otaWarn('====== 固件升级失败/中断 ======', (error && error.message) || error)
@@ -1735,7 +1767,8 @@ async function upgradeFirmware(deviceId, pkg, options = {}) {
     // 失败/中断后必须断开 OTA 链路：设备的 DFU 状态机停在半途，留着同一条连接再 START 必被回
     // 0x05「设备状态错误」——现场实测就是第一次传输超时后，之后每次点升级都是 0x05。
     // 断链让设备自行复位；下次升级由 ota.js 的 ensureConnectedDevice 重新扫连。
-    resetAfterUpgrade(deviceId, '升级失败/中断')
+    // 同成功路径：await 到硬复位落地再把错误抛给页面（页面一显示失败，用户就会去点重试/回详情页连接）。
+    await resetAfterUpgrade(deviceId, '升级失败/中断')
     throw prefixDeviceError(error)
   }
 }
@@ -1773,7 +1806,18 @@ function disconnect(deviceId) {
 // 失败/中断同样清：设备的 DFU 状态机可能停在半途，链路留着只会让下一次 START 继续被回 0x05。
 //
 // 全部 best-effort：清缓存失败绝不能影响「这一轮 OTA 到底成没成」的结论。
-function resetAfterUpgrade(deviceId, reason) {
+//
+// 2026-08-13（续修 08-12 那轮）：收尾**必须连蓝牙适配器一起复位**（options.hardReset !== false）。
+// 现场反馈「升级成功或失败都还是要重进小程序才连得上」——只调 closeBLEConnection 不够：
+// 设备在 OTA 收尾这一刻正处于「即将复位/刚被中断」的状态，微信侧常留下一条它自己都报不出来的
+// 连接对象（getConnectedBluetoothDevices 按已发现服务筛，半连接根本不在结果里），
+// 设备被它占着就不再广播，此后怎么扫都「未搜索到」。closeBluetoothAdapter 才是
+// 「重进小程序」的等价物，见 device-ble.resetBluetoothStack。
+//
+// 返回 Promise（硬复位是异步的）。调用方可 await，也可 fire-and-forget（页面卸载路径）。
+// hardReset:false 只用于**升级中途**的断链复位（wedged DFU 整轮重来）：那条路紧接着还要
+// 用同一个适配器重连设备，不能把它关掉。
+function resetAfterUpgrade(deviceId, reason, options = {}) {
   otaLog(`收尾复位（${reason}）：断开链路并清掉本机所有与这台设备相关的缓存`, { deviceId })
   try {
     disconnect(deviceId)
@@ -1789,11 +1833,39 @@ function resetAfterUpgrade(deviceId, reason) {
   } catch (error) {
     otaWarn('收尾复位时清缓存失败（不影响升级结果）：', (error && error.message) || error)
   }
+
+  if (options.hardReset === false) {
+    return Promise.resolve(false)
+  }
+  try {
+    return require('./device-ble')
+      .resetBluetoothStack(`OTA 收尾（${reason}）`)
+      .catch(error => {
+        otaWarn('蓝牙栈硬复位失败（不影响升级结果）：', (error && error.message) || error)
+        return false
+      })
+  } catch (error) {
+    otaWarn('蓝牙栈硬复位不可用（不影响升级结果）：', (error && error.message) || error)
+    return Promise.resolve(false)
+  }
 }
 
 function isConnected(deviceId) {
   const session = sessions[deviceId]
   return !!(session && session.ready)
+}
+
+// 是否还持有任意 OTA 会话。上层（active-device）在决定「能不能做蓝牙栈硬复位」时要看这一条：
+// 升级正在跑就绝不能关适配器。
+function hasAnyActiveConnection() {
+  return Object.keys(sessions).some(id => sessions[id] && sessions[id].ready)
+}
+
+// 清空本模块所有 OTA 会话（只清账本，不发 closeBLEConnection）。
+// 专供 device-ble.resetBluetoothStack：适配器一关，这些会话必然全断，账本必须同步作废，
+// 否则 isConnected 会谎报「OTA 还连着」，下一轮升级会复用一条已经不存在的会话。
+function clearSessions(reason) {
+  Object.keys(sessions).forEach(id => cleanupSession(id, reason || 'OTA 会话已作废'))
 }
 
 module.exports = {
@@ -1824,5 +1896,8 @@ module.exports = {
   // 详情页随后会拿着一条死链路发指令一直超时。
   resetAfterUpgrade,
   isConnected,
+  hasAnyActiveConnection,
+  clearSessions,
+  rebindGlobalListeners,
   setMonitor
 }

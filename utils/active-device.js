@@ -592,6 +592,9 @@ function probeDirectConnect(deviceId, timeout) {
       resolve(false)
       return
     }
+    // 直连探测绕开了 device-ble 的连接函数，得自己登记「本次运行碰过 BLE」——
+    // 探测失败残留的半连接同样要靠蓝牙栈复位兜底（见 device-ble.noteBleTouched）
+    deviceBle.noteBleTouched()
     wx.createBLEConnection({
       deviceId,
       timeout,
@@ -679,12 +682,35 @@ async function scanMatchConnect(device, match, onConnectStart) {
   if (!location) {
     throw new Error('请先授权定位后再连接')
   }
+  // 扫描前先把「微信这一侧」的连接状态清干净。设备是单连接，被一条我们自己留下的连接占着时
+  // 它**不再广播**，接下来扫多久都是「未搜索到该电子纸设备」——此前只能靠杀掉小程序恢复。
+  //
+  // 两档力度（2026-08-13 续修 08-12 那轮）：
+  //   · 本机一条会话都不持有 → **蓝牙栈硬复位**：closeBluetoothAdapter 直接释放微信持有的
+  //     全部 BLE 连接，与「退出小程序重进」等价。此前那档只按 getConnectedBluetoothDevices
+  //     的结果逐条关，而服务发现没走完的半连接、设备重启途中微信还扣着的连接对象，
+  //     那个接口根本报不出来 —— 正是「OTA 后仍要重进小程序」没被修好的原因。
+  //     没有会话可失去时它是纯收益；扫描进行中不做（会把别人那一路扫描饿死）。
+  //   · 还持有会话（别的页面正用着）→ 退回精确档，只关账上没有的那条。
+  // 全程 best-effort：复位/清理失败都不影响本次扫描。
+  const otaBusy = (() => {
+    try {
+      return require('./ota-ble').hasAnyActiveConnection()
+    } catch (error) {
+      return false // 取不到 OTA 模块按「没有 OTA 会话」处理
+    }
+  })()
+  if (
+    deviceBle.needsStackReset() &&
+    !deviceBle.hasAnyActiveConnection() &&
+    !otaBusy &&
+    !bluetooth.isDiscovering()
+  ) {
+    await deviceBle.resetBluetoothStack('连接前清空微信持有的全部 BLE 连接').catch(() => false)
+  } else {
+    await deviceBle.releaseStrayConnections().catch(() => [])
+  }
   await bluetooth.openAdapter()
-  // 扫描前先把「微信连着、本机账上没有」的无主连接释放掉（2026-08-12）：设备是单连接，
-  // 被这样一条连接占着时它**不再广播**，接下来扫多久都是「未搜索到该电子纸设备」，
-  // 而账本里没有它、disconnectAll 也关不掉——此前只能靠杀掉小程序恢复。
-  // best-effort：查不到/关不掉都不影响本次扫描。
-  await deviceBle.releaseStrayConnections().catch(() => [])
 
   let lastConnectError = null
   for (let round = 0; round < SCAN_CONNECT_ROUNDS; round++) {

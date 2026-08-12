@@ -366,6 +366,21 @@ function isDiscovering() {
   return !!(activeScan && !activeScan.stopped)
 }
 
+// 蓝牙栈硬复位（device-ble.resetBluetoothStack）前的扫描侧收尾（2026-08-12）。
+//
+// closeBluetoothAdapter 会让在途的硬件扫描一并作废，**但本模块的共享扫描会话对象还留在原地**：
+// activeScan 仍是 stopped=false，于是复位之后新发起的 discoverDevices 会「订阅」到这条
+// 早已收不到任何广播的死会话（见 discoverDevices 开头那个复用分支），表现就是
+// 「怎么扫都搜不到设备」，且只有重进小程序才恢复 —— 正是我们要治的病本身。
+// 所以复位前必须把它拆掉，让下一次扫描重新起一路真实的硬件扫描。
+function resetScanState() {
+  if (activeScan) {
+    teardownScan(activeScan)
+  }
+  // 适配器马上就要被关掉，这个「停扫在途 Promise」等不等都没有意义了
+  stopDiscoveryPromise = null
+}
+
 // 把蓝牙信号强度(RSSI，单位 dBm，越接近 0 越强)翻译成用户能看懂的文字档位。
 // 现场 RSSI 容易受瞬时尖峰影响，展示口径统一保守下调一级：原「极强」显示为「强」，
 // 其余依次下调，最弱档仍封底为「弱」。这里只改文案，不参与连接门槛/重试策略。
@@ -546,6 +561,7 @@ module.exports = {
   stopDiscovery,
   whenScanStopped,
   isDiscovering,
+  resetScanState,
   showPermissionGuide,
   showBluetoothSwitchGuide,
   showEmptyResultGuide,

@@ -97,7 +97,10 @@
         <view class="rule-card">
           <view class="rule-row rule-row--head">
             <text class="rule-col rule-col--name">服务类型</text>
-            <text class="rule-col rule-col--cost">星币消耗（星币/次）</text>
+            <!-- 表头就写「星币/次」（2026-08-13 需求 4）：原文「星币消耗（星币/次）」在 26% 宽的
+                 列里必然折成「星币消耗（星」「币/次）」两行，括号被拆开、还把「说明」挤得更窄。
+                 「消耗」二字由上面的区块标题「星币消耗规则」已经交代过了。 -->
+            <text class="rule-col rule-col--cost">星币/次</text>
             <text class="rule-col rule-col--remark">说明</text>
           </view>
           <view

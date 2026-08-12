@@ -30,6 +30,7 @@ const toast = require('../../../utils/toast')
 const activeDevice = require('../../../utils/active-device')
 const language = require('../../../utils/language')
 const aiServiceConsent = require('../../../utils/ai-service-consent')
+const aiLastSession = require('../../../utils/ai-last-session')
 const fold = require('../../../utils/fold-adapt')
 
 // 微信「同声传译」插件（WechatSI）：录音直接转文字，小程序里做语音输入的官方方案。
@@ -348,6 +349,10 @@ function safeDecodeTitle(value) {
   }
 }
 
+// 本页自己的路由（不带前导斜杠，与 getCurrentPages() 里的 page.route 同形）：
+// 判断栈里还有没有别的聊天页时用，见 hasOtherChatPageInStack。
+const CHAT_ROUTE = 'subpackages/ai/chat/chat'
+
 const MESSAGE_TIME_GAP_MS = 5 * 60 * 1000
 
 function timestampMs(value) {
@@ -601,6 +606,24 @@ Page(fold.adapt({
   // 退回下层聊天页后不抢回来，就表现为「按住说话没反应」。
   onShow() {
     this.bindSpeechHandlers()
+    // 底栏 AI 图标「再次点击回到刚才那条会话」的记录点之一（2026-08-13 需求 5，见 utils/ai-last-session.js）。
+    // 为什么 onShow 也要记、不只在 onUnload 记：页面栈里可能叠着好几个聊天页（每从会话列表点开
+    // 一条会话就多一页）。上面那页返回时它的 onUnload 会记下**它**那条会话，可用户此刻看的是
+    // 下面这页——所以谁变可见谁就把记录抢回来，最后一条记录才对得上用户眼前的那一页。
+    this.rememberAsLastAiPage()
+  },
+
+  // 把「本页此刻停在哪」记成「上次离开 AI 时的位置」。
+  // sessionId 为空＝停在 AI 默认页，这同样是要记的有效状态（需求 5 的第 2 条：
+  // 从默认页返回后再点 AI 图标，还得是默认页）。
+  rememberAsLastAiPage() {
+    aiLastSession.remember(this.data.sessionId, this.data.sessionTitle)
+  },
+
+  // 页面栈里除本页外还有没有别的聊天页（从会话列表点开一条会话就会多叠一页，见 sessions.goChat）
+  hasOtherChatPageInStack() {
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+    return pages.some(page => page && page !== this && page.route === CHAT_ROUTE)
   },
 
   // 量一次聊天区高度，供 onChatScroll 判断「用户是不是自己翻上去了」。
@@ -631,6 +654,13 @@ Page(fold.adapt({
   },
 
   onUnload() {
+    // 离开 AI 时记下停在哪：底栏 AI 图标下次据此决定是回到这条会话还是进默认页（需求 5）。
+    // ⚠️ 只有「栈里再没有别的聊天页」时才在这里记 —— 否则本页是被退回**下层聊天页**的那一页，
+    // 用户眼前的是下面那一页，该由它的 onShow 记自己。两页的 onShow/onUnload 谁先谁后在不同
+    // 基础库版本上并不一致，所以按「谁还留在栈里」判，不按触发顺序赌。
+    if (!this.hasOtherChatPageInStack()) {
+      this.rememberAsLastAiPage()
+    }
     // 系统返回手势可直接销毁页面；若协议弹窗还开着，必须结束在途 Promise，避免悬空。
     if (this._consentResolve) {
       const resolve = this._consentResolve
