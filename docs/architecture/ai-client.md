@@ -1,7 +1,7 @@
 # AI 客户端架构
 
 > 状态：current  
-> 最后核对：2026-08-07
+> 最后核对：2026-08-12
 > 适用范围：微信小程序“星宝”聊天与会话列表  
 > Flutter 同步：2026-08-07 AI 模块已一次性追平（JWT 鉴权头、流式 SSE、进度补间、
 > 一键生图即时上屏），明细见 `flutter/docs/history/2026-08/2026-08-07-AI流式SSE与JWT补齐.md`；
@@ -17,6 +17,7 @@
 - BoltStar 使用独立的 `utils/ai-api.js`，不复用 BoltFox `utils/request.js`。
 - 原因是两者 Base URL、响应结构、错误码、超时和公共参数完全不同。
 - 鉴权是唯一交集（2026-07-29 起网关强制）：每个 AI 请求带 `Authentication: Bearer <jwtToken>` 头，token 与 BoltFox 共用登录接口下发的 `jwtToken`（头名是 `Authentication`，不是 `Authorization`）；未登录不带头，由网关回 `JWTTokenIsMissing` 走白名单提示。
+- 交集自 2026-08-12 起多了一处**请求体**：`/chat` 带 `usertoken`（全小写），值是登录接口下发的 `userToken`（BoltFox 公共参数那一枚，**不是** `jwtToken`），供 AI 网关回 BoltFox 侧核对用户与扣费。名字或取值错了不会报错，只会静默变成「服务端认不出这个用户」，由 `tests/ai-stream-chat.test.js` 逐字段锁死。
 - 小程序使用流式 `/chat`（SSE）：`wx.request` 开 `enableChunked`，从 `onChunkReceived` 逐块收，事件为 `pre_text`/`progress`/`image`/`text`/`done`。分块回来的是 ArrayBuffer，按字节缓存后再解码，多字节字符和 SSE 行都可能被切在两块之间。
 - 服务地址 2026-08-06 起切到流式版部署；旧的非流式地址只留给「基础库拿不到 `onChunkReceived`」的降级链路，两个部署共用同一份会话数据。
 - 聊天/生图超时较长，POST 不自动重试，避免重复生成或重复计费。
@@ -45,7 +46,7 @@
 - `image` 事件排在 `progress 90`（`uploaded`）之后，不是 50%：50 那一级只是初稿完成，图还没下载上传完。
 - 流中途断开时保留已经上屏的预描述、图片和文字，只提示一句，不把整条换成失败卡片。
 - AI 同一轮的文字和图片属于同一个气泡。
-- 用户图片先压缩到约 100KB，再经 BoltFox `setFileUpload` 取得 URL，最多 4 张并与文字一起发送。
+- 用户图片先压缩到约 100KB，再经 BoltFox `setFileUpload` 取得 URL，**最多 5 张**（2026-08-12 产品由 4 张放宽；BoltStar 文档 §二仍写 4 张，超限服务端回 `20012`）并与文字一起发送。上限收在 `chat.js` 的 `MAX_IMAGES`，改它要连着改 `utils/ai-i18n.js` 的 `error.20012` 文案（四语种都写着张数）。
 - `img_orientation` 对外只发送 `vertical`、`horizontal`、`square`；界面别名在客户端归一化。
 - 图片在加载前按已知比例预占空间，加载后用真实宽高校正。
 - AI 图片投屏复用统一的[图片投屏流水线](image-projection-pipeline.md)。
@@ -73,10 +74,11 @@
 ## 当前未完成能力
 
 - 语音转文字仍依赖未接入的小程序插件/服务。
-- Token 支付体系已接真实后端：2026-08-08 接入 `/Client/Order/*` 与微信虚拟支付，
-  2026-08-11 完成接口对账（AI 侧余额由 demo 切到真实账户，详见
-  `docs/changes/2026-08-11-AI与Token接口对账.md`）。仍待后端明确的只剩「AI 调用的扣费口径」，
-  它定了才谈得上把 `LIMIT_ENABLED` 打开。
+- ~~星币（Token）支付体系仍待后端明确「AI 调用的扣费口径」~~ **2026-08-12 关闭**：
+  后端给了 `GET /Client/Order/chkAiDialogue`（retData 布尔），够不够发一轮对话由**服务端**裁决，
+  端上不必再猜扣多少；那套端上自判的 `LIMIT_ENABLED` / `hasBalance` 已随之删除。
+  在此之前：2026-08-08 接入 `/Client/Order/*` 与微信虚拟支付，2026-08-11 完成接口对账
+  （AI 侧余额由 demo 切到真实账户，详见 `docs/changes/2026-08-11-AI与Token接口对账.md`）。
   见 [支付体系与官方图库接入](../changes/2026-08-06-支付体系与官方图库接入.md)。
 - AI 图片 URL 有有效期，过期后不能保证下载或再次投屏。
 - UI 部分图标仍可能使用占位资源。
@@ -109,14 +111,22 @@
   它们正文是不定位的普通块、加 `fixed+z-index:0` 图层会盖住内容，所以改走 CSS `background`
   （`subpackages/settings/shared.wxss` 的 `.settings-shell`、`subpackages/device/debug/debug.wxss`
   的 `.debug-page` 各一行）。首页本地占位图 `home-bg-placeholder.jpg` 与新图均值差 2/255，未重做。
-- Token 余额自 2026-08-11 起是**真实账户值**，收口在 `utils/ai-token.js`。两条来源：
+- 余额自 2026-08-11 起是**真实账户值**，收口在 `utils/ai-token.js`。两条来源：
   ① 登录响应 `UserInfoDetailApiOut.availableToken`（进页面即有，`app.globalData.userInfo` 里）；
   ② `GET /Client/Order/getUserAccount`（权威值，用于刷新）。取不到显示 `--`，**不用 0 兜底**。
   ⚠️ **端上不扣费**：swagger 的 `/Client/Order` 下没有「消费 Token」端点，而消费记录能从
   `getUserAccountTrade(inOutType=2)` 查到——扣费在服务端发生，端上自减就是双重记账。
-  聊天页调用一次 AI 之后只做「重取余额」。`LIMIT_ENABLED` 现在只控制**余额不足是否拦截**，
-  仍为 `false`：等后端明确「AI 调用如何扣费、余额为 0 时网关回什么码」再打开，否则会出现
-  「端上放行、网关拒绝」或反过来的割裂。展示位在会话列表页顶部。
+  聊天页调用一次 AI 之后只做「重取余额」。
+  ⚠️ 面向用户的**文案**自 2026-08-12 起一律叫「星币」（页面标题、单位、弹窗、记录行都已改）；
+  代码里的 `token`/`availableToken`/`tokenBalance` 是后端字段与既有标识符，**保持原名**。
+  能不能发起对话由服务端裁决：每次发送前 `GET /Client/Order/chkAiDialogue`（见下），
+  端上自判余额的 `LIMIT_ENABLED` / `hasBalance` 已删除。展示位在会话列表页顶部。
+- 发送前的星币闸（2026-08-12）：`utils/ai-token.canDialogue()` → `GET /Client/Order/chkAiDialogue`，
+  `retData` 是布尔，`false` 即拦下（弹「星币不足」，确认键直达星币管理页），`/chat` 一个请求都不发、
+  用户气泡一条都不上屏、**草稿原样还回输入框**（余额见底的用户每次发送都会撞上这一步）。
+  ⚠️ **校验接口本身失败一律放行**：读不到判据就锁死 AI 是更糟的失败模式，真不够的话
+  紧接着那次 `/chat` 服务端照样会拒，用户看到的才是真实原因。闸只有 `chat.js sendChat`
+  一处（所有发送入口都汇到它）加「重试」入口，新增入口别另起一套。
   （2026-08-10 前它在聊天页右上角，按 `getMenuButtonBoundingClientRect()` 与原生胶囊同高同轴摆放；
   顶栏改为标题居中后该位置已让出，如需在聊天页恢复展示，务必重新核对与标题的几何冲突。）
 - 圆角方块类图标（`ai-back-button.png`、`ai-history-button.png`，136×136）**不是画满的**：看得见的白块只占

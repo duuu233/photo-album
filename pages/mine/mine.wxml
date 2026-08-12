@@ -80,8 +80,8 @@
         </view>
       </view>
       <view class="section-title help-title">服务与帮助</view>
-      <!-- Token管理 与 我的收藏 于本轮从「常用功能」并入此处，顺序按产品要求：
-           Token管理 → 我的收藏 → 操作指南 → 设置。右侧数值沿用原来的余额/收藏数。 -->
+      <!-- 星币管理（原「Token管理」）与 我的收藏 于本轮从「常用功能」并入此处，顺序按产品要求：
+           星币管理 → 我的收藏 → 操作指南 → 设置。右侧数值沿用原来的余额/收藏数。 -->
       <view class="service-list">
         <view
           class="service-row"
@@ -92,8 +92,8 @@
             class="service-icon"
             src="/assets/images/mine-icon-token.png"
             mode="aspectFit" />
-          <text>Token管理</text>
-          <text class="service-value">剩余 {{tokenBalance}} Token</text>
+          <text>星币管理</text>
+          <text class="service-value">剩余 {{tokenBalance}} 星币</text>
           <image
             class="chevron"
             src="/assets/images/mine-icon-right.png"

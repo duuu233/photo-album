@@ -1,21 +1,21 @@
-<!-- Token 管理（设计稿：assets/ai/UI页面/Token管理.png）
+<!-- 星币管理（原「Token 管理」，2026-08-12 全站文案 Token→星币；设计稿：assets/ai/UI页面/Token管理.png）
      折叠屏适配同设置类页面：根容器锁一屏高，导航栏与贴底按钮留在滚动区外，
      中间内容交给 .fold-scroll 滚动（方案见 styles/fold-adapt.wxss）。 -->
 <view class="token-shell fold-viewport" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
-  <page-nav title="Token管理"></page-nav>
+  <page-nav title="星币管理"></page-nav>
   <scroll-view class="fold-scroll" scroll-y="{{true}}">
     <view class="fold-scroll-body token-scroll-body cta-button-gap">
 
       <!-- 概览卡：外层橙色渐变底 + 内层白卡，与设计稿 Group 195244 一致 -->
       <view class="account-card">
-        <view class="account-card-title">我的token</view>
+        <view class="account-card-title">我的星币</view>
         <view class="account-inner">
           <view class="account-balance">
             <view class="account-balance-copy">
               <view class="account-label">当前可用余额</view>
               <view class="account-balance-value">
                 <text class="account-balance-num">{{account.balance}}</text>
-                <text class="account-balance-unit">Token</text>
+                <text class="account-balance-unit">星币</text>
               </view>
             </view>
             <image class="account-coin" src="/assets/images/token-coin.png" mode="aspectFit"></image>
@@ -26,7 +26,7 @@
               <view class="account-label">总额（累计购买）</view>
               <view class="account-stat-value">
                 <text class="account-stat-num account-stat-num--orange">{{account.totalPurchased}}</text>
-                <text class="account-stat-unit">Token</text>
+                <text class="account-stat-unit">星币</text>
               </view>
             </view>
             <view class="account-stat-split"></view>
@@ -34,7 +34,7 @@
               <view class="account-label">已消耗</view>
               <view class="account-stat-value">
                 <text class="account-stat-num">{{account.totalSpent}}</text>
-                <text class="account-stat-unit">Token</text>
+                <text class="account-stat-unit">星币</text>
               </view>
             </view>
           </view>
@@ -55,23 +55,23 @@
             hover-class="none"
             bindtap="onSelectPackage"
           >
-            <!-- 赠送角标：无赠送的档位（设计稿里的 200 Token）不渲染文字。
+            <!-- 赠送角标：无赠送的档位（设计稿里的 200 星币）不渲染文字。
                  选中态是实心橙色标签、贴住卡片右上角；未选中是卡片内的橙色文字。
                  ⚠️ 外层 .package-gift-slot 必须常在：选中态的角标是绝对定位、脱离文档流，
-                    没有这个等高占位，选中那张卡的「500 Token」及以下内容会整体上移，
+                    没有这个等高占位，选中那张卡的「500 星币」及以下内容会整体上移，
                     与相邻档位错开一行高度。 -->
             <view class="package-gift-slot">
-              <view wx:if="{{item.gift > 0}}" class="package-gift">赠送 {{item.gift}} Token</view>
+              <view wx:if="{{item.gift > 0}}" class="package-gift">赠送 {{item.gift}} 星币</view>
             </view>
             <view class="package-tokens">
               <text class="package-tokens-num">{{item.tokens}}</text>
-              <text class="package-tokens-unit">Token</text>
+              <text class="package-tokens-unit">星币</text>
             </view>
             <view class="package-price">
               <text class="package-price-symbol">¥</text>
               <text class="package-price-num">{{item.price}}</text>
             </view>
-            <view class="package-unit">≈ ¥{{item.unitPrice}}/Token</view>
+            <view class="package-unit">≈ ¥{{item.unitPrice}}/星币</view>
           </view>
         </view>
       </scroll-view>

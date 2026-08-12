@@ -21,7 +21,7 @@
         mode="aspectFit"
       ></image>
       <text class="token-pill__value">{{tokenBalance}}</text>
-      <text class="token-pill__unit">Token</text>
+      <text class="token-pill__unit">星币</text>
     </view>
   </view>
 

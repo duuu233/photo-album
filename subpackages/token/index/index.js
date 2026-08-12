@@ -1,4 +1,4 @@
-// Token 管理（设计稿：assets/ai/UI页面/Token管理.png）
+// 星币管理（原「Token 管理」，2026-08-12 文案改版；设计稿：assets/ai/UI页面/Token管理.png）
 //
 // 余额取 `/Client/Order/getUserAccount`、套餐取 `/Client/Order/getGoodsList`，
 // 都封装在 utils/token-api.js。套餐的 `id` 是后端 goodsId 的字符串形态，

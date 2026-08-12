@@ -1,5 +1,5 @@
 <!-- 确认购买（设计稿：assets/ai/UI页面/确认购买.png）
-     折叠屏：同 Token 管理页，贴底按钮留在滚动区外并显式抬到 z-index:2。 -->
+     折叠屏：同星币管理页，贴底按钮留在滚动区外并显式抬到 z-index:2。 -->
 <view class="token-shell fold-viewport" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <page-nav title="确认购买"></page-nav>
   <scroll-view class="fold-scroll" scroll-y="{{true}}">
@@ -9,7 +9,7 @@
         <view class="summary-head">
           <view class="summary-tokens">
             <text class="summary-tokens-num">{{pkg.tokens}}</text>
-            <text class="summary-tokens-unit">Token</text>
+            <text class="summary-tokens-unit">星币</text>
           </view>
           <view class="summary-price">¥{{pkg.priceText}}</view>
         </view>
@@ -19,7 +19,7 @@
           <text class="summary-total-label">合计获得</text>
           <view class="summary-total-value">
             <text class="summary-total-num">{{pkg.totalTokens}}</text>
-            <text class="summary-total-unit">Token</text>
+            <text class="summary-total-unit">星币</text>
           </view>
         </view>
       </view>

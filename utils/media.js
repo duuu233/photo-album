@@ -162,7 +162,7 @@ module.exports = {
   },
 
   // 从相册选择：不传张数时用「当前用户的投屏批量上限」（常规 10 张，白名单用户 100 张，
-  // 见 utils/upload-limit.js）；AI 图文多模态显式传 4（BoltStar image_urls 上限），不受白名单影响。
+  // 见 utils/upload-limit.js）；AI 图文多模态显式传剩余额度（上限见 chat.js MAX_IMAGES，2026-08-12 起 5 张），不受白名单影响。
   chooseFromAlbum(count) {
     const limit = count === undefined ? uploadLimit.albumPickLimit() : count
     return chooseMedia(['album'], limit > 0 ? limit : 1)

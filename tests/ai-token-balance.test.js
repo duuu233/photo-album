@@ -95,11 +95,35 @@ const api = require('../utils/api')
     )
   }
 
-  // ── ④ 拦截口径：开关关着一律放行；余额未知也放行（不能因为读不到就锁死功能）──
+  // ── ④ 拦截口径（2026-08-12 重做）：能不能发起对话由**服务端**裁决 ──────────
+  //     `GET /Client/Order/chkAiDialogue` 的 retData 是布尔。端上那套按余额数字比大小的
+  //     老闸（LIMIT_ENABLED / hasBalance）随之下线——两个口径不一致的闸会让「谁拦的」无从查起。
   {
-    assert.equal(aiToken.LIMIT_ENABLED, false, '扣费口径与网关谈定前，拦截保持关闭')
-    assert.equal(aiToken.hasBalance(0), true)
-    assert.equal(aiToken.hasBalance(aiToken.UNKNOWN_BALANCE), true)
+    assert.equal(
+      typeof aiToken.hasBalance,
+      'undefined',
+      '端上自判余额的老闸已下线，别再加回来（口径以 chkAiDialogue 为准）'
+    )
+    assert.equal(aiToken.LIMIT_ENABLED, undefined, '同上：LIMIT_ENABLED 开关一并删除')
+
+    routes['/Client/Order/chkAiDialogue'] = () => true
+    assert.equal(await aiToken.canDialogue(), true)
+
+    routes['/Client/Order/chkAiDialogue'] = () => false
+    assert.equal(await aiToken.canDialogue(), false, 'retData=false 即不允许发起对话')
+
+    // 布尔以外的形态：字符串 'true' 认，其余（null/数字/对象）一律按「判不出来 → 不放行」
+    routes['/Client/Order/chkAiDialogue'] = () => 'true'
+    assert.equal(await aiToken.canDialogue(), true)
+    routes['/Client/Order/chkAiDialogue'] = () => null
+    assert.equal(await aiToken.canDialogue(), false)
+
+    // 校验接口**本身**挂了要放行：读不到判据就把 AI 锁死是更糟的失败模式，
+    // 真不够的话紧接着那次 /chat 服务端照样会拒，用户看到的才是真实原因
+    routes['/Client/Order/chkAiDialogue'] = () => {
+      throw new Error('boom')
+    }
+    assert.equal(await aiToken.canDialogue(), true, '接口异常放行，由服务端在 /chat 侧兜底')
   }
 
   // ── ⑤ 端上不得扣费：spend 必须已经下线 ──────────────────────────────────

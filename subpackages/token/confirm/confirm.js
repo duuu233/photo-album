@@ -95,7 +95,7 @@ Page(fold.adapt({
         // 已下线的 getWxVirtualPayQueryOrder.payStatus 改名而来；枚举待后端明确）。
         // 查不到状态时也不说「失败」——钱可能已经扣了，让用户去记录页核对比让他重复付一次强。
         content: result.payState === 1
-          ? 'Token 到账稍有延迟，请稍后在「Token管理」查看余额'
+          ? '星币到账稍有延迟，请稍后在「星币管理」查看余额'
           : '支付结果确认中，请稍后在「购买 & 消费记录」查看',
         showCancel: false,
         confirmText: '知道了',
@@ -112,10 +112,10 @@ Page(fold.adapt({
     wx.showModal({
       title: '购买成功',
       content: gained
-        ? `已到账 ${gained} Token`
+        ? `已到账 ${gained} 星币`
         : balance === null
-          ? 'Token 已到账'
-          : `当前余额 ${balance} Token`,
+          ? '星币已到账'
+          : `当前余额 ${balance} 星币`,
       showCancel: false,
       confirmText: '好的',
       success: () => wx.navigateBack()

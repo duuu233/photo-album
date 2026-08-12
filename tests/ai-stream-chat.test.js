@@ -4,7 +4,7 @@ const assert = require('node:assert/strict')
 //   ① 地址切到流式部署，enableChunked=true，响应从 onChunkReceived 逐块收；
 //   ② chunk 是 ArrayBuffer，且**汉字可能被切在两块之间**、SSE 行也可能被切断，解码/分行都要能续上；
 //   ③ pre_text/progress/image/text/done 逐个回调，同时汇总成 { text, images } 供调用方兜底。
-const storage = { jwtToken: 'jwt-stream-test' }
+const storage = { jwtToken: 'jwt-stream-test', token: 'user-token-stream-test' }
 const globalData = { userInfo: { id: 'stream-user' } }
 
 let lastRequest = null
@@ -69,9 +69,12 @@ async function testStreamHappyPath() {
   assert.equal(lastRequest.enableChunked, true)
   assert.equal(lastRequest.method, 'POST')
   assert.equal(lastRequest.header.Authentication, 'Bearer jwt-stream-test')
-  // 请求参数与非流式版完全一致（接入文档 §五）
+  // 请求参数与非流式版完全一致（接入文档 §五）。
+  // usertoken（2026-08-12 新增，全小写）= 小程序登录接口下发的 userToken，**不是** JWT——
+  // 名字或取值错了都不会报错，只会静默变成「服务端认不出这个用户」，所以逐字段锁死。
   assert.deepEqual(lastRequest.data, {
     user_id: 'boltfox_stream-user',
+    usertoken: 'user-token-stream-test',
     session_id: 's-1',
     message: '画一只猫',
     img_orientation: 'vertical',

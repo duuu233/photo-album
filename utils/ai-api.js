@@ -98,6 +98,21 @@ function getJwtToken() {
   )
 }
 
+// 小程序登录接口（POST /Client/User/setWechatAppLogin）下发的 userToken —— 与 request.js 打给
+// BoltFox 后端的公共参数 `userToken` 是同一枚（app.js 存 globalData.token 与 storage『token』），
+// **不是** Authentication 头里那枚 jwtToken。
+// 2026-08-12 起 /chat 要带上它（参数名 `usertoken`，全小写，按 AI 侧要求写死），
+// AI 网关拿它回 BoltFox 侧核对用户与扣费。取法同 getJwtToken：内存优先、storage 兜底，
+// 每次请求现取，登录/退出后无需重启生效。
+function getUserToken() {
+  const app = typeof getApp === 'function' ? getApp() : null
+  return (
+    (app && app.globalData && app.globalData.token) ||
+    wx.getStorageSync('token') ||
+    ''
+  )
+}
+
 // 当前登录用户作为 AI 侧 user_id（同一 user_id 多端历史互通，文档 §5.3.5）。
 // 未登录兜底一个固定演示 id，保证 demo 可跑通。
 function getAiUserId() {
@@ -510,6 +525,11 @@ function decodeMaybeBuffer(data) {
 function buildChatPayload(params) {
   const data = {
     user_id: getAiUserId(),
+    // 2026-08-12 新增：小程序登录接口下发的 token（见 getUserToken）。参数名按 AI 侧要求
+    // 是全小写 `usertoken`，别顺手改成驼峰 —— 服务端按字面取。
+    // 未登录时是空串，仍原样发出：让服务端自己判「没登录」，比端上悄悄省掉字段更好排查
+    //（何况未登录时 Authentication 头也缺，网关那关先就过不去）。
+    usertoken: getUserToken(),
     session_id: params.sessionId,
     message: params.message,
     img_orientation: params.imgOrientation
@@ -524,7 +544,8 @@ function buildChatPayload(params) {
     data.model_type = params.modelType
   }
   // 图文多模态：带上用户上传的图片 URL（服务端按张数+关键词决定图生图/讨论/拒绝）。
-  // 超 4 张服务端回 20012，前端已在选图时拦截，这里不再截断。
+  // 上限 2026-08-12 由产品放宽到 5 张（文档 v1.0.4 §二写的仍是 4 张，超限服务端回 20012），
+  // 前端已在选图时按 chat.js 的 MAX_IMAGES 拦截，这里不再截断。
   if (Array.isArray(params.imageUrls) && params.imageUrls.length) {
     data.image_urls = params.imageUrls
   }
@@ -538,7 +559,10 @@ module.exports = {
   BASE_URL,
   NON_STREAM_BASE_URL,
   getAiUserId,
+  getUserToken,
   gatewayErrorMessage,
+  // 请求体拼装导出供单测直接验字段（usertoken 这类「名字错一个字母就静默失效」的参数）
+  buildChatPayload,
 
   // 当前基础库能不能收流。false 时调用方降级到非流式 chat()（老基础库/异常环境），
   // 功能不缺，只是回不到进度条与预描述。
@@ -639,7 +663,8 @@ module.exports = {
   // params: { sessionId, message, imgOrientation(必传: vertical/horizontal/square),
   //           imgStyle(可选: cartoon/landscape/portrait/anime 触发一键生图),
   //           modelType(可选: lite/pro，不传即 pro), temperature,
-  //           imageUrls(可选: 图片 URL 数组，最多 4 张；文档 §二「图片支持」——
+  //           imageUrls(可选: 图片 URL 数组，最多 5 张（2026-08-12 产品由 4 张放宽，
+  //             文档 §二未同步）；文档 §二「图片支持」——
   //             1 张+生图关键词=图生图美化 / 多张+关键词=友好拒绝 / 其余=AI 分析讨论，均由服务端分流) }
   //
   // ⚠️ v1.0.4 起 `new_session` 参数**已废弃**：会话是不是新的由后端自己判断，前端不再传。

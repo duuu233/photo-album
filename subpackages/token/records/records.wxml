@@ -36,7 +36,7 @@
             <text class="record-time">{{item.time}}</text>
             <text class="record-amount">¥{{item.amountText}}</text>
           </view>
-          <view class="record-main">{{item.tokens}} Token{{item.gift > 0 ? ' + 赠送 ' + item.gift : ''}}</view>
+          <view class="record-main">{{item.tokens}} 星币{{item.gift > 0 ? ' + 赠送 ' + item.gift : ''}}</view>
           <view class="record-line">
             <text class="record-sub">{{item.channel}}</text>
             <text class="record-status">{{item.status}}</text>
@@ -50,7 +50,7 @@
           <view class="record-time">{{item.time}}</view>
           <view class="record-line record-line--spend">
             <text class="record-main record-main--inline">{{item.scene}}</text>
-            <text class="record-spend">-{{item.tokens}} Token</text>
+            <text class="record-spend">-{{item.tokens}} 星币</text>
           </view>
         </view>
       </block>

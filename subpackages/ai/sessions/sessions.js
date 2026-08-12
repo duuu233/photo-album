@@ -117,8 +117,8 @@ Page(fold.adapt({
     statusBarHeight: 20,
     safeBottom: 0,
     loading: true,
-    // 顶部 Token 余额（真实账户值，见 utils/ai-token.js）。'--' = 还没取到 / 取不到，
-    // 不用 0 兜底：有余额的用户看到「0 Token」会以为不能用了。
+    // 顶部星币余额（真实账户值，见 utils/ai-token.js）。'--' = 还没取到 / 取不到，
+    // 不用 0 兜底：有余额的用户看到「0 星币」会以为不能用了。
     tokenBalance: '--',
     sessions: [], // 当前已展示（分页追加）
     hasMore: false,

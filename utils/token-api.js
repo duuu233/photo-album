@@ -2,6 +2,7 @@
 //
 // 2026-08-08：由本地 mock 切到真实后端。对应的 `/Client/...` 端点是
 //   GET  /Client/Order/getUserAccount        余额 / 累计购买 / 累计消耗
+//   GET  /Client/Order/chkAiDialogue         能否发起 AI 对话（星币够不够，retData 是布尔，2026-08-12 新增）
 //   GET  /Client/Order/getGoodsList          商品（套餐）列表，带 wxProductId / appleProductId
 //   GET  /Client/Order/getUserAccountTrade   购买 & 消费记录（分页，inOutType 区分）
 //   POST /Client/Order/addOrder              在我们平台创建订单，返回 orderId / orderNo / amount
@@ -170,6 +171,26 @@ function getAccount(options) {
   return http
     .get('/Client/Order/getUserAccount', {}, Object.assign({ mock: false }, options))
     .then(normalizeAccount)
+}
+
+/**
+ * 能否发起一次 AI 对话（2026-08-12 新增 `GET /Client/Order/chkAiDialogue`）。
+ *
+ * 服务端按当前用户的星币余额裁决，`retData` 直接就是布尔值（true=可以发起）。
+ * 这是**唯一权威**的「够不够发一轮」判据：端上不知道一轮对话扣多少星币，只能判「是不是 0」，
+ * 原先那套自判逻辑（`ai-token.hasBalance` + `LIMIT_ENABLED`）已随本接口一并删除。
+ *
+ * ⚠️ 只回布尔，不回原因/缺多少：提示文案由调用方按「余额不足」统一措辞。
+ * @param {object} [options] 透传给 request.js（校验失败不该再弹一条接口红字，一律传 showError:false）
+ * @returns {Promise<boolean>}
+ */
+function checkAiDialogue(options) {
+  return http
+    .get('/Client/Order/chkAiDialogue', {}, Object.assign({ mock: false }, options))
+    // 约定是布尔。字符串 'true' 也认：这套接口的数字出参（availableToken 等）后端一律 String 化，
+    // 布尔哪天也被 String 化并非不可能。其余一切（null/undefined/数字/对象）按 false 处理
+    // —— 判不出「可以」就不放行，宁可让用户看到弹窗，也不能把该拦的放过去。
+    .then(data => data === true || data === 'true')
 }
 
 function getPackages() {
@@ -435,6 +456,7 @@ module.exports = {
   totalTokensOf,
   unitPriceOf,
   getAccount,
+  checkAiDialogue,
   getPackages,
   getRecords,
   addOrder,

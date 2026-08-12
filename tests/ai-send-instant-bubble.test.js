@@ -34,6 +34,12 @@ global.wx = {
   hideToast: () => {},
   showModal: () => {},
   request(options) {
+    // 星币校验（2026-08-12 起每次发送前先问服务端能不能发）：立刻放行，
+    // 本用例关心的是它之后那一段——校验一挂，下面的建会话根本不会发出去。
+    if (options.url.indexOf('/Client/Order/chkAiDialogue') > -1) {
+      options.success({ statusCode: 200, data: { retCode: 200, retData: true } })
+      return { abort() {} }
+    }
     // /session/new 不立刻回：由用例决定什么时候放行，好在「还没回来」时断言界面
     if (options.url.indexOf('/session/new') > -1) {
       sessionRequest = options

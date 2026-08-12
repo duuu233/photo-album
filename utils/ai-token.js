@@ -1,4 +1,4 @@
-// AI 模块的 Token 余额。
+// AI 模块的星币（原文案「Token」，2026-08-12 全站改称星币；字段名仍是后端的 availableToken）余额与「能不能发起对话」的闸。
 //
 // 2026-08-11 接口对账（https://api.boltfox.cn/swagger-ui.html#/）：**已由本地 demo 切到真实后端**。
 // 此前本文件是一套 storage 里的假余额（恒 100、每次对话本地扣 1），AI 侧显示的数字与用户真实
@@ -14,16 +14,18 @@
 //    服务端（AI 网关侧）。端上再自己减一次就是双重记账，只会和账户对不上。
 //    所以本模块只有「读」和「刷新」，`spend()` 已删除。
 //
-// LIMIT_ENABLED：余额不足时是否**拦截**发送。仍保持 false，等后端把「AI 调用如何扣费、
-// 余额为 0 时网关返回什么错误码」定下来再打开（否则会出现「端上放行、网关拒绝」或反过来的
-// 割裂）。⚠️ 它现在只控制**拦截**，不再控制余额展示 —— 展示一律是真实值。
+// 拦截口径（2026-08-12 重做）：**够不够发一轮对话由服务端说了算** ——
+// `GET /Client/Order/chkAiDialogue` → `canDialogue()`，发送前调一次，false 就拦下。
+//
+// 在此之前这里是个开着口子的假闸：`LIMIT_ENABLED = false` + `hasBalance()`（按余额数字比大小），
+// 等的是「一轮对话到底扣多少、余额为 0 时网关回什么码」这两个端上永远猜不出来的答案，
+// 于是余额为 0 也照发，全靠网关那边兜。新接口把这个悬案了结了，那套开关连同 `hasBalance()`
+// 一并删除 —— 留着两个口径不一致的闸只会让「到底谁拦的」无从查起。
 const api = require('./api')
 const tokenApi = require('./token-api')
 
-const LIMIT_ENABLED = false
-
 // 读不到余额时页面显示什么：用 null 表示「未知」，页面渲染成 '--'，
-// 绝不用 0 兜底 —— 那会让有余额的用户看到「0 Token」而不敢用。
+// 绝不用 0 兜底 —— 那会让有余额的用户看到「0 星币」而不敢用。
 const UNKNOWN_BALANCE = null
 
 function toBalance(value) {
@@ -69,13 +71,21 @@ function refreshBalance() {
   return fetchBalance()
 }
 
-// 余额是否足以发起一次 AI 调用。LIMIT_ENABLED=false 时恒 true；
-// 余额未知（接口挂了）也放行——不能因为读不到数字就把功能锁死。
-function hasBalance(balance) {
-  if (!LIMIT_ENABLED) {
+// 能否发起一次 AI 对话 —— **唯一的闸**，由服务端裁决
+//（2026-08-12 新增 GET /Client/Order/chkAiDialogue，retData 是布尔）。
+// 每次发送前调一次：够不够扣、有没有免费额度、账号有没有被停，全在服务端那一个判断里，
+// 端上不再拿余额数字自己推（推不准，见文件头）。
+//
+// ⚠️ **校验接口本身失败一律放行**（网络抖动、后端 5xx、字段缺失都算）：读不到判据就把 AI
+// 锁死是更糟的失败模式 —— 真不够的话紧接着那次 /chat 服务端照样会拒，用户看到的是真实原因，
+// 而不是被端上一次网络故障扣上一顶「星币不足」的帽子。同理由见本文件 fetchBalance。
+async function canDialogue() {
+  try {
+    return await tokenApi.checkAiDialogue({ showError: false })
+  } catch (error) {
+    console.warn('[AI] chkAiDialogue 校验失败，本次放行（由服务端在 /chat 侧兜底）', error)
     return true
   }
-  return balance === UNKNOWN_BALANCE || Number(balance) > 0
 }
 
 // 页面展示：未知显示 '--'，其余显示数字本身（0 就显示 0，那是真实状态）。
@@ -84,11 +94,10 @@ function displayBalance(balance) {
 }
 
 module.exports = {
-  LIMIT_ENABLED,
   UNKNOWN_BALANCE,
   cachedBalance,
   fetchBalance,
   refreshBalance,
-  hasBalance,
+  canDialogue,
   displayBalance
 }

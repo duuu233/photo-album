@@ -7,7 +7,8 @@
 //   AI 默认首页；已经在空态还点就提示「已经在新对话中」）、当前会话被删也只回空态。
 //   道理很简单：还没说一句话就先占一条会话，用户看看就走就是一条空会话，v1.0.4 起上限 20 条，占不起。
 //
-// v1.0.3 图文多模态（§二「图片支持」/§5.1.4）：图片选好后以缩略图停在输入框内（每张可删、最多 4 张），
+// v1.0.3 图文多模态（§二「图片支持」/§5.1.4）：图片选好后以缩略图停在输入框内
+//（每张可删、最多 MAX_IMAGES 张，2026-08-12 起为 5 张），
 // 必须**配文字**一起发送（纯图片不可发）；发送即带 image_urls 走 POST /chat，服务端按
 // 张数+生图关键词自行分流（1 张+关键词=图生图美化 / 多张+关键词=友好拒绝 / 其余=分析讨论）。
 // 旧「选图后下一条输入 → /image/enhance」的单图链路随之下线（enhanceImage 接口仍保留作独立入口）。
@@ -60,9 +61,10 @@ const INPUT_HOLD_MS = 350
 // 长按判定的位移容差(px)：按住期间移动超过它就当作滑动/选字，取消长按计时
 const INPUT_HOLD_MOVE_PX = 10
 
-// Token 余额收在 utils/ai-token.js（2026-08-10 提取；2026-08-11 由本地 demo 切到**真实账户**）。
-// 余额展示本身已从本页顶栏移除（需求 1.3：标题要屏幕居中，Token 胶囊占着位置就居不了中），
-// 展示位在「历史会话」页顶部；这里只剩「不足拦截 + 调用后刷新」两处调用。
+// 星币（原文案「Token」，2026-08-12 全站改称）余额收在 utils/ai-token.js
+//（2026-08-10 提取；2026-08-11 由本地 demo 切到**真实账户**）。
+// 余额展示本身已从本页顶栏移除（需求 1.3：标题要屏幕居中，余额胶囊占着位置就居不了中），
+// 展示位在「历史会话」页顶部；这里只剩「发送前拦截（guardAiDialogue，服务端裁决）+ 调用后刷新」两处调用。
 
 // 打字机（2026-07-27 优化顺滑度）。原实现是 setInterval(30ms) 每帧追 3 字 —— 30ms 一跳、
 // 一跳 3 字，肉眼能看出「一顿一顿」。现在按 ~60fps 出字、每帧尽量只追 1 字，视觉上连续得多：
@@ -166,8 +168,10 @@ const SCROLL_STICK_PX = 60
 // 好几百 px，拿它去判会当场把自己判成「用户上翻」，之后整条回复就再也不跟着滚了。
 const SCROLL_FLING_MS = 700
 
-// 图文多模态一次最多带 4 张图（文档 v1.0.3 §二 image_urls 上限；超出服务端回 20012）
-const MAX_IMAGES = 4
+// 图文多模态一次最多带几张图。2026-08-12 产品由 4 张放宽到 5 张
+//（文档 v1.0.3/v1.0.4 §二 image_urls 写的仍是 4 张，尚未同步；超出服务端回 20012）。
+// ⚠️ 改这个数要连着改 utils/ai-i18n.js 的 error.20012 文案（四语种都写着张数）。
+const MAX_IMAGES = 5
 
 // 会话标题截断长度：v1.0.4 §二「首条用户消息前 20 字自动填充，默认'新对话'」。
 // 前端本地同步标题时按同一规则截，避免列表页重拉后标题突然变短。
@@ -918,24 +922,35 @@ Page(fold.adapt({
       }
       this.setData({ inputValue: '', pendingImages: [] })
       // await：让 submitting 一直持有到请求真正发出（sendChat 内 sending 接棒），中间不留空窗
-      await this.sendChat(text, undefined, sendImages)
+      const sent = await this.sendChat(text, undefined, sendImages)
+      // 没发出去（星币不足最常见，见 guardAiDialogue）就把草稿放回输入框：这时清空动作已经
+      // 做了，不还回去用户就得照着记忆重打一遍——而「不够星币」恰恰是他每次发都会撞上的。
+      if (!sent) {
+        this.setData({ inputValue: text, pendingImages: images })
+      }
     })
   },
 
   // 发送对话 / 一键生图 / 图文多模态。styleKey 仅一键生图传（cartoon/landscape/portrait/anime）；
-  // imageUrls 为随文字一起发送的图片（≤4，v1.0.3），可传 URL 字符串数组，也可传
+  // imageUrls 为随文字一起发送的图片（≤MAX_IMAGES），可传 URL 字符串数组，也可传
   // { url, pad } 数组（带上占位比例，图片气泡就不会在加载完时把内容顶飞）。
   // 先把用户消息（图片气泡+文字气泡）上屏，再交给 _dispatchChat 发请求
   // ——这样 30xxx 重试只重发请求、不重复堆用户气泡。
+  //
+  // 返回是否真的发出去了：false = 被某道闸拦下（星币不足 / 未同意协议 / 建会话失败），
+  // 调用方据此把草稿还回输入框（见 onSendTap）。**所有发送入口都汇到这里**，
+  // 星币校验就放在这一处，别再往各入口散着加。
   async sendChat(message, styleKey, imageUrls) {
     if (this.data.sending || this.data.banned) {
-      return
+      return false
     }
     if (!(await this.requestAiServiceConsent(true))) {
-      return
+      return false
     }
-    if (!this.guardToken()) {
-      return
+    // 服务端裁决「星币够不够发这一轮」。放在任何 setData **之前**：不够时用户气泡一条都不该上屏，
+    // 否则界面上会闪出一句发不出去的话再被撤掉——而余额见底的用户**每次**发送都会走到这一步。
+    if (!(await this.guardAiDialogue())) {
+      return false
     }
 
     // 入参兼容字符串数组与 { url, pad } 数组（见方法上方注释）
@@ -999,13 +1014,14 @@ Page(fold.adapt({
           messages: this.data.messages.filter(item => rolledBack.indexOf(item.id) < 0),
           sessionTitle: prevTitle
         })
-        return
+        return false
       }
     }
     // 带图发送 = 图生图/融合图，出图比例跟用户原图走（后端只等比放大，不改宽高比），
     // 与 img_orientation 无关；多张时按第一张（融合结果的比例后端未约定，bindload 回来会校正）。
     const replyPad = picked.length ? clampPad(picked[0].pad) : 0
     this._dispatchChat(message, styleKey, urls, replyPad)
+    return true
   },
 
   // 发一次 /chat 请求并渲染回复（可被「重试」重复调用，不再追加用户气泡）。
@@ -1146,6 +1162,11 @@ Page(fold.adapt({
       return
     }
     await this.guardedSend(async () => {
+      // 重试也是一次真实调用，同样要过服务端校验（上一轮失败到现在，余额可能已经不够了）。
+      // 失败卡片原样留着：这里什么都还没删，用户买完星币回来还能接着点重试。
+      if (!(await this.guardAiDialogue())) {
+        return
+      }
       delete this._retryByMessage[id]
       this.removeMessageById(id)
       await this._dispatchChat(retry.message, retry.styleKey, retry.urls, retry.replyPad)
@@ -1636,20 +1657,38 @@ Page(fold.adapt({
     }
   },
 
-  // Token 权限控制（文档 §5.5）：余额不足时弹窗引导购买并拦截 AI 调用。
-  // aiToken.LIMIT_ENABLED=false 时整条限制屏蔽、一律放行；余额未知（接口挂了）同样放行，
-  // 不能因为读不到数字就把功能锁死（见 utils/ai-token.js）。
-  guardToken() {
-    if (aiToken.hasBalance(this.data.tokenBalance)) {
+  // 星币权限控制（文档 §5.5）：发起对话前的**服务端**校验
+  //（2026-08-12 GET /Client/Order/chkAiDialogue，见 utils/ai-token.canDialogue）。
+  //
+  // 这是**唯一**的闸。此前那道 `guardToken()`（端上按余额数字比大小 + LIMIT_ENABLED=false）
+  // 已随 aiToken.hasBalance 一并删除：它既不知道一轮对话扣多少星币，开关又一直关着，
+  // 余额为 0 也照发 —— 留着只会和服务端口径打架。
+  //
+  // 校验接口本身失败一律放行（见 aiToken.canDialogue），所以这里只处理「明确不允许」。
+  // 顺带刷一次余额：会话列表页那颗胶囊的数字要与「不够了」这个结论对得上。
+  async guardAiDialogue() {
+    if (await aiToken.canDialogue()) {
       return true
     }
-    wx.showModal({
-      title: 'Token 不足',
-      content: '当前 Token 余额不足，请前往「个人中心-Token管理」购买后继续使用（支付模块开发中）',
-      showCancel: false,
-      confirmText: '知道了'
-    })
+    this.refreshTokenBalance()
+    this.showTokenShortModal()
     return false
+  },
+
+  // 星币不足的统一弹窗：只有「个人中心-星币管理」一条出路，直接把人送过去，
+  // 别让用户自己在页面里找（原文案只说「请前往」，用户还得退三层）。
+  showTokenShortModal() {
+    wx.showModal({
+      title: '星币不足',
+      content: '当前星币余额不足，无法发起 AI 对话，请前往「个人中心-星币管理」购买后继续使用',
+      cancelText: '知道了',
+      confirmText: '去购买',
+      success: res => {
+        if (res.confirm) {
+          wx.navigateTo({ url: '/subpackages/token/index/index' })
+        }
+      }
+    })
   },
 
   // 一次 AI 调用完成后对齐余额。
@@ -1780,7 +1819,7 @@ Page(fold.adapt({
     }
     const remain = MAX_IMAGES - this.data.pendingImages.length
     if (remain <= 0) {
-      toast.show({ title: `一次最多选择 ${MAX_IMAGES} 张图片`, icon: 'none' })
+      toast.show({ title: `当前AI只允许上传${MAX_IMAGES}张图`, icon: 'none' })
       return
     }
     let files
@@ -1796,7 +1835,7 @@ Page(fold.adapt({
     // 客户端拦截超限（部分机型相册不严格限制张数），只取前 remain 张
     if (files.length > remain) {
       files = files.slice(0, remain)
-      toast.show({ title: `一次最多选择 ${MAX_IMAGES} 张图片`, icon: 'none' })
+      toast.show({ title: `当前AI只允许上传${MAX_IMAGES}张图`, icon: 'none' })
     }
     // 先各插一张 uploading 缩略图占位，再逐张上传回填 URL（单张失败只移除该张）。
     // pad 用相册回的宽高先算好：发出去后用户图片气泡就能先占住高度，不等图加载完再顶内容（需求 5.2）。
