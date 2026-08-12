@@ -375,11 +375,16 @@ async function purchase(pkg, channel) {
     })
   }
 
-  // 先探可用性再下单：微信版本不支持时提前拦住，别在后台留一串永远付不掉的待支付单
-  if (!wxVirtualPay.isAvailable()) {
+  // 先探可用性再下单：付不了时提前拦住，别在后台留一串永远付不掉的待支付单。
+  // 2026-08-12 起这一步不止判「有没有这个 API」，还判 iOS 的系统/微信版本门槛——
+  // 现场 iPhone + 微信 8.0.59 会一路走到微信那儿拿一个 -15001 INVALID_PLATFORM，
+  // 用户只看到「支付失败（-15001）」，既不知道原因也不知道该做什么。
+  const unsupported = wxVirtualPay.unsupportedReason()
+  if (unsupported) {
+    console.warn('[虚拟支付] 端上前置判定为不可支付，未建单', { 原因: unsupported })
     return Promise.reject({
       code: 'VIRTUAL_PAY_UNAVAILABLE',
-      message: '当前微信版本不支持虚拟支付，请升级微信后重试'
+      message: unsupported
     })
   }
 

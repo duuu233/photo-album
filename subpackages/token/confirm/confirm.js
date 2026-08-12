@@ -131,9 +131,15 @@ Page(fold.adapt({
       return
     }
 
+    // 「这个环境根本付不了」和「付的过程出错了」是两回事：前者钱一分没动，标题写「购买失败」
+    // 会让用户以为扣了钱或系统坏了，其实他只要去升级一下微信。文案本身已经说清了该做什么
+    //（wx-virtual-pay.unsupportedReason），这里只把标题换成不吓人的那句。
+    const unsupported =
+      code === 'VIRTUAL_PAY_UNAVAILABLE' || code === 'PAY_PLATFORM_UNSUPPORTED'
+
     // 支付失败按需求要走弹窗而不是 toast（用户刚花过钱，提示必须停留）
     wx.showModal({
-      title: '购买失败',
+      title: unsupported ? '暂时无法支付' : '购买失败',
       content: (error && error.message) || '支付未完成，请稍后重试',
       showCancel: false,
       confirmText: '知道了'

@@ -144,6 +144,45 @@ function versionLt(version, target) {
   return false
 }
 
+// system 形如 "iOS 16.1" / "iOS 26.5.2"，取主版本号
+function iosMajorVersion(system) {
+  const matched = String(system || '').match(/(\d+)/)
+  return matched ? parseInt(matched[1], 10) : 0
+}
+
+/**
+ * 端上就能判定的「这台设备/这个微信根本付不了」，返回**给用户看的话**；空串表示可以试。
+ *
+ * 为什么要前置拦（2026-08-12）：现场 iPhone 上微信 8.0.59 拉起支付，微信回 -15001
+ * INVALID_PLATFORM，用户看到的却是「支付失败（-15001）」——既没说清楚，也没给出路，
+ * 后台还多一张永远付不掉的待支付单。这道门槛端上自己就能判，就别把用户送进那条死路。
+ * 与 `purchase()` 里「先探可用性再下单」是同一个用意（见 token-api.js）。
+ *
+ * 只拦 iOS：安卓/PC 没有这两条版本门槛，判不准的一律放过去交给微信裁决——
+ * 端上误拦的代价（用户明明能付却被拦住）比放过去大得多。
+ */
+function unsupportedReason() {
+  if (!isAvailable()) {
+    return '当前微信版本不支持虚拟支付，请升级微信后重试'
+  }
+
+  const env = runtimeInfo()
+  if (env.platform !== 'ios') {
+    return ''
+  }
+
+  const systemVersion = iosMajorVersion(env.system)
+  if (systemVersion && systemVersion < IOS_MIN_SYSTEM_VERSION) {
+    return `当前系统版本过低，iPhone 需升级到 iOS ${IOS_MIN_SYSTEM_VERSION} 及以上才能购买`
+  }
+  // 版本号读不到时不拦：宁可让微信去报错，也别把能付钱的用户挡在外面
+  if (env.wechatVersion && versionLt(env.wechatVersion, IOS_MIN_WECHAT_VERSION)) {
+    return `当前微信版本过低（${env.wechatVersion}），请升级到微信 ${IOS_MIN_WECHAT_VERSION} 及以上版本后再购买`
+  }
+
+  return ''
+}
+
 /**
  * iOS 端（苹果 IAP 通道）的硬性门槛自检 —— 官方「小程序虚拟支付 / iOS 端接入」列出的条件里，
  * 端上能自己判的这几条。任何一条不满足，无论 signData 多正确都是 -15001 INVALID_PLATFORM。
@@ -152,8 +191,7 @@ function versionLt(version, target) {
  */
 function checkIosGate(env, parsedSignData) {
   const problems = []
-  // system 形如 "iOS 16.1"，取出主版本号即可
-  const systemVersion = parseInt(String(env.system).replace(/[^\d]/g, '').slice(0, 2), 10)
+  const systemVersion = iosMajorVersion(env.system)
   if (systemVersion && systemVersion < IOS_MIN_SYSTEM_VERSION) {
     problems.push(`设备 ${env.system} 低于 iOS ${IOS_MIN_SYSTEM_VERSION}`)
   }
@@ -391,6 +429,18 @@ function describeFail(error) {
     原始错误: error
   })
 
+  // INVALID_PLATFORM 是端上**有把握**翻译的那一个：它与参数、签名都无关，就是「这个环境付不了」。
+  // 能走到这儿说明前置的 unsupportedReason() 没拦住——版本号读不到，或者是后台配置类原因
+  //（未启用苹果 IAP、没配小程序简称、Apple ID 非大陆区）。无论哪种，甩一个 -15001 给用户
+  // 都等于什么也没说，这里给一句他照着做得了的话。
+  if (errMsg.indexOf('INVALID_PLATFORM') !== -1) {
+    return {
+      code: 'PAY_PLATFORM_UNSUPPORTED',
+      message: unsupportedReason() || '当前环境暂不支持该支付方式，请将微信升级到最新版本后重试',
+      errMsg
+    }
+  }
+
   const known = ERROR_MESSAGES[String(rawCode)]
   return {
     code: rawCode === '' ? 'PAY_FAILED' : rawCode,
@@ -446,6 +496,8 @@ module.exports = {
   MODE_GOODS,
   MODE_COIN,
   isAvailable,
+  // 「这台设备/这个微信付不了」的前置判定，返回给用户看的话。purchase() 在下单**之前**调它
+  unsupportedReason,
   extractPayParams,
   requestPayment,
   // 导出供单测直接验错误码翻译，不必去 mock 整个 wx.requestVirtualPayment

@@ -280,6 +280,64 @@ const FAST_DELAYS = [1, 1, 1]
     payBehavior = null
   }
 
+  // ── iOS 微信版本过低：**下单前**拦住，且给一句用户照做得了的话 ─────────────
+  // 现场是 iPhone(iOS 26.5.2) + 微信 8.0.59：参数、签名、后台配置全对，微信照样回
+  // -15001 INVALID_PLATFORM（苹果 IAP 通道要求微信 ≥ 8.0.68）。此前这条路会一直走到
+  // 微信才失败 —— 用户看到「支付失败（-15001）」，后台还多一张永远付不掉的待支付单。
+  {
+    const realDeviceInfo = wx.getDeviceInfo
+    const realAppBaseInfo = wx.getAppBaseInfo
+    let addOrderCalls = 0
+    const realAddOrder = routes['/Client/Order/addOrder']
+    routes['/Client/Order/addOrder'] = options => {
+      addOrderCalls++
+      return realAddOrder(options)
+    }
+
+    wx.getDeviceInfo = () => ({ platform: 'ios', system: 'iOS 26.5.2' })
+    wx.getAppBaseInfo = () => ({ version: '8.0.59', SDKVersion: '3.8.11' })
+
+    payCalls.length = 0
+    await assert.rejects(
+      () => tokenApi.purchase({ goodsId: 12, id: '12' }, 'wechat'),
+      error =>
+        error.code === 'VIRTUAL_PAY_UNAVAILABLE' &&
+        // 文案必须说清「升级微信」，不能是一句「支付失败」或一个裸错误码
+        /升级/.test(error.message) &&
+        /8\.0\.68/.test(error.message)
+    )
+    assert.equal(addOrderCalls, 0, '端上已知付不了，就不该建单（否则后台留一张死单）')
+    assert.equal(payCalls.length, 0)
+
+    // 8.0.9 < 8.0.68：版本号必须逐段按数字比，字符串比较会把 "8.0.9" 判成更大
+    wx.getAppBaseInfo = () => ({ version: '8.0.9', SDKVersion: '3.8.11' })
+    assert.match(wxVirtualPay.unsupportedReason(), /8\.0\.9/)
+
+    // 达标的 iOS 与安卓一律放行：端上误拦（明明能付却被挡住）比放过去代价大得多
+    wx.getAppBaseInfo = () => ({ version: '8.0.70', SDKVersion: '3.8.11' })
+    assert.equal(wxVirtualPay.unsupportedReason(), '')
+    wx.getDeviceInfo = () => ({ platform: 'android', system: 'Android 13' })
+    wx.getAppBaseInfo = () => ({ version: '8.0.30', SDKVersion: '3.8.11' })
+    assert.equal(wxVirtualPay.unsupportedReason(), '')
+
+    // 微信没回版本号时不拦：宁可让微信去报错，也别把能付钱的用户挡在外面
+    wx.getDeviceInfo = () => ({ platform: 'ios', system: '' })
+    wx.getAppBaseInfo = () => ({ version: '', SDKVersion: '' })
+    assert.equal(wxVirtualPay.unsupportedReason(), '')
+
+    // INVALID_PLATFORM 兜底翻译（前置没拦住时）：不能把 -15001 直接甩给用户
+    const platformFail = wxVirtualPay.describeFail({
+      errCode: -15001,
+      errMsg: 'requestVirtualPayment:fail INVALID_PLATFORM'
+    })
+    assert.equal(platformFail.code, 'PAY_PLATFORM_UNSUPPORTED')
+    assert.doesNotMatch(platformFail.message, /-15001/)
+
+    wx.getDeviceInfo = realDeviceInfo
+    wx.getAppBaseInfo = realAppBaseInfo
+    routes['/Client/Order/addOrder'] = realAddOrder
+  }
+
   // ── PayPal 仍未接入：明确 reject，不能悄悄走微信 ───────────────────────────
   {
     payCalls.length = 0
