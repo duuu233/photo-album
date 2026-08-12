@@ -173,6 +173,17 @@ const SCROLL_FLING_MS = 700
 // ⚠️ 改这个数要连着改 utils/ai-i18n.js 的 error.20012 文案（四语种都写着张数）。
 const MAX_IMAGES = 5
 
+// 星币数字的展示口径：后端给的是浮点（真机实测「最低余额：30.0」），照抄进提示里
+// 就是「至少需要 30.0 星币」——星币是整数计价的，那个 .0 只会让人以为还有小数位。
+// 整数去掉小数点，真有小数则最多留两位（30.5 保留、30.50 收成 30.5）。
+function formatTokenAmount(value) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) {
+    return ''
+  }
+  return Number.isInteger(number) ? String(number) : String(Number(number.toFixed(2)))
+}
+
 // 会话标题截断长度：v1.0.4 §二「首条用户消息前 20 字自动填充，默认'新对话'」。
 // 前端本地同步标题时按同一规则截，避免列表页重拉后标题突然变短。
 const SESSION_TITLE_MAX = 20
@@ -1667,20 +1678,33 @@ Page(fold.adapt({
   // 校验接口本身失败一律放行（见 aiToken.canDialogue），所以这里只处理「明确不允许」。
   // 顺带刷一次余额：会话列表页那颗胶囊的数字要与「不够了」这个结论对得上。
   async guardAiDialogue() {
-    if (await aiToken.canDialogue()) {
+    const verdict = await aiToken.canDialogue()
+    if (verdict.allowed) {
       return true
     }
     this.refreshTokenBalance()
-    this.showTokenShortModal()
+    this.showTokenShortModal(verdict)
     return false
   },
 
   // 星币不足的统一弹窗：只有「个人中心-星币管理」一条出路，直接把人送过去，
   // 别让用户自己在页面里找（原文案只说「请前往」，用户还得退三层）。
-  showTokenShortModal() {
+  //
+  // 文案来源（2026-08-12 真机）：后端原话是
+  //   「token余额不足，需要最低余额：30.0 token」
+  // ——「token」是内部叫法（对外一律「星币」）、「30.0」是浮点、整句还带着接口味，
+  // 直接甩给用户不合适。所以：**数字用后端的，话是我们自己说的**。
+  // 抠不到数字时才退回后端原话（把 token 换成星币），至少还能说清原因——
+  // 403 也可能是余额之外的别的理由，那时硬套「星币不足」反而是错的。
+  showTokenShortModal(verdict) {
+    const required = (verdict && verdict.required) || 0
+    const fallback = String((verdict && verdict.message) || '').replace(/token/gi, '星币')
+    const content = required
+      ? `发起一次 AI 对话至少需要 ${formatTokenAmount(required)} 星币，当前余额不足。购买后即可继续和星宝聊天。`
+      : fallback || '当前星币余额不足，无法发起 AI 对话。购买后即可继续和星宝聊天。'
     wx.showModal({
       title: '星币不足',
-      content: '当前星币余额不足，无法发起 AI 对话，请前往「个人中心-星币管理」购买后继续使用',
+      content,
       cancelText: '知道了',
       confirmText: '去购买',
       success: res => {

@@ -1,5 +1,5 @@
 <view
-  class="page-nav custom-class {{immersive ? 'page-nav--immersive' : ''}}"
+  class="page-nav custom-class {{immersive ? 'page-nav--immersive' : ''}} {{compact ? 'page-nav--compact' : ''}}"
   style="--nav-status: {{statusBarHeight}}px; --nav-height: {{navHeight}}px; --nav-row-top: {{rowTop}}px; --nav-row-height: {{rowHeight}}px; --nav-capsule-space: {{capsuleSpace}}px; --nav-center-max: {{centerMaxWidth}}px;"
 >
   <view class="nav-row">

@@ -173,24 +173,63 @@ function getAccount(options) {
     .then(normalizeAccount)
 }
 
+// chkAiDialogue 说「不够」时用的业务码。2026-08-12 真机实测：**余额不足不是 200+false，
+// 而是整个响应就报错**：
+//   {"retCode":403,"retMsg":"token余额不足，需要最低余额：30.0 token","retData":null}
+// 也就是说「能不能发」的否定答复是从 request.js 的**失败**分支出来的，
+// 不认这个码就会被当成「接口挂了」而放行（见 ai-token.canDialogue 的兜底）。
+const AI_DIALOGUE_FORBIDDEN_CODE = 403
+
+// 从 retMsg 里抠出「最低余额」的数字（"…需要最低余额：30.0 token" → 30）。
+// 抠不到返回 0，调用方据此退回不带数字的措辞——绝不瞎猜一个数写进提示里。
+function parseRequiredTokens(message) {
+  const matched = /([0-9]+(?:\.[0-9]+)?)/.exec(String(message || ''))
+  if (!matched) {
+    return 0
+  }
+  const value = Number(matched[1])
+  return Number.isFinite(value) && value > 0 ? value : 0
+}
+
 /**
  * 能否发起一次 AI 对话（2026-08-12 新增 `GET /Client/Order/chkAiDialogue`）。
  *
- * 服务端按当前用户的星币余额裁决，`retData` 直接就是布尔值（true=可以发起）。
- * 这是**唯一权威**的「够不够发一轮」判据：端上不知道一轮对话扣多少星币，只能判「是不是 0」，
- * 原先那套自判逻辑（`ai-token.hasBalance` + `LIMIT_ENABLED`）已随本接口一并删除。
+ * 服务端按当前用户的星币余额裁决，这是**唯一权威**的「够不够发一轮」判据：端上不知道一轮
+ * 对话扣多少星币，原先那套自判逻辑（`ai-token.hasBalance` + `LIMIT_ENABLED`）已随本接口一并删除。
  *
- * ⚠️ 只回布尔，不回原因/缺多少：提示文案由调用方按「余额不足」统一措辞。
+ * 两种答复形状（**不对称**，见 AI_DIALOGUE_FORBIDDEN_CODE）：
+ *   可以：`retCode=200`，`retData=true`
+ *   不行：`retCode=403` + `retMsg`（带最低余额），`retData=null` —— 走 reject 分支
+ *
  * @param {object} [options] 透传给 request.js（校验失败不该再弹一条接口红字，一律传 showError:false）
- * @returns {Promise<boolean>}
+ * @returns {Promise<{allowed: boolean, required: number, message: string}>}
+ *   allowed=false 时 `required` 是后端说的最低余额（抠不到为 0），`message` 是后端原话（供兜底措辞）。
+ *   ⚠️ 只有**明确的 403** 才 resolve 成 false；其它错误（网络/5xx）原样 reject，由调用方决定放不放行。
  */
 function checkAiDialogue(options) {
   return http
     .get('/Client/Order/chkAiDialogue', {}, Object.assign({ mock: false }, options))
-    // 约定是布尔。字符串 'true' 也认：这套接口的数字出参（availableToken 等）后端一律 String 化，
-    // 布尔哪天也被 String 化并非不可能。其余一切（null/undefined/数字/对象）按 false 处理
-    // —— 判不出「可以」就不放行，宁可让用户看到弹窗，也不能把该拦的放过去。
-    .then(data => data === true || data === 'true')
+    // 200 即放行。**不要求 retData 严格等于 true**：拒绝是由 403 表达的，
+    // 真到了这一支还去纠结 retData 是 true 还是 null，只会在后端某天不回这个字段时
+    // 把所有人都拦在门外——那比放过去糟得多（/chat 侧服务端还会再拒一次）。
+    .then(data => ({
+      allowed: data !== false && data !== 'false',
+      required: 0,
+      message: ''
+    }))
+    .catch(error => {
+      const code = Number(error && error.code)
+      if (code !== AI_DIALOGUE_FORBIDDEN_CODE) {
+        throw error
+      }
+      // request.js 会给 message 加「接口-」前缀（那是给报错 toast 用的），这里要拿原话去解析和兜底
+      const message = String((error && error.message) || '').replace(/^接口-/, '')
+      return {
+        allowed: false,
+        required: parseRequiredTokens(message),
+        message
+      }
+    })
 }
 
 function getPackages() {
@@ -452,6 +491,7 @@ async function purchase(pkg, channel) {
 
 module.exports = {
   PAY_TYPE,
+  AI_DIALOGUE_FORBIDDEN_CODE,
   RECORD_PAGE_SIZE,
   totalTokensOf,
   unitPriceOf,

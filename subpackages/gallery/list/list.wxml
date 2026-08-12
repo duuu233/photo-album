@@ -3,21 +3,32 @@
      折叠屏：根容器锁一屏高，导航栏、分类条与底栏留在滚动区外，
      瀑布流交给 .fold-scroll 滚动（方案见 styles/fold-adapt.wxss）。 -->
 <view class="gallery-shell fold-viewport" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
-  <page-nav title="官方图库"></page-nav>
+  <!-- compact（2026-08-12 产品「顶部 nav 太大了」）：标题小一号、行下那段留白收掉。
+       导航行本身仍与微信原生胶囊同高同轴——那是几何约束，动了就会和胶囊错位。 -->
+  <page-nav title="官方图库" compact="{{true}}"></page-nav>
 
-  <!-- 分类条常驻不滚。横向可滑，分类多了也不换行。 -->
-  <scroll-view class="category-scroll" scroll-x="{{true}}" enable-flex="{{true}}">
-    <view class="category-row">
-      <view
-        wx:for="{{categories}}"
-        wx:key="id"
-        class="category-chip {{item.id === activeCategory ? 'category-chip--active' : ''}}"
-        data-id="{{item.id}}"
-        hover-class="none"
-        bindtap="onSelectCategory"
-      >{{item.name}}</view>
+  <!-- 分类条常驻不滚。横向可滑，分类多了也不换行。
+       右端的「收藏」**不在滑动区里**：它是这一行的固定项（2026-08-12 从「我的」页搬来），
+       分类滑到哪儿它都在原地，所以 scroll-view 只占左侧剩余宽度，收藏按钮是它的兄弟节点。 -->
+  <view class="category-bar">
+    <scroll-view class="category-scroll" scroll-x="{{true}}" enable-flex="{{true}}">
+      <view class="category-row">
+        <view
+          wx:for="{{categories}}"
+          wx:key="id"
+          class="category-chip {{item.id === activeCategory ? 'category-chip--active' : ''}}"
+          data-id="{{item.id}}"
+          hover-class="none"
+          bindtap="onSelectCategory"
+        >{{item.name}}</view>
+      </view>
+    </scroll-view>
+
+    <view class="category-fav" hover-class="none" bindtap="goFavorites">
+      <image class="category-fav-icon" src="/assets/images/mine-icon-favorite.png" mode="aspectFit"></image>
+      <text class="category-fav-text">收藏</text>
     </view>
-  </scroll-view>
+  </view>
 
   <scroll-view class="fold-scroll" scroll-y="{{true}}">
     <view class="fold-scroll-body gallery-scroll-body list-scroll-body">

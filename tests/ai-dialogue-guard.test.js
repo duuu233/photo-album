@@ -1,10 +1,13 @@
 const assert = require('node:assert/strict')
 
 // 2026-08-12 AI 模块两项：
-//   ① 发起对话前先问服务端「星币够不够」（GET /Client/Order/chkAiDialogue，retData 是布尔）。
+//   ① 发起对话前先问服务端「星币够不够」（GET /Client/Order/chkAiDialogue）。
 //      此前端上那道闸（LIMIT_ENABLED=false + 按余额比大小）等于没有，余额为 0 也照发。
+//      ⚠️ 真机实测「不够」的答复是 **retCode=403 + retMsg**（不是 200+false），
+//      即否定答复走的是失败分支，用例按真实形状打桩。
 //      这里锁住：不允许时 **/chat 一个请求都不许发**、用户气泡一条都不许上屏、
-//      **草稿要还回输入框**（余额见底的用户每次发送都会撞上，让他重打一遍最难受）。
+//      **草稿要还回输入框**（余额见底的用户每次发送都会撞上，让他重打一遍最难受），
+//      且提示里的数字来自后端 retMsg、话由端上说（后端原话「token余额不足…30.0 token」不能直接示人）。
 //   ② 本地图片上传上限 4 → 5 张，超出提示「当前AI只允许上传5张图」。
 const storage = { token: 'user-token', jwtToken: 'jwt-token', userInfo: { id: 'guard-user' } }
 
@@ -45,7 +48,17 @@ global.wx = {
   request(options) {
     const url = String(options.url)
     if (url.indexOf('/Client/Order/chkAiDialogue') > -1) {
-      options.success({ statusCode: 200, data: { retCode: 200, retData: allowDialogue } })
+      options.success({
+        statusCode: 200,
+        data: allowDialogue
+          ? { retCode: 200, retMsg: 'success', retData: true }
+          : // 真机原样：403 + 带最低余额的 retMsg + retData null
+            {
+              retCode: 403,
+              retMsg: 'token余额不足，需要最低余额：30.0 token',
+              retData: null
+            }
+      })
       return { abort() {} }
     }
     if (url.indexOf('/Client/Order/getUserAccount') > -1) {
@@ -149,6 +162,13 @@ async function testBlockedWhenNotAllowed() {
   assert.equal(modals.length, 1)
   assert.equal(modals[0].title, '星币不足')
   assert.equal(modals[0].confirmText, '去购买', '弹窗要给一条出路，不能只说「不够了」')
+  // 数字取后端的（30.0 → 30，星币是整数计价，`.0` 只会让人以为还有小数位），
+  // 话由端上说：后端原话带「token」和接口味，不能直接示人
+  assert.equal(
+    modals[0].content,
+    '发起一次 AI 对话至少需要 30 星币，当前余额不足。购买后即可继续和星宝聊天。'
+  )
+  assert.ok(!/token/i.test(modals[0].content), '对外一律「星币」，不许漏出 token 字样')
 }
 
 // ② 允许：照常发出去

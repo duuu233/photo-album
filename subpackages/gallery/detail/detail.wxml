@@ -28,14 +28,10 @@
           </view>
         </view>
 
+        <!-- 「适用设备尺寸」整块（分隔线 + 标题 + 尺寸标签）2026-08-12 按产品要求去掉：
+             用户不按分辨率挑图，这块只是把白卡撑高、把大图挤没了。
+             接口仍下发 `photo.sizes`（utils/gallery-api.js），端上不再渲染。 -->
         <view wx:if="{{photo.desc}}" class="detail-desc">{{photo.desc}}</view>
-
-        <view class="detail-divider"></view>
-
-        <view class="detail-section-title">适用设备尺寸</view>
-        <view class="detail-sizes">
-          <view wx:for="{{photo.sizes}}" wx:key="*this" class="detail-size-tag">{{item}}</view>
-        </view>
       </view>
     </view>
   </scroll-view>

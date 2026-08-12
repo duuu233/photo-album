@@ -121,10 +121,15 @@
   代码里的 `token`/`availableToken`/`tokenBalance` 是后端字段与既有标识符，**保持原名**。
   能不能发起对话由服务端裁决：每次发送前 `GET /Client/Order/chkAiDialogue`（见下），
   端上自判余额的 `LIMIT_ENABLED` / `hasBalance` 已删除。展示位在会话列表页顶部。
-- 发送前的星币闸（2026-08-12）：`utils/ai-token.canDialogue()` → `GET /Client/Order/chkAiDialogue`，
-  `retData` 是布尔，`false` 即拦下（弹「星币不足」，确认键直达星币管理页），`/chat` 一个请求都不发、
-  用户气泡一条都不上屏、**草稿原样还回输入框**（余额见底的用户每次发送都会撞上这一步）。
-  ⚠️ **校验接口本身失败一律放行**：读不到判据就锁死 AI 是更糟的失败模式，真不够的话
+- 发送前的星币闸（2026-08-12）：`utils/ai-token.canDialogue()` → `GET /Client/Order/chkAiDialogue`。
+  ⚠️ **两种答复不对称**（真机实测）：可以发＝`retCode 200`＋`retData true`；
+  **不能发＝`retCode 403`**＋`retMsg"token余额不足，需要最低余额：30.0 token"`＋`retData null`
+  —— 否定答复走的是 `request.js` 的**失败**分支，只认 `retData===true` 会把它当成「接口挂了」而放行。
+  拦下时弹「星币不足」（确认键直达星币管理页），`/chat` 一个请求都不发、用户气泡一条都不上屏、
+  **草稿原样还回输入框**（余额见底的用户每次发送都会撞上这一步）。
+  提示里的**数字取后端**（从 `retMsg` 抠出 30）、**话由端上说**：后端原话带内部叫法 `token`、
+  浮点 `30.0` 和接口味，不能直接示人；抠不到数字才退回后端原话（`token`→`星币`）。
+  ⚠️ **除 403 外的失败一律放行**：读不到判据就锁死 AI 是更糟的失败模式，真不够的话
   紧接着那次 `/chat` 服务端照样会拒，用户看到的才是真实原因。闸只有 `chat.js sendChat`
   一处（所有发送入口都汇到它）加「重试」入口，新增入口别另起一套。
   （2026-08-10 前它在聊天页右上角，按 `getMenuButtonBoundingClientRect()` 与原生胶囊同高同轴摆放；

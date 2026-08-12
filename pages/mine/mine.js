@@ -1,5 +1,4 @@
 const api = require('../../utils/api')
-const galleryApi = require('../../utils/gallery-api')
 const tokenApi = require('../../utils/token-api')
 
 const app = getApp()
@@ -30,8 +29,9 @@ Page({
     userId: '--',
     photoCount: 0,
     deviceCount: 0,
-    // 2026-08-06 新增两行入口（设计稿 assets/ai/UI页面/我的.png）
-    favoriteCount: 0,
+    // 2026-08-06 新增（设计稿 assets/ai/UI页面/我的.png）。
+    // ⚠️ 同批的「我的收藏」入口已于 2026-08-12 移到官方图库页分类条右侧，
+    // 本页不再展示收藏数，也不再打 galleryApi.getFavoriteCount()（少一个请求）。
     tokenBalance: 0,
     bgReady: false
   },
@@ -92,20 +92,16 @@ Page({
         userId: '--',
         photoCount: 0,
         deviceCount: 0,
-        favoriteCount: 0,
         tokenBalance: 0
       })
       return
     }
 
     try {
-      const [userInfo, devices, castSuccessCount, favoriteCount] = await Promise.all([
+      const [userInfo, devices, castSuccessCount] = await Promise.all([
         api.getUserProfile(),
         api.getDevices(),
-        api.getProjectionSuccessCount(),
-        // ⚠️ 收藏数仍来自本地 mock（gallery-api），后端接口尚未提供。它做了自身的失败兜底，
-        // 不让它把整个 Promise.all 拖挂——用户信息才是这页的主数据。
-        galleryApi.getFavoriteCount().catch(() => 0)
+        api.getProjectionSuccessCount()
       ])
 
       // Token 余额（2026-08-11 接口对账）：`getUserInfo` 的出参已带 `availableToken`，
@@ -130,7 +126,6 @@ Page({
         // 删掉的都算在内），那个数和列表对不上。
         photoCount: castSuccessCount,
         deviceCount: Number(userInfo.productCount) || devices.length,
-        favoriteCount,
         tokenBalance
       })
     } catch (error) {
@@ -142,7 +137,6 @@ Page({
           userId: '--',
           photoCount: 0,
           deviceCount: 0,
-          favoriteCount: 0,
           tokenBalance: 0
         })
       }
@@ -188,15 +182,8 @@ Page({
   // 投屏记录页（含失败记录/重新投屏）仍保留，由投屏结果页的「投屏明细」进入。
   // 2026-08-06 的「我的」设计稿里又画了这一行，未恢复，原因见 mine.wxml 里的注释。
 
-  // 2026-08-06 新增：官方图库的收藏列表
-  goFavorites() {
-    if (!app.requireLogin()) {
-      return
-    }
-    wx.navigateTo({
-      url: '/subpackages/gallery/favorites/favorites'
-    })
-  },
+  // 「我的收藏」入口 2026-08-12 按产品要求移到官方图库页（分类条右侧常驻），本页不再提供，
+  // 跳转逻辑随之搬到 subpackages/gallery/list/list.js 的 goFavorites。
 
   // 2026-08-06 新增：Token 管理（余额 / 套餐 / 购买与消费记录）
   goToken() {

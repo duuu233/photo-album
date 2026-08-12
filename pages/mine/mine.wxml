@@ -80,8 +80,11 @@
         </view>
       </view>
       <view class="section-title help-title">服务与帮助</view>
-      <!-- 星币管理（原「Token管理」）与 我的收藏 于本轮从「常用功能」并入此处，顺序按产品要求：
-           星币管理 → 我的收藏 → 操作指南 → 设置。右侧数值沿用原来的余额/收藏数。 -->
+      <!-- 星币管理（原「Token管理」）于 2026-08-06 从「常用功能」并入此处，顺序按产品要求：
+           星币管理 → 操作指南 → 设置。右侧数值沿用原来的余额。
+           ⚠️ 「我的收藏」这一行 2026-08-12 按产品要求**移出本页**，改为常驻在官方图库页
+           分类条右侧（`subpackages/gallery/list`）—— 收藏的是官方图库的图，入口贴着图库更顺手。
+           别再在这里加回来：两个入口指同一个页面只会让人犹豫点哪个。 -->
       <view class="service-list">
         <view
           class="service-row"
@@ -94,22 +97,6 @@
             mode="aspectFit" />
           <text>星币管理</text>
           <text class="service-value">剩余 {{tokenBalance}} 星币</text>
-          <image
-            class="chevron"
-            src="/assets/images/mine-icon-right.png"
-            mode="aspectFit" />
-        </view>
-        <view
-          class="service-row"
-          hover-class="none"
-          bindtap="goFavorites"
-        >
-          <image
-            class="service-icon"
-            src="/assets/images/mine-icon-favorite.png"
-            mode="aspectFit" />
-          <text>我的收藏</text>
-          <text class="service-value">{{favoriteCount}} 张照片</text>
           <image
             class="chevron"
             src="/assets/images/mine-icon-right.png"

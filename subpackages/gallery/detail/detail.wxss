@@ -9,6 +9,9 @@
   background: #f8f5ef;
 }
 
+/* 2026-08-12：大图由 46vh 放到 58vh（产品「让上面的图片尽量多展示出来」）。
+   白卡那一侧同步下移（.detail-spacer），两个数**必须一起改**：图高于留白 3vh，
+   白卡的圆角正好压在图上，设计稿如此。 */
 .detail-hero {
   position: absolute;
   top: 0;
@@ -16,7 +19,7 @@
   left: 0;
   z-index: 0;
   width: 100%;
-  height: 46vh;
+  height: 58vh;
   background: #dfe3e9;
 }
 
@@ -32,14 +35,18 @@
   min-height: 100%;
 }
 
-/* 让出大图的可见高度。比 .detail-hero 的 46vh 略小，白卡的圆角正好压在图上（设计稿如此）。 */
+/* 让出大图的可见高度。比 .detail-hero 的 58vh 略小，白卡的圆角正好压在图上（设计稿如此）。 */
 .detail-spacer {
-  flex: 0 0 43vh;
+  flex: 0 0 55vh;
 }
 
+/* 白卡：去掉「适用设备尺寸」后内容只剩标题行 + 简介，上下留白一并收紧
+   （padding-top 44 → 32rpx），整块比原来矮一大截，大图因此多露出约 12vh。
+   ⚠️ padding-bottom 这段是从原来的 .detail-sizes 移过来的：贴底的「开始投屏」是
+   absolute、留在滚动区外，不预留它的高度，简介长一点就会从按钮底下穿过去。 */
 .detail-card {
   flex: 1 1 auto;
-  padding: 44rpx 48rpx 0;
+  padding: 32rpx 48rpx calc(196rpx + var(--safe-bottom, 0px));
   background: #ffffff;
   border-radius: 32rpx 32rpx 0 0;
 }
@@ -93,44 +100,14 @@
 }
 
 .detail-desc {
-  margin-top: 26rpx;
+  margin-top: 22rpx;
   color: #8b8f96;
   font-size: 28rpx;
-  line-height: 1.65;
+  line-height: 1.6;
 }
 
-.detail-divider {
-  height: 1rpx;
-  margin: 36rpx 0 34rpx;
-  background: rgba(207, 214, 224, 0.7);
-}
-
-.detail-section-title {
-  color: #2a2d32;
-  font-size: 32rpx;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.detail-sizes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20rpx;
-  margin-top: 26rpx;
-  /* 让开贴底的「开始投屏」按钮：按钮是 absolute、留在滚动区外，
-     不预留这段高度的话，尺寸标签多到换行时会从按钮底下穿过去。 */
-  padding-bottom: calc(196rpx + var(--safe-bottom, 0px));
-}
-
-.detail-size-tag {
-  height: 68rpx;
-  padding: 0 28rpx;
-  color: #6b7078;
-  border: 2rpx solid rgba(160, 166, 174, 0.45);
-  border-radius: 999rpx;
-  font-size: 28rpx;
-  line-height: 64rpx;
-}
+/* 「适用设备尺寸」那一组样式（.detail-divider / .detail-section-title / .detail-sizes /
+   .detail-size-tag）随该区块于 2026-08-12 一并删除，没有别处引用。 */
 
 /* ── 设备选择弹层 ───────────────────────────────────────────────────────── */
 .picker-mask {

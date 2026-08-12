@@ -5,6 +5,8 @@
 const fold = require('../../../utils/fold-adapt')
 const galleryApi = require('../../../utils/gallery-api')
 
+const app = getApp()
+
 // 瀑布流单列宽度（rpx）：(750 − 48×2 页面留白 − 20 列间距) ÷ 2。
 // 与 subpackages/gallery/shared.wxss 的 .waterfall 布局一一对应，改一处要同时改另一处。
 const COLUMN_WIDTH = 317
@@ -91,6 +93,18 @@ Page(fold.adapt({
     }
     wx.navigateTo({
       url: `/subpackages/gallery/detail/detail?id=${encodeURIComponent(id)}`
+    })
+  },
+
+  // 「我的收藏」：2026-08-12 由「我的」页迁到本页分类条右端（收藏的就是官方图库的图，
+  // 入口贴着图库更顺手）。登录闸与原来一致——收藏是账号数据，未登录进去只会是空页。
+  // 回到本页时 onShow 会按当前分类重拉，收藏页里取消的收藏在这边也就跟着更新了。
+  goFavorites() {
+    if (!app.requireLogin()) {
+      return
+    }
+    wx.navigateTo({
+      url: '/subpackages/gallery/favorites/favorites'
     })
   }
 }))

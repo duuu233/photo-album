@@ -26,6 +26,14 @@ Component({
     immersive: {
       type: Boolean,
       value: false
+    },
+    // 紧凑档（2026-08-12，官方图库页产品反馈「顶部 nav 太大了」）：
+    // 标题小一号 + **去掉导航行下方那段留白**（navHeight 少算一个 rowTop）。
+    // ⚠️ 能省的只有这一段：导航行本身必须与微信原生胶囊同高同轴（rowTop/rowHeight 都取自
+    // getMenuButtonBoundingClientRect），压它就会和胶囊错位，那是端上改不了的几何约束。
+    compact: {
+      type: Boolean,
+      value: false
     }
   },
 
@@ -49,7 +57,9 @@ Component({
         const rowHeight = hasMenu ? menu.height : 32
         const capsuleSpace = hasMenu ? Math.max(72, (info.windowWidth || 375) - menu.left) : 96
 
-        const navHeight = statusBarHeight + rowTop * 2 + rowHeight
+        // 常规档导航行上下各留一个 rowTop；紧凑档只留上面那段（下面交给页面自己安排间距）
+        const navHeight =
+          statusBarHeight + rowTop * (this.data.compact ? 1 : 2) + rowHeight
         this.setData({
           statusBarHeight,
           navHeight,

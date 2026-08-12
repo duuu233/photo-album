@@ -139,6 +139,12 @@
   text-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.32);
 }
 
+/* 紧凑档（`compact` 属性）：标题降一号。高度那一半在 page-nav.js 里减（少算一个 rowTop）——
+   两处必须一起看：只改字号，导航行下面那段留白还在，视觉上并不会「变小」。 */
+.page-nav--compact .nav-title {
+  font-size: 30rpx;
+}
+
 .nav-title {
   position: absolute;
   top: 50%;

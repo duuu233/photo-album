@@ -28,7 +28,13 @@ global.wx = {
     if (!handler) {
       throw new Error(`用例没有为 ${path} 准备桩数据`)
     }
-    options.success({ statusCode: 200, data: { retCode: 200, retData: handler(options) } })
+    const result = handler(options)
+    // 桩可以直接给整个响应体（`{ body: {...} }`），用来还原「retCode 非 200」这类失败响应
+    options.success(
+      result && result.body
+        ? { statusCode: 200, data: result.body }
+        : { statusCode: 200, data: { retCode: 200, retData: result } }
+    )
   }
 }
 
@@ -107,23 +113,42 @@ const api = require('../utils/api')
     assert.equal(aiToken.LIMIT_ENABLED, undefined, '同上：LIMIT_ENABLED 开关一并删除')
 
     routes['/Client/Order/chkAiDialogue'] = () => true
-    assert.equal(await aiToken.canDialogue(), true)
+    assert.deepEqual(await aiToken.canDialogue(), { allowed: true, required: 0, message: '' })
 
-    routes['/Client/Order/chkAiDialogue'] = () => false
-    assert.equal(await aiToken.canDialogue(), false, 'retData=false 即不允许发起对话')
+    // ⚠️ 真机实测的「不够」长这样：**不是 200 + false，而是整条响应就报错**
+    //    {"retCode":403,"retMsg":"token余额不足，需要最低余额：30.0 token","retData":null}
+    //    也就是说否定答复是从 request.js 的**失败**分支出来的。不认这个码就会被当成
+    //    「接口挂了」而放行（下面那条兜底），余额为 0 的用户照样能发——这条用例就是防它。
+    routes['/Client/Order/chkAiDialogue'] = () => ({
+      body: {
+        retCode: 403,
+        retMsg: 'token余额不足，需要最低余额：30.0 token',
+        retData: null
+      }
+    })
+    const denied = await aiToken.canDialogue()
+    assert.equal(denied.allowed, false, '403 必须判成「不许发」，不能当接口异常放行')
+    assert.equal(denied.required, 30, '最低余额要从 retMsg 里抠出来，供页面拼友好文案')
+    assert.match(denied.message, /余额不足/, '后端原话留着：抠不到数字时页面拿它兜底措辞')
 
-    // 布尔以外的形态：字符串 'true' 认，其余（null/数字/对象）一律按「判不出来 → 不放行」
-    routes['/Client/Order/chkAiDialogue'] = () => 'true'
-    assert.equal(await aiToken.canDialogue(), true)
+    // 200 一律放行，**不要求 retData 严格等于 true**：拒绝由 403 表达，
+    // 真在这一支纠结字段有没有，只会在后端某天不下发时把所有人拦在门外
     routes['/Client/Order/chkAiDialogue'] = () => null
-    assert.equal(await aiToken.canDialogue(), false)
+    assert.equal((await aiToken.canDialogue()).allowed, true)
+    // 除非后端明确说 false
+    routes['/Client/Order/chkAiDialogue'] = () => false
+    assert.equal((await aiToken.canDialogue()).allowed, false)
 
     // 校验接口**本身**挂了要放行：读不到判据就把 AI 锁死是更糟的失败模式，
     // 真不够的话紧接着那次 /chat 服务端照样会拒，用户看到的才是真实原因
     routes['/Client/Order/chkAiDialogue'] = () => {
       throw new Error('boom')
     }
-    assert.equal(await aiToken.canDialogue(), true, '接口异常放行，由服务端在 /chat 侧兜底')
+    assert.equal(
+      (await aiToken.canDialogue()).allowed,
+      true,
+      '接口异常放行，由服务端在 /chat 侧兜底'
+    )
   }
 
   // ── ⑤ 端上不得扣费：spend 必须已经下线 ──────────────────────────────────

@@ -72,19 +72,24 @@ function refreshBalance() {
 }
 
 // 能否发起一次 AI 对话 —— **唯一的闸**，由服务端裁决
-//（2026-08-12 新增 GET /Client/Order/chkAiDialogue，retData 是布尔）。
-// 每次发送前调一次：够不够扣、有没有免费额度、账号有没有被停，全在服务端那一个判断里，
-// 端上不再拿余额数字自己推（推不准，见文件头）。
+//（2026-08-12 新增 GET /Client/Order/chkAiDialogue）。每次发送前调一次：够不够扣、
+// 有没有免费额度、账号有没有被停，全在服务端那一个判断里，端上不再拿余额数字自己推
+//（推不准，见文件头）。
 //
-// ⚠️ **校验接口本身失败一律放行**（网络抖动、后端 5xx、字段缺失都算）：读不到判据就把 AI
-// 锁死是更糟的失败模式 —— 真不够的话紧接着那次 /chat 服务端照样会拒，用户看到的是真实原因，
-// 而不是被端上一次网络故障扣上一顶「星币不足」的帽子。同理由见本文件 fetchBalance。
+// 返回 { allowed, required, message }：
+//   allowed=false 时 required 是后端给的最低余额（真机实测 30，抠不到为 0），
+//   message 是后端原话，供页面在抠不到数字时兜底措辞（见 chat.js showTokenShortModal）。
+//
+// ⚠️ **只有明确的 403「余额不足」才拦**；校验接口自己出问题（网络抖动、后端 5xx）一律放行：
+// 读不到判据就把 AI 锁死是更糟的失败模式 —— 真不够的话紧接着那次 /chat 服务端照样会拒，
+// 用户看到的是真实原因，而不是被端上一次网络故障扣上一顶「星币不足」的帽子。
+// 同理由见本文件 fetchBalance。
 async function canDialogue() {
   try {
     return await tokenApi.checkAiDialogue({ showError: false })
   } catch (error) {
     console.warn('[AI] chkAiDialogue 校验失败，本次放行（由服务端在 /chat 侧兜底）', error)
-    return true
+    return { allowed: true, required: 0, message: '' }
   }
 }
 

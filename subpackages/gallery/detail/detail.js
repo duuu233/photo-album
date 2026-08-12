@@ -17,12 +17,13 @@ const app = getApp()
 
 Page(fold.adapt({
   data: {
+    // sizes 不再进页面数据：「适用设备尺寸」区块 2026-08-12 已按产品要求去掉
+    //（接口/mock 仍下发该字段，只是端上不渲染，见 detail.wxml 里的注释）。
     photo: {
       id: '',
       title: '',
       desc: '',
       url: '',
-      sizes: [],
       favorited: false
     },
     projecting: false,
