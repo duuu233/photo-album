@@ -144,3 +144,35 @@
   width: 24rpx;
   height: 24rpx;
 }
+
+/* ── 支付中的全屏 loading（2026-08-12 需求 2）────────────────────────────────
+   z-index 必须高于贴底「立即购买」按钮那一层（.cta-button 是 z-index:2，
+   见 styles/cta-button.wxss 与折叠屏方案里「留在滚动区外的元素要显式抬层」那条）。
+   转圈复用全局 .page-loading__spinner（app.wxss），不另造一份。 */
+.pay-loading-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.pay-loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 280rpx;
+  padding: 48rpx 52rpx 40rpx;
+  background: #ffffff;
+  border-radius: 24rpx;
+  box-shadow: 0 16rpx 40rpx rgba(30, 24, 16, 0.16);
+}
+
+.pay-loading-text {
+  margin-top: 26rpx;
+  color: #32363c;
+  font-size: 28rpx;
+  line-height: 1;
+}

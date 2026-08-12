@@ -976,9 +976,14 @@ Page(fold.adapt({
     })
   },
 
-  goRecords() {
+  // 「投屏明细」那一行的去处（2026-08-12 产品改口径）：由**投屏记录页**改成**我的相册**。
+  // 刚投完屏的人想看的是「刚才那几张现在长什么样」，我的相册渲染的正是投屏成功的记录；
+  // 投屏记录页（含失败记录 + 重新投屏）本身没下线，仍从「我的 → 我的相册」那条路进。
+  // ⚠️ 行文案与右侧 n/n 计数没动：它说的是本次明细，与去哪一页是两回事。
+  // 仍用 redirectTo（与改动前一致）：结果页是流程终点，不该留在返回栈里让人退回来。
+  goAlbum() {
     wx.redirectTo({
-      url: '/subpackages/projection/records/records'
+      url: '/subpackages/album/list/list'
     })
   },
 

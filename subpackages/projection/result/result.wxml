@@ -51,7 +51,8 @@
         <text class="info-value">{{deviceName}}</text>
       </view>
       <view class="thin-divider"></view>
-      <view class="info-row" hover-class="none" bindtap="goRecords">
+      <!-- 点这一行进「我的相册」（2026-08-12 由投屏记录页改，见 result.js goAlbum） -->
+      <view class="info-row" hover-class="none" bindtap="goAlbum">
         <view class="info-icon"><image class="info-icon__img" src="/assets/images/projection-result-icon02.png" mode="aspectFit"></image></view>
         <text class="info-label">投屏明细</text>
         <!-- n/n = 实际参与投屏/本次所选：只有分子(/前)按成功/失败变色(绿/红)，「/分母」始终灰色；部分成功两段并排 -->

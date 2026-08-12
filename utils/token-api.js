@@ -283,7 +283,8 @@ function getRecords(type, options) {
  * @returns {Promise<object>} 原样返回后端响应：orderId / orderNo / amount，
  *          以及（后端补齐后的）虚拟支付签名参数
  */
-function addOrder(pkg, channel) {
+function addOrder(pkg, channel, options) {
+  const opts = options || {}
   const goodsId = toNumber(pkg && pkg.goodsId, 0) || toNumber(pkg && pkg.id, 0)
   const payType = PAY_TYPE[channel] || PAY_TYPE.wechat
 
@@ -316,7 +317,13 @@ function addOrder(pkg, channel) {
     .post(
       '/Client/Order/addOrder',
       { goodsId, payType },
-      { mock: false, loading: true, loadingText: '下单中' }
+      {
+        mock: false,
+        // 默认弹原生「下单中」；purchase() 里关掉它 —— 那条链路整段由页面的全屏 loading 盖着
+        // （2026-08-12），再叠一层原生 loading 就是两个转圈叠在一起
+        loading: opts.loading !== false,
+        loadingText: '下单中'
+      }
     )
     .then(data => {
       const order = data || {}
@@ -426,8 +433,23 @@ async function confirmPurchase(order, baselineBalance, delays) {
  *
  * @param {object} pkg 套餐（getPackages 归一后的对象）
  * @param {'wechat'|'paypal'} channel
+ * @param {(stage: 'order'|'pay'|'confirm') => void} [onStage] 进度回调（2026-08-12 新增）。
+ *        整条链路最长约 10s（建单 ~1s + 拉起支付 + 到账轮询 9.4s），页面的全屏 loading 靠它
+ *        换文案，用户才知道在等什么；不传即完全不影响原有行为。
  */
-async function purchase(pkg, channel) {
+async function purchase(pkg, channel, onStage) {
+  // 回调抛错不能连累支付流程（页面 setData 出问题时尤其）
+  const notify = stage => {
+    if (typeof onStage !== 'function') {
+      return
+    }
+    try {
+      onStage(stage)
+    } catch (error) {
+      console.warn('[虚拟支付] 进度回调异常', error)
+    }
+  }
+
   if (channel === 'paypal') {
     return Promise.reject({
       code: 'PAYPAL_UNAVAILABLE',
@@ -457,7 +479,9 @@ async function purchase(pkg, channel) {
     baselineBalance = null
   }
 
-  const order = await addOrder(pkg, channel)
+  notify('order')
+  // loading:false —— 这条链路整段由页面的全屏 loading 盖着，不再叠一层原生「下单中」
+  const order = await addOrder(pkg, channel, { loading: false })
   const payParams = wxVirtualPay.extractPayParams(order)
 
   if (!payParams) {
@@ -468,8 +492,12 @@ async function purchase(pkg, channel) {
     })
   }
 
+  notify('pay')
   await wxVirtualPay.requestPayment(payParams)
 
+  // 支付回来到这里最长还要等约 9.4s（退避轮询等服务端到账），页面文案在这一步换成「确认到账」，
+  // 否则用户会觉得付完卡住了
+  notify('confirm')
   // 超时兜底查的是**我们平台的订单号**（getPayQuery 的 orderNo），不是微信侧 outTradeNo。
   const confirmed = await confirmPurchase(
     {

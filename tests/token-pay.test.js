@@ -261,7 +261,13 @@ const FAST_DELAYS = [1, 1, 1]
     // 整条链路：建单 → 拉起支付 → 确认。支付调用只带微信文档列出的四个参数
     balance = 100
     setTimeout(() => { balance = 620 }, 5)
-    const bought = await tokenApi.purchase({ goodsId: 12, id: '12' }, 'wechat')
+    // onStage（2026-08-12 新增）：确认购买页的全屏 loading 靠它换文案。
+    // 顺序错了/漏了，用户就会对着「正在下单…」干等最长 9.4s 的到账轮询
+    const stages = []
+    const bought = await tokenApi.purchase({ goodsId: 12, id: '12' }, 'wechat', stage =>
+      stages.push(stage)
+    )
+    assert.deepEqual(stages, ['order', 'pay', 'confirm'], '三个阶段要按顺序回调')
     assert.equal(payCalls.length, 1)
     assert.equal(payCalls[0].signData, signData)
     assert.equal(payCalls[0].mode, 'short_series_goods')

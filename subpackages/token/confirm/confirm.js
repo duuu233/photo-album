@@ -14,6 +14,15 @@ const fold = require('../../../utils/fold-adapt')
 const tokenApi = require('../../../utils/token-api')
 const toast = require('../../../utils/toast')
 
+// tokenApi.purchase 的三个阶段 → 全屏 loading 上的文案。
+// 'pay' 阶段微信的原生支付面板会盖住整屏，这句其实只在面板弹出前后各闪一下，
+// 但缺了它，面板取消回来的一瞬间会看到上一句「正在下单」，对不上。
+const PAYING_TEXT = {
+  order: '正在下单…',
+  pay: '正在拉起支付…',
+  confirm: '正在确认到账…'
+}
+
 Page(fold.adapt({
   data: {
     pkg: {
@@ -25,7 +34,10 @@ Page(fold.adapt({
       totalTokens: 0
     },
     channel: 'wechat',
-    paying: false
+    paying: false,
+    // 支付中的全屏 loading 文案（2026-08-12 需求 2）。整条链路最长约 10s
+    // （建单 ~1s + 拉起支付 + 到账轮询 9.4s），分阶段换文案，用户才知道在等什么。
+    payingText: PAYING_TEXT.order
   },
 
   onLoad(query) {
@@ -70,10 +82,14 @@ Page(fold.adapt({
       return
     }
     this._paying = true
-    this.setData({ paying: true })
+    this.setData({ paying: true, payingText: PAYING_TEXT.order })
 
     try {
-      const result = await tokenApi.purchase(this.data.pkg, this.data.channel)
+      const result = await tokenApi.purchase(
+        this.data.pkg,
+        this.data.channel,
+        stage => this.setData({ payingText: PAYING_TEXT[stage] || PAYING_TEXT.order })
+      )
       this.showPurchaseResult(result)
     } catch (error) {
       this.showPurchaseError(error)
@@ -144,5 +160,8 @@ Page(fold.adapt({
       showCancel: false,
       confirmText: '知道了'
     })
-  }
+  },
+
+  // 全屏 loading 的遮罩用它吃掉滚动与点击（项目惯例）
+  noop() {}
 }))

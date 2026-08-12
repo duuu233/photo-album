@@ -53,5 +53,16 @@
     {{paying ? '支付中…' : '立即购买'}}
   </view>
 
+  <!-- 支付中的全屏 loading（2026-08-12 需求 2）：盖住整条链路 ——
+       建单约 1s → 拉起微信支付 → 等服务端到账（退避轮询最长约 9.4s）。
+       中间这段没有任何原生反馈，用户容易以为没反应而反复点（onPay 的同步闸只防重复下单，
+       不解决「看起来卡住了」）。catchtouchmove 顺手把底下的滚动也吃掉。 -->
+  <view wx:if="{{paying}}" class="pay-loading-mask" catchtouchmove="noop" catchtap="noop">
+    <view class="pay-loading-card">
+      <view class="page-loading__spinner"></view>
+      <view class="pay-loading-text">{{payingText}}</view>
+    </view>
+  </view>
+
   <global-toast id="globalToast"></global-toast>
 </view>
