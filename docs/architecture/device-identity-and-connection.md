@@ -104,6 +104,14 @@ Flutter 是 `refreshDevices` 整体替换列表而 `_carryOverBleFields` 不搬 
 - 权限、蓝牙关闭、扫描超时、未找到目标和连接失败应保留具体原因，不统一吞成“请先连接设备”。
 - 连接候选后发现完整 ID 不匹配不是普通网络失败，而是身份校验失败；应断开并继续寻找正确候选。
 - 后端历史记录若只有 4 字节短 ID，应视为无效身份，迁移或删除后重新绑定。
+- **连上候选之后的任何失败都必须断链**，不只是身份不匹配那一种（2026-08-12）。
+  `0x01` 读超时／`CMD_PENDING`／服务特征异常同样会让这条链路留在设备上，而设备是单连接、
+  被占着时**不再广播**：此后任何入口都是「未搜索到该电子纸设备」。
+- **不得存在「账本外的物理连接」**。`disconnectAll` / `disconnectOthers` 都按 `sessions` 账本遍历，
+  会话一旦清账（或从未登记成功），这条连接就谁也关不掉，只有杀掉小程序才恢复——现场表述正是
+  「OTA 升级失败后连不上，退出小程序重进就好了」。扫描前由 `device-ble.releaseStrayConnections()`
+  按 `getConnectedBluetoothDevices([FF00, FF10])` 与两个会话池对账，把无主连接释放掉。
+  > 判据要收紧：只查带本产品服务的连接，且跳过 device-ble / ota-ble 任一侧仍持有会话的 deviceId。
 
 ## 验证
 
@@ -111,6 +119,7 @@ Flutter 是 `refreshDevices` 整体替换列表而 `_carryOverBleFields` 不搬 
 - `tests/active-device-identity.test.js`
 - `tests/device-id-4-6-compat.test.js`（广播 4/6 字节两种场景的候选筛选与会话认领）
 - `tests/advertising-parse.test.js`
+- `tests/ota-connection-safety.test.js`（连上后 0x01 失败必须断链、无主连接清道夫、OTA 收尾力度分级）
 - 真机至少使用两台相同型号、相同尺寸设备验证点击 A 不会连接 B。
 
 ## 历史来源

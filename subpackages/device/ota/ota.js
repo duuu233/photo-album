@@ -205,16 +205,28 @@ Page(fold.adapt({
     }
   },
 
+  // 页面退出 = 中断本轮升级。中断的收尾必须与「失败」完全同一套（2026-08-12）：
+  // 只断 OTA(FF10) 会话是不够的 —— FF10 与 FF00 是**同一条物理连接**，断了链路却把 device-ble 的
+  // FF00 会话、0x01 读数、电量缓存留在原地，详情页/首页会拿着一条死链路继续发指令，
+  // 一直等到超时（现场那句「升级完/中断后读不到设备信息」）。
+  // 设备侧同理：中断时它的 DFU 状态机停在半截，只有断链才能让它复位，否则下次 START 必被回 0x05。
   onUnload() {
+    const interrupted = this.data.state === 'upgrading'
     this._abortUpgrade = true
 
-    // 仅在真的开过 OTA(FF10) 会话时才断开，避免未升级时误关详情页持有的 FF00 连接。
+    // 仅在真的开过 OTA(FF10) 会话、或本轮升级正在跑时才收尾，避免未升级时误关详情页持有的 FF00 连接。
     const bleDeviceId = this.getBleDeviceId()
-    if (bleDeviceId && otaBle.isConnected(bleDeviceId)) {
-      otaBle.disconnect(bleDeviceId)
+    if (bleDeviceId && (otaBle.isConnected(bleDeviceId) || interrupted)) {
+      otaBle.resetAfterUpgrade(bleDeviceId, interrupted ? '页面退出，中断本轮升级' : '离开升级页')
+    }
+    if (interrupted) {
+      // 记录级复位：直连缓存 + 全局选中设备的连接态。页面已在卸载，跳过 setData。
+      this.resetDeviceStateAfterUpgrade('升级中断（页面退出）', { skipSetData: true })
     }
 
     wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false })
+    // 返回拦截随页面一起走：升级中途被系统/异常路径卸载时，别把拦截留给下一个页面
+    wx.disableAlertBeforeUnload && wx.disableAlertBeforeUnload({ fail: () => {} })
   },
 
   setSystemMetrics() {
@@ -610,7 +622,9 @@ Page(fold.adapt({
   //   · 本页 device 与 app.globalData.selectedDevice 里的 connected/bleDeviceId —— 设备已经重启，
   //     再把它当「已连接」会让详情页/首页拿着死句柄发指令，表现就是「读不到设备信息」。
   // 下次要用这台设备时正常走一遍扫描重连即可（多花一次扫描，换来状态一定是真的）。
-  resetDeviceStateAfterUpgrade(reason) {
+  // options.skipSetData：页面正在卸载（onUnload 的中断收尾）时跳过 setData —— 此时 setData 不会生效，
+  // 但全局选中设备与直连缓存仍必须复位，否则下一个页面照旧拿着死句柄当「已连接」。
+  resetDeviceStateAfterUpgrade(reason, options = {}) {
     const device = this.data.device || {}
     const stableId = device.productDeviceId || device.deviceNo || ''
     console.log(`[OTA页] 收尾复位（${reason}）：清直连缓存 + 把设备标记为未连接`, {
@@ -629,7 +643,9 @@ Page(fold.adapt({
       bleDeviceId: '',
       connected: false
     })
-    this.setData({ device: reset })
+    if (!options.skipSetData) {
+      this.setData({ device: reset })
+    }
     const selected = app.globalData && app.globalData.selectedDevice
     if (selected && sameDevice(selected, reset) && typeof app.setSelectedDevice === 'function') {
       app.setSelectedDevice(Object.assign({}, selected, {
@@ -798,8 +814,14 @@ Page(fold.adapt({
         package: null
       })
 
-      if (app.globalData.selectedDevice && app.globalData.selectedDevice.id === updatedDevice.id) {
-        app.setSelectedDevice(updatedDevice)
+      // 合并而不是整体替换（2026-08-12）：本页的 device 来自 getUserProductDetail，
+      // 而 selectedDevice 上还挂着别处才拿得到的运行时字段（0x01/广播读到的 screenType、
+      // 首页/列表补的展示字段…）。整体替换会把它们一并抹掉，升级成功后详情页分辨率、
+      // OTA 面板预检(panelOfDevice 先看 screenType)这些都会跟着降级——
+      // 与三行前 resetDeviceStateAfterUpgrade 的合并口径保持一致。
+      const selectedNow = app.globalData.selectedDevice
+      if (selectedNow && sameDevice(selectedNow, updatedDevice)) {
+        app.setSelectedDevice(Object.assign({}, selectedNow, updatedDevice))
       }
 
       this.setData(Object.assign({
@@ -826,13 +848,22 @@ Page(fold.adapt({
       const message = aborted
         ? '升级已中断：升级过程中手机切到后台或页面离开。请保持屏幕常亮后重试。'
         : (error.message || '固件升级失败')
+      // 还没碰过设备就失败了（升级包下载/读取/校验阶段，见 ota-ble.upgradeFirmware 的 deviceUntouched）：
+      // 链路与设备都完好，ota-ble 也没有断链。此时再做记录级复位，就会把用户已经连着的那条连接
+      // 标记成未连接、并删掉直连缓存 —— 下次连接白花一整轮扫描。一次网络失败不该有这种代价。
+      const deviceUntouched = !!(error && error.deviceUntouched)
       console.warn('[OTA页] 升级失败/中断', {
         是否用户中断: !!aborted,
         最后阶段: this._lastPhase || '(未进入任何阶段)',
+        是否碰过设备: !deviceUntouched,
         错误: message
       })
       // 失败同样复位：链路已被 ota-ble 断掉，页面再显示「已连接」就会误导下一次操作
-      this.resetDeviceStateAfterUpgrade('升级失败/中断')
+      if (!deviceUntouched) {
+        this.resetDeviceStateAfterUpgrade('升级失败/中断')
+      } else {
+        console.log('[OTA页] 本轮未与设备交互（包下载/校验阶段失败），保留连接与直连缓存')
+      }
 
       await api.reportDeviceFirmwareUpgrade(this.data.id, {
         status: 'fail',

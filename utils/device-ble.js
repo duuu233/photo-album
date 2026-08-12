@@ -1638,6 +1638,61 @@ function disconnect(deviceId) {
   }
 }
 
+// 「无主连接」清道夫（2026-08-12）：把**微信确实连着、但本机账本上没有会话**的相框连接释放掉。
+//
+// 为什么需要它：设备是单连接，被占用时不再广播。而 disconnectAll/disconnectOthers 都是按
+// `sessions` 账本遍历的——一旦某条物理连接没能登记进账本（连上后服务发现/0x01 校验中途失败、
+// 或会话已被清账但 closeBLEConnection 静默失败），它就成了「谁都看不见、谁也关不掉」的无主连接，
+// 设备从此不广播，任何入口都「未搜索到该电子纸设备」，**只有杀掉小程序才能恢复**
+//（现场表述：OTA 升级失败后连不上，退出小程序重进就好了——重进之所以有效，正是因为
+//  微信会释放小程序持有的全部 BLE 连接）。这里把「重启小程序」这一手做成扫描前的自愈。
+//
+// 判据收得很紧，不会误伤：
+//   · 只查带本产品服务(FF00 主服务 / FF10 OTA 服务)的已连接设备，别家蓝牙设备根本不在结果里；
+//   · 本模块或 ota-ble 任一侧还有活动会话的 deviceId 一律跳过（那是正在用的连接）；
+//   · 全程 best-effort，查不到/关不掉都不抛错，最多退化成「和以前一样」。
+// 返回被释放的 deviceId 列表（供日志/测试断言）。
+async function releaseStrayConnections() {
+  if (!wx.getConnectedBluetoothDevices || !wx.closeBLEConnection) {
+    return [] // 老基础库不支持查询：保持原行为
+  }
+  let connected = []
+  try {
+    const res = await wxp(wx.getConnectedBluetoothDevices, {
+      services: [protocol.SERVICE_UUID, protocol.OTA_SERVICE_UUID]
+    })
+    connected = (res && res.devices) || []
+  } catch (error) {
+    return [] // 查询失败保守不动
+  }
+  // 惰性 require：ota-ble 与本模块互相引用，顶部 require 在加载期会拿到半成品导出对象。
+  let otaConnected = () => false
+  try {
+    const otaBle = require('./ota-ble')
+    otaConnected = id => otaBle.isConnected(id)
+  } catch (error) {
+    // 取不到 OTA 模块时按「没有 OTA 会话」处理，只会更保守（可能少关一条）
+  }
+  const released = []
+  connected.forEach(item => {
+    const id = item && item.deviceId
+    if (!id || isConnected(id) || otaConnected(id)) {
+      return // 正在用的连接，不能动
+    }
+    console.warn(
+      '[设备连接] 发现无主 BLE 连接（微信连着、本机无会话），释放它以便设备恢复广播',
+      { deviceId: id, name: item.name || '' }
+    )
+    try {
+      wx.closeBLEConnection({ deviceId: id })
+      released.push(id)
+    } catch (error) {
+      // 关不掉就算了：下次扫描前还会再试一次
+    }
+  })
+  return released
+}
+
 // 回前台/唤醒时的「连接体检」：微信在后台（尤其鸿蒙 HarmonyOS）会挂起蓝牙，断开时 onBLEConnectionStateChange
 // 未必补发断开事件——内存会话可能仍 ready=true 而底层其实已断。此时 isConnected() 会谎报「已连接」，导致：
 //   ① 首页/详情页显示「已连接」实为假象；
@@ -1762,6 +1817,7 @@ module.exports = {
   disconnectAll,
   disconnectOthers,
   disconnect,
+  releaseStrayConnections,
   reconcileConnections
 }
 

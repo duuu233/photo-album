@@ -84,7 +84,7 @@ function normalizeSignData(value) {
 
 /**
  * 从下单响应里取出虚拟支付四件套（mode / signData / paySig / signature）。
- * 平铺、包一层都认；额外把 env、offerId、outTradeNo 一并带出来供订单查询与日志使用。
+ * 平铺、包一层都认；额外把 env、offerId、outTradeNo 一并带出来供日志/排查使用。
  * @returns {object|null} 参数不全时返回 null，由调用方给出「后端未下发支付参数」的明确报错
  */
 function extractPayParams(source) {
@@ -110,8 +110,9 @@ function extractPayParams(source) {
     }
 
     const mode = SUPPORTED_MODES.indexOf(item.mode) === -1 ? MODE_GOODS : item.mode
-    // env 只在我们自己查订单时用（getWxVirtualPayQueryOrder 要传），
-    // 支付调用本身不带——它已经在 signData 里了，重复传反而多一个对不上的机会。
+    // env 现在只留作日志/排查线索：支付调用本身不带（它已经在 signData 里了，重复传反而
+    // 多一个对不上的机会），查单也不再需要它——`/Client/Pay/getPayQuery` 只收
+    // `payType` + `orderNo`（我们平台的订单号），旧的 `getWxVirtualPayQueryOrder` 已下线。
     const env = Number(item.env) === 1 ? 1 : 0
 
     return {

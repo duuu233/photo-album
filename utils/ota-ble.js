@@ -1205,6 +1205,12 @@ async function transferData(session, bytes, options) {
   let headerAck = null
   let headerError = null
   for (let attempt = 1; attempt <= headerAttempts; attempt++) {
+    // 中断要能及时收手：头信息握手最坏是 3 次 × 10s 等待 + 退避，不查中断标记的话，
+    // 用户切后台/退页面后这里还会空转半分钟，链路也就多占设备半分钟（设备被占着时不广播）。
+    // 与 doStart / 数据窗口同一套口径。
+    if (shouldAbort()) {
+      throw new Error('OTA_ABORTED')
+    }
     if (attempt > 1) {
       session.headerResent = true
       // 退避重发：设备刚说「状态不对」或干脆没应答，多半还没从上一轮 DFU / 擦写忙态里出来，
@@ -1659,9 +1665,15 @@ async function upgradeFirmware(deviceId, pkg, options = {}) {
     逐帧日志: !!options.verboseFrames
   })
 
+  // 「这一轮到底碰没碰过设备」（2026-08-12）：准备升级包（下载/读文件/解析 128 字节头信息）
+  // 全程不碰蓝牙，它失败时设备与链路都还是好好的。此前这类失败也会走收尾复位，把用户**已经连着的
+  // 那条连接断掉、直连缓存删掉**——一次网络抖动就要求用户重新扫描连接，正是「升级失败影响原有功能」。
+  // 只有真的开始与设备交互（连 FF10 / 发 START 及之后）才需要断链复位。
+  let deviceTouched = false
   // 真机 DFU：读包 + 握手 + 传输全程与设备/蓝牙交互，出错统一补「设备-」前缀（OTA_ABORTED 等内部信号除外）。
   try {
     const prepared = await prepareFirmware(pkg, options)
+    deviceTouched = true
 
     let result
     try {
@@ -1708,6 +1720,18 @@ async function upgradeFirmware(deviceId, pkg, options = {}) {
     return Object.assign({ size: prepared.size, crc32: prepared.crc32 }, result)
   } catch (error) {
     otaWarn('====== 固件升级失败/中断 ======', (error && error.message) || error)
+    if (!deviceTouched) {
+      // 还没碰过设备就失败了（包下载失败/文件读不出/包本身不合法）：设备与这条连接都完好，
+      // 断链清缓存只会白白把用户已有的连接拆掉。打上标记，让页面也别做记录级的收尾复位。
+      otaWarn('本轮尚未与设备发生任何交互，保留现有连接与缓存（不做收尾复位）')
+      const packageError =
+        error instanceof Error ? error : new Error((error && error.message) || 'OTA 升级失败')
+      packageError.code = packageError.code || 'OTA_PACKAGE_FAILED'
+      packageError.deviceUntouched = true
+      // 这类失败的来源是网络/文件/升级包，不是设备：别给它扣「电子纸设备-」的帽子，
+      // 否则用户看到「电子纸设备-固件包下载失败(404)」会去排查设备（前缀约定见 prefixDeviceError）。
+      throw packageError
+    }
     // 失败/中断后必须断开 OTA 链路：设备的 DFU 状态机停在半途，留着同一条连接再 START 必被回
     // 0x05「设备状态错误」——现场实测就是第一次传输超时后，之后每次点升级都是 0x05。
     // 断链让设备自行复位；下次升级由 ota.js 的 ensureConnectedDevice 重新扫连。
@@ -1720,7 +1744,18 @@ function disconnect(deviceId) {
   otaLog('主动断开 OTA 链路（让设备的 DFU 状态机复位）', { deviceId })
   cleanupSession(deviceId, '已主动断开 OTA 连接')
   if (wx.closeBLEConnection && deviceId) {
-    wx.closeBLEConnection({ deviceId })
+    // 关链路的结果必须落到日志里：会话账本已经在上面清掉了，若这次 close 静默失败，
+    // 这条连接就成了「谁都看不见、谁也关不掉」的无主连接，占着设备使其不再广播
+    //（表现为升级失败后怎么都搜不到设备，杀掉小程序才恢复）。
+    // 自愈由 device-ble.releaseStrayConnections 在下次扫描前兜底，这里只负责把线索留下。
+    wx.closeBLEConnection({
+      deviceId,
+      fail: error =>
+        otaWarn('断开 OTA 链路失败（可能残留无主连接，下次扫描前会被清道夫释放）', {
+          deviceId,
+          errMsg: (error && error.errMsg) || error
+        })
+    })
   }
 }
 
@@ -1784,6 +1819,10 @@ module.exports = {
   prepareFirmware,
   upgradeFirmware,
   disconnect,
+  // 一轮 OTA 的统一收尾（断链 + 清这条链路上的全部缓存）。除 upgradeFirmware 内部的成功/失败/重试
+  // 三条路径外，**升级页中断退出时也要调它**：只断 OTA 会话会把 FF00 会话与 0x01/电量读数留在原地，
+  // 详情页随后会拿着一条死链路发指令一直超时。
+  resetAfterUpgrade,
   isConnected,
   setMonitor
 }

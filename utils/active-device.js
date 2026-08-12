@@ -680,6 +680,11 @@ async function scanMatchConnect(device, match, onConnectStart) {
     throw new Error('请先授权定位后再连接')
   }
   await bluetooth.openAdapter()
+  // 扫描前先把「微信连着、本机账上没有」的无主连接释放掉（2026-08-12）：设备是单连接，
+  // 被这样一条连接占着时它**不再广播**，接下来扫多久都是「未搜索到该电子纸设备」，
+  // 而账本里没有它、disconnectAll 也关不掉——此前只能靠杀掉小程序恢复。
+  // best-effort：查不到/关不掉都不影响本次扫描。
+  await deviceBle.releaseStrayConnections().catch(() => [])
 
   let lastConnectError = null
   for (let round = 0; round < SCAN_CONNECT_ROUNDS; round++) {
@@ -710,10 +715,22 @@ async function scanMatchConnect(device, match, onConnectStart) {
       return Object.assign({}, target, { info })
     } catch (error) {
       lastConnectError = error
+      // ⚠️ 任何失败都必须把这条链路释放掉，不能只在 DEVICE_ID_MISMATCH 时断（2026-08-12 修）。
+      //
+      // 走到这里有两种可能：连接就没建起来（底层常残留一条半连接），或者连上了但
+      // **0x01 读不回来**（`指令 0x1 应答超时`／CMD_PENDING／设备刚被中断的 DFU 折腾过）。
+      // 后者此前不断链，代价是灾难性的：设备是单连接，被我们占着时**不再广播**，
+      // 而 device-ble 的会话账本此刻要么没登记、要么登记了却因缺 verifiedSerials 认领不到，
+      // `disconnectAll`/`disconnectOthers` 都是按账本遍历的，也就再也找不到这条连接——
+      // 于是此后每次点连接都是「未搜索到该电子纸设备」，**只有杀掉小程序重进才恢复**。
+      // 现场表述正是「OTA 升级失败后设备连不上，退出小程序重新进入就又正常了」。
+      // 断链是幂等的（没有连接时就是一次空关），代价只有下一轮重扫，所以一律断。
+      if (target && target.deviceId) {
+        deviceBle.disconnect(target.deviceId)
+      }
       if (error && error.code === 'DEVICE_ID_MISMATCH' && target && target.deviceId) {
         rejectedDeviceIds[target.deviceId] = true
         connCache.remove(directConnectKey(device))
-        deviceBle.disconnect(target.deviceId)
       }
       if (round === SCAN_CONNECT_ROUNDS - 1) {
         throw error
