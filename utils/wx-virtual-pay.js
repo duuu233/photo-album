@@ -45,6 +45,12 @@ const ERROR_MESSAGES = {
   '-15005': '支付签名校验失败，请联系客服（服务端 paySig/signature 与 signData 不匹配）'
 }
 
+// iOS 端（苹果 IAP 通道）的设备门槛，来自微信官方「小程序虚拟支付 / iOS 端接入」：
+// 「iPhone、iPad，且升级至 iOS 15 及以上；微信客户端升级至 8.0.68 及以上」。
+// 同页还写明：苹果支付**不支持沙箱环境**、仅支持中国大陆 App Store 账户、最低支付金额 1 元。
+const IOS_MIN_SYSTEM_VERSION = 15
+const IOS_MIN_WECHAT_VERSION = '8.0.68'
+
 // 排查提示，**只进控制台、不进弹窗文案**（2026-08-12）。
 // 这些含义来自微信开放社区的帖子整理而非官方错误码表，把握不到 ERROR_MESSAGES 的程度：
 // 写进弹窗会把用户和客服按一个可能错的方向带偏，而打在日志里，开发看着它去查、查错了也只损失自己几分钟。
@@ -56,7 +62,12 @@ const ERROR_MESSAGES = {
 const ERROR_MSG_HINTS = [
   {
     keyword: 'INVALID_PLATFORM',
-    hint: '当前平台不允许虚拟支付：iPhone 需要先在「小程序后台 → 微信虚拟支付 → 基本配置 → 启用苹果 IAP 支付」，安卓不需要这一步。与 signData、签名都无关——换台安卓机试，能过就实锤是它'
+    hint:
+      '当前平台不允许虚拟支付，与 signData、签名都无关。iOS（苹果 IAP 通道）要**同时**满足：' +
+      '① 小程序已开通虚拟支付且已启用苹果 IAP；② **已配置「小程序简称」**（官方前置条件，最容易漏）；' +
+      `③ 设备 iOS ${IOS_MIN_SYSTEM_VERSION}+ 且微信客户端 ${IOS_MIN_WECHAT_VERSION}+；` +
+      '④ **不支持沙箱**，env 必须为 0；⑤ 用户 Apple ID 为中国大陆区；⑥ 单笔金额 ≥ 1 元。' +
+      '上面「调起」那两行日志已经把 ③④⑥ 逐条核过了，剩下的看后台配置与 Apple ID 归属'
   },
   {
     keyword: 'PRODUCT_ID_EMPTY',
@@ -98,20 +109,65 @@ function hintOf(rawCode, errMsg) {
   return ERROR_CODE_HINTS[String(rawCode)] || ''
 }
 
-// 运行平台。虚拟支付在 iOS / 安卓上的开通条件不同（iOS 要单独启用苹果 IAP），
-// 出错时不知道跑在哪个平台等于少一半线索。getDeviceInfo 是 2.20.1+，旧库退回 getSystemInfoSync。
-function currentPlatform() {
+// 运行环境。虚拟支付在 iOS / 安卓上的门槛完全不同，出错时不知道跑在什么设备上等于少一半线索。
+// getDeviceInfo / getAppBaseInfo 是 2.20.1+，旧库退回 getSystemInfoSync（已废弃但字段最全）。
+function runtimeInfo() {
+  const info = { platform: '', system: '', wechatVersion: '', sdkVersion: '' }
   try {
-    if (typeof wx.getDeviceInfo === 'function') {
-      return (wx.getDeviceInfo() || {}).platform || ''
-    }
-    if (typeof wx.getSystemInfoSync === 'function') {
-      return (wx.getSystemInfoSync() || {}).platform || ''
-    }
+    const sys =
+      typeof wx.getSystemInfoSync === 'function' ? wx.getSystemInfoSync() || {} : {}
+    const device = typeof wx.getDeviceInfo === 'function' ? wx.getDeviceInfo() || {} : {}
+    const base = typeof wx.getAppBaseInfo === 'function' ? wx.getAppBaseInfo() || {} : {}
+    info.platform = device.platform || sys.platform || ''
+    info.system = device.system || sys.system || ''
+    info.wechatVersion = base.version || sys.version || ''
+    info.sdkVersion = base.SDKVersion || sys.SDKVersion || ''
   } catch (error) {
-    // 取不到就算了，只是日志里少一个字段
+    // 取不到就算了，只是日志里少几个字段
   }
-  return ''
+  return info
+}
+
+// 版本号比较（"8.0.65" < "8.0.68"）。逐段按数字比，段数不同的补 0——
+// 字符串直接比会把 "8.0.9" 判成大于 "8.0.68"。
+function versionLt(version, target) {
+  const left = String(version || '').split('.')
+  const right = String(target || '').split('.')
+  const length = Math.max(left.length, right.length)
+  for (let i = 0; i < length; i++) {
+    const a = parseInt(left[i], 10) || 0
+    const b = parseInt(right[i], 10) || 0
+    if (a !== b) {
+      return a < b
+    }
+  }
+  return false
+}
+
+/**
+ * iOS 端（苹果 IAP 通道）的硬性门槛自检 —— 官方「小程序虚拟支付 / iOS 端接入」列出的条件里，
+ * 端上能自己判的这几条。任何一条不满足，无论 signData 多正确都是 -15001 INVALID_PLATFORM。
+ * 判不了的（是否启用苹果 IAP、有没有配小程序简称、Apple ID 是不是大陆区）只能去后台/设备上看。
+ * @returns {string[]} 命中的问题描述，空数组表示端上这几条都过了
+ */
+function checkIosGate(env, parsedSignData) {
+  const problems = []
+  // system 形如 "iOS 16.1"，取出主版本号即可
+  const systemVersion = parseInt(String(env.system).replace(/[^\d]/g, '').slice(0, 2), 10)
+  if (systemVersion && systemVersion < IOS_MIN_SYSTEM_VERSION) {
+    problems.push(`设备 ${env.system} 低于 iOS ${IOS_MIN_SYSTEM_VERSION}`)
+  }
+  if (env.wechatVersion && versionLt(env.wechatVersion, IOS_MIN_WECHAT_VERSION)) {
+    problems.push(`微信客户端 ${env.wechatVersion} 低于 ${IOS_MIN_WECHAT_VERSION}`)
+  }
+  const signed = parsedSignData || {}
+  if (Number(signed.env) === 1) {
+    problems.push('signData.env=1（沙箱）：苹果通道**不支持沙箱**，只能走现网 env=0')
+  }
+  if (typeof signed.goodsPrice === 'number' && signed.goodsPrice < 100) {
+    problems.push(`goodsPrice=${signed.goodsPrice} 分低于苹果通道的最低单笔金额 1 元`)
+  }
+  return problems
 }
 
 // signData 里最容易签错的几个字段。同样**只提示不拦截**：端上无权判定后端签了什么才算对，
@@ -164,21 +220,18 @@ function digest(value) {
  */
 function logPayParams(params) {
   const raw = params.signData
-  const platform = currentPlatform()
+  const env = runtimeInfo()
   console.log('[虚拟支付] 调起 wx.requestVirtualPayment', {
-    平台: platform || '(未知)',
+    平台: env.platform || '(未知)',
+    系统: env.system || '(未知)',
+    微信版本: env.wechatVersion || '(未知)',
+    基础库: env.sdkVersion || '(未知)',
     mode: params.mode,
     'signData(原文)': raw,
     'signData(字节数)': raw.length,
     paySig: digest(params.paySig),
     signature: digest(params.signature)
   })
-  if (platform === 'ios') {
-    console.warn(
-      '[虚拟支付] ⚠️ 当前是 iOS：虚拟支付要求先在「小程序后台 → 微信虚拟支付 → 基本配置」启用苹果 IAP 支付，' +
-        '未启用时无论参数多正确都会回 -15001 INVALID_PLATFORM（安卓无此限制）'
-    )
-  }
 
   let parsed = null
   try {
@@ -207,6 +260,21 @@ function logPayParams(params) {
       })
     }
   })
+
+  if (env.platform === 'ios') {
+    const problems = checkIosGate(env, parsed)
+    if (problems.length) {
+      console.warn('[虚拟支付] ⚠️ iOS 门槛未过，必定回 -15001 INVALID_PLATFORM：', problems)
+      return
+    }
+    // 端上能判的都过了，就把「只能去后台看」的那几条列出来，省得又从参数查起
+    console.log(
+      '[虚拟支付] iOS 端上可自检的门槛均已通过（系统版本 / 微信版本 / 非沙箱 / 金额）。' +
+        `若仍回 INVALID_PLATFORM，剩下的只能去后台与设备上核：` +
+        '① 虚拟支付是否已启用苹果 IAP；② **小程序简称是否已配置**（官方前置条件，最容易漏）；' +
+        '③ 当前微信登录的 Apple ID 是否为中国大陆区'
+    )
+  }
 }
 
 function isAvailable() {
@@ -312,8 +380,11 @@ function describeFail(error) {
     }
   }
 
+  const env = runtimeInfo()
   console.warn('[虚拟支付] 支付失败', {
-    平台: currentPlatform() || '(未知)',
+    平台: env.platform || '(未知)',
+    系统: env.system || '(未知)',
+    微信版本: env.wechatVersion || '(未知)',
     errCode: rawCode === '' ? '(微信未给码)' : rawCode,
     errMsg,
     排查提示: hintOf(rawCode, errMsg) || '(无对照，把上面这行连同 signData 一起发后端核对)',
