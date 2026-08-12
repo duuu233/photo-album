@@ -71,11 +71,12 @@
   line-height: 1;
 }
 
+/* ⚠️ 选中与未选中都**不带阴影**（2026-08-12 产品要求）：选中态原来挂着一层橙色投影，
+   在这条紧挨着导航栏的分类里显得浮、也和未选中态不是一个平面。两态都靠底色区分即可。 */
 .category-chip--active {
   color: #ffffff;
   background: linear-gradient(90deg, #ff8338, #f2621f);
   border-color: transparent;
-  box-shadow: 0 10rpx 24rpx rgba(255, 106, 30, 0.24);
 }
 
 /* 底栏是 `position: fixed`、bottom = 26rpx + 安全区、高 112rpx，
