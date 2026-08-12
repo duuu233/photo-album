@@ -110,12 +110,14 @@
               </view>
             </view>
 
-            <image
-              wx:elif="{{item.loading}}"
-              class="loading-bubble"
-              src="/assets/images/ai-loading-bubble.png"
-              mode="widthFix"
-            ></image>
+            <!-- 「星宝正在想」的等待气泡（2026-08-12 需求 5）：原来是一张静态图
+                 assets/images/ai-loading-bubble.png（白胶囊 + 三个点），胶囊与阴影已按原图
+                 用 CSS 还原，三个点改成常见的依次跳动动画（见 chat.wxss .loading-bubble）。 -->
+            <view wx:elif="{{item.loading}}" class="loading-bubble">
+              <view class="loading-bubble__dot"></view>
+              <view class="loading-bubble__dot"></view>
+              <view class="loading-bubble__dot"></view>
+            </view>
 
             <block wx:else>
               <!-- 流式预描述（SSE pre_text）：秒回的一句「正在为您绘制…」，生成完成后保留，当作这条回复的前情提要 -->
@@ -579,6 +581,35 @@
       <view class="confirm-actions">
         <view class="confirm-cancel" hover-class="none" bindtap="closeDeleteDialog">取消</view>
         <view class="confirm-primary" hover-class="none" bindtap="confirmDeleteMessage">确认</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 星币不足（2026-08-12 需求 1）：与上面的删除确认框**同一套自绘版式**
+       （图标 + 标题/说明 + 取消/确认两颗按钮）。原来这里是 wx.showModal，
+       原生弹框的圆角、字号、按钮排布与全站都对不上，一眼就看得出是两拨人做的。
+       文案由 showTokenShortModal 拼（数字取自后端 chkAiDialogue 的 retMsg）。 -->
+  <view
+    wx:if="{{tokenDialog.show}}"
+    class="confirm-mask"
+    catchtouchmove="noop"
+    bindtap="closeTokenDialog"
+  >
+    <view class="confirm-dialog" catchtap="noop">
+      <view class="confirm-icon">
+        <image
+          class="confirm-icon__image"
+          src="/assets/images/ai-token-spark.png"
+          mode="aspectFit"
+        ></image>
+      </view>
+      <view class="confirm-copy">
+        <view class="confirm-title">星币不足</view>
+        <view class="confirm-desc">{{tokenDialog.desc}}</view>
+      </view>
+      <view class="confirm-actions">
+        <view class="confirm-cancel" hover-class="none" bindtap="closeTokenDialog">知道了</view>
+        <view class="confirm-primary" hover-class="none" bindtap="goBuyTokens">去购买</view>
       </view>
     </view>
   </view>

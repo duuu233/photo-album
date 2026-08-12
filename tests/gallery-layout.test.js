@@ -26,8 +26,9 @@ const declaration = (body, prop) => {
 
 const ruleBody = (file, selector) => {
   const text = readCode(file)
+  // 规则前面可能是上一条规则的 `}`、文件开头，或 `@import "…";` 的分号
   const match = new RegExp(
-    `(?:^|\\})\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`
+    `(?:^|\\}|;)\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`
   ).exec(text)
   assert.ok(match, `${file} 里找不到规则 ${selector}`)
   return match[1]
@@ -85,6 +86,52 @@ const ruleBody = (file, selector) => {
   assert.ok(
     /0\s+0\s+auto/.test(declaration(favBody, 'flex') || ''),
     '.category-fav 必须 flex: 0 0 auto，否则会被分类压扁'
+  )
+  // 产品明确要求「和收藏模块在样式上做一点点区分，不要一样」：收藏入口不能再是分类那种胶囊
+  assert.ok(
+    !declaration(favBody, 'border-radius'),
+    '.category-fav 不该再画成胶囊——和分类长一样，用户会当成「最后一个分类」'
+  )
+  assert.ok(
+    declaration(favBody, 'border-left'),
+    '.category-fav 用竖分隔线与分类分家（形状/底色/颜色三处都不同才分得开）'
+  )
+
+  // 分类条上下要留出间距（需求 3）：收紧的是导航栏，不是这一条
+  const barBody = ruleBody(listWxss, '.category-bar')
+  const margin = declaration(barBody, 'margin') || ''
+  const top = Number((/^\s*(\d+)rpx/.exec(margin) || [])[1])
+  assert.ok(top >= 16, `.category-bar 上外边距 ${top}rpx 太小，产品要求「上下再多一点间距」`)
+}
+
+// ── ④ 图库列表卡片右上角的红心：按收藏态变化，且**不重拉列表** ─────────────
+{
+  const listWxml = readCode('subpackages/gallery/list/list.wxml')
+  assert.ok(/photo-fav/.test(listWxml), '列表卡片右上角要有收藏角标')
+  assert.ok(
+    /photo\.favorited\s*\?/.test(listWxml),
+    '角标图必须跟着 favorited 走（实心/描边两态），否则点了没反应'
+  )
+  assert.ok(
+    /catchtap="onToggleFavorite"/.test(listWxml),
+    '角标要用 catchtap：bindtap 会冒泡到卡片上，点收藏会连带进详情页'
+  )
+  assert.ok(
+    /data-col=/.test(listWxml) && /data-index=/.test(listWxml),
+    '要带上列号与下标，才能只改这一张的状态（见下条：不能重拉）'
+  )
+
+  const listJs = readCode('subpackages/gallery/list/list.js')
+  const toggle = listJs.slice(listJs.indexOf('onToggleFavorite'))
+  const body = toggle.slice(0, toggle.indexOf('goDetail'))
+  assert.ok(
+    !/loadPhotos/.test(body),
+    '收藏后不能重拉列表：瀑布流会按新数据重排，用户正在看的卡片被挪走' +
+      '（「我的收藏」页要重拉是因为那张图得消失，两页诉求不同）'
+  )
+  assert.ok(
+    /columns\[/.test(body),
+    '应按 data-col/data-index 原地改 favorited'
   )
 }
 

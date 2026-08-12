@@ -24,8 +24,10 @@
       </view>
     </scroll-view>
 
+    <!-- 样式刻意与分类胶囊分家（2026-08-12 需求 3）：不画胶囊底，改成「竖分隔线 + 红心 + 橙字」，
+         一眼能看出它是入口而不是第 N 个分类（此前同款胶囊，只是底色深一点，太像分类了）。 -->
     <view class="category-fav" hover-class="none" bindtap="goFavorites">
-      <image class="category-fav-icon" src="/assets/images/mine-icon-favorite.png" mode="aspectFit"></image>
+      <image class="category-fav-icon" src="/assets/images/gallery-fav-badge.png" mode="aspectFit"></image>
       <text class="category-fav-text">收藏</text>
     </view>
   </view>
@@ -45,6 +47,23 @@
           >
             <view class="photo-media" style="height: {{photo.imgHeight}}rpx;">
               <image class="photo-image" src="{{photo.url}}" mode="aspectFill" lazy-load="{{true}}"></image>
+              <!-- 右上角红心（2026-08-12 需求 4，与「我的收藏」页同一套角标与逻辑）：
+                   实心 = 已收藏，描边 = 未收藏。catchtap：点角标只切收藏态，不冒泡进详情页。
+                   data-col/data-index 是为了**原地**改这一张的状态——收藏不该让瀑布流重排，
+                   重排会把用户正在看的卡片挪走（同 .photo-media 预占高度那条口径）。 -->
+              <view
+                class="photo-fav"
+                data-id="{{photo.id}}"
+                data-col="{{colIndex}}"
+                data-index="{{index}}"
+                catchtap="onToggleFavorite"
+              >
+                <image
+                  class="photo-fav-icon"
+                  src="{{photo.favorited ? '/assets/images/gallery-fav-badge.png' : '/assets/images/heart-outline.png'}}"
+                  mode="aspectFit"
+                ></image>
+              </view>
             </view>
             <view class="photo-title">{{photo.title}}</view>
           </view>

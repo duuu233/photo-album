@@ -4,6 +4,7 @@
 //    真实接口应带分页，滚到底加载下一页；mock 阶段一次给全，先不做分页。
 const fold = require('../../../utils/fold-adapt')
 const galleryApi = require('../../../utils/gallery-api')
+const toast = require('../../../utils/toast')
 
 const app = getApp()
 
@@ -84,6 +85,45 @@ Page(fold.adapt({
       imgHeight: Math.round(COLUMN_WIDTH / (Number(photo.ratio) || 1))
     }))
     return galleryApi.splitColumns(sized)
+  },
+
+  /**
+   * 卡片右上角红心：就地切收藏态（2026-08-12 需求 4，逻辑与「我的收藏」页同源）。
+   *
+   * 与收藏页的差别只有一处、但很关键：**收藏页取消后那张图要消失、必须重拉列表；
+   * 本页不能重拉**。图库列表里收藏与否都还在列表上，重拉会让瀑布流按新数据重排，
+   * 用户正在看的卡片被挪走 —— 所以这里只按 data-col/data-index 原地改那一张的 favorited。
+   *
+   * 先请求、后改 UI：收藏态的真相在服务端（现为 mock），先乐观改再回滚的写法，
+   * 在失败时会让红心闪一下又弹回去，比慢 200ms 更难受。
+   */
+  async onToggleFavorite(event) {
+    const dataset = event.currentTarget.dataset
+    const id = dataset.id
+    if (!id || this._toggling) {
+      return
+    }
+    if (!app.requireLogin()) {
+      return
+    }
+    // 同步闸：连点两下会对同一张图切两次，最后一次的结果还可能先回来
+    this._toggling = true
+    try {
+      const favorited = await galleryApi.toggleFavorite(id)
+      const col = Number(dataset.col)
+      const index = Number(dataset.index)
+      const photo =
+        this.data.columns[col] && this.data.columns[col][index]
+      // 切分类等原因导致这一格已经不是刚才那张图了，就别改错人（整页数据自会刷新）
+      if (photo && photo.id === id) {
+        this.setData({ [`columns[${col}][${index}].favorited`]: favorited })
+      }
+      toast.show(favorited ? '已收藏' : '已取消收藏')
+    } catch (error) {
+      toast.show('操作失败，请重试')
+    } finally {
+      this._toggling = false
+    }
   },
 
   goDetail(event) {

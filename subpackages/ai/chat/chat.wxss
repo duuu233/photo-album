@@ -257,9 +257,55 @@
   box-shadow: none;
 }
 
+/* 等待气泡（2026-08-12 需求 5：三个点改成动态 loading）。
+   ⚠️ 胶囊与阴影要与原来那张 assets/images/ai-loading-bubble.png **看着一样**，这几个数就是
+   从原图量出来的：画布 213×151，可见胶囊 x31~180 / y25~112（150×88，两端全圆），
+   填充 #fbf9f4，阴影是往下糊的暖褐色（画布底部留白比顶部多 14px）。
+   原来按 width:142rpx 渲染，换算后胶囊约 100×59rpx —— 下面就照这个尺寸画。
+   原图整体带约 21rpx 的透明左边距，改成 CSS 后胶囊左缘与其它 AI 气泡的背景左缘对齐了，
+   回复到达时不再有一次横向微跳。 */
 .loading-bubble {
-  display: block;
-  width: 142rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  width: 100rpx;
+  height: 60rpx;
+  background: #fbf9f4;
+  border-radius: 999rpx;
+  box-shadow: 0 10rpx 22rpx rgba(64, 42, 21, 0.1);
+}
+
+/* 三个点依次亮起+轻跳，一轮 1.2s。静止态压到 0.28 透明度（原图最左那个点也是淡的），
+   所以即使某些机型不跑动画，看到的仍是「三个深浅不一的点」，与原图接近，不会变成三个死点。 */
+.loading-bubble__dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #ff7a3d;
+  opacity: 0.28;
+  animation: loading-dot 1.2s ease-in-out infinite;
+}
+
+.loading-bubble__dot:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.loading-bubble__dot:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes loading-dot {
+  0%,
+  70%,
+  100% {
+    opacity: 0.28;
+    transform: translateY(0) scale(0.86);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-6rpx) scale(1);
+  }
 }
 
 .bubble--user {

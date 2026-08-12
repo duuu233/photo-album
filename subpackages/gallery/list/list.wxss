@@ -2,13 +2,14 @@
 
 /* 分类条整行留在滚动区外常驻：左边是可横滑的分类，右端是固定的「收藏」。
    z-index:2 保证整行压在 z-index:1 的 .fold-scroll 之上。
-   2026-08-12 连同导航栏一起收紧了上下留白（产品「顶部太大了」）：12/24rpx → 8/18rpx。 */
+   上下留白两次调整：导航栏收紧那轮跟着收到 8/18rpx，随后产品要求分类这一条**自己**再松开
+   （2026-08-12 需求 3）—— 收紧的是导航栏，不是分类条，两者是各自独立的诉求。 */
 .category-bar {
   position: relative;
   z-index: 2;
   display: flex;
   align-items: center;
-  margin: 8rpx 0 18rpx;
+  margin: 24rpx 0 30rpx;
   padding-right: 32rpx;
 }
 
@@ -42,32 +43,31 @@
 }
 
 /* 固定在右端的「收藏」入口（2026-08-12 由「我的」页迁来）。
-   与分类胶囊同高同款，但**不参与选中态**——它是跳转入口，不是第 N 个分类，
-   所以底色实一点、文字用主题橙，一眼能和分类区分开。
-   flex: 0 0 auto + 不换行：分类再多也压不扁它。 */
+   ⚠️ **刻意不做成胶囊**：它是跳转入口，不是第 N 个分类。首版给了个底色深一点的同款胶囊，
+   结果和分类挤在一行里像是「最后一个分类」（产品需求 3 要求区分）。现在改成
+   「竖分隔线 + 红心 + 橙字」——形状、底色、颜色三处都与分类不同，扫一眼就分得开。
+   flex: 0 0 auto：分类再多也压不扁它。 */
 .category-fav {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  height: 60rpx;
-  padding: 0 22rpx;
-  background: rgba(255, 255, 255, 0.92);
-  border: 2rpx solid rgba(255, 255, 255, 0.98);
-  border-radius: 999rpx;
-  box-shadow: 0 6rpx 16rpx rgba(125, 148, 181, 0.12);
+  height: 44rpx;
+  padding-left: 24rpx;
+  margin-left: 10rpx;
+  border-left: 2rpx solid rgba(120, 128, 138, 0.24);
 }
 
 .category-fav-icon {
   flex: 0 0 auto;
-  width: 30rpx;
-  height: 30rpx;
+  width: 32rpx;
+  height: 32rpx;
 }
 
 .category-fav-text {
   margin-left: 8rpx;
   color: #f2621f;
   font-size: 26rpx;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1;
 }
 

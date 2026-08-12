@@ -454,6 +454,10 @@ Page(fold.adapt({
     // { show, messageId(要删的消息本地 id), imageIndex(>=0 只删该张图，-1 删整条), title, desc }
     deleteDialog: { show: false, messageId: 0, imageIndex: -1, title: '', desc: '' },
 
+    // 星币不足确认框（2026-08-12 需求 1，改自 wx.showModal）：与 deleteDialog 同一套版式，
+    // desc 由 showTokenShortModal 现拼（数字来自后端 chkAiDialogue 的 retMsg）
+    tokenDialog: { show: false, desc: '' },
+
     // 投屏设备选择弹窗（未连接时弹出已绑定设备列表，需求「投屏流程」）
     devicePicker: { show: false, loading: false, devices: [], selectedId: '' },
 
@@ -921,6 +925,13 @@ Page(fold.adapt({
       }
       // 带上 pad（选图时由相册回的宽高算出）：用户图片气泡也先把高度占住，不等图加载完再顶内容
       const sendImages = images.filter(img => img.url).map(img => ({ url: img.url, pad: img.pad }))
+      // 星币校验排在**建会话之前**（2026-08-12 需求 2）：确定发得出去，才值得去占一条会话。
+      // 反过来的话，余额见底的用户每点一次发送就在服务端多留一条空的「新对话」——
+      // 每个用户上限 20 条，几次就占满了，还得自己去列表里删。
+      // 拦下时草稿与待发图原样保留（这里还没清），下面 sendChat 就不必再查一遍。
+      if (!(await this.guardAiDialogue())) {
+        return
+      }
       // 先把会话建出来，**再清输入框**。顺序不能反：建会话可能失败（网络异常 / 20013 会话已达上限），
       // 先清的话用户打的字和选的图就白没了——而「首次发送才建会话」之后，每轮新对话的第一条都会走到这。
       // sendChat 自己也会兜底建（一键生图那条路走的就是它，见其内注释），这里多这一趟纯粹是为了
@@ -933,7 +944,7 @@ Page(fold.adapt({
       }
       this.setData({ inputValue: '', pendingImages: [] })
       // await：让 submitting 一直持有到请求真正发出（sendChat 内 sending 接棒），中间不留空窗
-      const sent = await this.sendChat(text, undefined, sendImages)
+      const sent = await this.sendChat(text, undefined, sendImages, { dialogueChecked: true })
       // 没发出去（星币不足最常见，见 guardAiDialogue）就把草稿放回输入框：这时清空动作已经
       // 做了，不还回去用户就得照着记忆重打一遍——而「不够星币」恰恰是他每次发都会撞上的。
       if (!sent) {
@@ -951,7 +962,10 @@ Page(fold.adapt({
   // 返回是否真的发出去了：false = 被某道闸拦下（星币不足 / 未同意协议 / 建会话失败），
   // 调用方据此把草稿还回输入框（见 onSendTap）。**所有发送入口都汇到这里**，
   // 星币校验就放在这一处，别再往各入口散着加。
-  async sendChat(message, styleKey, imageUrls) {
+  //
+  // options.dialogueChecked：调用方已经查过星币了（onSendTap 要先查再建会话，见需求 2），
+  // 这里就别重复打一次接口 —— 一次用户动作只该产生一次校验请求。
+  async sendChat(message, styleKey, imageUrls, options) {
     if (this.data.sending || this.data.banned) {
       return false
     }
@@ -960,7 +974,7 @@ Page(fold.adapt({
     }
     // 服务端裁决「星币够不够发这一轮」。放在任何 setData **之前**：不够时用户气泡一条都不该上屏，
     // 否则界面上会闪出一句发不出去的话再被撤掉——而余额见底的用户**每次**发送都会走到这一步。
-    if (!(await this.guardAiDialogue())) {
+    if (!(options && options.dialogueChecked) && !(await this.guardAiDialogue())) {
       return false
     }
 
@@ -1690,6 +1704,9 @@ Page(fold.adapt({
   // 星币不足的统一弹窗：只有「个人中心-星币管理」一条出路，直接把人送过去，
   // 别让用户自己在页面里找（原文案只说「请前往」，用户还得退三层）。
   //
+  // 2026-08-12 需求 1：由 wx.showModal 改成页面自绘（chat.wxml 的 .confirm-mask/.confirm-dialog，
+  // 与删除确认框、「我的相册」删除弹窗同一套版式）—— 原生弹框的圆角/字号/按钮排布与全站对不上。
+  //
   // 文案来源（2026-08-12 真机）：后端原话是
   //   「token余额不足，需要最低余额：30.0 token」
   // ——「token」是内部叫法（对外一律「星币」）、「30.0」是浮点、整句还带着接口味，
@@ -1699,20 +1716,22 @@ Page(fold.adapt({
   showTokenShortModal(verdict) {
     const required = (verdict && verdict.required) || 0
     const fallback = String((verdict && verdict.message) || '').replace(/token/gi, '星币')
-    const content = required
+    const desc = required
       ? `发起一次 AI 对话至少需要 ${formatTokenAmount(required)} 星币，当前余额不足。购买后即可继续和星宝聊天。`
       : fallback || '当前星币余额不足，无法发起 AI 对话。购买后即可继续和星宝聊天。'
-    wx.showModal({
-      title: '星币不足',
-      content,
-      cancelText: '知道了',
-      confirmText: '去购买',
-      success: res => {
-        if (res.confirm) {
-          wx.navigateTo({ url: '/subpackages/token/index/index' })
-        }
-      }
-    })
+    this.setData({ tokenDialog: { show: true, desc } })
+  },
+
+  closeTokenDialog() {
+    if (this.data.tokenDialog.show) {
+      this.setData({ 'tokenDialog.show': false })
+    }
+  },
+
+  // 「去购买」：先收弹窗再跳，否则从星币管理页返回时它还盖在聊天上
+  goBuyTokens() {
+    this.setData({ 'tokenDialog.show': false })
+    wx.navigateTo({ url: '/subpackages/token/index/index' })
   },
 
   // 一次 AI 调用完成后对齐余额。

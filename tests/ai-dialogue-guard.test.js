@@ -13,6 +13,8 @@ const storage = { token: 'user-token', jwtToken: 'jwt-token', userInfo: { id: 'g
 
 let allowDialogue = true
 let chatRequests = []
+let sessionRequests = []
+let checkRequests = []
 let toasts = []
 let modals = []
 
@@ -48,6 +50,7 @@ global.wx = {
   request(options) {
     const url = String(options.url)
     if (url.indexOf('/Client/Order/chkAiDialogue') > -1) {
+      checkRequests.push(options)
       options.success({
         statusCode: 200,
         data: allowDialogue
@@ -65,6 +68,14 @@ global.wx = {
       options.success({
         statusCode: 200,
         data: { retCode: 200, retData: { availableToken: '0', totalToken: '0', consumeToken: '0' } }
+      })
+      return { abort() {} }
+    }
+    if (url.indexOf('/session/new') > -1) {
+      sessionRequests.push(options)
+      options.success({
+        statusCode: 200,
+        data: { success: true, data: { session_id: 'sess-new' } }
       })
       return { abort() {} }
     }
@@ -141,6 +152,8 @@ function createPage() {
   page._createReq = null
   page._retryByMessage = {}
   chatRequests = []
+  sessionRequests = []
+  checkRequests = []
   toasts = []
   modals = []
   albumCalls = []
@@ -159,16 +172,35 @@ async function testBlockedWhenNotAllowed() {
   assert.equal(page.data.messages.length, 0, '也不该把用户气泡先放上去再撤')
   assert.equal(page.data.inputValue, '画一只猫', '草稿必须还回输入框，别让用户重打一遍')
   assert.equal(page.data.sending, false, '没发出去就不能把发送按钮锁死')
-  assert.equal(modals.length, 1)
-  assert.equal(modals[0].title, '星币不足')
-  assert.equal(modals[0].confirmText, '去购买', '弹窗要给一条出路，不能只说「不够了」')
+  // 弹窗是**页面自绘**的（2026-08-12 需求 1，与删除确认框同一套版式），不再走 wx.showModal
+  assert.equal(modals.length, 0, '不该再用原生 wx.showModal，样式与全站对不上')
+  assert.equal(page.data.tokenDialog.show, true)
   // 数字取后端的（30.0 → 30，星币是整数计价，`.0` 只会让人以为还有小数位），
   // 话由端上说：后端原话带「token」和接口味，不能直接示人
   assert.equal(
-    modals[0].content,
+    page.data.tokenDialog.desc,
     '发起一次 AI 对话至少需要 30 星币，当前余额不足。购买后即可继续和星宝聊天。'
   )
-  assert.ok(!/token/i.test(modals[0].content), '对外一律「星币」，不许漏出 token 字样')
+  assert.ok(!/token/i.test(page.data.tokenDialog.desc), '对外一律「星币」，不许漏出 token 字样')
+}
+
+// ②' 星币不足时**连会话都不该建**（2026-08-12 需求 2：校验要排在 /session/new 之前）
+async function testNoSessionCreatedWhenBlocked() {
+  allowDialogue = false
+  const page = createPage()
+  page.data.sessionId = '' // 空态：这条消息本来会触发建会话
+  page.data.inputValue = '画一只猫'
+
+  await page.onSendTap()
+
+  assert.equal(
+    sessionRequests.length,
+    0,
+    '钱不够就别去占会话：每用户上限 20 条，余额见底的用户点几次就占满了'
+  )
+  assert.equal(chatRequests.length, 0)
+  assert.equal(page.data.sessionId, '')
+  assert.equal(page.data.tokenDialog.show, true)
 }
 
 // ② 允许：照常发出去
@@ -182,7 +214,12 @@ async function testPassesWhenAllowed() {
   assert.equal(chatRequests.length, 1, '校验通过就该照常发 /chat')
   assert.equal(page.data.inputValue, '', '发出去了才清草稿')
   assert.equal(page.data.messages.length, 2, '用户气泡 + AI 占位气泡')
-  assert.equal(modals.length, 0)
+  assert.equal(page.data.tokenDialog.show, false)
+  assert.equal(
+    checkRequests.length,
+    1,
+    '一次发送只该打一次校验：onSendTap 查过之后要把结论透传给 sendChat，别两处各打一遍'
+  )
   // 顺带把 usertoken 这个新参数在**页面链路**上再验一次（ai-stream-chat 验的是接口层）
   assert.equal(chatRequests[0].data.usertoken, 'user-token')
   page.stopGenerate(true)
@@ -211,6 +248,7 @@ async function testImageLimitIsFive() {
 
 ;(async () => {
   await testBlockedWhenNotAllowed()
+  await testNoSessionCreatedWhenBlocked()
   await testPassesWhenAllowed()
   await testImageLimitIsFive()
   console.log('ai dialogue guard tests passed')
