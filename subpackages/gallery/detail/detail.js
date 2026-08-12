@@ -6,7 +6,10 @@
 //   再进 preview 页；预热连接与 ensureConnection 由 preview/result 负责，这里不碰 BLE。
 //   见 docs/architecture/image-projection-pipeline.md。
 //
-// ⚠️ 图片数据与收藏关系来自 utils/gallery-api.js 的 mock，后端接口尚未提供。
+// 2026-08-12：图片数据与收藏关系由 mock 切到真实后端
+// （`GET /Client/Product/getProductImgDetail`、`POST /Client/Product/setImgCollected`，
+//  详见 utils/gallery-api.js）。详情是**唯一**能直接读到收藏态的接口（`isAlreadyCollected`），
+//  列表那边只能靠收藏列表在端上标记。
 const fold = require('../../../utils/fold-adapt')
 const galleryApi = require('../../../utils/gallery-api')
 const activeDevice = require('../../../utils/active-device')
@@ -65,7 +68,10 @@ Page(fold.adapt({
     }
     this._toggling = true
     try {
-      const favorited = await galleryApi.toggleFavorite(this.data.photo.id)
+      const favorited = await galleryApi.toggleFavorite(
+        this.data.photo.id,
+        this.data.photo.favorited
+      )
       this.setData({ 'photo.favorited': favorited })
       toast.show(favorited ? '已收藏' : '已取消收藏')
     } catch (error) {

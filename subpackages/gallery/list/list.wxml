@@ -32,7 +32,13 @@
     </view>
   </view>
 
-  <scroll-view class="fold-scroll" scroll-y="{{true}}">
+  <!-- lower-threshold 给 200px 提前量：瀑布流卡片高，贴到底再拉会让用户看见一段空白 -->
+  <scroll-view
+    class="fold-scroll"
+    scroll-y="{{true}}"
+    lower-threshold="{{200}}"
+    bindscrolltolower="onScrollToLower"
+  >
     <view class="fold-scroll-body gallery-scroll-body list-scroll-body">
       <view class="waterfall">
         <view wx:for="{{columns}}" wx:for-item="column" wx:for-index="colIndex" wx:key="colIndex" class="waterfall-column">
@@ -46,7 +52,18 @@
             bindtap="goDetail"
           >
             <view class="photo-media" style="height: {{photo.imgHeight}}rpx;">
-              <image class="photo-image" src="{{photo.url}}" mode="aspectFill" lazy-load="{{true}}"></image>
+              <!-- 列表用缩略图 imgThumb（详情/投屏才用原图）。
+                   bindload：后端列表项不给图片比例，加载完按真实宽高校正这一张的高度
+                   （见 list.js onImageLoad 与 gallery-api.js 文件头缺口①）。 -->
+              <image
+                class="photo-image"
+                src="{{photo.thumbUrl}}"
+                mode="aspectFill"
+                lazy-load="{{true}}"
+                data-col="{{colIndex}}"
+                data-index="{{index}}"
+                bindload="onImageLoad"
+              ></image>
               <!-- 右上角红心（2026-08-12 需求 4，与「我的收藏」页同一套角标与逻辑）：
                    heart-solid = 已收藏，heart-outline = 未收藏；半透明白圆底是 CSS 画的
                    （.photo-fav，图里只有心，见 shared.wxss）。
@@ -72,7 +89,13 @@
         </view>
       </view>
 
-      <view wx:if="{{!loading && !total}}" class="gallery-empty">该分类下还没有图片</view>
+      <view wx:if="{{loading}}" class="gallery-empty">加载中…</view>
+      <view wx:elif="{{!total}}" class="gallery-empty">该分类下还没有图片</view>
+
+      <!-- 翻页脚注：只在已有内容时出现，空态不叠一行「没有更多了」（同购买记录页口径） -->
+      <view wx:if="{{!loading && total}}" class="gallery-more">
+        {{loadingMore ? '加载中…' : (hasMore ? '上拉加载更多' : '没有更多了')}}
+      </view>
     </view>
   </scroll-view>
 

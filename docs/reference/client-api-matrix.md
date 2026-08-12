@@ -204,6 +204,28 @@ signature = hex(hmac_sha256(session_key, signData))
 端上已按「平铺或包一层（`payParams`/`payData`/`virtualPay`…）都认」解析，后端就位后无需再改客户端；
 在那之前走到支付这步会抛 `ORDER_PAY_PARAMS_MISSING`。
 
+## 官方图库（`/Client/Product/*`）
+
+2026-08-12 由本地 mock 切到真实后端（接口清单 `assets/图库接口地址清单.png`）。
+客户端封装：`utils/gallery-api.js`；页面 `subpackages/gallery/{list,detail,favorites}`。
+
+| 二级 | 接口 | 小程序 | gallery-api.js 方法 | 备注 |
+| --- | --- | --- | --- | --- |
+| 分类 | `GET /Client/Product/getImgCategory` | ✅ | `getCategories` | 出参 `categoryId`(int)/`categoryName`。**没有「全部」**——端上补一项 `id:''` 放在首位（列表接口的 `categoryId` 可选，不传即全部）。`id` 归一为字符串（页面比对 + 进 URL），提交时仍是数字 |
+| 图库列表 | `GET /Client/Product/getProductImgList` | ✅ | `getPhotos` | 分页 `pageIndex`/`pageSize`(+`categoryId`/`keyword`/`startDate`/`endDate`)，出参 `BasePageOutput<ClientProductImgApiOut>`：`productImgId`/`title`/`img`/`imgThumb`。判停优先 `pageCount`。⚠️ **无图片宽高/比例**、**无收藏态**，端上兜底见下 |
+| 图库详情 | `GET /Client/Product/getProductImgDetail` | ✅ | `getPhotoDetail` | 入参 `id`＝`productImgId`。出参 `content`(简介，**不叫 desc**)/`img`/`title`/`isAlreadyCollected`(**0/1，不是布尔**)/`productSizeList`+`productSizes`（「适用设备尺寸」，2026-08-12 已按产品要求从页面去掉，字段仍解出备用）。**这是唯一直接给收藏态的接口** |
+| 收藏/取消 | `POST /Client/Product/setImgCollected` | ✅ | `toggleFavorite` | 入参只有 `productImgId`（同一接口来回切）。⚠️ 出参 `BaseOutput<boolean>` 的布尔**语义未定**（「操作是否成功」还是「切换后的收藏态」文档没写），端上一律按**取反当前态**推新状态，原值只打日志 |
+| 收藏列表 | `GET /Client/Product/getProductImgCollectionList` | ✅ | `getFavorites` / `getFavoriteIds` | 分页，项与图库列表同结构（按定义都是已收藏）。`getFavoriteIds` 拉一页（200 条）只取 id，用于给图库列表标记收藏态 |
+
+⚠️ **两处后端缺口，端上正在兜**（补齐后端上兜底即可删，见 `utils/gallery-api.js` 文件头）：
+
+1. `ClientProductImgApiOut` **没有图片宽高/比例**。瀑布流必须在渲染前占好高度（否则图陆续到达时
+   把下方卡片一路顶走），现在按默认 3:4 占位、图片 `bindload` 后按真实宽高校正**那一张**。
+   请后端补 `width`/`height` 或 `ratio`（端上两种写法都已认）。
+2. `ClientProductImgApiOut` **没有收藏态**（只有详情有 `isAlreadyCollected`）。图库列表右上角的红心
+   要按收藏态显示实心/描边，现在另拉一页收藏列表在端上标记，等于每次进图库多一个请求。
+   请后端给列表项补 `isAlreadyCollected`。
+
 ## 小程序跳过清单（仅 App/PC 适用）
 
 | 接口 | 摘要 | 跳过原因 |

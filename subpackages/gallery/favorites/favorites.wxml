@@ -6,7 +6,12 @@
 
   <view class="fav-count">共收藏 <text class="fav-count-num">{{total}}</text> 张官方图片</view>
 
-  <scroll-view class="fold-scroll" scroll-y="{{true}}">
+  <scroll-view
+    class="fold-scroll"
+    scroll-y="{{true}}"
+    lower-threshold="{{200}}"
+    bindscrolltolower="onScrollToLower"
+  >
     <view class="fold-scroll-body gallery-scroll-body fav-scroll-body">
       <view class="waterfall">
         <view wx:for="{{columns}}" wx:for-item="column" wx:for-index="colIndex" wx:key="colIndex" class="waterfall-column">
@@ -20,7 +25,16 @@
             bindtap="goDetail"
           >
             <view class="photo-media" style="height: {{photo.imgHeight}}rpx;">
-              <image class="photo-image" src="{{photo.url}}" mode="aspectFill" lazy-load="{{true}}"></image>
+              <!-- 列表用缩略图；bindload 按真实宽高校正高度（后端列表项不给比例，同图库列表页） -->
+              <image
+                class="photo-image"
+                src="{{photo.thumbUrl}}"
+                mode="aspectFill"
+                lazy-load="{{true}}"
+                data-col="{{colIndex}}"
+                data-index="{{index}}"
+                bindload="onImageLoad"
+              ></image>
               <!-- catchtap：点角标只取消收藏，不冒泡进详情页 -->
               <view class="photo-fav" data-id="{{photo.id}}" catchtap="onToggleFavorite">
                 <image class="photo-fav-icon" src="/assets/images/heart-solid.png" mode="aspectFit"></image>
@@ -31,7 +45,12 @@
         </view>
       </view>
 
-      <view wx:if="{{!loading && !total}}" class="gallery-empty">还没有收藏任何官方图片</view>
+      <view wx:if="{{loading}}" class="gallery-empty">加载中…</view>
+      <view wx:elif="{{!total}}" class="gallery-empty">还没有收藏任何官方图片</view>
+
+      <view wx:if="{{!loading && total}}" class="gallery-more">
+        {{loadingMore ? '加载中…' : (hasMore ? '上拉加载更多' : '没有更多了')}}
+      </view>
     </view>
   </scroll-view>
 
