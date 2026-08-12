@@ -458,6 +458,9 @@ Page(fold.adapt({
     // desc 由 showTokenShortModal 现拼（数字来自后端 chkAiDialogue 的 retMsg）
     tokenDialog: { show: false, desc: '' },
 
+    // 未绑定设备提示（2026-08-12 需求 2，同样改自 wx.showModal）：进页面时 checkDeviceBound 决定弹不弹
+    bindDialog: { show: false },
+
     // 投屏设备选择弹窗（未连接时弹出已绑定设备列表，需求「投屏流程」）
     devicePicker: { show: false, loading: false, devices: [], selectedId: '' },
 
@@ -567,22 +570,26 @@ Page(fold.adapt({
       if (devices && devices.length) {
         return
       }
-      wx.showModal({
-        title: '提示',
-        content: '使用 AI 创作前请先绑定电子纸设备',
-        cancelText: '返回',
-        confirmText: '去绑定',
-        success: res => {
-          if (res.confirm) {
-            wx.navigateTo({ url: '/subpackages/device/bind/bind' })
-          } else {
-            wx.navigateBack()
-          }
-        }
-      })
+      // 2026-08-12 需求 2：由 wx.showModal 改成页面自绘（chat.wxml 的 .confirm-mask/.confirm-dialog，
+      // 与删除确认框、星币不足弹窗同一套版式）—— 原生弹框的圆角/字号/按钮排布与全站对不上。
+      // 遮罩**不做点外面关闭**：这是个二选一的决定（去绑定 / 返回），点空白处溜走会把用户留在
+      // 一个用不了投屏的页面上，还以为是自己点错了。
+      this.setData({ bindDialog: { show: true } })
     } catch (error) {
       // 查询失败（未登录/网络异常）不拦截，发送阶段的接口错误会如实提示
     }
+  },
+
+  // 「去绑定」：先收弹窗再跳，绑完返回本页时不会还盖着一层
+  goBindDevice() {
+    this.setData({ 'bindDialog.show': false })
+    wx.navigateTo({ url: '/subpackages/device/bind/bind' })
+  },
+
+  // 「返回」：与原生弹窗的取消键同义 —— 退回进入 AI 之前的那一页
+  onBindDialogBack() {
+    this.setData({ 'bindDialog.show': false })
+    this.goBack()
   },
 
   // 2026-07-25：原先这里消费 Storage(aiOpenSession)，把会话列表页传回的「打开某会话/退回空态」

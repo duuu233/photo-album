@@ -134,7 +134,7 @@
 | 相册 | - | ➖ | ✅ | - | 调用手机相册选择 → 处理图片 → 投屏流程 |
 | 用户权限 | - | ➖ | ✅ | - | 位置、蓝牙、相册权限 |
 | 搜索设备 | 拉取后端产品列表 | `GET /Client/Product/getProductList` | ✅ | `getProductList` | 配合蓝牙搜索 |
-| 绑定设备 | 绑定设备 | `POST /Client/UserProduct/addUserProduct` | ✅ | `addUserProduct` | `deviceId` 必须是连接后 `0x01` 返回的完整 6 字节 ID（统一 `AA:BB:CC:DD:EE:FF`）；禁止广播 4 字节短 ID 或微信 BLE deviceId |
+| 绑定设备 | 绑定设备 | `POST /Client/UserProduct/addUserProduct` | ✅ | `addUserProduct` | `deviceId` 必须是连接后 `0x01` 返回的完整 6 字节 ID（统一 `AA:BB:CC:DD:EE:FF`）；禁止广播 4 字节短 ID 或微信 BLE deviceId。**2026-08-12 后端改动**：重新绑定一台曾解绑过的设备时，出参 `ClientUserProductDetailApiOut.productName` 会回带**上次保存的昵称**，绑定后的命名弹窗要带出它 —— ⚠️ 端上 `api.bindDevice` 里要连 `name` 一起以后端为准，否则会被 `normalizeDevice` 里排在前面的蓝牙广播名盖住 |
 | 投屏流程 | - | ➖ | ✅ | - | 选图 → 选设备 → 预览（预处理尺寸）→ 确认投屏；内存已满提示清理/联系相册所有者 |
 | 设备选择 | - | ➖ | ✅ | - | 切换连接设备 |
 
@@ -182,6 +182,7 @@
 | --- | --- | --- | --- | --- | --- |
 | Token管理 | 账户概览 | `GET /Client/Order/getUserAccount` | ✅ | `getAccount` | 出参 `availableToken`/`totalToken`/`consumeToken` 均为 **String**，端上归一为数字 `balance`/`totalPurchased`/`totalSpent` |
 | AI 助手 | 能否发起 AI 对话 | `GET /Client/Order/chkAiDialogue` | ✅ | `checkAiDialogue` | 2026-08-12 新增。无入参（用户由公共参数 `userToken` 带出）。⚠️ **两种答复不对称**（真机实测）：可以发＝`retCode 200` + `retData true`；**不能发＝`retCode 403`** + `retMsg"token余额不足，需要最低余额：30.0 token"` + `retData null`，即否定答复走 request.js 的**失败**分支 —— 只认 `retData===true` 会把 403 当成「接口挂了」而放行。端上封装成 `aiToken.canDialogue()` → `{allowed, required, message}`（`required` 从 retMsg 抠数字，供页面拼「至少需要 30 星币」），聊天页每次发送前调一次；⚠️ **除 403 外的失败一律放行**（读不到判据就锁死 AI 是更糟的失败模式，`/chat` 侧服务端会再拒一次）。它取代了端上按余额比大小的老闸（`LIMIT_ENABLED`/`hasBalance` 已删除） |
+| 星币管理 | 星币消耗规则 | `GET /Client/Order/getAiConfigList` | ✅ | `getAiConfigs` | 2026-08-12 新增。无入参，`retData` 是**裸数组**（不是分页壳），每项 `ClientAiConfigApiOut`：`aiProject`(服务类型)/`num`(消耗，**number**，30.0 这种写法出现过)/`remark`(说明)，另有 `aiConfigId`/`aiModel`(1=普通 2=专家 3=会话条件)/`aiModelMsg`。⚠️ **顺序原样保留**：后端按 `grade`(权重) 排好再下发，Client 出参里没有这个字段，端上重排会和后台配置对不上。「最低账户余额 30」那条也在这个列表里（`aiModel=3`），不特殊处理。拉不到整块不渲染（说明性内容，不弹错） |
 | Token管理 | 商品（套餐）列表 | `GET /Client/Order/getGoodsList` | ✅ | `getPackages` | 出参 `goodsId`/`num`/`giveNum`/`amount`/`wxProductId`/`appleProductId`。`wxProductId` 即微信侧道具 id，**由服务端签进 signData**，端上不直接使用。`unitPrice`(integer) 端上不用，单价按「含赠送总数」自算 |
 | Token管理 | 购买 & 消费记录 | `GET /Client/Order/getUserAccountTrade` | ✅ | `getRecords` | `inOutType` 1=购买 2=消费；分页 `pageIndex`/`pageSize`，判停优先 `pageCount`。出参**无主键**，wx:key 由端上按「类型+页码+下标」拼 |
 | 确认购买 | 创建订单 | `POST /Client/Order/addOrder` | ✅ | `addOrder` | 入参 `goodsId` + `payType`(1=微信支付 2=IOS内购 3=payPal)；`device`/`terminal`/`language`/`userToken` 走 header。出参 `amount`/`orderId`/`orderNo` + **`signData`/`paySig`/`signature`**（2026-08-11 核对：后端已补齐，08-08 记的缺口关闭） |

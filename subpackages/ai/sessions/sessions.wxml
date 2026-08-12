@@ -14,7 +14,9 @@
        余额本身与聊天页共用 utils/ai-token.js；聊天页顶栏那颗胶囊已撤（标题要屏幕居中，
        两者在几何上放不下），所以**这里是余额唯一的展示位**。 -->
   <view class="sessions-token">
-    <view class="token-pill">
+    <!-- 整颗胶囊可点，右端带 `>`（2026-08-12 需求 3）：余额看着不够时，用户在这一页就能直接去买，
+         不用退回「我的」再找入口。箭头用全站的 .ui-chevron（app.wxss），不额外引图片。 -->
+    <view class="token-pill" hover-class="none" bindtap="goTokenManage">
       <image
         class="token-pill__icon"
         src="/assets/images/ai-token-spark.png"
@@ -22,6 +24,7 @@
       ></image>
       <text class="token-pill__value">{{tokenBalance}}</text>
       <text class="token-pill__unit">星币</text>
+      <view class="ui-chevron token-pill__arrow"></view>
     </view>
   </view>
 

@@ -493,6 +493,11 @@ Page(fold.adapt({
     wx.hideLoading()
     // 新绑定完成后先在当前页引导命名。允许点「稍后」跳过（弱强制），确认保存后再按原逻辑返回。
     // 已绑定设备的复用路径不进入这里，避免每次重连都要求改名。
+    //
+    // 2026-08-12：`device.name` 现在可能是**后端回带的上次昵称** —— 解除绑定后再次添加时，
+    // addUserProduct 会把这台设备原来的名字带回来（后端改动，见 utils/api.bindDevice）。
+    // 这里不用再做什么：优先级本来就是 device.name 在前，只是那个值从「广播名」变成了
+    // 「用户上次自己起的名」，输入框直接带出来，用户不改就是原名。
     this._pendingBoundDevice = device
     this.setData({
       renameVisible: true,

@@ -306,3 +306,72 @@
   width: 24rpx;
   height: 24rpx;
 }
+
+/* ── 星币消耗规则表（2026-08-12 需求 4）────────────────────────────────────
+   数据来自 GET /Client/Order/getAiConfigList。卡片底与「购买 & 消费记录」那一栏同款
+   （.record-entry 的白底/描边/圆角/投影），保持这一页只有一种卡片观感。
+
+   三列用百分比写死，不用等分：
+     · 服务类型最长（「图生图 / 融合图-1」11 字）→ 36%
+     · 消耗只有 1~2 位数字，但表头「星币消耗（星币/次）」很长，必然折两行 → 26%
+     · 说明最长（「发起会话条件」「1张参考图」）→ 剩下的 38%
+   ⚠️ 行高**不能写死**：表头与长服务类型都会折行，写死高度就会把字裁掉。 */
+.rule-card {
+  position: relative;
+  z-index: 1;
+  margin-top: 8rpx;
+  padding: 8rpx 32rpx 12rpx;
+  background: rgba(255, 255, 255, 0.78);
+  border: 2rpx solid rgba(255, 255, 255, 0.88);
+  border-radius: 24rpx;
+  box-shadow: 0 16rpx 38rpx rgba(125, 148, 181, 0.1);
+}
+
+.rule-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 20rpx 0;
+  border-top: 2rpx solid rgba(207, 214, 224, 0.5);
+}
+
+/* 表头那行不画上边线（卡片自己的圆角就是分界），字重与颜色也压一档，
+   免得整张表看起来像四行同级内容。 */
+.rule-row--head {
+  padding-top: 16rpx;
+  border-top: none;
+}
+
+.rule-col {
+  min-width: 0;
+  color: #2a2d32;
+  font-size: 26rpx;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.rule-row--head .rule-col {
+  color: #8b8f96;
+  font-size: 24rpx;
+  font-weight: 500;
+}
+
+.rule-col--name {
+  flex: 0 0 36%;
+  padding-right: 8rpx;
+}
+
+.rule-col--cost {
+  flex: 0 0 26%;
+  padding-right: 8rpx;
+}
+
+.rule-col--remark {
+  flex: 1 1 auto;
+  color: #8b8f96;
+}
+
+/* 消耗数字是这张表里唯一要一眼看到的信息，给主题橙 + 加粗 */
+.rule-cost {
+  color: #f2621f;
+  font-weight: 600;
+}

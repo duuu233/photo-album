@@ -152,6 +152,13 @@ Page(fold.adapt({
     this.refreshTokenBalance()
   },
 
+  // 点顶部星币胶囊 → 星币管理页（2026-08-12 需求 3）。
+  // 余额看着不够时，用户在这一页就能直接去买，不用退回「我的」再找入口；
+  // 买完退回本页时 onShow 会重取余额，数字自动对上。
+  goTokenManage() {
+    wx.navigateTo({ url: '/subpackages/token/index/index' })
+  },
+
   // 从后端取权威余额（/Client/Order/getUserAccount，失败回退用户信息接口）。
   // 静默：取不到就保持当前显示，不弹错误——余额只是顶部一个数字，不该盖住列表。
   async refreshTokenBalance() {

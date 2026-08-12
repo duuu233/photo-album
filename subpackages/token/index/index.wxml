@@ -87,6 +87,31 @@
         <image class="record-entry-chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
       </view>
 
+      <!-- 星币消耗规则（2026-08-12 需求 4）：数据来自 GET /Client/Order/getAiConfigList，
+           顺序原样按后端给的来（后台按权重排好，端上重排只会和配置对不上）。
+           拉不到就整块不出现 —— 说明性内容，挂了不该在页面上留一块空白。
+           ⚠️ 表格是 flex 手搭的：三列宽度写死百分比，「说明」列允许折行，
+           所以行高不定、不能给固定 height。 -->
+      <block wx:if="{{aiConfigs.length}}">
+        <view class="token-section-title">星币消耗规则</view>
+        <view class="rule-card">
+          <view class="rule-row rule-row--head">
+            <text class="rule-col rule-col--name">服务类型</text>
+            <text class="rule-col rule-col--cost">星币消耗（星币/次）</text>
+            <text class="rule-col rule-col--remark">说明</text>
+          </view>
+          <view
+            wx:for="{{aiConfigs}}"
+            wx:key="id"
+            class="rule-row"
+          >
+            <text class="rule-col rule-col--name">{{item.name}}</text>
+            <text class="rule-col rule-col--cost rule-cost">{{item.cost}}</text>
+            <text class="rule-col rule-col--remark">{{item.remark}}</text>
+          </view>
+        </view>
+      </block>
+
     </view>
   </scroll-view>
 

@@ -878,14 +878,23 @@ module.exports = {
     }
 
     const saved = await module.exports.addUserProduct(payload)
-    return normalizeDevice(
-      Object.assign({}, scan, saved, {
-        bleDeviceId: scan.deviceId,
-        productDeviceId,
-        deviceNo: productDeviceId,
-        productName
-      })
-    )
+    // 2026-08-12（后端改动）：**解除绑定后再次添加时，addUserProduct 会把上次保存的昵称原样回带**
+    //（出参 ClientUserProductDetailApiOut.productName）。它比端上按型号/广播名拼的默认名贴用户得多，
+    // 绑定后的命名弹窗要带出它。
+    // ⚠️ 必须**连 name 一起盖**：normalizeDevice 的 name 取「第一个非空」，而 scan.name（蓝牙广播名）
+    //    排在 productName 前面 —— 只改 productName 的话，弹窗里带出来的仍是广播名。
+    // 首次绑定不受影响：那时后端回的就是我们刚提交上去的 productName，两者本来就一样。
+    const savedName = String((saved && saved.productName) || '').trim()
+    const merged = Object.assign({}, scan, saved, {
+      bleDeviceId: scan.deviceId,
+      productDeviceId,
+      deviceNo: productDeviceId,
+      productName: savedName || productName
+    })
+    if (savedName) {
+      merged.name = savedName
+    }
+    return normalizeDevice(merged)
   },
 
   // 重命名设备（纯后端存储：名称以用户为维度，不写设备固件、不影响蓝牙连接/广播，连不连接都可改）。

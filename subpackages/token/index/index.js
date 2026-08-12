@@ -19,12 +19,16 @@ Page(fold.adapt({
     },
     packages: [],
     // 默认选中：进页面就有可买的档位，避免「立即购买」一直是灰的
-    selectedId: ''
+    selectedId: '',
+    // 星币消耗规则（2026-08-12 需求 4，GET /Client/Order/getAiConfigList）：
+    // 每项 { id, name(服务类型), cost(消耗), remark(说明) }，顺序按后端给的来
+    aiConfigs: []
   },
 
   onShow() {
     this.loadAccount()
     this.loadPackages()
+    this.loadAiConfigs()
   },
 
   async loadAccount() {
@@ -63,6 +67,23 @@ Page(fold.adapt({
       })
     } catch (error) {
       this.setData({ packages: [] })
+    }
+  },
+
+  /**
+   * 星币消耗规则表。**静默失败**：拉不到就整块不渲染（wxml 里 wx:if），
+   * 不弹红字也不占一块空白 —— 它是说明性内容，挂了不该盖住买星币这件正事。
+   * 每次 onShow 重拉：后台随时可能改价，用户从别处返回时应看到最新的。
+   */
+  async loadAiConfigs() {
+    try {
+      const aiConfigs = await tokenApi.getAiConfigs()
+      this.setData({ aiConfigs })
+    } catch (error) {
+      // 保留上次成功的那份（首次失败即空表，整块不显示）
+      if (!this.data.aiConfigs.length) {
+        this.setData({ aiConfigs: [] })
+      }
     }
   },
 

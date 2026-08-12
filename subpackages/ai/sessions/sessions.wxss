@@ -60,6 +60,17 @@
   line-height: 1;
 }
 
+/* 胶囊右端的 `>`（2026-08-12 需求 3：点整颗胶囊去星币管理页）。
+   .ui-chevron 是 app.wxss 的公共箭头（border 拼的三角，跟着 color 走），
+   这里只调大小、颜色与间距 —— 它比单位文字更靠右，所以左边距给足。 */
+.token-pill__arrow {
+  margin-left: 6rpx;
+  width: 12rpx;
+  height: 12rpx;
+  border-width: 2rpx;
+  color: #9aa0a8;
+}
+
 .keep-tip {
   position: relative;
   z-index: 1;

@@ -2,7 +2,8 @@
 //
 // 2026-08-08：由本地 mock 切到真实后端。对应的 `/Client/...` 端点是
 //   GET  /Client/Order/getUserAccount        余额 / 累计购买 / 累计消耗
-//   GET  /Client/Order/chkAiDialogue         能否发起 AI 对话（星币够不够，retData 是布尔，2026-08-12 新增）
+//   GET  /Client/Order/chkAiDialogue         能否发起 AI 对话（星币够不够，2026-08-12 新增）
+//   GET  /Client/Order/getAiConfigList       星币消耗规则表（服务类型/消耗/说明，2026-08-12 新增）
 //   GET  /Client/Order/getGoodsList          商品（套餐）列表，带 wxProductId / appleProductId
 //   GET  /Client/Order/getUserAccountTrade   购买 & 消费记录（分页，inOutType 区分）
 //   POST /Client/Order/addOrder              在我们平台创建订单，返回 orderId / orderNo / amount
@@ -230,6 +231,55 @@ function checkAiDialogue(options) {
         message
       }
     })
+}
+
+/**
+ * 星币消耗规则（2026-08-12 新增 `GET /Client/Order/getAiConfigList`）。
+ *
+ * `retData` 直接是数组（不是分页壳），每项 `ClientAiConfigApiOut`：
+ *   `aiProject` 服务类型（「纯文本对话」「文生图 / 一键生图」「最低账户余额」…）
+ *   `num`       消耗星币数（**number，可能带小数**，后端 30.0 这种写法出现过）
+ *   `remark`    说明（「仅文字问答」「1张参考图」…）
+ * 另有 `aiConfigId` / `aiModel`(1=普通 2=专家 3=会话条件) / `aiModelMsg`，页面暂不用。
+ *
+ * ⚠️ **顺序原样保留**：后端按 `grade`（权重）排好再下发，Client 出参里没有这个字段，
+ * 端上重排只会和后台配置对不上。「最低账户余额」那条也在这个列表里（`aiModel=3`），
+ * 不做特殊处理 —— 它就是规则表的第一行。
+ */
+function getAiConfigs() {
+  return http
+    .get('/Client/Order/getAiConfigList', {}, { mock: false })
+    .then(data => {
+      const rows = Array.isArray(data) ? data : pageRows(data)
+      return rows
+        .map((item, index) => {
+          const source = item || {}
+          return {
+            // wx:key 用：aiConfigId 缺失时退回下标（同一次响应里顺序稳定）
+            id: String(toNumber(source.aiConfigId, 0) || `idx-${index}`),
+            name: source.aiProject || source.aiModelMsg || '',
+            // 整数去掉小数点（后端 30.0 → 30）；真有小数保留两位内
+            cost: formatConfigNum(source.num),
+            remark: source.remark || ''
+          }
+        })
+        .filter(item => item.name)
+    })
+}
+
+/**
+ * 规则表里的数字展示口径：星币是整数计价，后端的 `30.0` 照抄进表格里
+ * 只会让人以为还有小数位。整数去点，真有小数最多留两位（30.50 → 30.5）。
+ */
+function formatConfigNum(value) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) {
+    return ''
+  }
+  if (Number.isInteger(number)) {
+    return String(number)
+  }
+  return String(Number(number.toFixed(2)))
 }
 
 function getPackages() {
@@ -525,6 +575,7 @@ module.exports = {
   unitPriceOf,
   getAccount,
   checkAiDialogue,
+  getAiConfigs,
   getPackages,
   getRecords,
   addOrder,
