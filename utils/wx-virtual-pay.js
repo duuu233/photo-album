@@ -49,16 +49,69 @@ const ERROR_MESSAGES = {
 // 这些含义来自微信开放社区的帖子整理而非官方错误码表，把握不到 ERROR_MESSAGES 的程度：
 // 写进弹窗会把用户和客服按一个可能错的方向带偏，而打在日志里，开发看着它去查、查错了也只损失自己几分钟。
 // 弹窗仍然走「原样带上 errCode」的老口径（见文件头第 4 条「错误码不猜」）。
-const ERROR_HINTS = {
-  '-15001': '参数不合法 / 道具 productId 为空：核对 signData.productId 有没有值、后台道具是否已发布、appid 与虚拟支付商户号是否已绑定。**不是签名问题**（签名是 -15005/-15006）',
+//
+// ⚠️ 先按 errMsg 认，再退回按 errCode 认 —— **一个码对应多种原因**，这是踩过的坑：
+// 真机报 `-15001 INVALID_PLATFORM`（iOS 未启用苹果 IAP），而按码查表得到的却是
+// 「productId 为空」，整整往错的方向查了一轮。errMsg 才是微信真正想说的那句话。
+const ERROR_MSG_HINTS = [
+  {
+    keyword: 'INVALID_PLATFORM',
+    hint: '当前平台不允许虚拟支付：iPhone 需要先在「小程序后台 → 微信虚拟支付 → 基本配置 → 启用苹果 IAP 支付」，安卓不需要这一步。与 signData、签名都无关——换台安卓机试，能过就实锤是它'
+  },
+  {
+    keyword: 'PRODUCT_ID_EMPTY',
+    hint: 'signData.productId 为空：后端商品没配 wxProductId'
+  },
+  {
+    keyword: 'PAY_SIG_INVALID',
+    hint: 'paySig（appKey 签的）不对，核对是否漏了 "requestVirtualPayment&" 前缀'
+  },
+  {
+    keyword: 'SIGNATURE_INVALID',
+    hint: 'signature（session_key 签的）与 signData 不匹配：多半是 signData 被重新序列化过，或 session_key 已过期'
+  },
+  {
+    keyword: 'no permission',
+    hint: '基础库版本过低（虚拟支付要求 ≥ 2.19.2），或该小程序未开通虚拟支付'
+  }
+]
+
+const ERROR_CODE_HINTS = {
+  '-15001': '参数不合法（**具体原因看 errMsg**：INVALID_PLATFORM=平台未开通、PRODUCT_ID_EMPTY=道具 id 为空…）。不是签名问题，签名是 -15005/-15006',
   '-15002': 'outTradeNo 重复：后端换个新单号重试',
   '-15003': '微信侧系统错误：可重试，连续复现找微信',
-  '-15005': '签名校验失败：signature（session_key 签的）与 signData 不匹配，多半是 signData 被重新序列化过或 session_key 过期',
-  '-15006': 'PAY_SIG_INVALID：paySig（appKey 签的）不对，核对是否漏了 "requestVirtualPayment&" 前缀',
+  '-15005': '签名校验失败：signature 与 signData 不匹配',
+  '-15006': 'PAY_SIG_INVALID：paySig 不对',
   '-15007': 'session_key 过期：需要用户重新 wx.login，后端刷新后再签',
   '-15008': '二级商户进件未完成：小程序后台侧配置，端上无解',
   '-15009': '代币未发布（coin 模式）',
   '-15010': '道具 productId 未发布：在虚拟支付后台把这个道具发布掉；注意沙箱(env=1)与正式(env=0)是两套'
+}
+
+function hintOf(rawCode, errMsg) {
+  const text = String(errMsg || '')
+  for (let i = 0; i < ERROR_MSG_HINTS.length; i++) {
+    if (text.indexOf(ERROR_MSG_HINTS[i].keyword) !== -1) {
+      return ERROR_MSG_HINTS[i].hint
+    }
+  }
+  return ERROR_CODE_HINTS[String(rawCode)] || ''
+}
+
+// 运行平台。虚拟支付在 iOS / 安卓上的开通条件不同（iOS 要单独启用苹果 IAP），
+// 出错时不知道跑在哪个平台等于少一半线索。getDeviceInfo 是 2.20.1+，旧库退回 getSystemInfoSync。
+function currentPlatform() {
+  try {
+    if (typeof wx.getDeviceInfo === 'function') {
+      return (wx.getDeviceInfo() || {}).platform || ''
+    }
+    if (typeof wx.getSystemInfoSync === 'function') {
+      return (wx.getSystemInfoSync() || {}).platform || ''
+    }
+  } catch (error) {
+    // 取不到就算了，只是日志里少一个字段
+  }
+  return ''
 }
 
 // signData 里最容易签错的几个字段。同样**只提示不拦截**：端上无权判定后端签了什么才算对，
@@ -111,13 +164,21 @@ function digest(value) {
  */
 function logPayParams(params) {
   const raw = params.signData
+  const platform = currentPlatform()
   console.log('[虚拟支付] 调起 wx.requestVirtualPayment', {
+    平台: platform || '(未知)',
     mode: params.mode,
     'signData(原文)': raw,
     'signData(字节数)': raw.length,
     paySig: digest(params.paySig),
     signature: digest(params.signature)
   })
+  if (platform === 'ios') {
+    console.warn(
+      '[虚拟支付] ⚠️ 当前是 iOS：虚拟支付要求先在「小程序后台 → 微信虚拟支付 → 基本配置」启用苹果 IAP 支付，' +
+        '未启用时无论参数多正确都会回 -15001 INVALID_PLATFORM（安卓无此限制）'
+    )
+  }
 
   let parsed = null
   try {
@@ -252,9 +313,10 @@ function describeFail(error) {
   }
 
   console.warn('[虚拟支付] 支付失败', {
+    平台: currentPlatform() || '(未知)',
     errCode: rawCode === '' ? '(微信未给码)' : rawCode,
     errMsg,
-    排查提示: ERROR_HINTS[String(rawCode)] || '(无对照，把上面这行连同 signData 一起发后端核对)',
+    排查提示: hintOf(rawCode, errMsg) || '(无对照，把上面这行连同 signData 一起发后端核对)',
     原始错误: error
   })
 
