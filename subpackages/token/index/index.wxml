@@ -90,18 +90,19 @@
       <!-- 星币消耗规则（2026-08-12 需求 4）：数据来自 GET /Client/Order/getAiConfigList，
            顺序原样按后端给的来（后台按权重排好，端上重排只会和配置对不上）。
            拉不到就整块不出现 —— 说明性内容，挂了不该在页面上留一块空白。
-           ⚠️ 表格是 flex 手搭的：三列宽度写死百分比，「说明」列允许折行，
-           所以行高不定、不能给固定 height。 -->
+           ⚠️ 表格是 flex 手搭的两列，行高仍不能写死：服务类型名由后台配置，
+           长到一行放不下时要能折行（写死高度就会把字裁掉）。 -->
       <block wx:if="{{aiConfigs.length}}">
         <view class="token-section-title">星币消耗规则</view>
         <view class="rule-card">
           <view class="rule-row rule-row--head">
             <text class="rule-col rule-col--name">服务类型</text>
-            <!-- 表头就写「星币/次」（2026-08-13 需求 4）：原文「星币消耗（星币/次）」在 26% 宽的
-                 列里必然折成「星币消耗（星」「币/次）」两行，括号被拆开、还把「说明」挤得更窄。
+            <!-- 表头就写「星币/次」（2026-08-13 需求 4）：原文「星币消耗（星币/次）」在窄列里
+                 必然折成「星币消耗（星」「币/次）」两行，括号被拆开。
                  「消耗」二字由上面的区块标题「星币消耗规则」已经交代过了。 -->
             <text class="rule-col rule-col--cost">星币/次</text>
-            <text class="rule-col rule-col--remark">说明</text>
+            <!-- 「说明」整列已去掉（2026-08-13 需求）：接口的 remark 仍在
+                 utils/token-api.getAiConfigs 里映射着，页面只是不再画这一列。 -->
           </view>
           <view
             wx:for="{{aiConfigs}}"
@@ -110,7 +111,6 @@
           >
             <text class="rule-col rule-col--name">{{item.name}}</text>
             <text class="rule-col rule-col--cost rule-cost">{{item.cost}}</text>
-            <text class="rule-col rule-col--remark">{{item.remark}}</text>
           </view>
         </view>
       </block>

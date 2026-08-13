@@ -21,7 +21,8 @@ Page(fold.adapt({
     // 默认选中：进页面就有可买的档位，避免「立即购买」一直是灰的
     selectedId: '',
     // 星币消耗规则（2026-08-12 需求 4，GET /Client/Order/getAiConfigList）：
-    // 每项 { id, name(服务类型), cost(消耗), remark(说明) }，顺序按后端给的来
+    // 每项 { id, name(服务类型), cost(消耗), remark }，顺序按后端给的来
+    // （remark 2026-08-13 起页面不再展示，表格只剩「服务类型 / 星币/次」两列）
     aiConfigs: []
   },
 
