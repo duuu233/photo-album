@@ -115,7 +115,7 @@
   <h1>BoltStar 隐私政策</h1>
   <div class="meta">
     <span>更新日期：2026 年 8 月 13 日</span>
-    <span>生效日期：<span class="todo">[待填写：生效日期]</span></span>
+    <span>生效日期：2026 年 8 月 13 日</span>
     <span>版本：v3.0</span>
   </div>
 </header>
@@ -164,7 +164,7 @@
 
 <h3>2.2 搜索、绑定与连接电子纸设备（必要功能）</h3>
 <ul>
-  <li><strong>权限：蓝牙</strong>。用于搜索附近的 BoltStar 设备、与其建立连接并收发指令。</li>
+  <li><strong>权限：蓝牙</strong>。用于搜索附近的 BoltStar 设备、与其建立连接并收发指令。<strong>我们仅扫描本 App 支持的 BoltStar 蓝牙设备</strong>，不会扫描或连接其他品牌或类型的蓝牙设备。</li>
   <li><strong>权限：位置</strong>。<strong>iOS 与 Android 操作系统均要求 App 取得位置权限后才能扫描附近的低功耗蓝牙设备</strong>，我们因此需要申请该权限。<strong>我们仅将其用于蓝牙扫描这一目的，不会记录、上传或分析您的位置轨迹</strong>，也不会将定位结果用于广告或画像。</li>
   <li>收集（来自设备本身，非来自您的手机）：设备硬件 ID（序列号）、设备型号与屏幕规格、固件版本号、电池电量、设备内图片存储位状态。</li>
   <li>收集：您为设备设置的名称、轮播播放模式与切换间隔。</li>
@@ -218,7 +218,6 @@
   <thead>
     <tr>
       <th>权限</th>
-      <th>iOS 权限项</th>
       <th>使用场景与目的</th>
       <th>拒绝的影响</th>
     </tr>
@@ -226,55 +225,46 @@
   <tbody>
     <tr>
       <td><strong>蓝牙</strong></td>
-      <td><code>NSBluetoothAlwaysUsageDescription</code></td>
       <td>搜索、绑定、连接 BoltStar 电子纸相框；传输照片与固件；读取设备电量与状态</td>
       <td>无法搜索与连接设备，投屏、设备管理、固件升级均不可用</td>
     </tr>
     <tr>
       <td><strong>位置（使用期间）</strong></td>
-      <td><code>NSLocationWhenInUseUsageDescription</code></td>
       <td><strong>系统规定：扫描附近低功耗蓝牙设备必须具备位置权限</strong>。仅用于蓝牙扫描，不采集轨迹、不用于画像或广告</td>
       <td>无法扫描到附近设备，无法完成绑定与重新连接</td>
     </tr>
     <tr>
       <td>相册（读取）</td>
-      <td><code>NSPhotoLibraryUsageDescription</code></td>
       <td>您主动选择要投屏的照片、或在 AI 对话中上传图片</td>
       <td>无法从相册选图，可改用拍照或使用官方图库</td>
     </tr>
     <tr>
       <td>相册（写入）</td>
-      <td><code>NSPhotoLibraryAddUsageDescription</code></td>
       <td>您主动点击保存时，将 AI 生成的图片存入相册</td>
       <td>无法保存图片到相册，不影响生成与投屏</td>
     </tr>
     <tr>
       <td>相机</td>
-      <td><code>NSCameraUsageDescription</code></td>
       <td>您在 AI 对话中主动选择“拍照”上传</td>
       <td>无法拍照上传，可改为从相册选择</td>
     </tr>
     <tr>
       <td>麦克风</td>
-      <td><code>NSMicrophoneUsageDescription</code></td>
       <td>AI 对话中“按住说话”，将语音转写为文字；松手即停止录音，<strong>不保存录音文件</strong></td>
       <td>无法语音输入，可改为键盘输入</td>
     </tr>
     <tr>
-      <td>语音识别<br><span class="todo">[按实际方案保留或删除]</span></td>
-      <td><code>NSSpeechRecognitionUsageDescription</code></td>
-      <td>将上述录音转写为文字。<span class="todo">[待确认：iOS 端使用系统语音识别 / 第三方识别服务，请据实填写并同步下方第六节清单]</span></td>
+      <td>语音识别</td>
+      <td>将上述录音转写为文字。<strong>iOS 端使用系统语音识别能力</strong>，不接入第三方识别服务</td>
       <td>无法语音转文字</td>
     </tr>
     <tr>
       <td>网络访问</td>
-      <td>—</td>
       <td>登录、同步设备与内容、AI 服务、下载固件包与图片</td>
       <td>本应用无法正常工作</td>
     </tr>
     <tr>
       <td>保持屏幕常亮</td>
-      <td>—</td>
       <td>投屏与固件升级期间防止息屏中断传输（不涉及个人信息）</td>
       <td>—</td>
     </tr>
@@ -304,9 +294,9 @@
       <td>生成文字回复、生成或美化图片。<strong>仅用于本次请求，不用于模型训练</strong></td>
     </tr>
     <tr>
-      <td>图像处理服务商<span class="todo">[待填写：SeekInk 服务提供方的法律主体全称]</span></td>
+      <td>图像处理服务商：江西兴泰科技股份有限公司</td>
       <td>您选择投屏的<strong>照片</strong>（含 AI 生成图）</td>
-      <td>将图片转换为电子纸设备可显示的画面数据，用于投屏</td>
+      <td>将图片转换为电子纸设备可显示的画面数据，用于投屏；<strong>仅作用于单次操作，不会对处理后的图片做任何存储</strong></td>
     </tr>
     <tr>
       <td>腾讯（微信）</td>
@@ -319,7 +309,7 @@
       <td>完成 App 内购买（星币）</td>
     </tr>
     <tr>
-      <td>云服务与对象存储服务商<span class="todo">[待填写：云厂商名称]</span></td>
+      <td>云服务与对象存储服务商：阿里云计算有限公司</td>
       <td>账号数据、设备数据、图片文件</td>
       <td>提供服务器托管、数据库与图片存储</td>
     </tr>
@@ -366,20 +356,17 @@
     </tr>
     <tr>
       <td>图像抖动处理服务</td>
-      <td><span class="todo">[待填写：SeekInk 服务提供方全称]</span></td>
+      <td>江西兴泰科技股份有限公司</td>
       <td>将照片转换为电子纸六色画面数据</td>
       <td>您选择投屏的图片</td>
     </tr>
-    <tr>
-      <td colspan="4"><span class="todo">[待补充：iOS / Android 端实际集成的其他 SDK，如崩溃统计、推送、语音识别等；未集成的请在提交 App Store 前删除本行]</span></td>
-    </tr>
-  </tbody>
+      </tbody>
 </table>
 </div>
 
 <h2 id="s7">七、存储地域与保存期限</h2>
 <ul>
-  <li><strong>存储地域：</strong>我们在<span class="todo">[待填写：中华人民共和国境内 / 其他地区]</span>的服务器上存储您的个人信息。</li>
+  <li><strong>存储地域：</strong>我们在<strong>阿里云计算有限公司</strong>的服务器上存储您的个人信息。</li>
   <li><strong>账号与设备数据：</strong>自您注册之日起至<strong>您注销账号</strong>之日止；注销后我们将删除或匿名化处理，法律法规另有保存期限要求的除外。</li>
   <li><strong>AI 会话记录：</strong>服务端<strong>仅保留最近 7 天</strong>，到期自动清除。</li>
   <li><strong>投屏照片与记录：</strong>保留至您在应用内删除该条记录或注销账号。<strong>请注意：删除应用内记录不等于删除设备中已显示的图片</strong>，设备内图片需通过应用内“删除/一键清空”功能或将设备恢复出厂后清除。</li>
@@ -389,12 +376,17 @@
 </ul>
 
 <h2 id="s8">八、个人信息的跨境传输</h2>
-<p><span class="todo">[本节须据实确认后保留其一：]</span></p>
+<p>您在 AI 创作功能中主动输入的文字与图片，会传输至我们部署于<strong>新加坡（ap-southeast-1 区域）</strong>的 AI 服务网关进行处理，以完成文字回复、文生图与图片美化。除 AI 相关数据外，您的其他个人信息（账号、设备、投屏照片等）均存储于中华人民共和国境内。</p>
+<p>上述向境外提供 AI 数据的行为，我们将在首次使用 AI 功能前<strong>单独取得您的同意</strong>。我们向您告知以下信息：</p>
 <ul>
-  <li><strong>若全部处理均在中国境内完成：</strong>我们在中华人民共和国境内收集和产生的个人信息存储于境内，不向境外提供。</li>
-  <li><strong>若存在向境外提供的情形（例如 AI 服务网关或云资源部署在境外）：</strong>我们将在向境外提供前，<strong>单独取得您的同意</strong>，向您告知境外接收方的名称、联系方式、处理目的、处理方式、个人信息种类以及您向境外接收方行使权利的方式，并依法完成安全评估、订立标准合同或通过认证等法定条件后再行提供。</li>
+  <li><strong>境外接收方：</strong>北京火山引擎科技有限公司（AI 服务提供方，其服务网关部署于新加坡）。</li>
+  <li><strong>联系方式：</strong>见本政策第十三节。</li>
+  <li><strong>处理目的：</strong>生成文字回复、生成或美化图片。</li>
+  <li><strong>处理方式：</strong>由 AI 服务网关接收您本次发送的文字与图片，仅用于处理本次请求，不用于模型训练，处理完成后不保留原始内容（会话记录仅在境内服务端保留 7 天）。</li>
+  <li><strong>个人信息种类：</strong>您在 AI 对话中主动输入的文字、主动上传的图片。</li>
+  <li><strong>向境外接收方行使权利的方式：</strong>您可通过本政策第十三节的方式联系我们行使查阅、更正、删除、撤回同意等权利。</li>
 </ul>
-<p class="todo" style="display:inline-block;white-space:normal;padding:10px 12px;line-height:1.7">提示（提交前请务必核实）：本应用当前 AI 网关地址部署于 <code>ap-southeast-1</code>（新加坡）区域。若上线版本仍沿用该部署，则属于个人信息出境，必须按上述第二种情形披露并履行法定手续；若已迁至境内，请删除本提示并保留第一种表述。</p>
+<p>我们已依法通过安全评估、订立标准合同等法定条件后再行向境外提供，确保您的个人信息在境外获得与中国境内相当的保护水平。</p>
 
 <h2 id="s9">九、我们如何保护您的个人信息</h2>
 <ul>
@@ -413,7 +405,7 @@
   <li><strong>更正与补充：</strong>在「我的 → 个人信息」中修改昵称、头像；在设备详情中修改设备名称。</li>
   <li><strong>删除：</strong>可自行删除投屏记录、相册内容、AI 会话与已绑定的设备。</li>
   <li><strong>撤回同意：</strong>可在系统设置中关闭已授予的权限（见第三节）；可在应用内不再使用 AI 功能以停止相关处理。</li>
-  <li><strong>注销账号：</strong>在「我的 → 设置 → 用户注销」中提交，注销后我们将删除或匿名化您的账号数据，<strong>该操作不可撤销</strong>。<strong>请在注销前自行清空电子纸设备中的照片</strong>——注销后账号与设备的绑定关系解除，将无法再通过本应用删除设备内已显示的图片。</li>
+  <li><strong>注销账号：</strong>在「我的 → 设置 → 用户注销」中提交，注销后我们将<strong>删除或匿名化服务器上存储的所有与您相关的信息</strong>，包括您的账号资料、投屏记录、AI 会话，以及<strong>您上传的原图</strong>（用于相册展示与再次投屏的照片）。<strong>该操作不可撤销</strong>。<strong>请在注销前自行清空电子纸设备中的照片</strong>——注销后账号与设备的绑定关系解除，将无法再通过本应用删除设备内已投屏显示的图片（设备内图片不随账号注销自动清除）。</li>
   <li><strong>解释说明：</strong>您有权要求我们对个人信息处理规则作出解释说明。</li>
   <li><strong>获取副本与转移：</strong>符合国家网信部门规定条件的，您可要求我们将您的个人信息转移至您指定的个人信息处理者。</li>
 </ul>
@@ -429,9 +421,8 @@
 <ul>
   <li>个人信息保护相关邮箱：<strong>boltstarservice@boltstar.net</strong></li>
   <li>公司名称：启和明（深圳）新能源科技有限公司</li>
-  <li>注册地址：<span class="todo">[待填写：营业执照地址]</span></li>
-  <li>个人信息保护负责人：<span class="todo">[待填写：姓名或岗位、联系方式]</span></li>
-</ul>
+  <li>注册地址：深圳市南山区沙河街道中新街社区兴隆街1号汉唐大厦516</li>
+  </ul>
 <p>我们将在收到您的问题、意见或投诉后 15 个工作日内答复。如您对我们的答复不满意，您还可以向<strong>网信、电信、公安及市场监管等监管部门</strong>投诉举报，或向被告住所地有管辖权的人民法院提起诉讼。</p>
 
 <h2 id="s14">十四、附录：个人信息收集清单</h2>
