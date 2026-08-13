@@ -251,10 +251,13 @@ function buildPackage(payloadSize, overrides = {}) {
     await scan // 订阅者仍按自己的 timeout 正常结算，不能悬着
   }
 
-  // ── ⑤ 复位后全局通知监听必须「先 off 再 on」，且复位后还能照常再升一次 ──────────
+  // ── ⑤ 复位后全局通知监听必须重挂成「恰好一份」，且复位后还能照常再升一次 ──────────
   // 关适配器之后 wx.onBLE* 的回调还在不在没有保证：丢了＝连上却收不到任何应答；
-  // 而不 off 直接再 on 一次，每帧通知会被派发两遍（解帧缓冲灌两份，此后全部指令超时）。
+  // 注册出两份，每帧通知会被派发两遍（解帧缓冲灌两份，此后全部指令超时）。
   // 两种错法都比原来的毛病更严重，所以这条必须锁死。
+  // 2026-08-13 第二轮起监听收敛到 ble-notify-hub：wx 层只挂 hub 的分发器一个，
+  // 重挂用「off 不带参数（移除全部）→ 重新 on」。off 的 mock 按官方语义实现：
+  // 带参数按引用移除那一个，不带参数移除全部。
   {
     const state = { connects: 0, closes: [], adapter: [] }
     installOtaWorld(state)
@@ -267,14 +270,14 @@ function buildPackage(payloadSize, overrides = {}) {
       onValue(cb) // 仍然接到假设备上，帧照常送达
     }
     world.offBLECharacteristicValueChange = cb => {
-      handlers.value = handlers.value.filter(item => item !== cb)
+      handlers.value = cb === undefined ? [] : handlers.value.filter(item => item !== cb)
     }
     world.onBLEConnectionStateChange = cb => {
       handlers.conn.push(cb)
       onConn(cb)
     }
     world.offBLEConnectionStateChange = cb => {
-      handlers.conn = handlers.conn.filter(item => item !== cb)
+      handlers.conn = cb === undefined ? [] : handlers.conn.filter(item => item !== cb)
     }
 
     const deviceBle = freshRequire('../utils/device-ble')
@@ -293,8 +296,16 @@ function buildPackage(payloadSize, overrides = {}) {
       handlers.value.length,
       '同一个回调绝不能注册两遍——每帧通知会被派发两次，解帧缓冲当场废掉'
     )
-    assert.ok(handlers.value.length <= 2, `两个模块各一份监听，实际 ${handlers.value.length} 份`)
-    assert.ok(handlers.conn.length <= 2, `连接状态监听同理，实际 ${handlers.conn.length} 份`)
+    assert.strictEqual(
+      handlers.value.length,
+      1,
+      `wx 层只应有 ble-notify-hub 的分发器一份监听，实际 ${handlers.value.length} 份`
+    )
+    assert.strictEqual(
+      handlers.conn.length,
+      1,
+      `连接状态监听同理，实际 ${handlers.conn.length} 份`
+    )
 
     // 复位之后照常还能再升一次：这一条真正证明「重挂之后通知还通」
     const second = await otaBle.upgradeFirmware(
@@ -304,6 +315,65 @@ function buildPackage(payloadSize, overrides = {}) {
     )
     assert.strictEqual(second.confirmed, true, '硬复位之后必须还能正常收发 —— 否则监听就是丢了')
     assert.strictEqual(deviceBle.hasAnyActiveConnection(), false)
+  }
+
+  // ── ⑥ 忙判定：有正在使用的连接时，复位必须整个跳过（2026-08-13 第二轮） ──────────
+  // 场景：升级页中断收尾的第二次复位可能晚好几秒才触发（shouldAbort 只在窗口间隙被检查），
+  // 此刻用户往往已经回详情页重新连上了设备——这一刀关适配器会把用户刚建的连接拆掉，
+  // 修出比原毛病更糟的新毛病。所以有活会话/新鲜在途连接时，复位一根手指都不许动。
+  {
+    const FF00_SERVICE = '0000FF00-0000-1000-8000-00805F9B34FB'
+    const FF01_WRITE = '0000FF01-0000-1000-8000-00805F9B34FB'
+    const FF02_NOTIFY = '0000FF02-0000-1000-8000-00805F9B34FB'
+    const state = { connects: 0, closes: [], adapter: [] }
+    installOtaWorld(state)
+    // 这一块要让 device-ble 真的连上：改供 FF00 主服务与 FF01/FF02 特征
+    global.wx.getBLEDeviceServices = ({ success }) =>
+      success({ services: [{ uuid: FF00_SERVICE }] })
+    global.wx.getBLEDeviceCharacteristics = ({ success }) =>
+      success({
+        characteristics: [
+          { uuid: FF01_WRITE, properties: { write: true, writeNoResponse: true } },
+          { uuid: FF02_NOTIFY, properties: { notify: true } }
+        ]
+      })
+
+    const otaBle = freshRequire('../utils/ota-ble')
+    const deviceBle = freshRequire('../utils/device-ble')
+    void otaBle
+
+    await deviceBle.ensureConnection('DEV-BUSY')
+    assert.strictEqual(deviceBle.isConnected('DEV-BUSY'), true, '前置条件：FF00 会话已就绪')
+
+    const done = await deviceBle.resetBluetoothStack('单测-有活连接')
+    assert.strictEqual(done, false, '有正在使用的连接时复位必须拒绝执行')
+    assert.deepStrictEqual(state.adapter, [], '适配器不许被碰')
+    assert.strictEqual(
+      deviceBle.isConnected('DEV-BUSY'),
+      true,
+      '正在使用的会话必须原样保留（复位不许清它的账）'
+    )
+  }
+
+  // ── ⑦ 单飞：并发触发的复位合并成同一次落地（升级页 onUnload 与中断错误收尾会撞车） ──
+  {
+    const state = { connects: 0, closes: [], adapter: [] }
+    installOtaWorld(state)
+    const otaBle = freshRequire('../utils/ota-ble')
+    const deviceBle = freshRequire('../utils/device-ble')
+    void otaBle
+
+    const [first, second] = await Promise.all([
+      deviceBle.resetBluetoothStack('单测-并发A'),
+      deviceBle.resetBluetoothStack('单测-并发B')
+    ])
+    assert.strictEqual(first, true)
+    assert.strictEqual(second, true, '并发调用方等到的是同一次复位的结果')
+    assert.deepStrictEqual(
+      state.adapter,
+      ['close', 'open'],
+      '两路并发只允许产生一次「关 → 开」，不许把适配器来回折腾两遍'
+    )
   }
 
   console.log('ota-stack-reset.test.js 全部通过')

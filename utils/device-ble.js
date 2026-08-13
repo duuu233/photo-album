@@ -8,12 +8,25 @@
 
 const protocol = require('./frame-protocol')
 const imageCodec = require('./image-codec')
+const notifyHub = require('./ble-notify-hub')
 
 // 每台设备一个会话：缓存已发现的服务/特征、接收缓冲区与未完成的请求
 const sessions = {}
 // 每台设备「正在建立」的连接 Promise：用于把并发的 ensureConnection 合并成同一次连接，
 // 避免预览页「预热连接」与结果页「正式连接」同时触发各自 createBLEConnection 造成竞态/重复初始化。
 const connecting = {}
+// 各在途连接的发起时刻：蓝牙栈硬复位的「忙判定」按它识别陈旧条目——
+// 底层卡死、永远不落地的 createBLEConnection 不该永远挡住自愈复位（超过 30s 视为陈旧）。
+const connectingStartedAt = {}
+const CONNECTING_STALE_MS = 30000
+
+// 仍算「新鲜」的在途连接（复位忙判定用）。陈旧条目不算忙，会在复位时被丢掉引用。
+function inFlightConnectingIds() {
+  const now = Date.now()
+  return Object.keys(connecting).filter(
+    id => now - (connectingStartedAt[id] || 0) < CONNECTING_STALE_MS
+  )
+}
 let globalListenerBound = false
 
 // 收发监听器：联调调试台用它把每一帧的 16 进制原始字节打印出来，方便和硬件侧日志对照。
@@ -93,20 +106,20 @@ function wxp(fn, options) {
   })
 }
 
-// 全局只注册一次：特征值变化 + 连接状态变化，均按 deviceId 分发到对应会话。
-// ⚠️ 两个回调都留着引用（valueChangeHandler / connectionStateHandler）：蓝牙栈硬复位后要先 off
-//    再重挂，见 rebindGlobalListeners。
-let valueChangeHandler = null
-let connectionStateHandler = null
-
+// 全局只登记一次：特征值变化 + 连接状态变化，均按 deviceId 分发到对应会话。
+// 2026-08-13 第二轮改经 ble-notify-hub 登记：wx 层只有分发器一个注册点，
+// 蓝牙栈硬复位后的重挂由 hub 用「off 不带参数 + 重新 on 分发器」完成——
+// 无论机型上 wx.onBLE* 是累加还是替换、off(fn) 认不认引用，结局都是恰好一份注册。
+// （此前两个模块各自 off(自己的引用) 再 on，off 语义在某机型上不精确时，
+//  后重挂的模块会把先重挂那份清掉，FF00 通知从此没人接收 → 连上却全部「应答超时」。）
 function ensureGlobalListener() {
   if (globalListenerBound) {
     return
   }
   globalListenerBound = true
 
-  if (wx.onBLECharacteristicValueChange) {
-    valueChangeHandler = res => {
+  notifyHub.subscribe('device-ble', {
+    onValueChange: res => {
       const session = sessions[res.deviceId]
       if (!session) {
         return
@@ -121,48 +134,25 @@ function ensureGlobalListener() {
         return
       }
       handleNotify(session, res.value)
-    }
-    wx.onBLECharacteristicValueChange(valueChangeHandler)
-  }
-
-  // 监听连接状态：设备主动断开（息屏/休眠/距离过远/被别的手机抢连）时，微信回调 connected=false。
-  // 必须据此清掉本地会话，否则会出现两类「连接不稳定」的假象：
-  //   1) isConnected() 一直谎报「已连接」（首页、调试页 requireDevice 都被骗）；
-  //   2) ensureConnection 见 ready=true 会复用这条已死的会话、不再重连，后续指令全部写失败/超时。
-  // 清掉会话后，下次 ensureConnection 会重新 createBLEConnection，自动恢复可用。
-  if (wx.onBLEConnectionStateChange) {
-    connectionStateHandler = res => {
+    },
+    // 监听连接状态：设备主动断开（息屏/休眠/距离过远/被别的手机抢连）时，微信回调 connected=false。
+    // 必须据此清掉本地会话，否则会出现两类「连接不稳定」的假象：
+    //   1) isConnected() 一直谎报「已连接」（首页、调试页 requireDevice 都被骗）；
+    //   2) ensureConnection 见 ready=true 会复用这条已死的会话、不再重连，后续指令全部写失败/超时。
+    // 清掉会话后，下次 ensureConnection 会重新 createBLEConnection，自动恢复可用。
+    onStateChange: res => {
       if (!res.connected) {
         cleanupSession(res.deviceId, '电子纸设备连接已断开')
       }
     }
-    wx.onBLEConnectionStateChange(connectionStateHandler)
-  }
+  })
 }
 
-// 蓝牙栈硬复位（closeBluetoothAdapter → openBluetoothAdapter）之后把全局监听重挂一遍。
-//
-// 为什么要重挂：关适配器之后 wx.onBLE* 已注册的回调还在不在，各基础库版本并没有明确保证。
-// 万一被清掉，表现是「连上了、指令也写出去了，但一条通知都收不到」，全部操作超时——
-// 比我们要修的毛病还严重，不能赌。
-// ⚠️ 必须**先 off 再 on**：wx.onBLE* 是累加注册，直接再 on 一次会让每帧通知派发两遍
-//    （同一份数据灌进解帧缓冲两次，此后所有指令必然解不出应答）。
-//    所以 off 接口不可用时宁可什么都不做，保持原有那一份监听。
+// 蓝牙栈硬复位之后把全局监听重挂一遍（关适配器后 wx.onBLE* 的回调还在不在没有保证，
+// 丢了就是「连上却收不到任何应答」）。实际动作收敛到 ble-notify-hub.rebind：
+// off 不带参数（各基础库口径一致的「移除全部」）→ 重新 on 那个引用稳定的分发器。
 function rebindGlobalListeners() {
-  if (!wx.offBLECharacteristicValueChange || !wx.offBLEConnectionStateChange) {
-    return false
-  }
-  if (valueChangeHandler) {
-    wx.offBLECharacteristicValueChange(valueChangeHandler)
-  }
-  if (connectionStateHandler) {
-    wx.offBLEConnectionStateChange(connectionStateHandler)
-  }
-  valueChangeHandler = null
-  connectionStateHandler = null
-  globalListenerBound = false
-  ensureGlobalListener()
-  return true
+  return notifyHub.rebind()
 }
 
 // 清理某设备的会话：置为未就绪、让所有在等应答的请求立刻失败、并移除会话缓存。
@@ -498,6 +488,7 @@ async function ensureConnection(deviceId, meta) {
   disconnectOthers(deviceId)
   const promise = establishConnection(deviceId)
   connecting[deviceId] = promise
+  connectingStartedAt[deviceId] = Date.now()
   try {
     const session = await promise
     // 再释放一次：上面那次只看得见「当时已登记在 sessions 里的」会话。若另一路 ensureConnection
@@ -508,7 +499,12 @@ async function ensureConnection(deviceId, meta) {
     attachSessionScreen(deviceId, screenType)
     return session
   } finally {
-    delete connecting[deviceId]
+    // 只清自己那一条：蓝牙栈复位可能已把本条丢掉、且新的连接可能已重新占位——
+    // 无条件 delete 会把别人刚登记的在途连接一并抹掉（后来的调用方将各自重复建连）。
+    if (connecting[deviceId] === promise) {
+      delete connecting[deviceId]
+      delete connectingStartedAt[deviceId]
+    }
   }
 }
 
@@ -1763,12 +1759,81 @@ function noteBleTouched() {
   bleTouched = true
 }
 
+// 复位重开后确认适配器真的可用了再返回（2026-08-13 第二轮）：
+// openBluetoothAdapter 的 success 只代表调用被受理，安卓上底层可能还在收尾。
+// 状态没就绪就放调用方去扫描，第一轮 startBluetoothDevicesDiscovery 会静默扫不到任何设备。
+// best-effort：查不动/一直不就绪只记日志，随后的 openAdapter 会给出准确提示。
+async function waitAdapterReady() {
+  if (!wx.getBluetoothAdapterState) {
+    return
+  }
+  for (let i = 0; i < 3; i++) {
+    try {
+      const res = await wxp(wx.getBluetoothAdapterState, {})
+      if (res && res.available) {
+        return
+      }
+    } catch (error) {
+      // 查询失败按未就绪处理，等一拍再看
+    }
+    await sleep(300)
+  }
+  console.warn('[设备连接] 蓝牙栈复位后适配器仍未就绪（随后的 openAdapter 会再试并给出准确提示）')
+}
+
+// 在途复位的单飞（single-flight）：并发的复位请求合并成同一次落地。
+// 没有它，升级页「onUnload 立即收尾」与「中断错误穿透 upgradeFirmware 后的收尾」会各跑一遍
+// 关适配器→重开——晚到的那一遍可能落在用户已经开始的新连接中间，把它连适配器一起拆掉。
+let resetInFlight = null
+
 async function resetBluetoothStack(reason) {
+  if (resetInFlight) {
+    return resetInFlight
+  }
+  const run = doResetBluetoothStack(reason).then(
+    result => {
+      resetInFlight = null
+      return result
+    },
+    error => {
+      resetInFlight = null
+      throw error
+    }
+  )
+  resetInFlight = run
+  return run
+}
+
+async function doResetBluetoothStack(reason) {
   const why = reason || '蓝牙栈复位'
+
+  // ⓪ 有人正在用/正在建连接时**整个复位不做**（2026-08-13 第二轮）：
+  // 关适配器会把它们全拆掉。典型场景是升级页中断收尾——shouldAbort 只在窗口间隙被检查，
+  // 中断错误可能在 onUnload 之后好几秒才穿透出来触发第二次收尾，此刻用户往往已经回详情页
+  // 点了连接。宁可留着（本轮没修到）也不能把用户刚建的连接拆了（修出新毛病）。
+  // 在途连接按 30s 判陈旧：真被底层卡死的 createBLEConnection 不该永远挡住自愈复位。
+  const otaBusy = (() => {
+    try {
+      return require('./ota-ble').hasAnyActiveConnection()
+    } catch (error) {
+      return false
+    }
+  })()
+  if (hasAnyActiveConnection() || otaBusy || inFlightConnectingIds().length) {
+    console.warn(`[设备连接] 跳过蓝牙栈硬复位（有正在使用/建立中的连接）：${why}`)
+    return false
+  }
+
   console.warn(`[设备连接] 蓝牙栈硬复位（等价于退出小程序重进）：${why}`)
 
-  // ① 先清两个模块的会话账本：适配器一关，这些会话必然全断，留着只会让 isConnected 谎报已连接
+  // ① 先清两个模块的会话账本：适配器一关，这些会话必然全断，留着只会让 isConnected 谎报已连接。
+  // 在途连接引用也丢掉（上面已确认只剩陈旧的）：不丢的话，复位后对同一台设备的 ensureConnection
+  // 会一直 await 一条永远不会落地的旧连接 Promise，表现为「这台设备再也连不上」直到重启小程序。
   Object.keys(sessions).forEach(id => cleanupSession(id, `蓝牙栈复位：${why}`))
+  Object.keys(connecting).forEach(id => {
+    delete connecting[id]
+    delete connectingStartedAt[id]
+  })
   try {
     // 惰性 require：ota-ble 与本模块互相引用，顶部 require 在加载期会拿到半成品导出对象
     require('./ota-ble').clearSessions(`蓝牙栈复位：${why}`)
@@ -1800,15 +1865,12 @@ async function resetBluetoothStack(reason) {
       // 重开失败（用户关了手机蓝牙等）不在这里报错：调用方随后的 openAdapter 会给出准确提示
     }
   }
+  await waitAdapterReady()
 
-  // 全局通知监听重挂（能 off 才做，见 rebindGlobalListeners）：关适配器之后回调还在不在没有保证，
-  // 丢了就是「连上了却收不到任何应答」，那比原来的毛病更严重。
+  // 全局通知监听重挂：关适配器之后回调还在不在没有保证，丢了就是「连上了却收不到任何应答」。
+  // 两个模块的处理函数都挂在 ble-notify-hub 的同一个分发器名下，重挂一次即覆盖双方
+  //（off 不带参数 + 重新 on 分发器，机型间 on/off 语义差异都收敛成恰好一份注册）。
   rebindGlobalListeners()
-  try {
-    require('./ota-ble').rebindGlobalListeners()
-  } catch (error) {
-    // 取不到 OTA 模块：它的监听保持原样，不影响本模块
-  }
 
   bleTouched = false // 刚复位过，在下一次真正连接之前不必再复位
   return true

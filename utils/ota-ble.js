@@ -448,18 +448,18 @@ function parseAckResult(bytes) {
 }
 
 // ── 连接 / 会话 ────────────────────────────────────────────
-// 两个回调都留引用：蓝牙栈硬复位后要先 off 再重挂（理由见 device-ble.rebindGlobalListeners）
-let valueChangeHandler = null
-let connectionStateHandler = null
-
+// 2026-08-13 第二轮：本模块的通知处理经 ble-notify-hub 登记（wx 层只有 hub 的分发器一个注册点），
+// 蓝牙栈硬复位后的重挂由 hub 统一做「off 不带参数 + 重新 on」——机型间 wx.onBLE*/offBLE* 的
+// 累加/替换/按引用移除差异都收敛成恰好一份注册（理由详见 ble-notify-hub 文件头与
+// device-ble.ensureGlobalListener 的注释）。
 function ensureGlobalListener() {
   if (globalListenerBound) {
     return
   }
   globalListenerBound = true
 
-  if (wx.onBLECharacteristicValueChange) {
-    valueChangeHandler = res => {
+  require('./ble-notify-hub').subscribe('ota-ble', {
+    onValueChange: res => {
       const session = sessions[res.deviceId]
       if (!session || !isSessionCharacteristic(session, res.characteristicId)) {
         return // 非本模块管理的设备/特征（如 FF00 图传通知）一律忽略
@@ -472,12 +472,8 @@ function ensureGlobalListener() {
         特征: res.characteristicId
       })
       dispatchNotification(session, bytes)
-    }
-    wx.onBLECharacteristicValueChange(valueChangeHandler)
-  }
-
-  if (wx.onBLEConnectionStateChange) {
-    connectionStateHandler = res => {
+    },
+    onStateChange: res => {
       if (!res.connected) {
         if (sessions[res.deviceId]) {
           otaWarn('连接状态变化：电子纸设备已断开（OTA 会话作废）', { deviceId: res.deviceId })
@@ -485,27 +481,13 @@ function ensureGlobalListener() {
         cleanupSession(res.deviceId, '电子纸设备连接已断开')
       }
     }
-    wx.onBLEConnectionStateChange(connectionStateHandler)
-  }
+  })
 }
 
-// 蓝牙栈硬复位后重挂本模块的全局监听。做法与理由完全同 device-ble.rebindGlobalListeners
-//（必须先 off 再 on；off 不可用就什么都不做，绝不能让 OTA 的每帧应答被派发两遍）。
+// 蓝牙栈硬复位后的监听重挂：实际动作在 ble-notify-hub.rebind（off 不带参数 + 重新 on 分发器），
+// 一次覆盖 device-ble 与本模块双方。保留此导出是为了调用方/单测不必关心分发器的存在。
 function rebindGlobalListeners() {
-  if (!wx.offBLECharacteristicValueChange || !wx.offBLEConnectionStateChange) {
-    return false
-  }
-  if (valueChangeHandler) {
-    wx.offBLECharacteristicValueChange(valueChangeHandler)
-  }
-  if (connectionStateHandler) {
-    wx.offBLEConnectionStateChange(connectionStateHandler)
-  }
-  valueChangeHandler = null
-  connectionStateHandler = null
-  globalListenerBound = false
-  ensureGlobalListener()
-  return true
+  return require('./ble-notify-hub').rebind()
 }
 
 function isSessionCharacteristic(session, characteristicId) {

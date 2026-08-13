@@ -1,7 +1,7 @@
 # 客户端接口矩阵
 
 > 状态：current  
-> 最后核对：2026-07-28  
+> 最后核对：2026-08-13  
 > 适用范围：微信小程序；App/PC 差异仅作接口边界参考  
 > 上游权威来源：BoltFox Swagger
 
@@ -14,6 +14,18 @@
 > 🛠 **维护约定**：每次修改本表涉及的接口/字段，务必在下方「操作日志」补一条（日期 + 改了什么 + 关联文件/commit），**最新在上**——别让文档与代码脱节。
 
 ## 操作日志（最新在上）
+- **2026-08-13**：**删除 mock 时代遗留的两个固件接口**（真实后端从来没有过这两条路由）：
+  `GET /devices/:id/firmware`（`getDeviceFirmware`，零调用方）与
+  `POST /devices/:id/firmware/upgrade-result`（`reportDeviceFirmwareUpgrade`，`ota.js` 三处在调、
+  **每次都返回 404**，靠 `showError:false` + `.catch(()=>{})` 静默着）。
+  产品口径：**OTA 升级结果不需要通知后端**，故不找替代接口；升级成功与否仍只认设备 `0xF3` 确认，
+  固件版本信息由 `getUserProductDetail` 的 `newVersionNo`/`downloadPath` 提供。
+  同时清掉 `utils/mock.js` 里对应实现/路由与 `utils/request.js` 的 `API_NAME_MAP` 两条中文名，
+  了结 `docs/archive/reviews/代码审查修复清单-2026-07-16.md` A1 留下的「需确认后端已有这些路由或接受 404」。
+  ⚠️ 同源遗留 `/auth/phone`、`/auth/reset-password` 两个封装仍在 `utils/api.js` 里，但**无调用方**、
+  不会发出请求，本轮未动。
+  关联：`utils/api.js`、`utils/mock.js`、`utils/request.js`、`subpackages/device/ota/ota.js`、
+  [2026-08-13 变更记录第 6 条](../changes/2026-08-13-OTA连接硬复位与AI入口续聊.md)
 - **2026-08-08**：**支付体系（Token）由 mock 切到真实后端，微信支付走小程序虚拟支付**。
   新增章节「支付体系（Token）」，接入 `/Client/Order/getUserAccount`、`getGoodsList`、
   `getUserAccountTrade`、`addOrder` 与支付查单（2026-08-11 改为 `/Client/Pay/getPayQuery`）；

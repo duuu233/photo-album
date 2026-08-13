@@ -18,21 +18,9 @@ const DEFAULT_USER = {
 // 真实字段在 bindDevice 里由蓝牙读取结果（CMD=0x01/0x03）写入。
 const DEVICE_SEED = []
 
-const FIRMWARE_RELEASE = {
-  version: '1.2.0',
-  fileName: 'BoltStar_EF6_1.2.0.bin',
-  sizeBytes: 196608,
-  packageUrl: '',
-  checksum: 'mock-crc32-mpeg2',
-  minBattery: 20,
-  releaseDate: '2026-06-08',
-  mock: true,
-  releaseNotes: [
-    '优化照片写入稳定性',
-    '提升蓝牙 OTA 传输容错能力',
-    '修复部分电子纸设备重连后版本号刷新异常'
-  ]
-}
+// 2026-08-13 删除 FIRMWARE_RELEASE 与 /devices/:id/firmware* 两条假接口：
+// 真实后端只有 /Client/...，从来没有这两条路由；固件信息现由 getDeviceDetail 提供，
+// 升级结果按产品口径不需要通知后端。真实 OTA 走 BLE（utils/ota-ble.js），本文件不参与。
 
 const PHOTO_SEED = [
   {
@@ -147,11 +135,6 @@ function nowText() {
 function migrateStore(store) {
   let changed = false
 
-  if (!store.firmwareRelease) {
-    store.firmwareRelease = clone(FIRMWARE_RELEASE)
-    changed = true
-  }
-
   if (!Array.isArray(store.devices)) {
     store.devices = []
     changed = true
@@ -182,8 +165,7 @@ function readStore() {
     user: clone(DEFAULT_USER),
     devices: clone(DEVICE_SEED),
     photos: clone(PHOTO_SEED),
-    records: clone(RECORD_SEED),
-    firmwareRelease: clone(FIRMWARE_RELEASE)
+    records: clone(RECORD_SEED)
   }
   wx.setStorageSync(STORE_KEY, initialStore)
   return initialStore
@@ -209,29 +191,6 @@ function fail(message, code = 400) {
 
 function getDeviceById(store, deviceId) {
   return store.devices.find(item => item.id === deviceId)
-}
-
-function versionParts(version) {
-  return String(version || '0.0.0')
-    .match(/\d+/g)
-    ? String(version || '0.0.0').match(/\d+/g).map(Number)
-    : [0]
-}
-
-function compareVersion(left, right) {
-  const a = versionParts(left)
-  const b = versionParts(right)
-  const len = Math.max(a.length, b.length)
-
-  for (let i = 0; i < len; i++) {
-    const av = a[i] || 0
-    const bv = b[i] || 0
-
-    if (av > bv) return 1
-    if (av < bv) return -1
-  }
-
-  return 0
 }
 
 function normalizeImage(image, index, device) {
@@ -431,71 +390,6 @@ function clearDevicePhotoCopies(deviceId) {
   })
 }
 
-function getDeviceFirmware(deviceId) {
-  const store = readStore()
-  const device = getDeviceById(store, deviceId)
-
-  if (!device) {
-    return fail('电子纸设备不存在', 404)
-  }
-
-  const release = store.firmwareRelease || FIRMWARE_RELEASE
-  const currentVersion = device.firmwareVersion || '0.0.0'
-  const hasUpdate = compareVersion(currentVersion, release.version) < 0
-
-  return delay({
-    deviceId: device.id,
-    deviceName: device.name,
-    bleDeviceId: device.deviceId || '',
-    connected: device.connected,
-    battery: device.battery,
-    currentVersion,
-    latestVersion: release.version,
-    hasUpdate,
-    minBattery: release.minBattery,
-    releaseDate: release.releaseDate,
-    releaseNotes: release.releaseNotes,
-    package: hasUpdate
-      ? {
-        version: release.version,
-        fileName: release.fileName,
-        sizeBytes: release.sizeBytes,
-        packageUrl: release.packageUrl,
-        checksum: release.checksum,
-        mock: release.mock
-      }
-      : null
-  })
-}
-
-function reportDeviceFirmwareUpgrade(deviceId, data) {
-  const store = readStore()
-  const device = getDeviceById(store, deviceId)
-
-  if (!device) {
-    return fail('电子纸设备不存在', 404)
-  }
-
-  const release = store.firmwareRelease || FIRMWARE_RELEASE
-  const status = data.status || 'success'
-
-  if (status === 'success') {
-    device.firmwareVersion = data.version || release.version
-    device.connected = true
-    device.lastOnline = '刚刚'
-    device.firmwareUpdatedAt = nowText()
-    device.lastOtaError = ''
-  } else {
-    device.lastOtaError = data.message || 'OTA升级失败'
-  }
-
-  writeStore(store)
-  return delay({
-    success: status === 'success',
-    device
-  })
-}
-
 function deleteDevice(deviceId) {
   const store = readStore()
   const existed = getDeviceById(store, deviceId)
@@ -638,12 +532,6 @@ function handle(options) {
 
   const clearCopyMatch = path.match(/^\/devices\/([^/]+)\/clear-photo-copies$/)
   if (clearCopyMatch && method === 'POST') return clearDevicePhotoCopies(clearCopyMatch[1])
-
-  const firmwareMatch = path.match(/^\/devices\/([^/]+)\/firmware$/)
-  if (firmwareMatch && method === 'GET') return getDeviceFirmware(firmwareMatch[1])
-
-  const firmwareResultMatch = path.match(/^\/devices\/([^/]+)\/firmware\/upgrade-result$/)
-  if (firmwareResultMatch && method === 'POST') return reportDeviceFirmwareUpgrade(firmwareResultMatch[1], data)
 
   if (path === '/album/photos' && method === 'GET') return delay(store.photos)
   if (path === '/album/photos' && method === 'DELETE') return deleteAlbumPhotos(data)

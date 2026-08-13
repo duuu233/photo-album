@@ -23,7 +23,13 @@ Page(fold.adapt({
       wx.switchTab({
         url: '/pages/home/home'
       })
+      return
     }
+    // 预取登录 code（2026-08-13，修「隔日首次登录必失败」）：wx.login 必须发生在用户点手机号授权
+    // **之前**——它顺带把 session_key 刷新到位，授权密文才会用这把新 key 加密，提交时用这枚预取的
+    // code 去换，两边必然配对。原来是授权回调之后才 login，隔日 key 一刷新密文就解不开了
+    //（细节见 app.prefetchLoginCode 注释）。从协议/隐私页返回也会走到这里，顺带把 code 换新鲜的。
+    app.prefetchLoginCode()
   },
 
   // 协议勾选改为图片单选按钮，点击切换勾选状态
@@ -102,6 +108,9 @@ Page(fold.adapt({
         submitting: false,
         loggingIn: false
       })
+      // 预取的 code 已被这次失败的提交消费掉（code 单次使用），立刻补预取一枚，
+      // 用户马上重试时才用得上「预取 code ↔ 授权密文」这对配对，而不是落回现取兜底。
+      app.prefetchLoginCode()
     }
   },
 

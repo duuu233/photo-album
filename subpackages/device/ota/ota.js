@@ -790,14 +790,9 @@ Page(fold.adapt({
         CRC32: result && result.crc32 !== undefined ? '0x' + (result.crc32 >>> 0).toString(16).toUpperCase() : '--'
       })
 
-      // 未确认 = 没拿到设备 0xF3：不能假报成功——不上报 success、不把本地版本改成新版、
-      // 保留升级包并开放「重新升级」，否则用户既被误导"已升级"又没有任何重试入口，后端记录也是假的。
+      // 未确认 = 没拿到设备 0xF3：不能假报成功——不把本地版本改成新版、
+      // 保留升级包并开放「重新升级」，否则用户既被误导"已升级"又没有任何重试入口。
       if (unconfirmed) {
-        await api.reportDeviceFirmwareUpgrade(this.data.id, {
-          status: 'fail',
-          version: firmware.latestVersion,
-          message: '数据已全部发送，但未收到电子纸设备 0xF3 确认，升级未确认成功'
-        }).catch(() => {})
         this.setData({
           state: 'failed',
           statusText: '未确认(请重试)',
@@ -819,18 +814,11 @@ Page(fold.adapt({
         return
       }
 
-      // 升级成功：回报后台
-      console.log('[OTA页] 升级成功，上报后端 reportDeviceFirmwareUpgrade(success)', {
+      // 升级成功。⚠️ 不上报后端（2026-08-13 产品口径：OTA 升级结果不需要通知后端；
+      // 原来调的 `/devices/:id/firmware/upgrade-result` 是 mock 时代的假接口，真实后端没有这条路由）。
+      console.log('[OTA页] 升级成功', {
         设备记录: this.data.id,
         版本: firmware.latestVersion
-      })
-      await api.reportDeviceFirmwareUpgrade(this.data.id, {
-        status: 'success',
-        version: firmware.latestVersion,
-        size: result.size,
-        crc32: result.crc32
-      }).catch(error => {
-        console.warn('[OTA页] 升级结果上报失败（不影响设备侧升级结果）：', (error && error.message) || error)
       })
 
       // ⚠️ connected 必须置 false：设备在 END 校验通过约 100ms 后就复位运行新固件，这条连接已经没了。
@@ -898,12 +886,6 @@ Page(fold.adapt({
       } else {
         console.log('[OTA页] 本轮未与设备交互（包下载/校验阶段失败），保留连接与直连缓存')
       }
-
-      await api.reportDeviceFirmwareUpgrade(this.data.id, {
-        status: 'fail',
-        version: firmware.latestVersion,
-        message
-      }).catch(() => {})
 
       // 区分「固件下载失败」与「升级失败」：读包/下载阶段(preparing/prepared)出错即下载失败
       const inDownload =

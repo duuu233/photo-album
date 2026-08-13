@@ -14,6 +14,10 @@ function wxLogin() {
   })
 }
 
+// 预取的登录 code 按 4 分钟判超龄：官方有效期 5 分钟，留 1 分钟余量——
+// 拿一个临期 code 去提交，网络慢一点就变成「code 已过期」的新失败。
+const LOGIN_CODE_MAX_AGE_MS = 4 * 60 * 1000
+
 App({
   onLaunch() {
     // 记录每次启动时间，用于调试/排查问题（最新的排在最前）。
@@ -128,16 +132,57 @@ App({
     return this.applyWechatSession(profile)
   },
 
+  // ── 登录 code 预取（2026-08-13，修「隔日首次登录必失败、重试即成功」）─────────────
+  //
+  // 根因：旧版手机号授权的 encryptedData 用「用户点授权那一刻」端上的 session_key 加密，而此前的
+  // 写法是**授权回调之后**才 wx.login —— login 可能刷新 session_key（隔日必刷新；同日落在官方说的
+  // 「最短刷新周期」内不刷新，所以同日不复现），后端拿新 code 换到新 key，解不开旧密文，报解密失败；
+  // 紧接着重试时 key 刚刷新过不再变，于是又能成功——正是现场「隔日第一次必报错、再点一次就好」。
+  //
+  // 修法（getPhoneNumber 官方文档明写的「建议提前 login」）：登录页 onShow 先 wx.login 预取 code，
+  // 顺带把 session_key 刷新到位；授权发生在它之后，密文用的就是新 key；提交时用**预取的** code，
+  // 两边必然配对。code 单次使用、5 分钟过期：消费即作废（无论提交成败），登录页在失败后再预取一个。
+  prefetchLoginCode() {
+    return wxLogin()
+      .then(res => {
+        if (res && res.code) {
+          this._prefetchedLoginCode = { code: res.code, fetchedAt: Date.now() }
+        }
+      })
+      .catch(() => {
+        // 预取失败不打扰用户：提交时会现取兜底（见 loginWithWechatPhone）
+        this._prefetchedLoginCode = null
+      })
+  },
+
+  // 取出并作废预取的 code（单次使用）。缺失或超龄返回 ''，调用方现取兜底。
+  consumePrefetchedLoginCode() {
+    const stash = this._prefetchedLoginCode
+    this._prefetchedLoginCode = null
+    if (!stash || Date.now() - stash.fetchedAt > LOGIN_CODE_MAX_AGE_MS) {
+      return ''
+    }
+    return stash.code
+  },
+
   // 真实 BoltFox 一键登录：detail 来自 button open-type="getPhoneNumber" 的回调，
   // 仅携带手机号授权（旧版 encryptedData + iv）。换取 openid 必须用 wx.login 的登录 code 走
   // jscode2session —— getPhoneNumber 回调里的 code 是手机号专用 code，不能用于 jscode2session
-  // （误用即报 40029 invalid code），所以这里单独再调一次 wx.login 取新鲜登录 code。
+  // （误用即报 40029 invalid code）。
   async loginWithWechatPhone(detail = {}) {
-    // 登录 code 一次性、5 分钟有效，取到后立即提交，避免过期/复用导致 40029
-    const loginRes = await wxLogin()
+    // 优先用登录页 onShow 预取的 code（与 encryptedData 的加密 key 必然配对，见 prefetchLoginCode）。
+    // 预取缺失/超龄/已被上次提交消费时回退为现取 —— 本页刚 login 过，session_key 处于最短刷新
+    // 周期内不会再变，现取的 code 与密文仍是同一个 key（「重试即成功」的机理，兜底沿用它）。
+    // ⚠️ 用了预取 code 就**不要**再补一次 wx.login：预取 code 对应的 key 才是密文用的那个，
+    // 提交前再 login 一次没有任何收益，反而可能提前刷新掉下一次授权要用的 key。
+    let code = this.consumePrefetchedLoginCode()
+    if (!code) {
+      const loginRes = await wxLogin()
+      code = loginRes.code
+    }
 
     const profile = await api.setWechatAppLogin({
-      code: loginRes.code,
+      code,
       wxEncrypData: detail.encryptedData,
       wxIvData: detail.iv
     })
@@ -278,6 +323,10 @@ App({
     wx.removeStorageSync('jwtToken')
     wx.removeStorageSync('userInfo')
   },
+
+  // 登录页 onShow 预取的登录 code（{ code, fetchedAt }，见 prefetchLoginCode）。
+  // 不放 globalData：它是登录流程的内部状态，单次使用，页面不应直接读它。
+  _prefetchedLoginCode: null,
 
   globalData: {
     token: '',

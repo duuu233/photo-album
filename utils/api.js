@@ -929,15 +929,10 @@ module.exports = {
     return module.exports.clearUserProductImg(deviceId)
   },
 
-  getDeviceFirmware(deviceId) {
-    return http.get(`/devices/${deviceId}/firmware`)
-  },
-
-  reportDeviceFirmwareUpgrade(deviceId, data) {
-    return http.post(`/devices/${deviceId}/firmware/upgrade-result`, data, {
-      showError: false
-    })
-  },
+  // 2026-08-13 删除：`getDeviceFirmware` / `reportDeviceFirmwareUpgrade`（`/devices/:id/firmware*`）。
+  // 那是 mock 时代的假接口，真实后端只有 `/Client/...`，07-16 关掉 mock 总开关后它们每次都是 404
+  // （靠 showError:false + .catch 静默着，没人看得见）。固件版本信息现在由 `getDeviceDetail` 的
+  // `newVersionNo`/`downloadPath` 提供；**升级结果按产品口径不需要通知后端**，故不另找替代接口。
 
   deleteDevice(deviceId) {
     return module.exports.delUserProduct(deviceId)

@@ -138,7 +138,7 @@ function parseResponseData(data) {
 }
 
 // 接口 url → 简短中文名：报错 toast 里带上「中文名 + url」，方便用户/客服一眼定位是哪个接口出错。
-// key 取 url 路径最后一段（方法名），兼容 /devices/:id/firmware 这类带路径参数的地址；映射不到就只带 url。
+// key 取 url 路径最后一段（方法名），兼容 /auth/reset-password 这类带路径参数的地址；映射不到就只带 url。
 const API_NAME_MAP = {
   getProductList: '产品列表',
   getProductFaqList: '常见问题列表',
@@ -170,9 +170,8 @@ const API_NAME_MAP = {
   delUserProductImgRecord: '删除投屏记录',
   phone: '绑定手机号',
   'reset-password': '重置密码',
-  password: '修改密码',
-  firmware: '获取固件',
-  'upgrade-result': '上报升级结果'
+  password: '修改密码'
+  // firmware / upgrade-result 两条已随 `/devices/:id/firmware*` 于 2026-08-13 一并删除
 }
 
 // 从 url 取出方法名段并映射中文名，返回 { path(去掉query的纯路径), name(映射不到为空) }
