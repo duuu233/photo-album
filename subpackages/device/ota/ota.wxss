@@ -77,6 +77,28 @@
   line-height: 1.5;
 }
 
+/* 升级规则（2026-08-13 需求 2）：进度条下方的两条固定告知。
+   ⚠️ 整块**左对齐**：.ota-body 是整页居中的，两条长句居中后每行断点不齐、像散文；
+   这是要一条条读进去的告知，序号「1）2）」也必须对齐同一条左边界。
+   这一屏没有底部按钮区（ota-actions 在 progress 时整块不渲染），所以自己让开安全区，
+   否则全面屏上末行会压在手势条上。 */
+.progress-rules {
+  margin: 40rpx auto 0;
+  padding: 24rpx 28rpx calc(24rpx + var(--safe-bottom));
+  text-align: left;
+}
+
+.progress-rule {
+  color: #8b929d;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+
+/* 两条之间留一点气口，比行距大、比段距小：读起来是「两条规则」而不是一段话 */
+.progress-rule + .progress-rule {
+  margin-top: 12rpx;
+}
+
 .ota-actions {
   position: relative;
   z-index: 1;

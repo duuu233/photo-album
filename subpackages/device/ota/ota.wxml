@@ -5,7 +5,10 @@
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" mode="aspectFill"></image>
   </view>
 
-  <page-nav title="固件升级"></page-nav>
+  <!-- 顶部导航**不给返回箭头**（2026-08-13 需求 1）：升级不可逆且中断有代价（见下方规则），
+       页面里不留「随手点一下就走」的入口。成功/失败画面底部仍有「返回」按钮，不会把用户困住；
+       升级进行中即便走系统手势/安卓返回键，也还有 enableAlertBeforeUnload 的二次确认拦一道。 -->
+  <page-nav title="固件升级" show-back="{{false}}"></page-nav>
 
   <view class="ota-body">
     <image class="ota-art art-{{screenStatus}}" src="{{artImage}}" mode="aspectFit"></image>
@@ -21,6 +24,14 @@
         </view>
       </view>
       <view class="progress-note" wx:if="{{progressText}}">{{progressText}}</view>
+
+      <!-- 升级规则（2026-08-13 需求 2）：只在进行中这一屏出现 —— 它要说的是「此刻别走开」和
+           「万一失败怎么自救」，成功/失败画面上再挂着只会跟结论文案抢注意力。
+           两条都写死在 wxml：与设备/接口无关的固定告知，不走 data 以免被状态刷新覆盖。 -->
+      <view class="progress-rules">
+        <view class="progress-rule">1）升级过程请耐心等待升级结果，意外中断可能导致电子纸设备无法使用</view>
+        <view class="progress-rule">2）若升级失败造成设备无法连接，请尝试重新进入小程序\app或断电重启设备</view>
+      </view>
     </block>
   </view>
 

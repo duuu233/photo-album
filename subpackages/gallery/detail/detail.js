@@ -18,6 +18,14 @@ const toast = require('../../../utils/toast')
 
 const app = getApp()
 
+// 顶部大图的占位比例（高/宽×100）。3:4 与图库列表的 DEFAULT_RATIO 同源：后端列表/详情都还没下发
+// 图片宽高，只能先占一个常见比例，等 bindload 报回真实尺寸再校正这一张。
+const HERO_PAD_DEFAULT = 133.33
+// 极端比例钳一下：太扁的图（<40）大图会缩成一条、白卡几乎顶到导航栏；太长的图（>240）
+// 下半截本来就在屏幕外（大图 absolute 不跟着滚），再长只是把白卡推得更远、什么也换不来。
+const HERO_PAD_MIN = 40
+const HERO_PAD_MAX = 240
+
 Page(fold.adapt({
   data: {
     // sizes 不再进页面数据：「适用设备尺寸」区块 2026-08-12 已按产品要求去掉
@@ -29,12 +37,17 @@ Page(fold.adapt({
       url: '',
       favorited: false
     },
+    // 顶部大图的高度占位（2026-08-13 需求 4）：值是「图片高/宽×100」，wxml 里当 vw 用，
+    // 于是盒子比例＝图片比例，aspectFill 一个像素都裁不掉。
+    // 首屏用 3:4 兜底（与图库列表 DEFAULT_RATIO 同源——后端列表/详情都还没给宽高，
+    // 见 utils/gallery-api.js 文件头的后端缺口清单），bindload 拿到真实尺寸后校正。
+    heroPad: HERO_PAD_DEFAULT,
     projecting: false,
+    // 选中态在 device-picker-sheet 组件内部持有（2026-08-13 需求 3 起不再默认选中）
     devicePicker: {
       show: false,
       loading: false,
-      devices: [],
-      selectedId: ''
+      devices: []
     }
   },
 
@@ -55,6 +68,24 @@ Page(fold.adapt({
     } catch (error) {
       toast.show((error && error.message) || '图片加载失败')
       setTimeout(() => wx.navigateBack(), 1200)
+    }
+  },
+
+  // 顶部大图加载完成：用真实宽高校正占位比例（2026-08-13 需求 4）。
+  // 只有这里能拿到尺寸——后端列表/详情都不下发图片宽高。
+  onHeroLoad(event) {
+    const detail = (event && event.detail) || {}
+    const width = Number(detail.width) || 0
+    const height = Number(detail.height) || 0
+    if (!width || !height) {
+      return // 读不到尺寸就保持兜底比例，别把大图算成 0 高
+    }
+    const pad = Math.min(
+      HERO_PAD_MAX,
+      Math.max(HERO_PAD_MIN, Number(((height / width) * 100).toFixed(2)))
+    )
+    if (pad !== this.data.heroPad) {
+      this.setData({ heroPad: pad })
     }
   },
 
@@ -100,10 +131,10 @@ Page(fold.adapt({
       return
     }
 
-    // 未连接：弹已绑定设备列表
-    const selectedId = device && device.id != null ? String(device.id) : ''
+    // 未连接：弹已绑定设备列表。不预置选中项（2026-08-13 需求 3，口径同 AI 对话页）：
+    // 投屏是往设备写图，端上替用户选好、他顺手一点就投到了别的设备上。
     this.setData({
-      devicePicker: { show: true, loading: true, devices: [], selectedId }
+      devicePicker: { show: true, loading: true, devices: [] }
     })
     try {
       const devices = await api.getDevices()
@@ -122,16 +153,16 @@ Page(fold.adapt({
         })
       )
       this.setData({
-        devicePicker: { show: true, loading: false, devices: pickerDevices, selectedId }
+        devicePicker: { show: true, loading: false, devices: pickerDevices }
       })
     } catch (error) {
       this.setData({ 'devicePicker.show': false })
     }
   },
 
-  onDevicePickerSelect(event) {
-    const index = event.currentTarget.dataset.index
-    const device = this.data.devicePicker.devices[index]
+  // 弹层里按下「连接并投屏」才真正开投（选中只是选中，见 device-picker-sheet）
+  onDevicePickerConfirm(event) {
+    const device = event.detail && event.detail.device
     this.setData({ 'devicePicker.show': false })
     if (device) {
       this.startProjection(device)

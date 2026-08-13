@@ -2,14 +2,27 @@
      沉浸式：大图铺到状态栏，导航栏透明压在图上（page-nav 的 immersive 属性把标题改白字）。
      折叠屏：根容器锁一屏高，白卡随 .fold-scroll 上滑盖住大图，贴底按钮留在滚动区外并抬到 z-index:2。 -->
 <view class="gallery-shell detail-shell fold-viewport" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
-  <!-- 大图垫在最底层（z-index:0），滚动区透明、白卡滑上来时正好盖住它 -->
-  <image class="detail-hero" src="{{photo.url}}" mode="aspectFill"></image>
+  <!-- 大图垫在最底层（z-index:0），滚动区透明、白卡滑上来时正好盖住它。
+       2026-08-13 需求 4：**不再裁图**。此前是「宽 100% + 写死高 58vh + aspectFill」——
+       两个比例对不上时 aspectFill 会按填满去放大再裁掉多出来的部分（横图裁上下、竖图裁左右）。
+       现在宽度仍是满屏，高度按图片真实比例算（heroPad = 高/宽×100，单位 vw）：
+       盒子比例＝图片比例，aspectFill 就一个像素都裁不掉，也不会拉伸变形。
+       bindload 拿到真实宽高后校正 heroPad（首屏先按 3:4 占位，与图库列表同一套兜底）。 -->
+  <image
+    class="detail-hero"
+    src="{{photo.url}}"
+    mode="aspectFill"
+    style="height: {{heroPad}}vw"
+    bindload="onHeroLoad"
+  ></image>
   <page-nav title="图片详情" immersive="{{true}}"></page-nav>
 
   <scroll-view class="fold-scroll" scroll-y="{{true}}">
     <view class="detail-body">
-      <!-- 留白让出大图的可见高度；用户上滑时白卡从这里往上盖 -->
-      <view class="detail-spacer"></view>
+      <!-- 留白让出大图的可见高度；用户上滑时白卡从这里往上盖。
+           高度跟着大图走（比它矮 3vh，白卡圆角正好压在图上，设计稿如此）：大图高度现在由
+           图片真实比例决定，这里写死就会在图矮时露出一条底色、图高时提前盖住图。 -->
+      <view class="detail-spacer" style="height: calc({{heroPad}}vw - 3vh)"></view>
 
       <view class="detail-card">
         <view class="detail-head">
@@ -45,32 +58,16 @@
     {{projecting ? '准备中…' : '开始投屏'}}
   </view>
 
-  <!-- 未连接时的设备选择弹层（与 AI 对话页同一套交互：选完自动连接并进投屏流程）。
+  <!-- 未连接时的设备选择弹层（2026-08-13 需求 3）：与 AI 对话页共用 device-picker-sheet 组件
+       （列表版式照搬搜索设备页、不默认选中、按下按钮才连接）。
        必须留在滚动区外，否则会跟着白卡一起滚。 -->
-  <view wx:if="{{devicePicker.show}}" class="picker-mask" bindtap="closeDevicePicker" catchtouchmove="noop">
-    <view class="picker-sheet" catchtap="noop">
-      <view class="picker-title">选择投屏设备</view>
-      <view class="picker-desc">选择电子纸设备后，将自动连接并开始投屏</view>
-      <view class="picker-divider"></view>
-      <view wx:if="{{devicePicker.loading}}" class="picker-loading">加载中…</view>
-      <scroll-view wx:else class="picker-list" scroll-y="{{true}}">
-        <view
-          wx:for="{{devicePicker.devices}}"
-          wx:key="pickerId"
-          class="picker-item {{item.pickerId === devicePicker.selectedId ? 'picker-item--selected' : ''}}"
-          data-index="{{index}}"
-          hover-class="none"
-          bindtap="onDevicePickerSelect"
-        >
-          <view class="picker-item-name">{{item.name || item.productName || '智能相框'}}</view>
-          <view class="picker-radio {{item.pickerId === devicePicker.selectedId ? 'picker-radio--selected' : ''}}">
-            <view wx:if="{{item.pickerId === devicePicker.selectedId}}" class="picker-radio-check"></view>
-          </view>
-        </view>
-      </scroll-view>
-      <view class="picker-cancel" hover-class="none" bindtap="closeDevicePicker">取消</view>
-    </view>
-  </view>
+  <device-picker-sheet
+    show="{{devicePicker.show}}"
+    loading="{{devicePicker.loading}}"
+    devices="{{devicePicker.devices}}"
+    bind:confirm="onDevicePickerConfirm"
+    bind:cancel="closeDevicePicker"
+  ></device-picker-sheet>
 
   <global-toast id="globalToast"></global-toast>
 </view>

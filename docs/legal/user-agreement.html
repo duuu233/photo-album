@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BoltStar 用户协议</title>
+<style>
+  :root {
+    --ink: #1f2328;
+    --ink-sub: #5b636e;
+    --line: #e3e6ea;
+    --accent: #ff6421;
+    --bg: #ffffff;
+    --bg-soft: #f7f8fa;
+    --todo-bg: #fff4e5;
+    --todo-ink: #a4531b;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    padding: 0 20px 64px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+      "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.8;
+    word-break: break-word;
+  }
+  .wrap { max-width: 820px; margin: 0 auto; }
+  header { padding: 40px 0 24px; border-bottom: 2px solid var(--line); }
+  h1 { margin: 0 0 12px; font-size: 28px; line-height: 1.35; }
+  .meta { color: var(--ink-sub); font-size: 14px; }
+  .meta span { margin-right: 20px; white-space: nowrap; }
+  h2 {
+    margin: 40px 0 12px;
+    padding-top: 8px;
+    font-size: 20px;
+    line-height: 1.4;
+    border-top: 1px solid var(--line);
+  }
+  h3 { margin: 26px 0 8px; font-size: 17px; }
+  ul, ol { padding-left: 22px; margin: 10px 0; }
+  li { margin: 6px 0; }
+  strong { font-weight: 600; }
+  .lead {
+    margin: 24px 0;
+    padding: 16px 18px;
+    background: var(--bg-soft);
+    border-left: 4px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    font-size: 15px;
+  }
+  .toc {
+    margin: 28px 0;
+    padding: 18px 20px;
+    background: var(--bg-soft);
+    border-radius: 10px;
+  }
+  .toc-title { font-weight: 600; margin-bottom: 8px; }
+  .toc ol { margin: 0; padding-left: 20px; }
+  .toc a { color: var(--ink); text-decoration: none; }
+  .toc a:hover { color: var(--accent); text-decoration: underline; }
+  .table-scroll { overflow-x: auto; margin: 16px 0; -webkit-overflow-scrolling: touch; }
+  table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 14.5px; }
+  th, td { padding: 10px 12px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { background: var(--bg-soft); font-weight: 600; white-space: nowrap; }
+  .todo {
+    padding: 1px 6px;
+    background: var(--todo-bg);
+    color: var(--todo-ink);
+    border-radius: 4px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  footer {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    color: var(--ink-sub);
+    font-size: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #e6e8eb;
+      --ink-sub: #a2a9b4;
+      --line: #2f343b;
+      --bg: #16181c;
+      --bg-soft: #1e2126;
+      --todo-bg: #3a2a15;
+      --todo-ink: #f0b072;
+    }
+  }
+  @media print {
+    body { padding: 0; font-size: 12pt; }
+    .toc { break-inside: avoid; }
+    h2 { break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>BoltStar 用户协议</h1>
+  <div class="meta">
+    <span>更新日期：2026 年 8 月 13 日</span>
+    <span>生效日期：<span class="todo">[待填写：生效日期]</span></span>
+    <span>版本：v3.0</span>
+  </div>
+</header>
+
+<div class="lead">
+  <p style="margin-top:0">本协议是您与<strong>启和明（深圳）新能源科技有限公司</strong>（以下称“我们”）就使用 BoltStar 电子纸相框配套应用（含 iOS App、Android App 与微信小程序，以下统称“本应用”）所订立的协议。</p>
+  <p style="margin-bottom:0"><strong>请您在注册、登录或使用本应用前，完整、仔细地阅读本协议，特别是以粗体标注的免责条款、责任限制条款、虚拟财产（星币）条款与争议解决条款。</strong>您勾选同意、注册、登录或以其他方式使用本应用，即视为您已充分理解并同意接受本协议全部内容的约束。<strong>如您不同意本协议任何条款，请立即停止使用本应用。</strong></p>
+</div>
+
+<div class="toc">
+  <div class="toc-title">目录</div>
+  <ol>
+    <li><a href="#s1">协议的订立与变更</a></li>
+    <li><a href="#s2">服务内容</a></li>
+    <li><a href="#s3">账号注册、使用与注销</a></li>
+    <li><a href="#s4">设备连接与使用规则</a></li>
+    <li><a href="#s5">照片投屏与内容规则</a></li>
+    <li><a href="#s6">AI 创作服务</a></li>
+    <li><a href="#s7">星币与付费规则</a></li>
+    <li><a href="#s8">固件升级与设备风险提示</a></li>
+    <li><a href="#s9">用户行为规范与违规处理</a></li>
+    <li><a href="#s10">知识产权</a></li>
+    <li><a href="#s11">免责声明与责任限制</a></li>
+    <li><a href="#s12">服务的变更、中断与终止</a></li>
+    <li><a href="#s13">未成年人条款</a></li>
+    <li><a href="#s14">法律适用与争议解决</a></li>
+    <li><a href="#s15">其他</a></li>
+  </ol>
+</div>
+
+<h2 id="s1">一、协议的订立与变更</h2>
+<ol>
+  <li>本协议内容包括协议正文及所有我们已发布或将来可能发布的与本应用相关的规则，包括《BoltStar 隐私政策》《BoltStar AI 服务协议》，上述规则为本协议不可分割的组成部分，与本协议具有同等法律效力。</li>
+  <li>我们有权根据法律法规变化或业务需要修订本协议。修订后我们将在应用内以显著方式通知您。<strong>修订生效后您继续使用本应用的，视为接受修订内容；不接受的，您应停止使用并可注销账号。</strong></li>
+</ol>
+
+<h2 id="s2">二、服务内容</h2>
+<p>本应用为 BoltStar 电子纸相框（以下称“设备”）提供配套服务，当前包括：</p>
+<ul>
+  <li><strong>设备管理：</strong>通过蓝牙搜索、绑定、连接与重命名设备，查看设备电量、固件版本与容量，设置轮播播放模式与切换间隔，删除设备内的照片或一键清空。</li>
+  <li><strong>照片投屏：</strong>选择本地照片，经裁切、构图与画面转换后通过蓝牙传输至设备显示。</li>
+  <li><strong>我的相册：</strong>查看与管理已成功投屏的照片记录，支持多选删除。</li>
+  <li><strong>官方图库：</strong>浏览我们提供的图片素材、收藏并投屏。</li>
+  <li><strong>AI 创作：</strong>文本对话、根据文字生成图片、上传图片进行美化，并可将生成结果投屏。</li>
+  <li><strong>星币：</strong>用于消耗 AI 能力的应用内虚拟道具，可在应用内购买。</li>
+  <li><strong>固件升级：</strong>检测并通过蓝牙为设备升级固件。</li>
+</ul>
+<p>我们可能不时增加、调整或下线部分功能，具体以您所使用版本的实际展示为准。<strong>不同平台（iOS / Android / 微信小程序）的功能与支付方式可能存在差异。</strong></p>
+
+<h2 id="s3">三、账号注册、使用与注销</h2>
+<ol>
+  <li>您需按页面提示完成注册与登录。<strong>您应保证所提供的手机号等信息真实、准确、合法有效</strong>，因信息不实导致无法使用服务或造成损失的，由您自行承担。</li>
+  <li><strong>账号仅限您本人使用，不得出借、转让、出售或以其他方式许可他人使用。</strong>您应妥善保管账号及验证码，凡通过您账号实施的操作均视为您本人行为，由此产生的责任由您承担。</li>
+  <li>如发现账号被他人非法使用或存在安全漏洞，请立即通过第十五节的方式通知我们。</li>
+  <li><strong>注销：</strong>您可在「我的 → 设置 → 用户注销」自助注销账号。<strong>注销后账号数据将被删除或匿名化，账号内的星币余额、投屏记录、AI 会话与设备绑定关系一并清除且不可恢复，未消耗的星币不予退还（法律法规另有规定的除外）。</strong><strong>请您在注销前自行清空设备内的照片</strong>——注销后绑定关系解除，将无法再通过本应用删除设备中已显示的图片。</li>
+</ol>
+
+<h2 id="s4">四、设备连接与使用规则</h2>
+<ol>
+  <li>本应用通过<strong>蓝牙低功耗（BLE）</strong>与设备通信，<strong>设备同一时间仅支持一台手机连接</strong>。请在使用前确保设备已开机、电量充足并靠近手机。</li>
+  <li>操作系统要求 App 取得<strong>位置权限</strong>后方可扫描附近蓝牙设备，请您在系统提示时予以授权，否则将无法搜索到设备。</li>
+  <li>一台设备可被不同账号先后绑定。<strong>解除绑定或注销账号不会自动清除设备中已显示的图片</strong>，请您自行处理。</li>
+  <li><strong>请勿在投屏或固件升级过程中关闭设备电源、断开蓝牙、退出应用或让手机息屏</strong>，否则可能导致本次操作失败。</li>
+</ol>
+
+<h2 id="s5">五、照片投屏与内容规则</h2>
+<ol>
+  <li>您仅可投屏<strong>您自行拍摄、创作或已合法取得授权</strong>的照片。<strong>您应对所投屏内容的合法性负责</strong>，不得投屏侵犯他人肖像权、著作权、隐私权或违反法律法规的内容。</li>
+  <li>受电子纸显示技术限制，设备呈现的色彩、层次与清晰度与手机屏幕存在差异，投屏画面需经过裁切、构图与色彩转换。<strong>该等差异属于技术特性，不构成产品质量问题。</strong></li>
+  <li>投屏过程中会将您选择的照片上传至我们的服务器与图像处理服务用于画面转换，具体见《BoltStar 隐私政策》。</li>
+  <li>在应用内删除投屏记录不等同于删除设备内的图片，反之亦然，请按界面提示分别操作。</li>
+</ol>
+
+<h2 id="s6">六、AI 创作服务</h2>
+<ol>
+  <li>AI 功能为可选服务。<strong>首次使用前须您单独阅读并同意《BoltStar AI 服务协议》</strong>；拒绝不影响本应用其他功能的使用。</li>
+  <li>您在 AI 对话中主动发送的文字或图片，将传输至<strong>“火山引擎”AI 服务（由北京火山引擎科技有限公司提供）</strong>进行处理。<strong>发送的内容仅用于本次操作，不会被用于模型训练。</strong></li>
+  <li><strong>AI 生成的内容由算法自动产生，可能存在不准确、不完整或不符合您预期的情形，不构成任何专业建议。</strong>请您在使用前自行判断并核实，我们不对生成内容的准确性、适用性作出保证。</li>
+  <li><strong>您不得利用 AI 功能生成、传播违反第九节行为规范的内容。</strong>因您的输入或对生成内容的使用引发的第三方主张，由您自行承担责任。</li>
+  <li>在遵守本协议的前提下，我们不主张您通过 AI 功能生成内容的所有权；<strong>但您理解并同意，相同或近似的输入可能产生相同或近似的输出，我们可为其他用户提供相同服务。</strong></li>
+  <li>AI 会话记录在服务端<strong>仅保留最近 7 天</strong>，到期自动清除，请您自行保存需要留存的内容。</li>
+  <li>AI 服务依赖第三方能力与网络，<strong>可能出现排队、超时或暂时不可用；对已扣减星币但因我方原因未能产出结果的情形，请通过第十五节的方式联系我们处理。</strong></li>
+</ol>
+
+<h2 id="s7">七、星币与付费规则</h2>
+<ol>
+  <li><strong>星币是本应用内的虚拟道具</strong>，用于兑换 AI 生成等消耗型服务，<strong>不是预付卡、不具有货币价值、不可兑换或提取为现金、不可在用户之间转让</strong>。</li>
+  <li><strong>购买渠道：</strong>在 <strong>iOS 端通过 Apple 内购（App Store）</strong>完成；在微信小程序内通过<strong>微信虚拟支付</strong>完成。实际到账以我方服务器记录为准。购买行为同时受相应支付平台的条款约束。</li>
+  <li><strong>价格与消耗规则</strong>以应用内当时展示的档位与「星币消耗规则」为准。我们可能不时调整档位与消耗规则，调整仅对调整后的购买与消耗生效，不溯及既往。</li>
+  <li><strong>退款：</strong>通过 Apple 内购购买的，退款依照 Apple 的退款政策，由 Apple 受理与裁定；通过微信虚拟支付购买的，依照相应平台规则与本条约定处理。<strong>星币一经消耗不予退还；因我方系统原因导致重复扣费或未到账的，我们将核实后予以补发或退还。</strong></li>
+  <li><strong>星币不设有效期</strong><span class="todo">[待确认：若产品设定了有效期，请据实修改本条]</span>；账号被永久封禁或注销时，剩余星币一并失效且不予退还（法律法规另有规定的除外）。</li>
+  <li>您应通过官方渠道购买。<strong>因通过非官方渠道购买、或使用外挂、脚本、漏洞等不正当方式获取星币的，我们有权追回相应星币并视情节处理账号。</strong></li>
+</ol>
+
+<h2 id="s8">八、固件升级与设备风险提示</h2>
+<ol>
+  <li>为修复问题或提升体验，我们可能发布设备固件更新，并在应用内提示您升级。部分版本可能为必要更新，未升级可能导致部分功能不可用。</li>
+  <li><strong>升级过程请耐心等待升级结果，意外中断可能导致电子纸设备无法使用。</strong>请在升级期间保持设备供电充足、手机与设备靠近、不要退出升级页面或让手机息屏。</li>
+  <li><strong>若升级失败造成设备无法连接，请尝试重新进入小程序 / App 或断电重启设备；</strong>仍无法恢复的，请通过第十五节的方式联系我们协助处理。</li>
+  <li>因您未按提示操作、擅自中断升级、使用非官方固件或自行拆改设备造成的损坏，不属于保修范围。</li>
+</ol>
+
+<h2 id="s9">九、用户行为规范与违规处理</h2>
+<p>您承诺在使用本应用（包括投屏、AI 创作与任何内容提交）时，不会提交、生成或传播以下内容：</p>
+<ol>
+  <li>违反中华人民共和国法律法规及政策的内容；</li>
+  <li>色情、低俗、淫秽或性暗示内容；</li>
+  <li>暴力、恐怖、血腥或宣扬犯罪的内容；</li>
+  <li>侮辱、诽谤、威胁、骚扰或侵害他人名誉、肖像、隐私、知识产权等合法权益的内容；</li>
+  <li>其他违背公序良俗、社会公德或可能损害本服务声誉的内容。</li>
+</ol>
+<p>您亦不得：利用本应用从事任何非法活动；通过外挂、脚本、模拟器、逆向工程等方式干扰或破坏服务正常运行；未经许可抓取、复制或商业性使用本应用的数据与素材。</p>
+<p><strong>违规处理：</strong>对于违反上述规范的账号，我们将按以下阶梯处理（与应用内《BoltStar AI 服务协议》一致）：</p>
+<div class="table-scroll">
+<table>
+  <thead><tr><th>违规次数</th><th>处理措施</th></tr></thead>
+  <tbody>
+    <tr><td>第 1 次</td><td>AI 功能封禁 24 小时</td></tr>
+    <tr><td>第 2 次</td><td>AI 功能封禁 24 小时</td></tr>
+    <tr><td>第 3 次</td><td>AI 功能封禁 24 小时</td></tr>
+    <tr><td>累计 3 次后，每新增 1 次</td><td>AI 功能封禁 24 小时</td></tr>
+    <tr><td>累计满 9 次</td><td>AI 功能永久封禁</td></tr>
+  </tbody>
+</table>
+</div>
+<p>封禁仅针对 AI 服务，不影响您使用本应用的其他功能。<strong>如您对处理有异议，可通过第十五节的方式申诉。</strong>对于情节严重或涉嫌违法犯罪的，我们有权直接终止服务并依法向有关部门报告。</p>
+
+<h2 id="s10">十、知识产权</h2>
+<ol>
+  <li>本应用及其所含的软件、界面设计、图标、文字、官方图库素材等内容的知识产权归我们或相应权利人所有，受法律保护。<strong>未经书面许可，您不得复制、修改、传播、出租、出售或用于任何商业用途。</strong></li>
+  <li>您上传的照片等内容，其权利仍归您或原权利人所有。<strong>为向您提供投屏、存储、展示与 AI 处理等服务，您授予我们一项免费的、非独占的、可再许可（仅限为提供本服务而必需的第三方服务商）的许可，在服务所必需的范围内使用、存储、传输与处理该等内容。该许可随您删除内容或注销账号而终止</strong>（法律法规要求留存的除外）。</li>
+  <li>官方图库素材仅供您在本应用内浏览、收藏与投屏至您自有设备使用，<strong>不得另行下载分发或用于商业用途</strong>。</li>
+</ol>
+
+<h2 id="s11">十一、免责声明与责任限制</h2>
+<ol>
+  <li><strong>本应用按“现状”提供。</strong>在法律允许的最大范围内，我们不对服务的不间断、无错误或完全满足您的特定需求作出明示或默示保证。</li>
+  <li><strong>因下列情形导致的服务中断、数据丢失或损失，我们不承担责任：</strong>不可抗力（自然灾害、疫情、政府行为等）；网络、电信、供电等基础设施故障；您的手机、设备或操作系统问题；第三方服务（支付渠道、AI 服务、图像处理服务等）故障或调整；您未按提示操作、擅自中断升级或使用非官方固件；黑客攻击、计算机病毒等非因我方过错的安全事件。</li>
+  <li><strong>在法律允许的范围内，我们就本协议项下服务对您承担的赔偿责任总额，不超过您在损害发生前 12 个月内为本应用付费服务实际支付的金额。</strong>我们不对间接损失、可得利益损失、数据损失或商誉损失承担责任。</li>
+  <li>本条款不排除或限制依法不得排除或限制的责任，包括因我们的故意或重大过失造成的人身损害赔偿责任。</li>
+</ol>
+
+<h2 id="s12">十二、服务的变更、中断与终止</h2>
+<ol>
+  <li>我们有权根据业务需要变更、暂停或终止部分或全部服务。<strong>涉及重大变更或终止的，我们将提前通过应用内公告等方式告知；</strong>因系统维护或升级需要短暂中断的，我们将尽量提前通知。</li>
+  <li>如您严重违反本协议或法律法规，我们有权在通知后暂停或终止向您提供服务，并保留追究责任的权利。</li>
+  <li>协议终止后，本协议中关于知识产权、免责与责任限制、争议解决的条款继续有效。</li>
+</ol>
+
+<h2 id="s13">十三、未成年人条款</h2>
+<p><strong>若您是不满 18 周岁的未成年人，请在您的父母或其他监护人陪同下阅读并同意本协议后使用本应用；不满 14 周岁的，须经监护人同意方可注册与使用。</strong>未成年人使用付费功能（包括购买星币）应事先取得监护人同意。我们鼓励监护人指导未成年人合理使用本应用与设备，注意用眼健康与使用时长。</p>
+
+<h2 id="s14">十四、法律适用与争议解决</h2>
+<ol>
+  <li>本协议的订立、效力、解释、履行与争议解决均适用<strong>中华人民共和国大陆地区法律</strong>（不含冲突法规则）。</li>
+  <li>因本协议产生的争议，双方应友好协商解决；协商不成的，任一方均可<strong>向我们住所地有管辖权的人民法院提起诉讼</strong>。<span class="todo">[如拟约定仲裁，请由法务替换本条]</span></li>
+  <li>若本协议任何条款被认定为无效或不可执行，不影响其余条款的效力。</li>
+</ol>
+
+<h2 id="s15">十五、其他</h2>
+<ul>
+  <li>客服与投诉邮箱：<strong>boltstarservice@boltstar.net</strong></li>
+  <li>公司名称：启和明（深圳）新能源科技有限公司</li>
+  <li>注册地址：<span class="todo">[待填写：营业执照地址]</span></li>
+  <li>相关文件：《BoltStar 隐私政策》《BoltStar AI 服务协议》</li>
+</ul>
+<p>我们将在收到您的意见或投诉后 15 个工作日内答复。</p>
+
+<footer>
+  <p>启和明（深圳）新能源科技有限公司 · BoltStar</p>
+  <p>本协议自页首所载生效日期起施行。</p>
+</footer>
+
+</div>
+</body>
+</html>

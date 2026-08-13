@@ -577,6 +577,17 @@
   border-bottom-right-radius: 22rpx;
 }
 
+/* 横向出图的占位盒**要留底边距**（2026-08-13 需求 1）。
+   贴底（padding-bottom:0）这一手是给竖向/方形定的：那种占位盒又高又满，整只气泡看着就是
+   「一张正在生成的图」，贴到底反而干净。横向只有 56.25% 高（16:9），气泡里是一条扁扁的
+   彩色带子，上面留着 20rpx、下面 0，看着就是掉出气泡外了。
+   判据用 genPad（= 高/宽×100，见 ORIENTATION_OPTIONS）：横向 56.25 < 100 < 竖向 177.78，
+   方形正好 100 归到「贴底」那档，与竖向同观感。补的值与 .bubble 的上内边距一致（20rpx），上下对称。
+   ⚠️ 这里不必再管圆角：留了边距之后渐变盒四角整个在气泡内部，露不出尖角。 */
+.bubble--ai.bubble--gen-wide {
+  padding-bottom: 20rpx;
+}
+
 /* 选择器权重 0,2,0 > .bottom-anchor--sending 的 0,1,0，出图那一段稳定压住 150rpx */
 .msg-row--gen + .bottom-anchor {
   height: 0;
@@ -1136,148 +1147,9 @@
   font-size: 21rpx;
 }
 
-/* ==================== 投屏设备选择 ==================== */
-.sheet-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  display: flex;
-  align-items: flex-end;
-  background: rgba(30, 29, 27, 0.42);
-}
-
-.device-sheet {
-  width: 100%;
-  max-height: 78vh;
-  padding: 32rpx 48rpx calc(26rpx + var(--safe-bottom));
-  border-top-left-radius: 42rpx;
-  border-top-right-radius: 42rpx;
-  background: rgba(250, 248, 244, 0.98);
-  box-shadow: 0 -14rpx 40rpx rgba(50, 43, 34, 0.12);
-  animation: device-sheet-in 0.28s ease-out;
-}
-
-@keyframes device-sheet-in {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: translateY(0);
-  }
-}
-
-.device-sheet__title {
-  color: #252525;
-  font-size: 38rpx;
-  font-weight: 600;
-  text-align: center;
-}
-
-.device-sheet__desc {
-  margin-top: 10rpx;
-  color: #8d8984;
-  font-size: 25rpx;
-  text-align: center;
-}
-
-.device-sheet__divider {
-  height: 2rpx;
-  margin: 25rpx 0 20rpx;
-  background: #dfdbd5;
-}
-
-.sheet-loading {
-  min-height: 260rpx;
-  padding: 44rpx 0;
-}
-
-.device-list {
-  max-height: 560rpx;
-}
-
-.device-item {
-  display: grid;
-  grid-template-columns: 88rpx 1fr 48rpx;
-  align-items: center;
-  gap: 22rpx;
-  min-height: 120rpx;
-  margin-bottom: 16rpx;
-  padding: 16rpx 26rpx;
-  border: 2rpx solid rgba(255, 255, 255, 0.92);
-  border-radius: 28rpx;
-  background: rgba(255, 255, 255, 0.88);
-}
-
-.device-item--selected {
-  border-color: #df7654;
-  background: #fff8f4;
-}
-
-.device-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 76rpx;
-  height: 76rpx;
-  border-radius: 22rpx;
-  color: #ff6e28;
-  background: #fff0e9;
-  font-size: 23rpx;
-}
-
-.device-placeholder--1 {
-  color: #2dad6f;
-  background: #eaf8f0;
-}
-
-.device-placeholder--2 {
-  color: #5794ef;
-  background: #eaf2ff;
-}
-
-.device-name {
-  overflow: hidden;
-  color: #2c2c2c;
-  font-size: 30rpx;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.device-radio {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 42rpx;
-  height: 42rpx;
-  border: 3rpx solid #c5c2be;
-  border-radius: 50%;
-}
-
-.device-radio--selected {
-  border-color: #e87c5a;
-  background: #e87c5a;
-}
-
-.device-radio__check {
-  width: 18rpx;
-  height: 10rpx;
-  border-bottom: 5rpx solid #ffffff;
-  border-left: 5rpx solid #ffffff;
-  transform: rotate(-45deg);
-}
-
-.device-sheet__cancel {
-  height: 84rpx;
-  margin-top: 24rpx;
-  border-radius: 999rpx;
-  color: #272727;
-  background: #eeeae5;
-  font-size: 31rpx;
-  font-weight: 500;
-  line-height: 84rpx;
-  text-align: center;
-}
+/* 投屏设备选择弹层的整套样式已于 2026-08-13 随该弹层迁入公共组件
+   components/device-picker-sheet/（与图片详情页共用一份）。组件样式是隔离的，
+   副本留在这里既不生效也会误导下一个人，故整块删除。 */
 
 /* ==================== 删除消息确认框 ====================
    版式与 subpackages/album/list 的删除弹窗一致（图标 + 标题/说明 + 取消/确认），

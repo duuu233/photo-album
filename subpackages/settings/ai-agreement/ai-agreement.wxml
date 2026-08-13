@@ -12,13 +12,13 @@
       <view class="article-p">欢迎使用AI服务。本协议是您（以下称“用户”）与 [启和明(深圳)新能源科技有限公司] （以下称“我们”）之间，关于使用我们提供的AI功能（以下称“本服务”）的法律协议。请您在使用本服务前仔细阅读。</view>
 
       <view class="article-section-title">1. 服务说明</view>
-      <view class="article-p">1.1 本服务基于“阿里云百炼”大模型服务平台提供技术支持，为您提供包括文本对话、AI图片生成、AI图片美化等功能。</view>
+      <view class="article-p">1.1 本服务基于“火山引擎”大模型服务平台提供技术支持，为您提供包括文本对话、AI图片生成、AI图片美化等功能。</view>
       <view class="article-p">1.2 本服务仅限您在同意本协议后，于我们指定的小程序或App内使用。</view>
 
       <view class="article-section-title">2. 数据使用与授权</view>
-      <view class="article-p">2.1 授权：为提供本服务，您授权我们将您主动提交的文字或图片内容传输至“阿里云百炼”AI服务进行处理。</view>
+      <view class="article-p">2.1 授权：为提供本服务，您授权我们将您主动提交的文字或图片内容传输至“火山引擎”AI服务进行处理。</view>
       <view class="article-p">2.2 数据处理：您明确知悉并同意，您发送的内容仅用于处理您本次的AI请求，不会被存储，也不会被用于任何模型训练或优化。</view>
-      <view class="article-p">2.3 技术提供方：本服务的底层AI技术由阿里云计算有限公司（或其关联公司）提供。</view>
+      <view class="article-p">2.3 技术提供方：本服务的底层AI技术由北京火山引擎科技有限公司（或其关联公司）提供。</view>
 
       <view class="article-section-title">3. 用户使用规范</view>
       <view class="article-p">您承诺在使用本服务时，不会提交、生成或传播以下内容：</view>

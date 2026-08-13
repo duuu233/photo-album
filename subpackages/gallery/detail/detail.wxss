@@ -9,9 +9,11 @@
   background: #f8f5ef;
 }
 
-/* 2026-08-12：大图由 46vh 放到 58vh（产品「让上面的图片尽量多展示出来」）。
-   白卡那一侧同步下移（.detail-spacer），两个数**必须一起改**：图高于留白 3vh，
-   白卡的圆角正好压在图上，设计稿如此。 */
+/* 高度不再写死（2026-08-13 需求 4：不裁图）：由 wxml 的内联 `height: {{heroPad}}vw` 给出，
+   heroPad = 图片高/宽×100，于是盒子比例＝图片比例，aspectFill 裁不掉任何东西。
+   白卡那一侧（.detail-spacer）用同一个 heroPad 算，比它矮 3vh —— 白卡圆角压在图上，设计稿如此。
+   ⚠️ 大图是 absolute、**不跟着滚**：比例极端的长图（高 > 一屏）下半截会一直在屏幕外，
+   这是这套「白卡盖大图」版式的固有取舍，不是裁剪。 */
 .detail-hero {
   position: absolute;
   top: 0;
@@ -19,7 +21,6 @@
   left: 0;
   z-index: 0;
   width: 100%;
-  height: 58vh;
   background: #dfe3e9;
 }
 
@@ -35,9 +36,11 @@
   min-height: 100%;
 }
 
-/* 让出大图的可见高度。比 .detail-hero 的 58vh 略小，白卡的圆角正好压在图上（设计稿如此）。 */
+/* 让出大图的可见高度：具体值由 wxml 内联 `calc({{heroPad}}vw - 3vh)` 给（跟着图片真实比例走）。
+   这里只声明「不许被 flex 压缩」——它是 .detail-body(flex 列) 的第一个子元素，
+   不写 flex-shrink:0 的话内容一多就会被压扁，白卡跟着上移把大图盖掉一块。 */
 .detail-spacer {
-  flex: 0 0 55vh;
+  flex: 0 0 auto;
 }
 
 /* 白卡：去掉「适用设备尺寸」后内容只剩标题行 + 简介，上下留白一并收紧
@@ -109,111 +112,6 @@
 /* 「适用设备尺寸」那一组样式（.detail-divider / .detail-section-title / .detail-sizes /
    .detail-size-tag）随该区块于 2026-08-12 一并删除，没有别处引用。 */
 
-/* ── 设备选择弹层 ───────────────────────────────────────────────────────── */
-.picker-mask {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 20;
-  display: flex;
-  align-items: flex-end;
-  background: rgba(20, 23, 28, 0.42);
-}
-
-.picker-sheet {
-  width: 100%;
-  padding: 40rpx 40rpx calc(32rpx + var(--safe-bottom, 0px));
-  background: #ffffff;
-  border-radius: 32rpx 32rpx 0 0;
-}
-
-.picker-title {
-  color: #2a2d32;
-  font-size: 34rpx;
-  font-weight: 600;
-  line-height: 1;
-  text-align: center;
-}
-
-.picker-desc {
-  margin-top: 18rpx;
-  color: #9aa0a8;
-  font-size: 26rpx;
-  line-height: 1.4;
-  text-align: center;
-}
-
-.picker-divider {
-  height: 1rpx;
-  margin: 28rpx 0 8rpx;
-  background: rgba(207, 214, 224, 0.7);
-}
-
-.picker-loading {
-  padding: 60rpx 0;
-  color: #9aa0a8;
-  font-size: 26rpx;
-  text-align: center;
-}
-
-/* 设备多时列表内部滚动，弹层本身高度封顶，不至于顶到状态栏 */
-.picker-list {
-  max-height: 46vh;
-}
-
-.picker-item {
-  display: flex;
-  align-items: center;
-  height: 112rpx;
-  padding: 0 8rpx;
-}
-
-.picker-item-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  color: #2a2d32;
-  font-size: 30rpx;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.picker-item--selected .picker-item-name {
-  color: #f2621f;
-  font-weight: 600;
-}
-
-.picker-radio {
-  flex: 0 0 40rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40rpx;
-  height: 40rpx;
-  border: 2rpx solid rgba(160, 166, 174, 0.6);
-  border-radius: 50%;
-}
-
-.picker-radio--selected {
-  border-color: #f2621f;
-}
-
-.picker-radio-check {
-  width: 22rpx;
-  height: 22rpx;
-  background: #f2621f;
-  border-radius: 50%;
-}
-
-.picker-cancel {
-  margin-top: 16rpx;
-  height: 100rpx;
-  color: #6b7078;
-  background: #f4f6f9;
-  border-radius: 999rpx;
-  font-size: 30rpx;
-  line-height: 100rpx;
-  text-align: center;
-}
+/* 设备选择弹层的整套样式（.picker-mask/.picker-sheet/.picker-item/…）已于 2026-08-13
+   随该弹层迁入公共组件 components/device-picker-sheet/，本文件不再保留副本 ——
+   组件样式是隔离的，留在这里既不生效也会误导下一个人。 */

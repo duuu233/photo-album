@@ -1,5 +1,7 @@
 {
   "navigationStyle": "custom",
   "disableScroll": true,
-  "usingComponents": {}
+  "usingComponents": {
+    "device-picker-sheet": "/components/device-picker-sheet/device-picker-sheet"
+  }
 }

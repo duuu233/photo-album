@@ -1,0 +1,52 @@
+<!-- 「选择投屏设备」底部弹层（2026-08-13 需求 2/3）：AI 对话页与图片详情页共用同一份。
+     列表版式照搬「搜索设备」页（bind.wxml 的 .nearby-device）：设备图 + 名称 + 设备ID + 右侧单选圈，
+     两处入口看到的是同一种设备行。
+     ⚠️ 交互与旧版不同：点一行**只选中**，真正连接要按下面的主按钮（旧版是点中即刻连接投屏，
+        误触一下就开始往设备写图；且进来默认选中当前设备，用户以为自己选了、其实是端上替他选的）。 -->
+<view wx:if="{{show}}" class="picker-mask" catchtouchmove="noop" bindtap="onCancel">
+  <view class="picker-sheet" catchtap="noop">
+    <view class="picker-sheet__title">{{title}}</view>
+    <view class="picker-sheet__desc">{{desc}}</view>
+
+    <view wx:if="{{loading}}" class="picker-loading">
+      <view class="picker-loading__spinner"></view>
+      <view class="picker-loading__text">加载中…</view>
+    </view>
+
+    <scroll-view wx:else scroll-y class="picker-list">
+      <view
+        wx:for="{{devices}}"
+        wx:key="pickerId"
+        class="picker-device {{item.pickerId === selectedId ? 'picker-device--selected' : ''}}"
+        hover-class="none"
+        data-id="{{item.pickerId}}"
+        bindtap="onSelect"
+      >
+        <!-- 设备图与首页/列表/详情/搜索四处同一张 home-icon02（该图四角透明自带圆角，别再套底色块） -->
+        <view class="picker-device__icon">
+          <image class="picker-device__icon-img" src="/assets/images/home-icon02.png" mode="aspectFit"></image>
+        </view>
+        <view class="picker-device__copy">
+          <text class="picker-device__name">{{item.name || item.productName || '电子纸设备'}}</text>
+          <!-- 设备ID：同型号同名设备靠它区分，与搜索页/设备列表同一口径（完整 6 字节） -->
+          <text wx:if="{{item.productDeviceId}}" class="picker-device__sub">设备ID {{item.productDeviceId}}</text>
+        </view>
+        <image
+          wx:if="{{item.pickerId === selectedId}}"
+          class="picker-device__check"
+          src="/assets/images/selected-icon.png"
+          mode="aspectFit"
+        ></image>
+        <view wx:else class="picker-device__check picker-device__check--empty"></view>
+      </view>
+    </scroll-view>
+
+    <!-- 未选中时按钮置灰且不响应：不给「点了没反应」的哑按钮，也不替用户猜要连哪台 -->
+    <view
+      class="picker-confirm {{selectedId ? '' : 'picker-confirm--disabled'}}"
+      hover-class="none"
+      bindtap="onConfirm"
+    >{{confirmText}}</view>
+    <view class="picker-cancel" hover-class="none" bindtap="onCancel">取消</view>
+  </view>
+</view>

@@ -2,7 +2,8 @@
   "navigationStyle": "custom",
   "navigationBarTitleText": "图片详情",
   "usingComponents": {
-    "page-nav": "/components/page-nav/page-nav"
+    "page-nav": "/components/page-nav/page-nav",
+    "device-picker-sheet": "/components/device-picker-sheet/device-picker-sheet"
   },
   "disableScroll": true,
   "backgroundColor": "#f8f5ef"

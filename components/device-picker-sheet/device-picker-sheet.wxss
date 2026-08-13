@@ -1,0 +1,196 @@
+/* 「选择投屏设备」底部弹层（2026-08-13 需求 2/3）。
+   容器沿用两处原来的底部弹层观感（圆角上浮 + 毛玻璃底），**列表行照搬搜索设备页**
+   （bind.wxss 的 .nearby-device：白卡 + 设备图 + 名称/设备ID 两行 + 右侧单选圈，
+   选中态是橙描边 + 浅橙底 + 橙色设备名）。两处入口看到的是同一种设备行。 */
+.picker-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(30, 29, 27, 0.42);
+}
+
+.picker-sheet {
+  width: 100%;
+  max-height: 82vh;
+  padding: 32rpx 40rpx calc(26rpx + var(--safe-bottom, 0px));
+  border-top-left-radius: 42rpx;
+  border-top-right-radius: 42rpx;
+  background: rgba(250, 248, 244, 0.98);
+  box-shadow: 0 -14rpx 40rpx rgba(50, 43, 34, 0.12);
+  animation: picker-sheet-in 0.28s ease-out;
+  box-sizing: border-box;
+}
+
+@keyframes picker-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.picker-sheet__title {
+  color: #252525;
+  font-size: 38rpx;
+  font-weight: 600;
+  text-align: center;
+}
+
+.picker-sheet__desc {
+  margin-top: 10rpx;
+  color: #8d8984;
+  font-size: 25rpx;
+  text-align: center;
+}
+
+/* 列表区：给定上限高度后自己滚，设备再多也不会把主按钮顶出屏幕 */
+.picker-list {
+  max-height: 46vh;
+  margin-top: 26rpx;
+}
+
+/* ── 以下四条与 bind.wxss 的 .nearby-device 系列同源，改样式时两处一起看 ── */
+.picker-device {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 20rpx;
+  padding: 22rpx 28rpx;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.72);
+  border: 2rpx solid rgba(255, 255, 255, 0.88);
+  border-radius: 24rpx;
+  box-shadow: 0 16rpx 38rpx rgba(126, 150, 184, 0.08);
+  box-sizing: border-box;
+}
+
+/* 选中态：橙描边 + 浅橙底 + 橙色设备名，与搜索设备页一致 */
+.picker-device--selected {
+  background: rgba(255, 247, 242, 0.95);
+  border-color: #ff6421;
+  box-shadow: 0 16rpx 38rpx rgba(255, 105, 30, 0.12);
+}
+
+.picker-device--selected .picker-device__name {
+  color: #ff5a1e;
+}
+
+.picker-device__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 88rpx;
+  width: 88rpx;
+  height: 88rpx;
+  margin-right: 24rpx;
+}
+
+.picker-device__icon-img {
+  width: 88rpx;
+  height: 88rpx;
+}
+
+.picker-device__copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.picker-device__name {
+  display: block;
+  overflow: hidden;
+  color: #2a2d32;
+  font-size: 32rpx;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 设备ID 那行可能退化成很长的串，必须截断，否则整行被撑破 */
+.picker-device__sub {
+  display: block;
+  margin-top: 8rpx;
+  overflow: hidden;
+  color: #8b9098;
+  font-size: 22rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-device__check {
+  flex: 0 0 auto;
+  width: 44rpx;
+  height: 44rpx;
+  margin-left: 16rpx;
+}
+
+.picker-device__check--empty {
+  box-sizing: border-box;
+  border: 3rpx solid #c8cdd5;
+  border-radius: 50%;
+}
+
+/* 主按钮与搜索设备页的「立即绑定」同款（primary-action） */
+.picker-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 104rpx;
+  margin-top: 8rpx;
+  color: #ffffff;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
+  border-radius: 999rpx;
+  box-shadow: 0 18rpx 36rpx rgba(255, 98, 31, 0.2);
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+/* 未选设备：灰底无阴影。点击在 JS 里也直接 return —— 观感与行为必须一致，
+   不能只灰不拦（那就成了「点了没反应」的哑按钮）。 */
+.picker-confirm--disabled {
+  color: #ffffff;
+  background: #d8d4cf;
+  box-shadow: none;
+}
+
+.picker-cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  margin-top: 12rpx;
+  color: #6f6b66;
+  font-size: 30rpx;
+}
+
+/* 拉设备列表期间的等待态：与页面其它 loading 同款的小转圈 */
+.picker-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 260rpx;
+  gap: 16rpx;
+}
+
+.picker-loading__spinner {
+  width: 48rpx;
+  height: 48rpx;
+  border: 4rpx solid rgba(255, 100, 33, 0.18);
+  border-top-color: #ff6421;
+  border-radius: 50%;
+  animation: picker-spin 0.8s linear infinite;
+}
+
+.picker-loading__text {
+  color: #8b9098;
+  font-size: 26rpx;
+}
+
+@keyframes picker-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

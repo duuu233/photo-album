@@ -150,17 +150,41 @@ const ruleBody = (file, selector) => {
       '否则简介长一点就会从按钮底下穿过去'
   )
 
-  // 大图与留白必须一起改：图高于留白，白卡的圆角才压在图上
-  const vh = (file, selector, prop) => {
-    const value = declaration(ruleBody(file, selector), prop) || ''
-    const matched = /([0-9.]+)vh/.exec(value)
-    assert.ok(matched, `${selector} 的 ${prop} 不再是 vh 了？用例需要同步更新`)
-    return Number(matched[1])
-  }
-  const hero = vh(detailWxss, '.detail-hero', 'height')
-  const spacer = vh(detailWxss, '.detail-spacer', 'flex')
-  assert.ok(hero > spacer, '大图要比留白高，白卡的圆角才压在图上（设计稿如此）')
-  assert.ok(hero >= 55, `大图应放大到至少 55vh（当前 ${hero}vh），产品要「图片尽量多展示」`)
+  // 顶部大图不许裁图（2026-08-13 需求 4）：高度不再写死，按图片真实比例算。
+  // 写死高度 + aspectFill 就是「两个比例对不上 → 放大填满 → 裁掉多出来的」，正是要治的毛病。
+  assert.ok(
+    !declaration(ruleBody(detailWxss, '.detail-hero'), 'height'),
+    '.detail-hero 不该再有写死的 height：高度要跟着图片真实比例走（内联 {{heroPad}}vw）'
+  )
+  const heroTag = /<image[^>]*class="detail-hero"[\s\S]*?><\/image>/.exec(detailWxml)
+  assert.ok(heroTag, '详情页应有 .detail-hero 大图')
+  assert.ok(
+    /style="height:\s*\{\{heroPad\}\}vw"/.test(heroTag[0]),
+    '大图高度由 heroPad（高/宽×100）给：盒子比例＝图片比例，aspectFill 才裁不掉东西'
+  )
+  assert.ok(
+    /bindload="onHeroLoad"/.test(heroTag[0]),
+    '必须 bindload 校正比例——后端列表/详情都不下发图片宽高，只有这里拿得到真实尺寸'
+  )
+
+  // 大图与留白仍必须同源：留白比图矮 3vh，白卡圆角才压在图上（设计稿如此）
+  const spacerTag = /<view class="detail-spacer"[^>]*>/.exec(detailWxml)
+  assert.ok(spacerTag, '详情页应有 .detail-spacer')
+  const spacerCalc = /calc\(\{\{heroPad\}\}vw\s*-\s*([0-9.]+)vh\)/.exec(spacerTag[0])
+  assert.ok(
+    spacerCalc,
+    '留白必须用与大图**同一个** heroPad 算，否则图矮时露底色、图高时提前盖住图'
+  )
+  assert.ok(
+    Number(spacerCalc[1]) > 0,
+    `留白要比大图矮（当前差 ${spacerCalc[1]}vh），白卡的圆角才压在图上`
+  )
+
+  const detailJs = readCode('subpackages/gallery/detail/detail.js')
+  assert.ok(
+    /onHeroLoad\(event\)/.test(detailJs) && /HERO_PAD_MIN|HERO_PAD_MAX/.test(detailJs),
+    'onHeroLoad 要按真实宽高算 heroPad 并钳住极端比例'
+  )
 }
 
 console.log('gallery layout tests passed')

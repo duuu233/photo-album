@@ -466,8 +466,10 @@ Page(fold.adapt({
     // 未绑定设备提示（2026-08-12 需求 2，同样改自 wx.showModal）：进页面时 checkDeviceBound 决定弹不弹
     bindDialog: { show: false },
 
-    // 投屏设备选择弹窗（未连接时弹出已绑定设备列表，需求「投屏流程」）
-    devicePicker: { show: false, loading: false, devices: [], selectedId: '' },
+    // 投屏设备选择弹窗（未连接时弹出已绑定设备列表，需求「投屏流程」）。
+    // 选中态在 device-picker-sheet 组件内部持有：它是那一屏的临时状态，页面只关心
+    // 「用户最后按按钮时选的是哪台」（2026-08-13 需求 2 起不再默认选中）。
+    devicePicker: { show: false, loading: false, devices: [] },
 
     // 贴底滚动（2026-07-27 需求 2.2/5.1 重做）：原先用 scroll-into-view + 「先清空再设锚点」
     // 两次 setData 触发，打字期间跟不上、首屏还会当着用户的面从头滚到尾。现在改 scroll-top
@@ -2491,15 +2493,16 @@ Page(fold.adapt({
       return
     }
 
-    // 未连接：弹已绑定设备列表
+    // 未连接：弹已绑定设备列表。
+    // ⚠️ 不预置选中项（2026-08-13 需求 2）：此前进来就把当前设备选上，用户以为是自己选的，
+    // 实际是端上替他选的——投屏是往设备写图，选错了就得再投一次。改为一律从「未选中」开始，
+    // 选完还要再按一次「连接并投屏」才真的动设备。
     this._pendingProjectImage = url
-    const selectedId = device && device.id != null ? String(device.id) : ''
     this.setData({
       devicePicker: {
         show: true,
         loading: true,
-        devices: [],
-        selectedId
+        devices: []
       }
     })
     try {
@@ -2522,8 +2525,7 @@ Page(fold.adapt({
         devicePicker: {
           show: true,
           loading: false,
-          devices: pickerDevices,
-          selectedId
+          devices: pickerDevices
         }
       })
     } catch (error) {
@@ -2531,9 +2533,9 @@ Page(fold.adapt({
     }
   },
 
-  onDevicePickerSelect(event) {
-    const index = event.currentTarget.dataset.index
-    const device = this.data.devicePicker.devices[index]
+  // 弹层里按下「连接并投屏」才真正开投（选中只是选中，见 device-picker-sheet）
+  onDevicePickerConfirm(event) {
+    const device = event.detail && event.detail.device
     this.setData({ 'devicePicker.show': false })
     if (device) {
       this.startProjection(device, this._pendingProjectImage)
