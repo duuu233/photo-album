@@ -67,13 +67,33 @@ const agreementCopy = readCode('subpackages/settings/ai-agreement/ai-agreement.w
 // 弹窗文案逐字锁住（产品给的原文），顺带钉死主体全称
 assert.equal(
   consent.CONSENT_SERVICE_DESCRIPTION,
-  '为了使用AI服务（包括文本对话、根据文字生成图片、以及上传图片进行美化），我们需要将您当前发送的内容（文字或图片）传输至“火山引擎”AI服务进行处理，该服务由北京火山引擎科技有限公司提供。',
+  '为了使用 AI 服务（包括文本对话、根据文字生成图片、以及上传图片进行美化），我们需要将您当前发送的内容（文字或图片）传输至“火山引擎”AI 服务进行处理，该服务由北京火山引擎科技有限公司提供。',
   '同意弹窗必须逐字按产品原文，并写明数据接收方的全称'
 )
 assert.equal(
   consent.CONSENT_DATA_NOTICE,
-  '发送的内容仅用于本次操作，不会被用于模型训练',
-  '数据用途那句按产品原文（2026-08-13 起不再声明「不会被存储」）'
+  '您发送的内容仅用于本次操作，不会被存储或用于模型训练。',
+  '数据用途那句按产品原文'
+)
+// 境外传输是**单独告知**事项：网关在新加坡，内容出境。少了这一段，用户同意的就不是实际发生的事。
+assert.equal(
+  consent.CONSENT_CROSS_BORDER_NOTICE,
+  '因该 AI 服务网关部署于境外（新加坡），上述内容将传输至境外处理，详情请见《BoltStar 隐私政策》第八节。',
+  '境外传输告知必须逐字保留，并指向隐私政策第八节'
+)
+assert.ok(
+  consent.CONSENT_SUMMARY.includes(consent.CONSENT_CROSS_BORDER_NOTICE),
+  '弹窗正文（CONSENT_SUMMARY）必须包含境外传输告知'
+)
+// 弹窗是三段：漏画任何一段，用户看到的告知就与实际不符
+const chatConsentMarkup = readCode('subpackages/ai/chat/chat.wxml')
+;['consentServiceDescription', 'consentDataNotice', 'consentCrossBorderNotice'].forEach(
+  field => {
+    assert.ok(
+      chatConsentMarkup.includes(`{{${field}}}`),
+      `同意弹窗必须画出 ${field} 这一段`
+    )
+  }
 )
 
 const consentSource = readCode('utils/ai-service-consent.js')

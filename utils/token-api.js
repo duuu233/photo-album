@@ -112,15 +112,50 @@ function normalizePackage(item) {
 }
 
 /**
+ * 记录里那句 `description` 中的星币数量。
+ *
+ * 2026-08-13 按产品口径：**购买/消费记录上「XXX 星币」的数量以 `description` 为准**
+ * （后端在这个字段里给的就是这笔的数量，例：「200 token」）。`num` 在这两个出参里并不总是
+ * 有值——照它渲染就会出现「描述写着 200 token、右边却是 0 星币」。
+ *
+ * 取第一个数字；一个数字都没有时返回 null，由调用方回落到 `num`
+ * （宁可退回旧口径，也不要把一条真实记录显示成 0）。
+ */
+function tokensFromDescription(description) {
+  const matched = /-?\d+(?:\.\d+)?/.exec(String(description || ''))
+  if (!matched) {
+    return null
+  }
+  const number = Number(matched[0])
+  if (!Number.isFinite(number)) {
+    return null
+  }
+  // 消费侧后端可能带负号（「-200 token」），页面自己会写「-」，这里一律取绝对值
+  return Math.abs(number)
+}
+
+/**
+ * `description` 是不是「纯数量」（例：「200 token」「200星币」）。
+ * 是的话消费记录那一行就不再把它当「场景」重复画一遍——数量已经在右边显示了。
+ */
+function isQuantityOnlyDescription(description) {
+  return /^\s*-?\d+(?:\.\d+)?\s*(?:token|tokens|星币)?\s*$/i.test(
+    String(description || '')
+  )
+}
+
+/**
  * 购买记录。ClientUserAccountTradeApiOut 没有主键，wx:key 需要一个稳定值，
  * 用「类型 + 页码 + 页内下标」拼一个——同一页数据顺序稳定，翻页也不会撞。
  */
 function normalizePurchaseRecord(item, key) {
   const source = item || {}
+  const described = tokensFromDescription(source.description)
   return {
     id: key,
     time: source.joinTime || '',
-    tokens: toNumber(source.num, 0),
+    // 数量以 description 为准，取不到才回落 num（见 tokensFromDescription）
+    tokens: described === null ? toNumber(source.num, 0) : described,
     gift: toNumber(source.giveNum, 0),
     amount: toNumber(source.amount, 0),
     channel: source.payTypeMsg || '',
@@ -130,12 +165,15 @@ function normalizePurchaseRecord(item, key) {
 
 function normalizeSpendRecord(item, key) {
   const source = item || {}
+  const description = source.description || ''
+  const described = tokensFromDescription(description)
   return {
     id: key,
     time: source.joinTime || '',
-    // 消费侧后端给的是 description（例：「200 token」），页面那一行叫「场景」
-    scene: source.description || '',
-    tokens: toNumber(source.num, 0)
+    // 页面那一行叫「场景」：description 若只是个数量（「200 token」），右边已经写着
+    // 「-200 星币」了，再原样画一遍就是同一个数出现两次，故留空
+    scene: isQuantityOnlyDescription(description) ? '' : description,
+    tokens: described === null ? toNumber(source.num, 0) : described
   }
 }
 

@@ -354,5 +354,46 @@ const FAST_DELAYS = [1, 1, 1]
     assert.equal(payCalls.length, 0)
   }
 
+  // ── 记录页「XXX 星币」的数量以 description 为准（2026-08-13 产品口径）──────────
+  // 后端在这两个出参里不一定给 num，照 num 渲染就会出现「描述写着 200 token、右边却是 0 星币」。
+  {
+    const purchase = tokenApi.normalizePurchaseRecord(
+      {
+        joinTime: '2026-08-13 10:00',
+        description: '200 token',
+        num: 0,
+        giveNum: 20,
+        amount: '19.9'
+      },
+      'p-0'
+    )
+    assert.equal(purchase.tokens, 200, '购买记录的星币数量应取 description 里的数字')
+
+    const spend = tokenApi.normalizeSpendRecord(
+      { joinTime: '2026-08-13 10:01', description: '-30 token', num: 0 },
+      's-0'
+    )
+    assert.equal(spend.tokens, 30, '消费记录同样取 description；负号由页面自己写')
+    assert.equal(
+      spend.scene,
+      '',
+      'description 只是个数量时不再当「场景」重复画一遍（右边已经写着 -30 星币）'
+    )
+
+    const scened = tokenApi.normalizeSpendRecord(
+      { joinTime: 't', description: 'AI 生图 30 token', num: 0 },
+      's-1'
+    )
+    assert.equal(scened.tokens, 30)
+    assert.equal(scened.scene, 'AI 生图 30 token', '带场景说明的 description 照常展示')
+
+    // 一个数字都没有时回落 num：宁可退回旧口径，也不要把真实记录显示成 0
+    const fallback = tokenApi.normalizeSpendRecord(
+      { joinTime: 't', description: '', num: 12 },
+      's-2'
+    )
+    assert.equal(fallback.tokens, 12)
+  }
+
   console.log('token-pay: 全部用例通过')
 })()

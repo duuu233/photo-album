@@ -414,6 +414,7 @@ Page(fold.adapt({
     consentDialogTitle: aiServiceConsent.CONSENT_TITLE,
     consentServiceDescription: aiServiceConsent.CONSENT_SERVICE_DESCRIPTION,
     consentDataNotice: aiServiceConsent.CONSENT_DATA_NOTICE,
+    consentCrossBorderNotice: aiServiceConsent.CONSENT_CROSS_BORDER_NOTICE,
 
     // 消息模型：{ id, serverId, role: 'user'|'assistant',
     //            kind: 'text'(纯文字) | 'image'(纯图，仅用户侧) | 'rich'(AI 回复：文字+图同一个气泡),

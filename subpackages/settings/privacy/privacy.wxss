@@ -48,3 +48,64 @@
 .article-list {
   padding-left: 30rpx;
 }
+
+/* 文档页首那行「更新日期 / 生效日期 / 版本」——法务原文是一整句，不再拆成左右两块 */
+.article-meta {
+  margin-top: 24rpx;
+  color: #7e858f;
+  font-size: 24rpx;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* 2.1 / 2.2 这类小节标题：比章标题小一号、不加粗到底，避免与「一、二、三」抢层级 */
+.article-sub-title {
+  margin-top: 24rpx;
+  color: #2a2d32;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* 表格：flex 手搭、列宽均分。
+   ⚠️ 行高与列宽都不能写死：权限说明、SDK 名称、收集场景都会折行，写死必裁字。 */
+.article-table {
+  margin-top: 20rpx;
+  border: 2rpx solid rgba(126, 133, 143, 0.22);
+  border-radius: 12rpx;
+  overflow: hidden;
+}
+
+.article-table__row {
+  display: flex;
+  align-items: stretch;
+  border-top: 2rpx solid rgba(126, 133, 143, 0.16);
+}
+
+.article-table__row:first-child {
+  border-top: none;
+}
+
+.article-table__row--head {
+  background: rgba(126, 133, 143, 0.08);
+}
+
+.article-table__cell {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 14rpx 16rpx;
+  color: #2f343b;
+  font-size: 24rpx;
+  line-height: 1.5;
+  word-break: break-word;
+  border-left: 2rpx solid rgba(126, 133, 143, 0.16);
+}
+
+.article-table__cell:first-child {
+  border-left: none;
+}
+
+.article-table__cell--head {
+  color: #2a2d32;
+  font-weight: 600;
+}

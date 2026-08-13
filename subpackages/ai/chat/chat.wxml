@@ -653,6 +653,9 @@
       <view class="consent-dialog__content">
         <view class="consent-dialog__paragraph">{{consentServiceDescription}}</view>
         <view class="consent-dialog__paragraph">{{consentDataNotice}}</view>
+        <!-- 境外传输告知（2026-08-13）：AI 网关在新加坡，内容出境必须单独告知；
+             细则在隐私政策第八节，这里只指路，不复述整节法律文本 -->
+        <view class="consent-dialog__paragraph">{{consentCrossBorderNotice}}</view>
       </view>
       <view class="consent-dialog__actions">
         <view
