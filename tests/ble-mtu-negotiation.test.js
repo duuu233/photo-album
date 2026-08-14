@@ -2,8 +2,11 @@
 //
 // 2026-08-14：真实投屏建连的请求值由 247 提到 500（配套每包 489 字节）。两类真机风险都要锁住：
 //   ① 有的安卓栈对超出自身上限的请求**不降级、直接报错**——该退回老的 247，不能掉到系统默认 23；
-//   ② 有的安卓机型 setBLEMTU 成功回调给的是**请求值**而非真实协商值——虚高的 MTU 会让 497 字节
-//     的包被链路静默丢弃、图传零推进，故 setBLEMTU 成功后还要 getBLEMTU 读回、两者取小。
+//   ② 有的安卓栈在「服务/特征刚发现完」这一刻接受 setBLEMTU 并回调成功，但 ATT MTU 交换其实
+//     还没落定，回调/getBLEMTU 给的都是**虚高的请求值**。按它分包（497 字节整帧）会被链路静默
+//     丢弃，表现为「前十几包侥幸过去、之后彻底卡死」——正是 2026-08-14 真实投屏的现场故障。
+//     修复：建连时协商两次（间隔 120ms）并**取小**，第二次读到的才是链路真正落定的值。
+//     （调试台一直是「建连 → 连上后再 renegotiateMtu」两步，所以同一台设备在调试台就是快的。）
 const assert = require('assert')
 
 const DEVICE_ID = 'DEV-MTU-1'
@@ -62,7 +65,11 @@ async function main() {
   const full = await connectWith({ setMtu: mtu => mtu, readMtu: 500 })
   assert.strictEqual(full.session.mtu, 500, '默认应请求并协商到 MTU 500')
   assert.strictEqual(full.session.dataChunk, 489, 'MTU 500 → 每包 489 字节（489+8=497=500-3）')
-  assert.deepStrictEqual(full.requests, [500], '一次就成，不该有多余的重协商')
+  assert.deepStrictEqual(
+    full.requests,
+    [500, 500],
+    '建连协商两次并复核（第二次才是链路落定值）'
+  )
 
   // ── 用例 1b：读回失败（老基础库无 getBLEMTU 返回）→ 信 setBLEMTU 的返回值 ────────────
   const noRead = await connectWith({ setMtu: mtu => mtu, readMtu: 0 })
@@ -79,15 +86,29 @@ async function main() {
     setMtu: mtu => (mtu > 247 ? 0 : mtu), // >247 一律失败
     readMtu: 247 // 回退请求成功后，链路真实协商在 247
   })
-  assert.deepStrictEqual(strict.requests, [500, 247], '500 失败后必须按 247 回退请求一次')
+  assert.deepStrictEqual(
+    strict.requests,
+    [500, 247, 500, 247],
+    '两轮协商，每轮都是「500 失败 → 按 247 回退请求」'
+  )
   assert.strictEqual(strict.session.mtu, 247)
   assert.strictEqual(strict.session.dataChunk, 236)
 
-  // ── 用例 4：虚报机型——setBLEMTU 成功回调回显**请求值**，链路真实协商只有 247 ─────────
-  // 这是 08-14 真机回归暴露的关键坑：信了虚高的 500 就会写出 497 字节的包被静默丢弃、
-  // 图传零推进。必须以 getBLEMTU 读回值为上限、两者取小。
-  const liar = await connectWith({ setMtu: mtu => mtu, readMtu: 247 })
-  assert.strictEqual(liar.session.mtu, 247, '读回值更小 → 以读回为准，绝不按虚高的 500 分包')
+  // ── 用例 4：虚高机型（08-14 真实投屏故障形态）──────────────────────────────────
+  // 第一轮协商 setBLEMTU/getBLEMTU 都回显虚高的 500（ATT 交换未落定），120ms 后第二轮才
+  // 读到链路真值 247。信了虚高值就会写出 497 字节的包被静默丢弃、传十几包后彻底卡死。
+  let round = 0
+  const liar = await connectWith({
+    setMtu: mtu => (++round <= 1 ? mtu : 247), // 第一轮回显请求值，之后是真值
+    get readMtu() {
+      return round <= 1 ? 500 : 247
+    }
+  })
+  assert.strictEqual(
+    liar.session.mtu,
+    247,
+    '两轮取小 → 按链路真值 247 分包，绝不按虚高的 500'
+  )
   assert.strictEqual(liar.session.dataChunk, 236)
 
   // ── 用例 5：iOS —— setBLEMTU 不支持，只能读回系统协商值 ────────────────────────────
