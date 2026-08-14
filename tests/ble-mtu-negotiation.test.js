@@ -121,6 +121,38 @@ async function main() {
   assert.strictEqual(blind.session.mtu, 185, '读不到就用保守兜底值')
   assert.strictEqual(blind.session.dataChunk, 174)
 
+  // ── 用例 7：复用已就绪会话时按当前链路重新核对 MTU（2026-08-14 iOS 现场故障）──────
+  // 现场：iPhone 12 / iOS 26.6，真实投屏 connectionReused=true、mtu=500、chunkSize=489，
+  // writeFailures=0 却 ackTimeouts=40 —— 缓存里那个 500 是会话创建时写进去的、从未被链路验证
+  // （iOS 不支持 setBLEMTU，值只能来自 getBLEMTU；调试台点过「重新协商 500」也会留下这种会话）。
+  // 按它分 489 字节写出 497 字节整帧被链路静默丢弃，传几十包后彻底卡死。
+  // 调试台每次连上都强制 renegotiateMtu 所以没事；复用路径必须做同一件事。
+  let readMtu = 500
+  installFakeBle({ setMtu: () => 0, get readMtu() { return readMtu } })
+  delete require.cache[require.resolve('../utils/device-ble')]
+  const reuseBle = require('../utils/device-ble')
+
+  const firstSession = await reuseBle.ensureConnection(DEVICE_ID)
+  assert.strictEqual(firstSession.mtu, 500, '前提：会话缓存里是未经验证的 500')
+  assert.strictEqual(firstSession.dataChunk, 489)
+
+  // 链路真实只有 247：复用这条会话时必须核对出来并把分包收回 236
+  readMtu = 247
+  const reused = await reuseBle.ensureConnection(DEVICE_ID)
+  assert.strictEqual(reused, firstSession, '仍是同一条会话（复用，不重连）')
+  assert.strictEqual(reused.mtu, 247, '复用前必须按当前链路核对 MTU')
+  assert.strictEqual(
+    reused.dataChunk,
+    236,
+    '分包随之收回 236，绝不拿虚高的 489 去写必被丢弃的大包'
+  )
+
+  // 反向：读回值变大不动（没有证据说明链路真升上去了，保守不冒险）
+  readMtu = 500
+  const again = await reuseBle.ensureConnection(DEVICE_ID)
+  assert.strictEqual(again.mtu, 247, '只朝小修正，不因读回变大就冒险上调')
+  assert.strictEqual(again.dataChunk, 236)
+
   console.log('ble-mtu-negotiation tests passed')
 }
 

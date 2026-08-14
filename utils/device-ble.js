@@ -497,12 +497,53 @@ function attachSessionScreen(deviceId, screenType) {
 // 已连上直接复用；正在连则复用在途 Promise（避免并发重复连接），否则发起一次新连接。
 // meta.deviceNo（可选）：扫描广播里的 Device_ID，登记到会话供「设备ID×广播ID」交叉匹配。
 // meta.screenType（可选）：扫描广播里的屏幕类型，登记到会话供交叉匹配时按型号/尺寸再校验，防串到不同型号设备。
+// 复用已就绪会话前，按**当前链路**重新核对 MTU 并重算分包大小。
+//
+// 为什么必须做（2026-08-14 真机定位，iPhone 12 / iOS 26.6 现场）：
+//   `session.mtu` 是会话**创建那一刻**写进去的。iOS 不支持 setBLEMTU，那个值只能来自 getBLEMTU；
+//   若会话是别的流程（尤其调试台点过「重新协商 MTU 500」）留下的、或读回时链路尚未落定，
+//   缓存里就是一个**从未被链路验证过的 500**。真实投屏 `connectionReused: true` 直接拿它分包
+//   489 字节，写出 497 字节的整帧被链路静默丢弃 → 传几十包后彻底卡死（现场 stats：mtu=500、
+//   chunkSize=489、writeFailures=0 却 ackTimeouts=40）。
+//   调试台之所以每次都成功，正是因为它连上后必调一次 renegotiateMtu，用的是当场核对过的值。
+// 这里把同一件事做进公共复用路径：读回真实 MTU，与缓存值**取小**后重算 dataChunk。
+// best-effort：读不到就保持原值，绝不因为核对失败而阻断投屏。
+async function recalibrateSessionMtu(deviceId) {
+  const session = sessions[deviceId]
+  if (!session || !session.ready || !wx.getBLEMTU) {
+    return
+  }
+  try {
+    const res = await wxp(wx.getBLEMTU, {
+      deviceId,
+      writeType: 'writeNoResponse'
+    })
+    const actual = res && res.mtu
+    if (!(actual >= 23)) {
+      return
+    }
+    // 只朝小修正：读回值更小说明缓存的是虚高/陈旧值，按它分包必然被丢。
+    // 读回值更大不动——没有证据说明链路真升上去了，保守不冒险。
+    if (actual < session.mtu) {
+      console.warn(
+        `[BLE] 复用会话的 MTU 与链路实际不符：缓存 ${session.mtu} → 实际 ${actual}，` +
+          `每包数据 ${session.dataChunk} → ${chunkFromMtu(actual)} 字节`
+      )
+      session.mtu = actual
+      session.dataChunk = chunkFromMtu(actual)
+    }
+  } catch (error) {
+    // 读不到就沿用缓存值，不阻断
+  }
+}
+
 async function ensureConnection(deviceId, meta) {
   const serial = meta && (meta.deviceNo || meta.serial)
   const screenType = meta && meta.screenType
   if (sessions[deviceId] && sessions[deviceId].ready) {
     attachSessionSerial(deviceId, serial)
     attachSessionScreen(deviceId, screenType)
+    await recalibrateSessionMtu(deviceId)
     return sessions[deviceId]
   }
   if (connecting[deviceId]) {
@@ -1150,16 +1191,73 @@ async function setConnectionIntervalMs(deviceId, ms, timeout) {
   )
 }
 
-// 真实投屏图传前要用的连接间隔(ms)：优先用调试页「保存给真实投屏」存下的值，
+// ── 「保存给真实投屏」存储值的口径版本 ───────────────────────────────────────────
+//
+// 存储值优先级高于默认值（那是调试台上一次显式的人工决定），但**跨口径变更时必须作废**：
+// 2026-08-14 把默认值改成「窗口 50 / 每包间隔 3ms」后，早先在调试台存过「窗口 10 / pace 0」的
+// 手机升级后仍在按旧值跑——真机现场 stats 里 `window: 10, configuredPace: 0` 就是这么来的，
+// 新默认值等于**从没生效过**。要求用户自己去调试台重存一次是不合理的：默认值改了就该直接生效。
+//
+// 做法：给三项存储值盖一个口径版本戳。版本不匹配 = 上个口径的遗留值，一律忽略并清掉，
+// 让当前默认值真正生效；之后再在调试台点「保存给真实投屏」写下的值会盖上新版本戳，照旧优先。
+// 以后再改默认值，同步升这个常量即可。
+const TRANSFER_PARAM_EPOCH = '2026-08-14-w50-p3'
+const TRANSFER_PARAM_EPOCH_KEY = 'transferParamsEpoch'
+
+// 清掉上个口径遗留的三项存储值（纯清理；失败无所谓，反正读取侧已按版本戳忽略它们）。
+// 不用「只做一次」的标志：清理由版本戳不匹配触发，本身就是幂等的，加标志反而会让
+// 「本次会话里又出现旧值」（如别处写入、测试重置存储）漏清。
+function clearStaleTransferOverrides() {
+  try {
+    wx.removeStorageSync(TRANSFER_CONN_INTERVAL_STORAGE_KEY)
+    wx.removeStorageSync(TRANSFER_PACE_STORAGE_KEY)
+    wx.removeStorageSync(TRANSFER_WINDOW_STORAGE_KEY)
+  } catch (error) {
+    // 清不掉也没关系：readTransferOverride 认版本戳，旧值读不出来
+  }
+}
+
+// 读一项「保存给真实投屏」的存储值。版本戳不匹配（或没有）一律返回 null → 调用方用默认值。
+function readTransferOverride(key) {
+  let epoch = ''
+  try {
+    epoch = wx.getStorageSync(TRANSFER_PARAM_EPOCH_KEY)
+  } catch (error) {
+    return null
+  }
+  if (epoch !== TRANSFER_PARAM_EPOCH) {
+    if (epoch !== '' && epoch !== undefined && epoch !== null) {
+      console.warn(
+        `[BLE] 忽略上个口径（${epoch}）保存的图传参数，改用当前默认值。` +
+          '如需自定义请在调试台重新「保存给真实投屏」。'
+      )
+    }
+    clearStaleTransferOverrides()
+    return null
+  }
+  try {
+    const value = Number(wx.getStorageSync(key))
+    return Number.isFinite(value) ? value : null
+  } catch (error) {
+    return null
+  }
+}
+
+// 写入时盖上当前口径版本戳，让这次显式保存的值在本口径内持续优先
+function stampTransferOverrideEpoch() {
+  try {
+    wx.setStorageSync(TRANSFER_PARAM_EPOCH_KEY, TRANSFER_PARAM_EPOCH)
+  } catch (error) {
+    // 盖不上戳：下次读取会当成旧口径忽略，退回默认值——安全方向
+  }
+}
+
+// 真实投屏图传前要用的连接间隔(ms)：优先用调试页「保存给真实投屏」存下的值（须为当前口径），
 // 否则用平台默认（安卓/鸿蒙 7.5ms、iOS 及其他 15ms，见 defaultTransferConnIntervalMs）。
 function getTransferConnIntervalMs() {
-  try {
-    const saved = Number(wx.getStorageSync(TRANSFER_CONN_INTERVAL_STORAGE_KEY))
-    if (Number.isFinite(saved) && saved > 0) {
-      return saved
-    }
-  } catch (error) {
-    // 读存储失败就用默认值
+  const saved = readTransferOverride(TRANSFER_CONN_INTERVAL_STORAGE_KEY)
+  if (saved !== null && saved > 0) {
+    return saved
   }
   return defaultTransferConnIntervalMs()
 }
@@ -1173,19 +1271,16 @@ function setTransferConnIntervalMs(ms) {
   )
   const value = protocol.connectionIntervalUnitsToMs(units)
   wx.setStorageSync(TRANSFER_CONN_INTERVAL_STORAGE_KEY, value)
+  stampTransferOverrideEpoch()
   return { ms: value, units }
 }
 
 // 真实投屏图传每包发送间隔(ms)：优先用调试页「保存给真实投屏」存下的值，否则用默认极速 3ms。
 // uploadImage 未显式收到 pace 时会调它，让真实投屏跟随调试台调稳的发送速度。
 function getTransferPaceMs() {
-  try {
-    const saved = Number(wx.getStorageSync(TRANSFER_PACE_STORAGE_KEY))
-    if (Number.isFinite(saved) && saved >= 0) {
-      return saved
-    }
-  } catch (error) {
-    // 读存储失败就用默认值
+  const saved = readTransferOverride(TRANSFER_PACE_STORAGE_KEY)
+  if (saved !== null && saved >= 0) {
+    return saved
   }
   return PACKET_PACE_MS
 }
@@ -1198,6 +1293,7 @@ function setTransferPaceMs(ms) {
     throw new Error('发送间隔需为有效毫秒数')
   }
   wx.setStorageSync(TRANSFER_PACE_STORAGE_KEY, value)
+  stampTransferOverrideEpoch()
   return value
 }
 
@@ -1214,13 +1310,9 @@ function normalizeTransferWindow(n) {
 // ⚠️ 存储值优先级高于默认值：08-14 之前点过「保存给真实投屏」并写下 10 的机器，升级后仍是 10。
 //    调试台页面上「真实投屏当前在用」那行显示的就是这个生效值，要回到默认清掉这个键即可。
 function getTransferWindow() {
-  try {
-    const saved = Number(wx.getStorageSync(TRANSFER_WINDOW_STORAGE_KEY))
-    if (Number.isFinite(saved) && saved >= 1) {
-      return normalizeTransferWindow(saved)
-    }
-  } catch (error) {
-    // 读存储失败就用默认值
+  const saved = readTransferOverride(TRANSFER_WINDOW_STORAGE_KEY)
+  if (saved !== null && saved >= 1) {
+    return normalizeTransferWindow(saved)
   }
   return DEFAULT_TRANSFER_WINDOW
 }
@@ -1229,6 +1321,7 @@ function getTransferWindow() {
 function setTransferWindow(n) {
   const value = normalizeTransferWindow(n)
   wx.setStorageSync(TRANSFER_WINDOW_STORAGE_KEY, value)
+  stampTransferOverrideEpoch()
   return value
 }
 
@@ -1481,6 +1574,7 @@ async function uploadImage(deviceId, options) {
     stats.configuredPace = pace
     stats.finalPace = pace
 
+
     // D1：预取阶段按会话分包大小预组好的全部 0x21 帧，分包/帧数对得上才用（会话重建后 MTU
     // 可能变化）；没有或对不上（调试页直调、首张预取早于连接）则发送时逐包现组——
     // buildImgDataFrame 用整块 set + 查表 CRC16，现组也比旧的逐字节 push 版快得多。
@@ -1507,6 +1601,14 @@ async function uploadImage(deviceId, options) {
     stats.adaptive = adaptive
     stats.minWindow = WINDOW
     stats.finalWindow = WINDOW
+
+    // 本次图传**实际生效**的参数：默认值改了却没生效（旧口径存储值覆盖、MTU 顶不上去）在这一行
+    // 一眼可辨，不必等传完翻 transferStats。口径见 TRANSFER_PARAM_EPOCH 与 chunkFromMtu。
+    console.log(
+      `[BLE] 图传参数生效值：MTU ${session.mtu} · 每包 ${CHUNK} 字节 · 窗口 ${WINDOW} 包 · ` +
+        `每包间隔 ${pace}ms · 策略 ${adaptive ? 'AIMD 自适应' : 'legacy'} · 共 ${totalPackets} 包` +
+        `（当前默认口径：每包 ${IMG_DATA_CHUNK_MAX} / 窗口 ${DEFAULT_TRANSFER_WINDOW} / 间隔 ${PACKET_PACE_MS}ms）`
+    )
     // 同一卡点是否已用过一次「宽限等待」（仅 adaptive）：先多等一轮再判丢包，别把「慢」当成「丢」
     let graceUsed = false
     onProgress(0, totalPackets, 'start')

@@ -68,12 +68,37 @@ assert.strictEqual(
   50,
   '没同步过时真实投屏用 50 包窗口'
 )
+assert.strictEqual(deviceBle.getTransferPaceMs(), 3, '没同步过时每包间隔用默认 3ms')
+
+// ── 口径版本：上个口径存下的值必须作废，让新默认值真正生效 ──────────────────────
+// 真机现场（2026-08-14 iPhone 12）：stats 里 window=10 / configuredPace=0，是早先在调试台
+// 存下的旧口径值——默认值改成 50/3 后**等于从没生效过**。不能要求用户自己去重存一次。
+storage.transferWindow = 10
+storage.transferPaceMs = 0
+storage.transferConnIntervalMs = 30
+delete storage.transferParamsEpoch // 旧口径：没有版本戳
 assert.strictEqual(
-  deviceBle.setTransferWindow(10),
-  10,
-  '「保存给真实投屏」写下的旧值仍优先于默认值（存储值是显式的人工决定）'
+  deviceBle.getTransferWindow(),
+  50,
+  '没有版本戳的遗留存储值必须被忽略 → 用当前默认 50'
 )
-assert.strictEqual(deviceBle.getTransferWindow(), 10)
+assert.strictEqual(
+  deviceBle.getTransferPaceMs(),
+  3,
+  '没有版本戳的遗留 pace=0 必须被忽略 → 用当前默认 3ms'
+)
+assert.strictEqual(
+  storage.transferWindow,
+  undefined,
+  '遗留值应被顺手清掉，避免以后误读'
+)
+
+// 本口径内显式保存的值照旧优先（存储值仍是显式的人工决定）
+assert.strictEqual(deviceBle.setTransferWindow(20), 20)
+assert.strictEqual(deviceBle.getTransferWindow(), 20, '当前口径保存的值优先于默认值')
+assert.strictEqual(deviceBle.setTransferPaceMs(5), 5)
+assert.strictEqual(deviceBle.getTransferPaceMs(), 5)
+
 assert.strictEqual(deviceBle.setTransferWindow(999), 50, '超过上限夹到 50')
 assert.strictEqual(deviceBle.setTransferWindow(0), 50, '非法值回落默认 50')
 

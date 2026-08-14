@@ -695,8 +695,9 @@ Page(fold.adapt({
   // 之后正式投屏(result.js → optimizeConnectionIntervalForTransfer + uploadImage)图传前会按这些值来传，
   // 而不是走默认(连接间隔 安卓/鸿蒙 7.5ms、iOS 及其他 15ms · 极速 3ms · 50 包)。只写本地存储、不依赖蓝牙连接，
   // 所以未连接设备也能同步。
-  // 2026-08-14 起默认值本身已与调试台一致，这个按钮的用途收窄成「实测出更稳的一组就覆盖默认」；
-  // 存储值优先级高于默认值，本机存过旧值(如窗口 10)就一直用旧值，页面提示行显示的即当前生效值。
+  // 2026-08-14 起默认值本身已与调试台一致，这个按钮的用途收窄成「实测出更稳的一组就覆盖默认」。
+  // 存储值优先级高于默认值，但带口径版本戳(TRANSFER_PARAM_EPOCH)：默认值改动时旧保存值自动作废，
+  // 用户不必手动重存。页面提示行显示的即当前真实生效值。
   cmdSyncTransferToProjection() {
     const ms = Number(this.data.connIntervalInput)
     if (!Number.isFinite(ms) || ms <= 0) {
