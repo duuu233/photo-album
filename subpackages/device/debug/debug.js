@@ -1448,11 +1448,13 @@ Page(fold.adapt({
       `吞吐 ${stats.throughputKbps || 0} KB/s · ` +
       `数据段 ${seconds(stats.dataMs)}s（其中等应答 ${seconds(stats.ackWaitMs)}s）· ` +
       `总耗时 ${seconds(stats.totalMs)}s\n` +
-      `[自适应] 窗口 ${stats.window} → 最低 ${stats.minWindow} → 收尾 ${stats.finalWindow} 包 · ` +
-      `每包间隔 ${stats.configuredPace} → ${stats.finalPace}ms · ` +
+      `[自适应] 窗口 ${stats.window} → 最低 ${stats.minWindow} → 收尾 ${stats.finalWindow} 包` +
+      (stats.finalWindowCap ? `（丢包记忆 cap ${stats.finalWindowCap}）` : '') +
+      ` · 每包间隔 ${stats.configuredPace} → ${stats.finalPace}ms · ` +
       `退让 ${stats.retryEvents} 次（宽限等待 ${stats.ackGraceWaits} 次）· ` +
       `重发 ${stats.retransmittedPackets} 包 / 共发 ${stats.sentPackets} 包 · ` +
-      `写失败重试 ${stats.writeFailures} 次 · 预组帧 ${stats.prebuiltFrames ? '是' : '否'}`
+      `写失败重试 ${stats.writeFailures} 次 · 预组帧 ${stats.prebuiltFrames ? '是' : '否'}` +
+      (stats.paramFallback ? '\n[降级] 大包零推进，已按安全档 236 字节/窗口 10 重传成功——请核对该设备固件是否包含 2026-08-07 传输优化' : '')
     )
   },
 

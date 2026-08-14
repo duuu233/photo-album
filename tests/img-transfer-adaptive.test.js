@@ -1,6 +1,6 @@
 // 图传窗口自适应（utils/device-ble.js uploadImage）。
 //
-// 现场问题（2026-08-11）：调试台把发包窗口从 10 提到 50、每包字节数与 MTU 也一并调大后，
+// 现场问题一（2026-08-11）：调试台把发包窗口从 10 提到 50、每包字节数与 MTU 也一并调大后，
 // 传输**更慢**且频繁停在「传输卡顿：停在第 N 包，正第 5 次重发…」。
 //
 // 根因是老的窗口逻辑没有拥塞控制：
@@ -10,9 +10,20 @@
 // 于是窗口越大，「灌满 → 溢出丢包 → 后续整窗作废 → 等满超时 → 整窗重发 → 再灌满」这个循环
 // 每转一圈的代价越大 —— 参数调大反而更慢、更容易把重试预算耗光判失败。
 //
+// 现场问题二（2026-08-14，参数升为真实投屏默认后的真机回归）：AIMD 本身也有三处把「偶发丢包」
+// 放大成「持续慢」的毛病：
+//   ④ 窗口没有丢包记忆——减半收敛到设备吃得下的档位后，每 2 个干净窗口就 +6 往回涨，涨过设备
+//     缓冲又溢出，每次溢出付出「宽限+超时+整窗重发」≈1~2s，一张几百包的图反复撞墙几十次；
+//   ⑤ 每包间隔退让翻倍到几十 ms 后，只按每 6 个干净窗口 -0.5ms 的速度慢探，基本一整张图回不来；
+//   ⑥ 每次重试后宽限额度被重置，同一个卡点每一轮都白付一次双倍超时的宽限。
+// 修复：capWindow 丢包记忆（类 TCP ssthresh，超时后窗口最多涨回丢包点减半值，每 8 个干净窗口
+// 才 +1 上探）、pace 每 2 个干净窗口砍半回落、宽限每个卡点只付一次、收敛结果记到会话
+// (session.tunedWindow) 供同连接下一张直接使用。
+//
 // 这里用一台「收包缓冲有限、处理有速度上限」的假设备驱动真实的 uploadImage：
 //   · 缓冲满时静默丢包（真机溢出行为），按序累计确认，乱序包一律丢弃；
-//   · 断言窗口 50 的激进配置能自动收敛到设备吃得下的速率并传完，而不是卡死。
+//   · ackEvery 可选：按真机口径「每 N 包才回一次 0x23」（性能档案实测固件为每 10 包一回），
+//     处理完积压后补报一次当前进度（尾部冲刷），别让小窗口死锁。
 const assert = require('assert')
 const protocol = require('../utils/frame-protocol')
 
@@ -25,10 +36,12 @@ const DEVICE_MTU = 500
 // 假设备：收包进缓冲队列，按固定速度逐包处理并回 0x23 累计确认。
 //   bufferDepth：缓冲能压多少包，压满后再来的包直接丢（对应真机「收包缓冲溢出」）
 //   processMs：处理（含写 Flash）一包要多久 —— 它才是设备真正的吞吐上限
+//   ackEvery：每按序收多少包回一次 0x23（缺省 1=每包都回；真机口径 10）
 function createFakeDevice(options) {
   return {
     bufferDepth: options.bufferDepth,
     processMs: options.processMs,
+    ackEvery: options.ackEvery || 1,
     queue: [],
     expectedSeq: 0, // 下一个要按序收的包号
     dropped: 0, // 因缓冲溢出丢掉的包数
@@ -39,6 +52,22 @@ function createFakeDevice(options) {
     ended: false,
     timer: null
   }
+}
+
+// 传下一张前把假设备的单张传输状态清零（连接/会话保持不动）
+function resetFakeDevice(device) {
+  if (device.timer) {
+    clearTimeout(device.timer)
+  }
+  device.queue = []
+  device.expectedSeq = 0
+  device.dropped = 0
+  device.outOfOrder = 0
+  device.duplicates = 0
+  device.received = 0
+  device.started = false
+  device.ended = false
+  device.timer = null
 }
 
 function installFakeBle(device) {
@@ -61,7 +90,14 @@ function installFakeBle(device) {
   const ackFrame = (ackCmd, result, data) =>
     notifyFrame(protocol.CMD.ACK, [ackCmd, result].concat(data || []))
 
+  const notifyImgAck = () =>
+    notifyFrame(protocol.CMD.IMG_ACK, [
+      (device.expectedSeq - 1) & 0xff,
+      ((device.expectedSeq - 1) >> 8) & 0xff
+    ])
+
   // 设备侧处理循环：每 processMs 消化一包。按序才收，乱序作废（累计确认语义）。
+  // 0x23 按 ackEvery 的节奏回；处理完积压后补报一次当前进度（尾部冲刷）。
   const pump = () => {
     if (!device.queue.length) {
       device.timer = null
@@ -71,10 +107,12 @@ function installFakeBle(device) {
     if (seq === device.expectedSeq) {
       device.expectedSeq++
       device.received++
-      notifyFrame(protocol.CMD.IMG_ACK, [
-        (device.expectedSeq - 1) & 0xff,
-        ((device.expectedSeq - 1) >> 8) & 0xff
-      ])
+      if (
+        device.expectedSeq % device.ackEvery === 0 ||
+        device.queue.length === 0
+      ) {
+        notifyImgAck()
+      }
     } else if (seq < device.expectedSeq) {
       device.duplicates++
     } else {
@@ -163,12 +201,16 @@ for (let i = 0; i < IMAGE.length; i++) {
   IMAGE[i] = i & 0xff
 }
 
-// 2026-08-14 起 adaptive 是 uploadImage 的默认策略（真实投屏与调试台共用）；
-// options.adaptive 传 null 表示「整个参数都不传」，用来验真实投屏那条不带参数的调用路径。
-async function runTransfer(device, options) {
+// 装好假蓝牙栈并拿到一份全新的 device-ble（会话从零开始）
+function setupBle(device) {
   installFakeBle(device)
   delete require.cache[require.resolve('../utils/device-ble')]
-  const deviceBle = require('../utils/device-ble')
+  return require('../utils/device-ble')
+}
+
+// 在已建立的会话上传一张。options.adaptive 传 null 表示「整个参数都不传」，
+// 用来验真实投屏那条不带参数的调用路径（2026-08-14 起默认即 AIMD 自适应）。
+async function transferOnce(deviceBle, device, options) {
   const upload = {
     screenType: 0x02,
     index: 0,
@@ -189,6 +231,10 @@ async function runTransfer(device, options) {
   return summary.transferStats
 }
 
+async function runTransfer(device, options) {
+  return transferOnce(setupBle(device), device, options)
+}
+
 async function main() {
   // ── 用例 1：设备吃得下 50 包窗口 → 全速跑完，一次退让都不该有 ──────────────
   const fast = createFakeDevice({ bufferDepth: 64, processMs: 0 })
@@ -198,6 +244,11 @@ async function main() {
   assert.strictEqual(fastStats.retryEvents, 0, '不丢包就不该有任何退让')
   assert.strictEqual(fastStats.retransmittedPackets, 0, '不丢包就不该有重发')
   assert.strictEqual(fastStats.finalWindow, 50, '一路干净，窗口应始终保持在配置上限')
+  assert.strictEqual(
+    fastStats.finalWindowCap,
+    50,
+    '没丢过包，丢包记忆(cap)应保持在配置上限'
+  )
   // 链路干净时每包间隔只会持平或继续往下探，绝不该被「减速兜底」抬上去
   //（设备跟得上时 ACK 边发边到，窗口一直没填满，本来就轮不到降速探测）
   assert.ok(
@@ -220,8 +271,8 @@ async function main() {
     `第一次卡顿就应把窗口减半（实际最低 ${slowStats.minWindow}）`
   )
   assert.ok(
-    slowStats.finalPace > 0,
-    `设备吃不下时每包间隔应退让上去（实际 ${slowStats.finalPace}ms）`
+    slowStats.finalWindowCap < 50,
+    `丢包记忆应钉在设备吃得下的档位附近（实际 cap ${slowStats.finalWindowCap}）`
   )
   // 关键回归：重发量必须有界。老逻辑不收敛，重发包数会远超总包数。
   assert.ok(
@@ -250,7 +301,41 @@ async function main() {
   )
   assert.strictEqual(laggy.outOfOrder, 0, '没有丢包就不该产生乱序作废包')
 
-  // ── 用例 4：不传 adaptive（=真实投屏 result.js 那条调用路径）→ 默认就是自适应 ────
+  // ── 用例 4：真机口径复现（2026-08-14 现场问题）——缓冲 10 包 + 每 10 包才回一次 0x23 ──
+  // 这正是「窗口 50 默认值」在老 AIMD 下慢好几倍的组合：溢出丢包后窗口减半收敛，
+  // 但每 2 个干净窗口就 +6 涨回去，涨过缓冲又溢出，每次溢出 ≈1~2s——一张图撞墙几十次。
+  // 丢包记忆(capWindow)修复后：收敛一次就钉住，只按每 8 个干净窗口 +1 小步上探，
+  // 全程退让次数必须收敛到个位数。
+  const cadence = createFakeDevice({ bufferDepth: 10, processMs: 5, ackEvery: 10 })
+  const cadenceBle = setupBle(cadence)
+  const cadenceStats = await transferOnce(cadenceBle, cadence, { window: 50, pace: 3 })
+  assert.strictEqual(cadenceStats.success, true, '真机口径下必须收敛并传完')
+  assert.strictEqual(cadence.expectedSeq, TOTAL_PACKETS, '设备侧按序完整收齐')
+  assert.ok(
+    cadenceStats.retryEvents <= 8,
+    `丢包记忆必须止住「涨回→再溢出」的反复撞墙（实际退让 ${cadenceStats.retryEvents} 次）`
+  )
+  // cap 收敛到的具体档位取决于 pace 与设备处理速度的比值（发得慢时在途包少，可持续窗口
+  // 可以大于缓冲深度），只锁「不涨回配置上限」——涨回去就说明丢包记忆失效、还会再溢出。
+  assert.ok(
+    cadenceStats.finalWindowCap < 50,
+    `cap 不应涨回配置上限（实际 ${cadenceStats.finalWindowCap}）`
+  )
+  assert.ok(
+    cadenceStats.retransmittedPackets < TOTAL_PACKETS,
+    `重发包数必须有界（实际 ${cadenceStats.retransmittedPackets}）`
+  )
+
+  // ── 用例 4b：同一条连接的第二张 —— 从上一张收敛出的稳态窗口出发，不再重新撞墙 ──────
+  resetFakeDevice(cadence)
+  const secondStats = await transferOnce(cadenceBle, cadence, { window: 50, pace: 3 })
+  assert.strictEqual(secondStats.success, true)
+  assert.ok(
+    secondStats.retryEvents <= 2,
+    `第二张应直接从 tunedWindow 稳态出发，几乎不再退让（实际 ${secondStats.retryEvents} 次）`
+  )
+
+  // ── 用例 5：不传 adaptive（=真实投屏 result.js 那条调用路径）→ 默认就是自适应 ────
   // 2026-08-14：窗口默认由 10 提到 50，必须配套 AIMD，否则大窗口会退化成整窗重发的死循环。
   const projection = createFakeDevice({ bufferDepth: 6, processMs: 2 })
   const projectionStats = await runTransfer(projection, {
@@ -269,7 +354,7 @@ async function main() {
     `默认策略应自适应退窗（实际收尾 ${projectionStats.finalWindow}）`
   )
 
-  // ── 用例 5：显式 adaptive:false 仍能回到 legacy 老策略（保留做对照用）──────────
+  // ── 用例 6：显式 adaptive:false 仍能回到 legacy 老策略（保留做对照用）──────────
   const legacy = createFakeDevice({ bufferDepth: 6, processMs: 2 })
   const legacyStats = await runTransfer(legacy, {
     window: 50,

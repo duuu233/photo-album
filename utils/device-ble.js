@@ -249,6 +249,11 @@ const MTU_REQUEST_DEFAULT = 500
 // 就是 08-07 之前一直在用的 247——顶不到 500 最差也该退回原来的 236 分包，而不是掉到系统默认的 23。
 const MTU_REQUEST_FALLBACK = 247
 const IMG_DATA_CHUNK_MAX = 489
+// 2026-08-14 之前的保守口径（6.8.2 原始整帧上限 236+8=244 / 窗口 10）。它是全线固件都吃得下的
+// 已知安全档：uploadImage 发现大包**一包都没被确认**（老固件的帧解析器认不了 >244 的整帧，或
+// 链路 MTU 虚高导致大包被静默丢弃）时，自动按这一组从头重传一次，别让用户等 15 次重试后看失败。
+const IMG_DATA_CHUNK_SAFE = 236
+const TRANSFER_WINDOW_SAFE = 10
 
 // 协商 MTU（一次能传多少字节）。这是图传能否成功的关键：
 //   数据包整帧 = SOF+CMD+LEN(2)+PKT_SEQ(2)+DATA+CRC(2) = DATA + 8 字节固定开销，
@@ -290,18 +295,23 @@ async function negotiateMtu(deviceId, requestMtu) {
     }
   }
 
-  // 读取真实协商到的 MTU（安卓/较新 iOS 基础库支持）
-  if (!mtu && wx.getBLEMTU) {
+  // 读取真实协商到的 MTU（安卓/较新 iOS 基础库支持）。
+  // ⚠️ setBLEMTU 成功也要读回核对：部分安卓机型成功回调里给的是**请求值**而非真实协商值。
+  // 请求 247 的年代虚高无所谓（设备真实能力 ≥247）；请求 500 后虚高就是灾难——按 500 分包
+  // 写出 497 字节的帧，链路实际装不下会被静默丢弃，一包 ACK 都收不到，图传原地卡死。
+  // 故取「setBLEMTU 返回值」与「getBLEMTU 读回值」中较小者：读小了只是分包变小（慢一点但能传），
+  // 信大了是整场卡死，方向只能朝小取。
+  if (wx.getBLEMTU) {
     try {
       const res = await wxp(wx.getBLEMTU, {
         deviceId,
         writeType: 'writeNoResponse'
       })
-      if (res && res.mtu) {
-        mtu = res.mtu
+      if (res && res.mtu >= 23) {
+        mtu = mtu ? Math.min(mtu, res.mtu) : res.mtu
       }
     } catch (error) {
-      // 读不到就用兜底值
+      // 读不到就用 setBLEMTU 的返回值 / 兜底值
     }
   }
 
@@ -786,13 +796,28 @@ function createLegacyPacer(maxWindow, basePace) {
 const ACK_TIMEOUT_START_MS = 600 // 首轮还没有观测值时的超时
 const ACK_TIMEOUT_MIN_MS = 300 // 有观测值后的下限：判早了也只是多等一轮宽限，不会立刻整窗重发
 const ACK_TIMEOUT_MAX_MS = 3000 // 上限：再慢也该判为丢包/中断
-const PACE_BACKOFF_MAX_MS = 40 // 退让时每包间隔的上限
-const WINDOW_RECOVER_AFTER = 2 // 连续几个干净窗口涨一档窗口
+const PACE_BACKOFF_MAX_MS = 16 // 退让时每包间隔的上限。窗口才是防溢出的主控，间隔抬太高只会白拖慢
+const WINDOW_RECOVER_AFTER = 2 // 连续几个干净窗口把窗口向 capWindow 涨一档
+const CAP_PROBE_AFTER = 8 // 顶着丢包记忆(capWindow)跑满这么多个干净窗口，才允许 cap +1 小步上探
+const PACE_RECOVER_AFTER = 2 // 连续几个干净窗口把退让抬上去的每包间隔砍半回落
 
-function createAdaptivePacer(maxWindow, basePace) {
+function createAdaptivePacer(maxWindow, basePace, startCap) {
+  // 丢包记忆（类 TCP ssthresh，2026-08-14 真机回归补上）：capWindow = 当前允许涨回的窗口上限。
+  // 之前没有这层记忆：窗口减半收敛到设备吃得下的档位后，每 2 个干净窗口就 +6 往回涨，
+  // 涨过设备缓冲又溢出，每次溢出付出「宽限＋超时＋整窗重发」≈1~2s——一张几百包的图要撞墙
+  // 几十次，真机表现就是「参数更大反而慢好几倍」。设备收包缓冲是固定容量，不是互联网那种
+  // 随行情波动的拥塞，所以丢包点必须记住：超时后 cap 压到减半值，此后窗口最多涨回 cap；
+  // cap 只按每 CAP_PROBE_AFTER 个干净窗口 +1 的速度小步上探——射频毛刺造成的误判能慢慢爬回来，
+  // 固定的缓冲上限则会让 cap 稳定钉在设备真实吃得下的档位。
+  // startCap：上一张图收敛出的档位（session.tunedWindow），多张连传第二张起直接从稳态出发。
+  const initialCap = Math.min(
+    maxWindow,
+    Math.max(1, Math.round(startCap) || maxWindow)
+  )
+  let capWindow = initialCap
+  let curWindow = initialCap
+  let minWindow = initialCap
   let curPace = basePace
-  let curWindow = maxWindow
-  let minWindow = maxWindow
   let cleanRun = 0
   let emaAdvanceMs = 0 // 实测「等一次 0x23 推进」耗时的指数滑动平均
   return {
@@ -811,6 +836,7 @@ function createAdaptivePacer(maxWindow, basePace) {
     grace: true,
     onTimeout() {
       curWindow = Math.max(1, Math.floor(curWindow / 2))
+      capWindow = curWindow // 记住丢包点：减半后的值就是新的安全上限
       curPace = Math.min(
         PACE_BACKOFF_MAX_MS,
         Math.max(1, Math.round((curPace || 1) * 2))
@@ -823,18 +849,31 @@ function createAdaptivePacer(maxWindow, basePace) {
         ? emaAdvanceMs * 0.75 + advanceMs * 0.25
         : advanceMs
       cleanRun++
-      if (curWindow < maxWindow && cleanRun % WINDOW_RECOVER_AFTER === 0) {
+      if (curWindow < capWindow && cleanRun % WINDOW_RECOVER_AFTER === 0) {
+        // cap 以内快速涨回（丢包后的临时缩窗尽快恢复到已知安全档）
         curWindow = Math.min(
-          maxWindow,
+          capWindow,
           curWindow + Math.max(1, Math.floor(maxWindow / 8))
         )
+      } else if (
+        curWindow >= capWindow &&
+        capWindow < maxWindow &&
+        cleanRun % CAP_PROBE_AFTER === 0
+      ) {
+        // 顶着 cap 稳跑很久了才小步 +1 上探，试探设备是不是其实吃得下更多
+        capWindow += 1
+        curWindow = capWindow
       }
-      if (curPace > 0 && cleanRun % PACE_PROBE_AFTER === 0) {
+      if (curPace > basePace && cleanRun % PACE_RECOVER_AFTER === 0) {
+        // 退让抬上去的间隔快速砍半回落到起点：窗口已经压住了溢出，间隔长期抬着只会白白拖慢。
+        // 之前这里只有每 6 个干净窗口 -0.5ms 的慢探，退到 24ms 后基本一整张图都回不来。
+        curPace = Math.max(basePace, Math.floor(curPace / 2))
+      } else if (curPace <= basePace && curPace > 0 && cleanRun % PACE_PROBE_AFTER === 0) {
         // 链路一直干净就继续往下探每包间隔（可以探到 0），配置值只是起点不是下限
         curPace = Math.max(0, curPace - PACE_PROBE_STEP)
       }
     },
-    state: () => ({ window: curWindow, pace: curPace, minWindow })
+    state: () => ({ window: curWindow, pace: curPace, minWindow, cap: capWindow })
   }
 }
 
@@ -1320,7 +1359,47 @@ function finalizeTransferStats(stats) {
   return stats
 }
 
+// 对外入口：先按配置参数（默认 489 字节/窗口 50）传；若大包**零推进**（一包 ACK 都收不到，
+// 见 uploadImageAttempt 里的探测），自动按 08-14 之前的安全档(236 字节/窗口 10)从头重传一次。
+// 两类真机故障都会落到这条兜底上：① 固件没升 2026-08-07 版，帧解析器认不了 >244 字节整帧；
+// ② 部分安卓 setBLEMTU 虚报协商值、negotiateMtu 读回核对又失败，497 字节的包被链路静默丢弃。
 async function uploadImage(deviceId, options) {
+  try {
+    return await uploadImageAttempt(deviceId, options)
+  } catch (error) {
+    if (!error || error.code !== 'IMG_CHUNK_UNSUPPORTED' || !isConnected(deviceId)) {
+      throw error
+    }
+    console.warn(
+      '[BLE] 0x21 大包零推进（一包都没被设备确认），疑似固件不含 2026-08-07 传输优化或链路 MTU 虚高。' +
+        `自动回退安全档：每包 ${IMG_DATA_CHUNK_SAFE} 字节 / 窗口 ${TRANSFER_WINDOW_SAFE} 包重传，` +
+        '本条连接后续图传也按安全档走。请核对设备固件版本。首次尝试统计：',
+      error.transferStats
+    )
+    // 把安全档写回会话：这台设备认不了大包是固件能力问题，同一条连接上的后续每一张都会撞墙，
+    // 不能张张都白付 ~2.5s 的零推进探测。session.dataChunk 是真实投屏(不显式传 chunkSize)与
+    // 预取 prepareImageTransfer 共同的分包依据，改小后下一张从头就按 236 出。
+    const session = sessions[deviceId]
+    if (session && session.ready) {
+      session.dataChunk = chunkFromMtu(session.mtu, IMG_DATA_CHUNK_SAFE)
+      session.tunedWindow = Math.min(
+        session.tunedWindow || TRANSFER_WINDOW_SAFE,
+        TRANSFER_WINDOW_SAFE
+      )
+    }
+    return uploadImageAttempt(
+      deviceId,
+      Object.assign({}, options, {
+        chunkSize: IMG_DATA_CHUNK_SAFE,
+        window: TRANSFER_WINDOW_SAFE,
+        prepared: null, // 预组帧是按大包组的，全部作废，回退后现组
+        __safeChunkRetry: true // 只回退这一次；安全档再失败就是真故障，照常抛给上层
+      })
+    )
+  }
+}
+
+async function uploadImageAttempt(deviceId, options) {
   const session = await ensureConnection(deviceId)
   const data =
     options.data instanceof Uint8Array
@@ -1446,15 +1525,23 @@ async function uploadImage(deviceId, options) {
     let retries = 0
     // 调速策略：默认 AIMD 自适应（2026-08-14 起真实投屏也走这条，与窗口默认 50 是一组）；
     // 只有显式传 adaptive:false 才回到 legacy 老策略做对照。
+    // session.tunedWindow：本条连接上一张图收敛出的稳态窗口。多张连传时第二张起直接从它出发，
+    // 不再每张都从满窗 50 重新撞一遍设备缓冲（每次撞墙 ≈1~2s 的宽限+超时+整窗重发）。
     const adaptive = options.adaptive !== false
     const pacer = adaptive
-      ? createAdaptivePacer(WINDOW, pace)
+      ? createAdaptivePacer(WINDOW, pace, session.tunedWindow)
       : createLegacyPacer(WINDOW, pace)
     stats.adaptive = adaptive
+    stats.paramFallback = !!options.__safeChunkRetry
     stats.minWindow = WINDOW
     stats.finalWindow = WINDOW
     // 同一卡点是否已用过一次「宽限等待」（仅 adaptive）：先多等一轮再判丢包，别把「慢」当成「丢」
     let graceUsed = false
+    // 大包「零推进」计数：从开传起一包都没被确认的等待轮数。攒满 3 轮（宽限 1.2s + 两次超时
+    // ≈2.4s）仍是 -1，基本可断定设备根本没把 0x21 当合法帧（老固件解析器认不了 >244 字节整帧，
+    // 或 MTU 虚高、大包被链路静默丢弃）——再退让多少次窗口都救不回来，直接抛专用错误码，
+    // 由外层 uploadImage 换 236 字节/窗口 10 的安全档重传。
+    let zeroProgressRounds = 0
     onProgress(0, totalPackets, 'start')
 
     const tracker = createAckTracker(session)
@@ -1519,6 +1606,18 @@ async function uploadImage(deviceId, options) {
             onProgress(stats.confirmedPackets, totalPackets, 'data')
             continue
           }
+          // 零推进探测：开传至今一包都没被确认 → 不是「吃不下这个速率」而是「根本认不了这种包」，
+          // 抛专用错误码交给外层 uploadImage 换安全档（236 字节/窗口 10）重传。
+          // 只在大包时触发：236 字节还零推进就是设备死/断链，走下面正常的重试→中断路径。
+          if (tracker.last < 0 && CHUNK > IMG_DATA_CHUNK_SAFE) {
+            if (++zeroProgressRounds >= 3) {
+              const unsupported = new Error(
+                `0x21 每包 ${CHUNK} 字节零推进：设备未确认过任何数据包，疑似固件不支持大包`
+              )
+              unsupported.code = 'IMG_CHUNK_UNSUPPORTED'
+              throw unsupported
+            }
+          }
           // adaptive：第一次超时先宽限等一轮。设备只是慢时整窗重发只会把它压得更死（重发的包同样
           // 要排队，而它还没消化完上一批）；真丢包也只多等一个超时，远小于误判后反复整窗重发的代价。
           if (pacer.grace && !graceUsed) {
@@ -1553,7 +1652,9 @@ async function uploadImage(deviceId, options) {
             }
           )
           nextSeq = tracker.last + 1
-          graceUsed = false
+          // ⚠️ 这里不再把 graceUsed 清回 false（2026-08-14）：宽限的语义是「同一个卡点先多等
+          // 一轮再判丢包」，此前每次重试后都重置，同一个卡点每一轮都白付一次双倍超时的宽限，
+          // 卡顿成本直接翻倍。现在只在真正推进后（上方两处 graceUsed = false）才重新给宽限额度。
           await sleep(Math.min(150, 50 * retries))
           continue
         }
@@ -1573,6 +1674,14 @@ async function uploadImage(deviceId, options) {
       stats.dataMs = Date.now() - dataStartedAt
       stats.ackFrames = tracker.ackFrames
       stats.ackAdvances = tracker.advances
+      if (adaptive) {
+        // 把本张收敛出的稳态窗口(capWindow)记到会话上：同一条连接的下一张图从它出发，
+        // 不再每张都从满窗重新撞设备缓冲。干净跑完时 cap = 配置上限，等于没约束；
+        // 失败也记——失败时的 cap 更小，恰是下一次该更保守的证据。
+        const capState = pacer.state()
+        stats.finalWindowCap = capState.cap
+        session.tunedWindow = capState.cap
+      }
       tracker.dispose()
     }
 
