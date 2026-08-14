@@ -163,12 +163,13 @@ for (let i = 0; i < IMAGE.length; i++) {
   IMAGE[i] = i & 0xff
 }
 
-// adaptive 默认 true：这套自适应目前**只在调试台启用**，真实投屏仍走 legacy 策略。
+// 2026-08-14 起 adaptive 是 uploadImage 的默认策略（真实投屏与调试台共用）；
+// options.adaptive 传 null 表示「整个参数都不传」，用来验真实投屏那条不带参数的调用路径。
 async function runTransfer(device, options) {
   installFakeBle(device)
   delete require.cache[require.resolve('../utils/device-ble')]
   const deviceBle = require('../utils/device-ble')
-  const summary = await deviceBle.uploadImage(DEVICE_ID, {
+  const upload = {
     screenType: 0x02,
     index: 0,
     width: 680,
@@ -176,9 +177,12 @@ async function runTransfer(device, options) {
     data: IMAGE,
     chunkSize: CHUNK,
     window: options.window,
-    pace: options.pace,
-    adaptive: options.adaptive !== false
-  })
+    pace: options.pace
+  }
+  if (options.adaptive !== null) {
+    upload.adaptive = options.adaptive !== false
+  }
+  const summary = await deviceBle.uploadImage(DEVICE_ID, upload)
   if (device.timer) {
     clearTimeout(device.timer)
   }
@@ -246,15 +250,33 @@ async function main() {
   )
   assert.strictEqual(laggy.outOfOrder, 0, '没有丢包就不该产生乱序作废包')
 
-  // ── 用例 4：不传 adaptive（=真实投屏这条路）时，策略必须还是老那套 ────────────
-  // 本轮只动调试台：真实投屏的窗口/每包间隔/ACK 超时口径一字未改，这里锁住它。
+  // ── 用例 4：不传 adaptive（=真实投屏 result.js 那条调用路径）→ 默认就是自适应 ────
+  // 2026-08-14：窗口默认由 10 提到 50，必须配套 AIMD，否则大窗口会退化成整窗重发的死循环。
+  const projection = createFakeDevice({ bufferDepth: 6, processMs: 2 })
+  const projectionStats = await runTransfer(projection, {
+    window: 50,
+    pace: 0,
+    adaptive: null // 整个参数都不传
+  })
+  assert.strictEqual(
+    projectionStats.adaptive,
+    true,
+    '真实投屏不传 adaptive，默认必须走 AIMD 自适应'
+  )
+  assert.strictEqual(projectionStats.success, true, '默认策略下设备吃不下也要收敛传完')
+  assert.ok(
+    projectionStats.finalWindow < 50,
+    `默认策略应自适应退窗（实际收尾 ${projectionStats.finalWindow}）`
+  )
+
+  // ── 用例 5：显式 adaptive:false 仍能回到 legacy 老策略（保留做对照用）──────────
   const legacy = createFakeDevice({ bufferDepth: 6, processMs: 2 })
   const legacyStats = await runTransfer(legacy, {
     window: 50,
     pace: 0,
     adaptive: false
   })
-  assert.strictEqual(legacyStats.adaptive, false, '不传 adaptive 就必须走 legacy 策略')
+  assert.strictEqual(legacyStats.adaptive, false, '显式 adaptive:false 才走 legacy 策略')
   assert.strictEqual(legacyStats.success, true)
   assert.strictEqual(
     legacyStats.finalWindow,

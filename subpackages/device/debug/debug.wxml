@@ -117,7 +117,7 @@
       </view>
       <view class="row-tip">「设给设备」只改<text class="row-tip-strong">当前这条蓝牙连接</text>的链路间隔（读 → 设 → 复读确认三步），断开重连就失效，不写任何配置、不影响真实投屏。单位 1.25ms，允许 7.5~4000ms；默认按平台取：安卓/鸿蒙 7.5ms(最小值/最快)、iOS 15ms（Apple 规范拒绝小于 15ms 的请求，强设 7.5ms 反而会停在系统自选的 30/45ms 上）。每次图传前也会自动按这里的值设一遍并复读确认，卡住时据此区分「间隔没生效」还是「电子纸设备吃不下速率」。</view>
       <button class="btn btn-projection" bindtap="cmdSyncTransferToProjection">把连接间隔 / 发送速度 / 发包窗口保存为真实投屏的参数</button>
-      <view class="row-tip">⚠ 这是本页<text class="row-tip-strong">唯一会影响真实投屏的按钮</text>：点了之后，用户在「我的相框」里正式投屏也按这三项传（存在本机，长期有效，改完再点一次即可覆盖）。本页其余按钮和输入框都只作用于调试台当次调试。<text class="row-tip-strong">真实投屏当前在用</text>：连接间隔 {{projectionConnIntervalMs}}ms · 每包间隔 {{projectionPaceMs}}ms · 窗口 {{projectionWindow}} 包（没点过就是默认 安卓 7.5ms / iOS 15ms · 3ms · 10 包）。调试台自己每次进页面都以<text class="row-tip-strong">最快默认值</text>起步（连接间隔按平台 / 每包间隔 3ms / 窗口 50 包 / 每包 489 字节 / MTU 500），不受这里保存过的值影响。</view>
+      <view class="row-tip">⚠ 这是本页<text class="row-tip-strong">唯一会影响真实投屏的按钮</text>：点了之后，用户在「我的相框」里正式投屏也按这三项传（存在本机，长期有效，改完再点一次即可覆盖）。本页其余按钮和输入框都只作用于调试台当次调试。<text class="row-tip-strong">真实投屏当前在用</text>：连接间隔 {{projectionConnIntervalMs}}ms · 每包间隔 {{projectionPaceMs}}ms · 窗口 {{projectionWindow}} 包（没点过就是默认 安卓/鸿蒙 7.5ms、iOS 及其他 15ms · 3ms · 50 包）。调试台自己每次进页面都以<text class="row-tip-strong">最快默认值</text>起步（连接间隔按平台 / 每包间隔 3ms / 窗口 50 包 / 每包 489 字节 / MTU 500），不受这里保存过的值影响。2026-08-14 起<text class="row-tip-strong">真实投屏的默认值就是这一组</text>，所以本按钮只在实测出<text class="row-tip-strong">更稳</text>的一组时才需要点；本机若存过旧值（如窗口 10），上面那行显示的就是它，长期有效直到再点一次覆盖。</view>
       <view class="row">
         <text class="row-label">系统校时</text>
         <text class="row-hint">把手机当前时间同步给电子纸设备 RTC</text>
@@ -161,7 +161,7 @@
         <button class="btn btn-mini" disabled="{{uploading || !connected}}" bindtap="applyMtuFromInput">重新协商</button>
       </view>
       <view class="row-tip">默认 500：489 + 8 = 497，正好等于 MTU 500 的单次可写上限(MTU-3)。连接后会自动按此值协商一次，改完点「重新协商」即时生效，无需断开重连——<text class="row-tip-strong">只作用于当前这条连接</text>。iOS 不支持手动设置 MTU（由系统协商），点了只会把实际值读回来。当前会话实际 MTU {{sessionMtu || '--'}} 字节。</view>
-      <view class="row-tip">以上四项（发送速度 / 发包窗口 / 每包字节 / MTU）<text class="row-tip-strong">改完立即生效</text>，下一次图传就按新值走，且<text class="row-tip-strong">只作用于调试台</text>；真实投屏仍是「窗口 10 / 每包 236 / MTU 247」，只有点上面那个绿色按钮才会把连接间隔 / 发送速度 / 发包窗口写给它（每包字节与 MTU 永远不会写给真实投屏）。</view>
+      <view class="row-tip">以上四项（发送速度 / 发包窗口 / 每包字节 / MTU）<text class="row-tip-strong">改完立即生效</text>，下一次图传就按新值走，且<text class="row-tip-strong">只作用于调试台当次调试</text>；真实投屏的默认值 2026-08-14 起已同步成同一组「窗口 50 / 每包 489 / MTU 500 / 每包间隔 3ms」，本页把它们调开只是为了做对照，不会写回去——只有点上面那个绿色按钮才会把连接间隔 / 发送速度 / 发包窗口覆盖给它（每包字节与 MTU 永远不会写给真实投屏）。</view>
       <view class="row-tip">「上传相册图片」走的就是<text class="row-tip-strong">真实投屏的竖向链路</text>：选原图 → 按设备物理分辨率（按广播ID区分大/小尺寸）竖向中心裁切 → 统一压缩 → 调第三方 seekink 抖动接口出六色 4bpp 帧 → 字节数校验 → BLE 图传。客户端不再做任何量化/调色，第三方给什么二进制就发什么。唯一与正式投屏不同的是<text class="row-tip-strong">不调设备管理/投屏记录接口</text>，联调不会在真实环境留下投屏记录和图库图片。</view>
       <view class="btn-grid">
         <button class="btn btn-primary" disabled="{{busy || uploading}}" bindtap="cmdUploadTest">上传彩条测试图</button>

@@ -79,18 +79,20 @@ function screenSpecByBroadcastName(name) {
   return null
 }
 
-// ── 调试台图传参数默认值（2026-08-07 设备侧优化后的口径，**只作用于调试台**）──────────
+// ── 调试台图传参数默认值（2026-08-07 设备侧优化后的口径）────────────────────────────
 //   · 发包窗口 50 包：设备扩了收包缓冲，一次可缓 50 包（此前 10 包）；
 //   · 0x21 图片数据 489 字节：设备把单包数据上限从 236 放宽到 489
 //     （0x21 的 PAYLOAD = PKT_SEQ(2) + 数据，故 PAYLOAD 最大 491 字节）；
 //   · MTU 500：489 + 8 字节整帧固定开销(SOF/CMD/LEN/CRC) = 497，正好等于 MTU 500 的单次可写上限(MTU-3)。
 // 三者是一组：MTU 顶不上去（iOS 不支持手动设置 / 安卓协商下来更小）时，每包数据会被自动夹回
 // 链路真正能承载的值，见 device-ble.effectiveChunkSize——不会出现「写下去被静默丢弃」。
-// 真实投屏的默认值仍是「窗口 10 / 每包 236 / MTU 247」，本文件的改动不会影响它。
 //   · 每包间隔 3ms：极速档起步，链路干净还会自动往 0 探。
-// 这一组是**最快默认值**，可以放心留着：device-ble 的图传现在按 AIMD 自适应（卡顿即窗口减半、
+// 这一组是**最快默认值**，可以放心留着：device-ble 的图传按 AIMD 自适应（卡顿即窗口减半、
 // 每包间隔翻倍，稳定后再慢慢涨回），设备一时吃不下也只会自动收敛到它受得了的速率，
 // 不会再出现「窗口 10 → 50 反而更慢更容易卡死」的死循环。
+// 2026-08-14 起这一组已同步为**真实投屏的默认值**（device-ble 的 DEFAULT_TRANSFER_WINDOW /
+// IMG_DATA_CHUNK_MAX / MTU_REQUEST_DEFAULT / PACKET_PACE_MS），两条链路自此同参数、可直接对照；
+// 连接间隔不在此列，仍按平台默认（安卓/鸿蒙 7.5ms、iOS 及其他 15ms）。
 const DEBUG_TRANSFER_WINDOW = 50
 const DEBUG_IMG_DATA_BYTES = 489
 const DEBUG_MTU = 500
@@ -139,7 +141,7 @@ Page(fold.adapt({
     connIntervalInput: '7.5',
     projectionConnIntervalMs: 7.5, // 真实投屏图传前要设的连接间隔(ms)，由「保存给真实投屏」写入，onLoad 时回显（同上，7.5 是占位）
     projectionPaceMs: 3, // 真实投屏图传每包发送间隔(ms)，由「保存给真实投屏」写入，onLoad 时回显
-    projectionWindow: 10, // 真实投屏图传窗口包数，由「保存给真实投屏」写入，onLoad 时回显
+    projectionWindow: 50, // 真实投屏图传窗口包数，由「保存给真实投屏」写入，onLoad 时回显（同上，50 是占位）
     switchInput: '0', // 0x24 要显示的图片索引
     deleteInput: '', // 0x12 要删除的图片索引，逗号分隔，如 "0,2"
     uploadIndexInput: '', // 上传槽位，留空则自动选空闲位
@@ -459,10 +461,10 @@ Page(fold.adapt({
         session.writeType === 'write' ? '有应答写(可靠)' : '无应答写'
       this.appendLog({
         type: 'act',
-        text: `建连协商 MTU=${session.mtu} 字节（真实投屏按 ${deviceBle.IMG_DATA_CHUNK_MAX} 字节/包分包），写入方式：${writeTypeText}`
+        text: `建连协商 MTU=${session.mtu} 字节（分包上限 ${deviceBle.IMG_DATA_CHUNK_MAX} 字节/包，与真实投屏同一套），写入方式：${writeTypeText}`
       })
-      // 建连走的是真实投屏那套（请求 MTU 247 / 每包 ≤236 字节）；调试台连上后立刻按页面上的
-      // MTU 输入框重协商一次，让「MTU 500 + 每包 489 字节」这组新参数即时可用。
+      // 建连走的就是真实投屏那套（2026-08-14 起同为请求 MTU 500 / 每包 ≤489 字节）；这里仍按
+      // 页面上的 MTU 输入框重协商一次，方便把 MTU 手动改成其它档位做对照，改完即时生效。
       await this.applyMtuFromInput({ silent: true })
       await this.refreshInfoSilently()
       await this.refreshConnectionIntervalSilently()
@@ -691,8 +693,10 @@ Page(fold.adapt({
 
   // 保存给真实投屏：把调试台当前调好的三项传输参数——连接间隔 / 发送速度(pace) / 发包窗口——一并持久化给真实投屏。
   // 之后正式投屏(result.js → optimizeConnectionIntervalForTransfer + uploadImage)图传前会按这些值来传，
-  // 而不是走默认(连接间隔 安卓 7.5ms / iOS 15ms · 极速 3ms · 10 包)。只写本地存储、不依赖蓝牙连接，
+  // 而不是走默认(连接间隔 安卓/鸿蒙 7.5ms、iOS 及其他 15ms · 极速 3ms · 50 包)。只写本地存储、不依赖蓝牙连接，
   // 所以未连接设备也能同步。
+  // 2026-08-14 起默认值本身已与调试台一致，这个按钮的用途收窄成「实测出更稳的一组就覆盖默认」；
+  // 存储值优先级高于默认值，本机存过旧值(如窗口 10)就一直用旧值，页面提示行显示的即当前生效值。
   cmdSyncTransferToProjection() {
     const ms = Number(this.data.connIntervalInput)
     if (!Number.isFinite(ms) || ms <= 0) {
@@ -724,7 +728,7 @@ Page(fold.adapt({
       })
       this.appendLog({
         type: 'ok',
-        text: `已保存为真实投屏的参数：连接间隔 ${appliedConn.ms}ms（0x13 CONN_INTERVAL=${appliedConn.units}）· 每包间隔 ${appliedPace}ms · 窗口 ${appliedWindow} 包。此后用户在「我的相框」正式投屏就按这三项传（「0x21 数据字节」与「MTU」不参与保存，永远只在调试台生效）`
+        text: `已保存为真实投屏的参数：连接间隔 ${appliedConn.ms}ms（0x13 CONN_INTERVAL=${appliedConn.units}）· 每包间隔 ${appliedPace}ms · 窗口 ${appliedWindow} 包。此后用户在「我的相框」正式投屏就按这三项传（「0x21 数据字节」与「MTU」不参与保存：它们的默认值已是 489 / 500，本页改动只作用于当次调试）`
       })
       toast.show({ title: '已保存给真实投屏', icon: 'success' })
     } catch (error) {
@@ -1532,8 +1536,8 @@ Page(fold.adapt({
         pace: this.data.pace, // 发送速度（每包间隔 ms）起点，由页面"发送速度"档位决定
         window: this.data.windowSize, // 图传窗口上限(发满多少包等一次累计应答)，由页面"发包窗口"输入框决定
         chunkSize, // 0x21 每包图片数据字节数，由页面"0x21 数据字节"输入框决定（真实投屏不传此项）
-        // 自适应调速（AIMD：卡顿即窗口减半+间隔翻倍、稳定后再涨回）**只在调试台启用**。
-        // 真实投屏仍走原来的固定窗口策略，一字未改；等这里跑够真机数据再决定要不要推过去。
+        // 自适应调速（AIMD：卡顿即窗口减半+间隔翻倍、稳定后再涨回）。2026-08-14 起它已是
+        // uploadImage 的默认策略（真实投屏同样走这条），这里显式写着只为让调试台的口径一目了然。
         adaptive: true,
         shouldAbort: () => this._uploadAborted, // 息屏/切后台时由 onHide 置为 true
         // 进度更新节流到约 8 次/秒（与真实投屏 result.js 同一口径）：每个窗口都 setData 会把
