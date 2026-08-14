@@ -12,20 +12,39 @@
 // 第一版每拍朝目标走一格、追平即停表。结果是「0%→7% 丝滑、停 0.2s、7%→14% 丝滑、再停 0.2s」：
 // 每次应答带来的增量被几拍就冲完了，剩下的时间在干等下一次应答。**快不是问题，停顿才是。**
 //
-// 现在改为**按节奏铺开**：显示值不再赶着追平，而是把当前这段增量摊到「下一次目标更新预计到达」
-// 的时刻——用实测的目标更新间隔（指数滑动平均）估算，令显示值恰好在下一次应答到来时走完上一段。
-// 于是指针一直在动，衔接处没有停顿。更新迟到时会提前走完并短暂停住（此时是真的没有新进度了，
-// 不能凭空往前画）；更新提前到达则自然加速——这两种情况都由「剩余时间」自适应吸收。
+// 现在改为**按节奏铺开 + 缓冲吸抖**：显示值不赶着追平，而是把当前这段增量摊到
+// 「预计下一次目标更新的 PLAN_AHEAD 倍时刻」——用实测更新间隔（指数滑动平均）估算。
+// 截止时间故意放在预计到达之后，每段永远走不完、剩下的部分就是缓冲（视频播放器 jitter buffer
+// 的思路）：ACK 晚到 50% 以内都有存量可走，指针不断流；ACK 提前到只是缓冲变厚、速度平滑上调。
+// 只有更新**真的**迟迟不来（设备卡顿/中断）时，才把已确认的存量走完、如实停下。
 //
-// 三条不变量：
-//   · 显示值**永不超过**真实目标——只把已发生的进度画得更细腻，绝不预测未发生的进度；
-//   · 显示值单调不减；
-//   · 追平且无新目标时停表，不空转占 JS 线程。
+// ── 受控前瞻（第四版，产品拍板「可以酌情浮动百分之几，但失败必须立即停」）────────────
+// 纯"绝不超过已确认进度"仍留一个死角：小步幅节奏(每 10 包 +1.5%)下缓冲只有 2~3%，ACK 连续
+// 晚到时缓冲耗尽、指针只能停（仿真实测中段最长停顿 240ms——那是诚实模型的物理下限）。
+// 现允许显示值**领先**真实目标最多 LEAD_MAX(3%)：领先量按锥减速率推进（领先越多走得越慢，
+// 渐近逼近上限，不会冲到顶再急停），ACK 恢复后自然回到落后段的铺开逻辑。
+//
+// 不变量（第四版口径）：
+//   · 显示值 ≤ 真实目标 + LEAD_MAX，且**永不画到 100%**——100 只能来自真实完成(jumpTo)；
+//   · 显示值单调不减（freeze 是唯一例外，见下）；
+//   · 失败即 freeze：**连领先的部分一起收回**（钳回真实目标），绝不停在造出来的数字上——
+//     这是「可以造一点假」的对价条款，失败画面上多出来的每一分都是事故；
+//   · 无处可走（前瞻打满且无新目标）时停表，不空转占 JS 线程。
 
 const DEFAULT_TICK_MS = 33 // 渲染节拍（约 30 次/秒）。真正 setData 只在取整值变化时发生
 const DEFAULT_INTERVAL_MS = 300 // 还没有观测值时，假设的目标更新间隔（宁可估长：估短会先冲完再等）
 const MIN_REMAINING_MS = 40 // 目标更新已逾期时，把剩余增量收拢完的最短时间
 const INTERVAL_EMA_WEIGHT = 0.3 // 新观测在间隔均值里的权重
+// 计划超前系数（jitter buffer，2026-08-14 第三版）：把「走完当前段」的截止时间**故意**定在
+// 预计下一次更新的 PLAN_AHEAD 倍处。定在 1.0 倍（第二版）意味着估准了刚好走完——但 ACK 稍晚
+// 就先走完、停一小下；稍早则速度突增。定在 1.5 倍后每段只走掉 1/1.5≈2/3，剩下 1/3 是缓冲：
+// ACK 晚到 50% 以内都有存量可走，运动不断流。数学上稳态滞后 = PLAN_AHEAD × 单次推进量
+//（g' = g×(1-1/P) + S 的不动点 g = P×S）：常见的每 10 包一次 ACK ≈1.5%，稳态滞后 ≈2.3%；
+// 整窗一次 7.5% 时 ≈11.3%，恰在 MAX_LAG=12 之内——两个参数是配套算过的，改一个要重推另一个。
+const PLAN_AHEAD = 1.5
+// 允许领先真实目标的最大格数（受控前瞻的上限）。3 是「用户看不出来」和「失败时要收回多少」
+// 之间的折衷：再大，失败瞬间的回撤就会明显。
+const LEAD_MAX = 3
 // 允许落后真实进度的最大格数。落后是**故意**的（铺开增量才能连续增长），但不能落后太多：
 // 传输突然提速（设备缓冲吃满、窗口涨回）时，若仍按旧节奏慢慢铺，进度条会明显拖后腿，
 // 甚至传完了还在半路。超出这个差距就直接把超出部分补齐，只保留一个节拍的落后量。
@@ -49,6 +68,7 @@ function createSmoothProgress(options) {
   let timer = null
   let lastTargetAt = 0 // 上一次收到真实目标的时刻
   let intervalEma = 0 // 实测「两次目标更新的间隔」指数滑动平均
+  let rateEma = 0 // 实测真实推进速率（%/ms）指数滑动平均——前瞻段的速度基准
   let lastTickAt = 0
 
   const clamp = value =>
@@ -70,41 +90,55 @@ function createSmoothProgress(options) {
     }
   }
 
+  // 可画上限：真实目标 + LEAD_MAX，且未真实完成前 99 封顶；目标本身到了 max（真实完成信号）
+  // 则放行到 max——100% 只能由真实完成给出。
+  const upperBound = () =>
+    target >= max ? max : Math.min(target + LEAD_MAX, max - 1)
+
   const tick = () => {
     const now = Date.now()
     const dt = Math.max(1, now - lastTickAt)
     lastTickAt = now
 
     let gap = target - shown
-    if (gap <= 0) {
-      stop() // 已追平且没有新目标：真的没有新进度可画了，停表
-      return
-    }
-
     // 落后过多先补齐超出部分：真实传输提速（窗口涨回、设备吃满）时旧节奏铺不过来，
     // 不补的话进度条会明显拖在后面。补到只剩 MAX_LAG，剩下的仍按节奏铺开。
     if (gap > MAX_LAG) {
       shown = target - MAX_LAG
       gap = MAX_LAG
     }
-
-    // 把剩余增量摊到「下一次目标更新预计到达」之前：这一步是消除停顿的关键。
-    // 逾期（更新迟到）时 remaining 收敛到下限，剩余增量快速走完，而不是卡在半路。
-    const expected = intervalEma || DEFAULT_INTERVAL_MS
-    const remaining = Math.max(MIN_REMAINING_MS, lastTargetAt + expected - now)
-    const step = gap * Math.min(1, dt / remaining)
-    // 收尾吸附：上面是按比例逼近，数学上会无限接近而永不抵达（39.9 取整仍是 39，
-    // 差最后一格永远画不出来）。剩不到一格时直接吸附到目标，把这一格交代干净。
-    shown = gap - step < 1 ? target : shown + step
-    paint()
-
-    if (shown >= target) {
-      stop()
+    const upper = upperBound()
+    const room = upper - shown
+    if (room <= 0.05) {
+      stop() // 前瞻打满：没有可画的了，停表（新目标到达会重新开表）
+      return
     }
+
+    // 每拍步长取两条腿的较大者——这是「全程不断流」的关键（第四版重构）：
+    //   · 计划步长：把落后增量摊到「预计下次更新的 PLAN_AHEAD 倍时刻」（缓冲吸抖，稳态推导
+    //     见 PLAN_AHEAD 注释）。它只在落后时有值，段末自然衰减为 0；
+    //   · 速率步长：按实测真实速率前进，随「距上限的余量」锥减——计划步长衰减后它自然接管，
+    //     无缝滚入前瞻区（≤LEAD_MAX），到顶前渐近减速，绝不急停。
+    // 此前把两段写成互斥分支，前瞻只在「恰好追平」才切入——中段几乎不会发生，等于没生效
+    //（仿真实测最大领先 0.0%）；取 max 合并后两条腿互为兜底，哪条走得动走哪条。
+    let planStep = 0
+    if (gap > 0) {
+      const expected = (intervalEma || DEFAULT_INTERVAL_MS) * PLAN_AHEAD
+      const remaining = Math.max(MIN_REMAINING_MS, lastTargetAt + expected - now)
+      planStep = gap * Math.min(1, dt / remaining)
+    }
+    const velStep = rateEma * dt * Math.max(0, Math.min(1, room / LEAD_MAX))
+    const step = Math.max(planStep, velStep)
+    if (step <= 0) {
+      stop() // 无速率依据也无落后增量：无处可画
+      return
+    }
+    shown = Math.min(shown + step, upper)
+    paint()
   }
 
   const start = () => {
-    if (!timer && shown < target) {
+    if (!timer && shown < upperBound()) {
       lastTickAt = Date.now()
       timer = setInterval(tick, tickMs)
     }
@@ -119,22 +153,30 @@ function createSmoothProgress(options) {
       }
       const now = Date.now()
       if (lastTargetAt) {
-        // 观测两次真实更新的间隔，用来估算下一次何时到——铺开增量的依据
-        const delta = now - lastTargetAt
+        // 观测两次真实更新的间隔与速率：前者是落后段铺开增量的依据，后者是前瞻段的速度基准
+        const delta = Math.max(1, now - lastTargetAt)
         intervalEma = intervalEma
           ? intervalEma * (1 - INTERVAL_EMA_WEIGHT) + delta * INTERVAL_EMA_WEIGHT
           : delta
+        const sampleRate = (next - target) / delta
+        rateEma = rateEma
+          ? rateEma * (1 - INTERVAL_EMA_WEIGHT) + sampleRate * INTERVAL_EMA_WEIGHT
+          : sampleRate
+      } else {
+        // 首个目标还没有观测值：按缺省间隔假设一个保守速率，让前瞻段起步时有依据
+        rateEma = next / DEFAULT_INTERVAL_MS
       }
       lastTargetAt = now
       target = next
       start()
     },
-    // 就地冻结：立刻停止动画并把目标钉在当前显示值（用于**图传失败**）。
-    // 失败时最后一段增量往往还没铺完，不冻结的话进度条会在报错后继续往前爬，
-    // 看起来像"还在传/传成功了"——这正是绝不能出现的观感。
+    // 就地冻结（用于**图传失败**）：立刻停止动画，并把显示值**钳回真实目标**——
+    // 前瞻段领先出去的那几格是借来的观感，失败瞬间必须还回去（这是「允许造一点假」的
+    // 对价条款：失败画面上停着一个比真实进度高的数字，就是在骗用户）。
+    // 落后段冻结则停在当前显示值：那部分本来就 ≤ 真实确认进度，不多画一分即可。
     freeze() {
       stop()
-      target = Math.floor(shown)
+      target = Math.floor(Math.min(shown, target))
       shown = target
       paint()
     },
@@ -146,7 +188,7 @@ function createSmoothProgress(options) {
       shown = next
       paint()
     },
-    // 新的一张开始：清零重来（间隔观测一并重置，避免把上一张的节奏带过来）
+    // 新的一张开始：清零重来（间隔/速率观测一并重置，避免把上一张的节奏带过来）
     reset() {
       stop()
       target = 0
@@ -154,6 +196,7 @@ function createSmoothProgress(options) {
       painted = -1
       lastTargetAt = 0
       intervalEma = 0
+      rateEma = 0
       paint()
     },
     // 页面卸载/传输结束务必调用，防止定时器泄漏
