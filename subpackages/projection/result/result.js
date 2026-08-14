@@ -19,6 +19,7 @@ const toast = require('../../../utils/toast')
 const media = require('../../../utils/media')
 const activeDevice = require('../../../utils/active-device')
 const fold = require('../../../utils/fold-adapt')
+const smoothProgress = require('../../../utils/smooth-progress')
 
 // 统一的上传前压缩质量（性能优化 2026-07-13；2026-07-16 改为直接缩到设备物理分辨率；
 // 2026-07-22 起抖动接口上传与原图建记录上传两路共用同一套 compressForUpload）。
@@ -159,9 +160,30 @@ Page(fold.adapt({
   onUnload() {
     this._aborted = true
     this._unloaded = true // 卸载后 finishProjection 只落存储，不再 setData/弹 toast
+    // 进度平滑器内部有 setInterval，卸载必须停表，否则定时器泄漏、还会对已卸载页面 setData
+    if (this._progress) {
+      this._progress.dispose()
+      this._progress = null
+    }
     wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false })
     // 离开投屏结果页不再主动断开：按用户要求保持连接（非手动/物理断开就一直连着）。
     this._activeDeviceId = ''
+  },
+
+  // 进度条平滑器（懒建，单例）：把 BLE 那边跳变的真实进度渲染成逐格递增。
+  // 页面已卸载就不再 setData（onUnload 会 dispose，这里再兜一层，防止在途回调）。
+  ensureProgressAnimator() {
+    if (!this._progress) {
+      this._progress = smoothProgress.createSmoothProgress({
+        onRender: value => {
+          if (this._unloaded) {
+            return
+          }
+          this.setData({ progressPercent: value })
+        }
+      })
+    }
+    return this._progress
   },
 
   applyStatus(status, result) {
@@ -326,10 +348,10 @@ Page(fold.adapt({
     }
     const environmentPromise = readPerformanceEnvironment()
     this._recordTasks = []
+    this.ensureProgressAnimator().reset() // 整单开始：进度条归零并停表
     this.setData({
       progressTotal: total,
-      progressCurrent: 0,
-      progressPercent: 0
+      progressCurrent: 0
     })
     console.log(`[投屏] 开始：目标设备=${device.id || device.deviceNo || '--'}，待投 ${total} 张`)
 
@@ -477,9 +499,9 @@ Page(fold.adapt({
         performance.images.push(imagePerformance)
         // 每张传输前把进度条清零：本张从 0% 独立开始（批量传输时每张 0→100）。
         // 取帧可能仍在进行(首张 / 弱网)，先给「准备」文案；已预取就绪则 await 立即返回。
+        this.ensureProgressAnimator().reset()
         this.setData({
           progressCurrent: i + 1,
-          progressPercent: 0,
           title: '图片处理中',
           desc: `正在准备第 ${i + 1}/${total} 张…`
         })
@@ -525,8 +547,6 @@ Page(fold.adapt({
         // 本张设备事务：只有 BLE 图传失败才回滚删掉刚传到设备的图、再向外抛出让整单判失败。
         // 图传成功后照片已物理写入相框，本张即算成功——后续写记录是后端记账，已与设备状态解耦。
         let summary
-        let lastProgressUpdateAt = 0
-        let lastProgressPercent = -1
         try {
           summary = await deviceBle.uploadImage(deviceId, {
             screenType: info.screenType,
@@ -539,27 +559,17 @@ Page(fold.adapt({
             traceId: performance.traceId,
             imageIndex: i,
             shouldAbort: () => this._aborted,
-            // ACK 仍实时驱动底层滑动窗口；页面最多约 8 次/秒更新，避免高频 setData 反过来拖慢 BLE。
-            onProgress: (done, totalPackets, phase) => {
+            // 进度更新（2026-08-14 改为逐格平滑）：
+            // BLE 的真实进度天生跳变——固件每 10 包才回一次 0x23，窗口 50 包时一次应答推进几十包。
+            // 这里只把**真实目标**喂给平滑器，由它按固定节拍逐格逼近（每格 1%，落后多时按比例追赶）。
+            // 注意方向：不是提高刷新频率（那会让 setData 占住 JS 线程、推迟 0x23 处理，越刷越慢，
+            // 正是图传性能档案里加节流的原因），而是**减小每次更新的幅度**——整场 setData 次数
+            // ≈100 次，比原来「最多 8 次/秒」还少，观感却是连续增长的。
+            onProgress: (done, totalPackets) => {
               const frac = totalPackets ? done / totalPackets : 0
-              const percent = Math.min(100, Math.floor(frac * 100))
-              const now = Date.now()
-              const immediate =
-                phase === 'start' ||
-                phase === 'done' ||
-                phase === 'retry' ||
-                percent === 100
-              if (
-                !immediate &&
-                (percent === lastProgressPercent || now - lastProgressUpdateAt < 120)
-              ) {
-                return
-              }
-              lastProgressUpdateAt = now
-              lastProgressPercent = percent
-              this.setData({
-                progressPercent: percent
-              })
+              this.ensureProgressAnimator().setTarget(
+                Math.min(100, Math.floor(frac * 100))
+              )
             }
           })
           imagePerformance.ble = summary.transferStats || {}
@@ -602,8 +612,9 @@ Page(fold.adapt({
         }
         usedIndexes = usedIndexes.concat(index)
         uploaded++
-        // 本张传输完成：进度条置 100%，张数 +1（下一张会重新从 0 开始）
-        this.setData({ progressCurrent: uploaded, progressPercent: 100 })
+        // 本张传输完成：进度条直接置 100%（不再走递进动画，收尾要干脆），张数 +1（下一张从 0 开始）
+        this.ensureProgressAnimator().jumpTo(100)
+        this.setData({ progressCurrent: uploaded })
         // 本张帧数据(frameData+预组帧 prepared，5.89 寸两份合计 ≈660KB)传完即不再需要：
         // 立刻解除 framePrefetch[i] 的引用让其可被回收——此前整批传完前一直驻留，
         // 批量投屏峰值内存随张数线性涨。只清本张，第 i+1 张的在途预取不动。
