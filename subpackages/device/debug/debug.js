@@ -466,6 +466,15 @@ Page(fold.adapt({
       // 建连走的就是真实投屏那套（2026-08-14 起同为请求 MTU 500 / 每包 ≤489 字节）；这里仍按
       // 页面上的 MTU 输入框重协商一次，方便把 MTU 手动改成其它档位做对照，改完即时生效。
       await this.applyMtuFromInput({ silent: true })
+      // 按机「大包不可用」档案：真实投屏在这台设备上触发过大包降级（零推进/中途卡死）就会打标，
+      // 此后真实投屏一律直接走安全档 236/窗口10。调试台显式传参不受档案约束——固件升级后
+      // 在本页用 489 字节实测通过，再考虑清除档案(deviceBle.clearSafeChunkProfile)恢复大包。
+      if (deviceBle.hasSafeChunkProfile(this.data.deviceId)) {
+        this.appendLog({
+          type: 'err',
+          text: '⚠ 此设备已被记入「大包不可用」档案（真实投屏触发过 489 字节降级）：正式投屏走安全档 236 字节/窗口 10。本页显式参数不受档案限制，可用于固件升级后的复测。'
+        })
+      }
       await this.refreshInfoSilently()
       await this.refreshConnectionIntervalSilently()
     } catch (error) {

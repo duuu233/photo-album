@@ -254,6 +254,11 @@ const IMG_DATA_CHUNK_MAX = 489
 // 链路 MTU 虚高导致大包被静默丢弃）时，自动按这一组从头重传一次，别让用户等 15 次重试后看失败。
 const IMG_DATA_CHUNK_SAFE = 236
 const TRANSFER_WINDOW_SAFE = 10
+// 大包**中途硬卡**的判定阈值（2026-08-14 真机第二轮）：真机出现「前 18 个 489 字节大包正常确认、
+// 之后窗口退到 1/间隔 16ms 仍一包不推进」——大包能被解析（否则一包都不会确认），是固件在持续
+// 大包流下接收任务卡死。这种卡死退多少窗口都救不回来，连续 5 轮无推进（≈3~4s，含一次宽限）
+// 就判为大包不可用，走与「零推进」同一条安全档降级路——别耗满 15 次重试(~15s)后把整单判死。
+const BIG_CHUNK_STALL_RETRIES = 5
 
 // 协商 MTU（一次能传多少字节）。这是图传能否成功的关键：
 //   数据包整帧 = SOF+CMD+LEN(2)+PKT_SEQ(2)+DATA+CRC(2) = DATA + 8 字节固定开销，
@@ -1359,34 +1364,130 @@ function finalizeTransferStats(stats) {
   return stats
 }
 
-// 对外入口：先按配置参数（默认 489 字节/窗口 50）传；若大包**零推进**（一包 ACK 都收不到，
-// 见 uploadImageAttempt 里的探测），自动按 08-14 之前的安全档(236 字节/窗口 10)从头重传一次。
-// 两类真机故障都会落到这条兜底上：① 固件没升 2026-08-07 版，帧解析器认不了 >244 字节整帧；
-// ② 部分安卓 setBLEMTU 虚报协商值、negotiateMtu 读回核对又失败，497 字节的包被链路静默丢弃。
+// ── 按机「大包不可用」持久档案（2026-08-14 真机第二轮）────────────────────────────
+// 会话级记忆撑不住这类故障：固件在持续大包流下接收卡死后设备常整个失联（用户看到的就是
+// 「电子纸设备未连接」），断开重连即新会话——不持久化的话，下一次投屏又会拿大包把设备再撞死一次。
+// 键优先用 0x01 核实过的设备序列号（跨手机/跨地址轮换稳定），并同时登记微信 deviceId 兜底。
+// 值存打标时间戳，便于以后按固件升级/时效做清除策略；当前唯一的清除入口是 clearSafeChunkProfile
+//（预留给 OTA 成功后调用/调试台核验，普通用户路径永不自动清除——宁可慢，不可把设备撞失联）。
+const IMG_SAFE_PROFILE_STORAGE_KEY = 'imgSafeChunkDevices'
+
+function readSafeChunkProfiles() {
+  try {
+    const value = wx.getStorageSync(IMG_SAFE_PROFILE_STORAGE_KEY)
+    return value && typeof value === 'object' ? value : {}
+  } catch (error) {
+    return {}
+  }
+}
+
+// 这台设备在档案里可能的全部身份键：微信 deviceId + 会话上登记过的序列号（0x01 核实的优先）
+function safeChunkProfileKeys(deviceId) {
+  const keys = [deviceId]
+  const session = sessions[deviceId]
+  if (session) {
+    ;(session.verifiedSerials || [])
+      .concat(session.serials || [])
+      .forEach(serial => {
+        if (serial && keys.indexOf(serial) < 0) {
+          keys.push(serial)
+        }
+      })
+  }
+  return keys
+}
+
+function hasSafeChunkProfile(deviceId) {
+  const profiles = readSafeChunkProfiles()
+  return safeChunkProfileKeys(deviceId).some(key => key && profiles[key])
+}
+
+function markSafeChunkProfile(deviceId) {
+  try {
+    const profiles = readSafeChunkProfiles()
+    safeChunkProfileKeys(deviceId).forEach(key => {
+      if (key) {
+        profiles[key] = Date.now()
+      }
+    })
+    wx.setStorageSync(IMG_SAFE_PROFILE_STORAGE_KEY, profiles)
+  } catch (error) {
+    // 存不上就只剩会话级记忆，不影响本次传输
+  }
+}
+
+function clearSafeChunkProfile(deviceId) {
+  try {
+    const profiles = readSafeChunkProfiles()
+    safeChunkProfileKeys(deviceId).forEach(key => {
+      delete profiles[key]
+    })
+    wx.setStorageSync(IMG_SAFE_PROFILE_STORAGE_KEY, profiles)
+  } catch (error) {
+    // 清不掉只是下次仍走安全档，无害
+  }
+}
+
+// 把安全档写到当前会话：分包按 236 上限重算（prepareImageTransfer/后续图传都读它）、窗口回 10。
+// tunedWindow 直接**覆写**：失败尝试收敛出的窗口(可能已退到 1)是大包卡死造成的，
+// 不代表小包下的真实容量，带过去会让安全档跑成停等模式、白慢一截。
+function applySafeProfileToSession(deviceId) {
+  const session = sessions[deviceId]
+  if (session && session.ready) {
+    session.dataChunk = chunkFromMtu(session.mtu, IMG_DATA_CHUNK_SAFE)
+    session.tunedWindow = TRANSFER_WINDOW_SAFE
+  }
+}
+
+// 对外入口：先按配置参数（默认 489 字节/窗口 50）传；大包**不可用**时自动按 08-14 之前的
+// 安全档(236 字节/窗口 10)从头重传一次，并把这台设备记入持久档案。三类真机故障都落到这条兜底：
+// ① 固件没升 2026-08-07 版，帧解析器认不了 >244 字节整帧（零推进：一包都不确认）；
+// ② 部分安卓 setBLEMTU 虚报协商值、negotiateMtu 读回核对又失败，497 字节的包被链路静默丢弃（零推进）；
+// ③ 固件在持续大包流下接收任务卡死（传若干包后中途硬卡，真机实测停在第 17 包）。
 async function uploadImage(deviceId, options) {
+  // 档案里已标记的设备：直接按安全档传，别再拿大包去撞一次固件卡死。
+  // 显式传了 chunkSize（调试台）不受档案约束——固件升级后要用它来核验、再手动清档案。
+  if (
+    !Number.isFinite(Number(options && options.chunkSize)) &&
+    hasSafeChunkProfile(deviceId)
+  ) {
+    applySafeProfileToSession(deviceId)
+    return uploadImageAttempt(
+      deviceId,
+      Object.assign({}, options, {
+        chunkSize: IMG_DATA_CHUNK_SAFE,
+        window: Math.min(
+          normalizeTransferWindow(
+            Number.isFinite(options.window) ? options.window : getTransferWindow()
+          ),
+          TRANSFER_WINDOW_SAFE
+        ),
+        __safeProfile: true
+      })
+    )
+  }
   try {
     return await uploadImageAttempt(deviceId, options)
   } catch (error) {
     if (!error || error.code !== 'IMG_CHUNK_UNSUPPORTED' || !isConnected(deviceId)) {
+      // 大包卡死后设备可能已失联：这里连兜底重传都做不了，但档案还是要记——
+      // 下次重连别再重蹈覆辙。
+      if (error && error.code === 'IMG_CHUNK_UNSUPPORTED') {
+        markSafeChunkProfile(deviceId)
+      }
       throw error
     }
     console.warn(
-      '[BLE] 0x21 大包零推进（一包都没被设备确认），疑似固件不含 2026-08-07 传输优化或链路 MTU 虚高。' +
-        `自动回退安全档：每包 ${IMG_DATA_CHUNK_SAFE} 字节 / 窗口 ${TRANSFER_WINDOW_SAFE} 包重传，` +
-        '本条连接后续图传也按安全档走。请核对设备固件版本。首次尝试统计：',
+      `[BLE] 大包图传不可用（${error.message}），` +
+        '疑似固件不含 2026-08-07 传输优化 / 链路 MTU 虚高 / 固件大包接收缺陷。' +
+        `自动回退安全档：每包 ${IMG_DATA_CHUNK_SAFE} 字节 / 窗口 ${TRANSFER_WINDOW_SAFE} 包从头重传，` +
+        '并已把这台设备记入「大包不可用」档案（后续投屏直接走安全档）。请核对设备固件版本。首次尝试统计：',
       error.transferStats
     )
-    // 把安全档写回会话：这台设备认不了大包是固件能力问题，同一条连接上的后续每一张都会撞墙，
-    // 不能张张都白付 ~2.5s 的零推进探测。session.dataChunk 是真实投屏(不显式传 chunkSize)与
-    // 预取 prepareImageTransfer 共同的分包依据，改小后下一张从头就按 236 出。
-    const session = sessions[deviceId]
-    if (session && session.ready) {
-      session.dataChunk = chunkFromMtu(session.mtu, IMG_DATA_CHUNK_SAFE)
-      session.tunedWindow = Math.min(
-        session.tunedWindow || TRANSFER_WINDOW_SAFE,
-        TRANSFER_WINDOW_SAFE
-      )
-    }
+    // 会话 + 持久档案双写：这台设备吃不了大包是固件能力问题，同一条连接的后续每一张、
+    // 以及断开重连后的下一次投屏，都不该再拿大包去撞（真机实测撞死后设备会整个失联）。
+    markSafeChunkProfile(deviceId)
+    applySafeProfileToSession(deviceId)
     return uploadImageAttempt(
       deviceId,
       Object.assign({}, options, {
@@ -1533,6 +1634,7 @@ async function uploadImageAttempt(deviceId, options) {
       : createLegacyPacer(WINDOW, pace)
     stats.adaptive = adaptive
     stats.paramFallback = !!options.__safeChunkRetry
+    stats.safeProfile = !!options.__safeProfile // 按机档案直接走安全档（没经历撞墙探测）
     stats.minWindow = WINDOW
     stats.finalWindow = WINDOW
     // 同一卡点是否已用过一次「宽限等待」（仅 adaptive）：先多等一轮再判丢包，别把「慢」当成「丢」
@@ -1627,6 +1729,21 @@ async function uploadImageAttempt(deviceId, options) {
           }
           stats.ackTimeouts++
           stats.retryEvents++
+          // 大包中途硬卡（2026-08-14 真机第二轮）：前面若干个大包正常确认后设备突然一包不认，
+          // 窗口退到 1 也救不回来——固件在持续大包流下接收任务卡死，属能力缺陷不是拥塞。
+          // 连续 BIG_CHUNK_STALL_RETRIES 轮无推进就断定大包不可用，抛与零推进同一个错误码，
+          // 由外层 uploadImage 换安全档(236/窗口10)重发 0x20 从头重传（0x20 会让设备复位接收状态）。
+          if (
+            retries + 1 >= BIG_CHUNK_STALL_RETRIES &&
+            CHUNK > IMG_DATA_CHUNK_SAFE &&
+            !options.__safeChunkRetry
+          ) {
+            const wedged = new Error(
+              `0x21 每包 ${CHUNK} 字节传到第 ${tracker.last} 包后不再推进：疑似固件在持续大包流下接收卡死`
+            )
+            wedged.code = 'IMG_CHUNK_UNSUPPORTED'
+            throw wedged
+          }
           if (++retries > MAX_ACK_RETRIES) {
             const now = pacer.state()
             throw new Error(
@@ -2124,6 +2241,9 @@ module.exports = {
   // 调试台专用（真实投屏不调用）：在存活连接上重协商 MTU / 预算每包数据字节数
   renegotiateMtu,
   getEffectiveChunkSize,
+  // 按机「大包不可用」持久档案：查询（调试台连上后提示）/ 清除（预留给 OTA 成功后核验用）
+  hasSafeChunkProfile,
+  clearSafeChunkProfile,
   effectiveChunkSize, // 纯函数版（入参 {mtu,dataChunk}），供单测直接验分包夹取规则
   chunkFromMtu,
   IMG_DATA_CHUNK_MAX,
