@@ -576,6 +576,9 @@ Page(fold.adapt({
           console.log(`[投屏] 第 ${i + 1}/${total} 张 设备图传成功`, summary)
         } catch (error) {
           imagePerformance.ble = (error && error.transferStats) || {}
+          // 进度条就地冻结：失败时最后一段增量往往还没铺完，不冻结会在报错后继续往前爬，
+          // 看起来像「还在传/已传成功」。停在真实确认到的那一格，不多画一分。
+          this.ensureProgressAnimator().freeze()
           console.error(
             `[投屏] 第 ${i + 1}/${total} 张 设备图传失败，回滚 index=${index}：`,
             error

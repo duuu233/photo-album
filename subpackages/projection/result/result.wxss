@@ -67,10 +67,10 @@
   height: 100%;
   background: linear-gradient(90deg, #ff8a45, #ff6421);
   border-radius: 999rpx;
-  /* 2026-08-14：百分比改为逐格递进（约 45ms 一格，见 utils/smooth-progress.js）。
-     过渡时长必须比递进节拍略短，否则上一格还没走完下一格就来了，条会一路拖在数字后面；
-     ease 也换成 linear —— 每格只有 1%，缓动曲线在这么小的位移上只会让它看起来一顿一顿。 */
-  transition: width 40ms linear;
+  /* 2026-08-14：百分比由 utils/smooth-progress.js 按 33ms 节拍连续推进。
+     过渡时长必须 ≤ 节拍，否则上一格还没走完下一格就来了，条会一路拖在数字后面；
+     linear 而非 ease —— 每格只有 1%，缓动曲线在这么小的位移上只会让它看起来一顿一顿。 */
+  transition: width 33ms linear;
 }
 
 .progress-count {
