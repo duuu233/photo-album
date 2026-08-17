@@ -2,11 +2,19 @@
 
 > 状态：current  
 > 决策日期：2026-07-18  
-> 最后核对：2026-08-11
+> 最后核对：2026-08-17
 > 相关架构：[图片投屏流水线](../architecture/image-projection-pipeline.md)
 
 ## 操作日志（最新在上）
 
+- **2026-08-17**：小程序侧**「我的图库」接口整体下线**（`getUserProductImgList` / `delUserProductImg`
+  连同 `api.getAlbumPhotos` / `deleteAlbumPhotos`）。对本方案没有口径变化，只是把 2026-08-10 那次
+  「索引改取投屏记录」留下的尾巴清干净：删除目标不再带 `photoId(uProductImgId)`，
+  `confirmDeleteSelected` 里那段被注释的 `delUserProductImg` 第 5 步整段删除——**端上删除 = 删设备
+  槽位(0x12) + 删投屏记录**，图库照片的清理归后端。同时「我的相册」再次投屏改为直接用记录自己的
+  `img`（不再回图库找原图），默认设备规则去掉「第一台有照片的设备」一档。
+  见 [2026-08-17 我的相册去掉我的图库接口](../changes/2026-08-17-我的相册去掉我的图库接口.md)。
+  ⚠️ Flutter 侧未同步，`state.dart` 仍在用图库列表。
 - **2026-08-11（Flutter 同步）**：上一条的分拨口径同步到 App
   （`flutter/lib/src/state.dart deleteAlbumPhotos` + `device/ble/frame_protocol.dart`
   `skippableDeleteResults`，见 `flutter/docs/history/2026-08/2026-08-11-相册删除跳过空槽位与AI八项优化.md`）。
@@ -27,7 +35,8 @@
   （`getUserProductImgRecordList` 出参），不再绕 `uProductImgId` 关联图库照片。原因：图库列表
   `getUserProductImgList` 实测不稳定回传该字段，而「我的相册」列表本就是投屏记录铺的，记录里的
   `imgIndex` 正是投屏成功时 `editUserProductImgRecord` 写进去的同一份，不属于推算。
-  同日起 `delUserProductImg`（删图库相册记录）在该链路暂时屏蔽，只删设备 + 投屏记录。
+  同日起 `delUserProductImg`（删图库相册记录）在该链路暂时屏蔽，只删设备 + 投屏记录
+  （2026-08-17 起该调用连同整套图库接口已从端上删除，不再是「暂时」）。
 - **2026-08-10**：删除链路以 v1.5 §6.7.10 为准收敛为单一路径：只读取后端图库记录的
   `imgIndex`（索引来源当日下午改为投屏记录，见上条），按 bit 位转换为固定 12 字节、低字节在前的
   `IMG_INDEX_MASK`，直接发送 `CMD=0x12`。

@@ -26,31 +26,30 @@ global.Page = (options) => {
 require('../subpackages/album/list/list.js')
 
 const ctx = Object.create(pageOptions)
-// 网格瓦片的来源是投屏成功记录：id=upirId、uProductImgId=关联的图库照片、imgIndex=写进设备的槽位
-const record = (id, imgIndex, uProductImgId) => ({
+// 网格瓦片的来源是投屏成功记录：id=upirId、imgIndex=写进设备的槽位。
+// 2026-08-17 起待删目标里不再带 photoId(uProductImgId)：那是给「删图库照片」用的，
+// 而 delUserProductImg 连同整套「我的图库」接口已从端上删除。
+const record = (id, imgIndex) => ({
   id,
   imgIndex,
-  uProductImgId,
   userProductId: 'D1',
   deviceName: '相框'
 })
 
 // ── 1) 索引取自记录自己的 imgIndex ────────────────────────────
-ctx.records = [record('a', '2', 10)]
-assert.deepStrictEqual(ctx.resolveDeleteTargets(['a']), [
-  { id: 'a', photoId: '10', slot: 2 }
-])
+ctx.records = [record('a', '2')]
+assert.deepStrictEqual(ctx.resolveDeleteTargets(['a']), [{ id: 'a', slot: 2 }])
 
 // 0 是合法槽位（相框第一个位置），绝不能被当成「无索引」。
-ctx.records = [record('a', '0', 10)]
+ctx.records = [record('a', '0')]
 assert.strictEqual(ctx.resolveDeleteTargets(['a'])[0].slot, 0)
 
 // 缺失/非法/超出 12 字节掩码范围的索引一律 -1，调用方据此整批终止，不推算。
 ctx.records = [
-  record('missing', '', 10),
-  record('invalid', '1.5', 11),
-  record('blank', '   ', 12),
-  record('overflow', '96', 13)
+  record('missing', ''),
+  record('invalid', '1.5'),
+  record('blank', '   '),
+  record('overflow', '96')
 ]
 assert.deepStrictEqual(
   ctx.resolveDeleteTargets(['missing', 'invalid', 'blank', 'overflow']).map(t => t.slot),

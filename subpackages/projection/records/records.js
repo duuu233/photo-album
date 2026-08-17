@@ -195,7 +195,7 @@ Page(fold.adapt({
   // 之后与用户手选图片流程一致——点「开始投屏」时由结果页走 seekink 抖动接口出帧 + 图传 + 建记录。
   // 旧「imgBle(.bin) 直传」链路已删除：后端不再生成/返回 .bin，记录里没有可直传的设备帧了。
   // 就算当前没连接设备，也先扫描+连接设备，连上后再跳投屏预览页。
-  // 在途锁：前置要跑 1-2 个网络请求+扫描连接，弱网下点了没反应会诱发连点，
+  // 在途锁：前置要跑一个网络请求(查设备)+扫描连接，弱网下点了没反应会诱发连点，
   // 并发两条「查设备→连接→跳转」会双跳转报错（home.js 记录过同类 routeDone 崩点）。
   async retryProjection(e) {
     if (this._retrying) {
@@ -259,20 +259,11 @@ Page(fold.adapt({
       connected: true
     })
 
-    // 预览/重转码用图优先取「图库里同一张照片的原图」（按 uProductImgId 关联）：
-    // 记录里的 img 是后端按设备尺寸转换/压缩后的图，比例可能与原图不一致（预览会显得被拉伸），
-    // 而图库 img 与首次投屏同源，能保证「投屏」与「再次投屏」进预览页显示一致；
-    // 记录缺 uProductImgId / 照片已从图库删除 / 图库拉取失败时，退回记录里的图（保持可用）。
-    wx.showLoading({ title: '准备中', mask: true })
-    let originalUrl = ''
-    try {
-      originalUrl = await this.resolveAlbumOriginalUrl(record)
-    } finally {
-      wx.hideLoading()
-    }
-    console.log(
-      `[再次投屏] 预览图源：${originalUrl ? '图库原图' : '记录img(未匹配到图库原图)'} ${originalUrl || imageUrl}`
-    )
+    // 预览/重转码用图直接用记录自己的 img（2026-08-17：删掉了原来按 uProductImgId 回「我的图库」
+    // 找原图的那一跳 resolveAlbumOriginalUrl）。2026-07-22 起 setUserProductUpload 传的就是**原图**
+    // （进预览页前那张，只按设备长边等比缩、不改比例），图库那条照片与这条记录本就是同一次上传的
+    // 同一张图——原来那条「记录 img 是设备比例图」的理由早已失效，绕一圈只多一个请求和一次 loading。
+    console.log(`[再次投屏] 预览图源：记录img ${imageUrl}`)
 
     // 复用正常投屏链路：把该图片(服务器地址)与设备写入 Storage，跳投屏预览页——
     // payload 形态与首页手选图片完全一致（只有 url），结果页会照常「抖动接口出帧 +
@@ -281,7 +272,7 @@ Page(fold.adapt({
       device,
       images: [
         {
-          url: originalUrl || imageUrl
+          url: imageUrl
         }
       ]
     })
@@ -327,24 +318,6 @@ Page(fold.adapt({
     }
 
     return null
-  },
-
-  // 按记录的 uProductImgId 到图库找同一张照片的原图地址；找不到/失败返回 ''，调用方回退记录图。
-  // 不抛错：这只是「显示一致性」的增强，不能因图库接口失败挡住再次投屏。
-  async resolveAlbumOriginalUrl(record) {
-    const imgId = record && (record.uProductImgId || record.uproductImgId)
-    if (!imgId) {
-      return ''
-    }
-    try {
-      const photos = await api.getAlbumPhotos()
-      const matched = photos.find(
-        item => String(item.uProductImgId) === String(imgId)
-      )
-      return (matched && matched.url) || ''
-    } catch (error) {
-      return ''
-    }
   },
 
   deleteRecord(e) {

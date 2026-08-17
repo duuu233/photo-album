@@ -407,19 +407,6 @@ function deleteDevice(deviceId) {
   })
 }
 
-function deleteAlbumPhotos(data) {
-  const store = readStore()
-  const removeSet = (data.ids || []).reduce((map, id) => {
-    map[id] = true
-    return map
-  }, {})
-  store.photos = store.photos.filter(photo => !removeSet[photo.id])
-  writeStore(store)
-  return delay({
-    success: true
-  })
-}
-
 // 模拟投屏：校验设备在线与内存，成功则写入照片并更新已用内存，同时记录一条投屏记录
 function uploadProjection(data) {
   const store = readStore()
@@ -533,8 +520,7 @@ function handle(options) {
   const clearCopyMatch = path.match(/^\/devices\/([^/]+)\/clear-photo-copies$/)
   if (clearCopyMatch && method === 'POST') return clearDevicePhotoCopies(clearCopyMatch[1])
 
-  if (path === '/album/photos' && method === 'GET') return delay(store.photos)
-  if (path === '/album/photos' && method === 'DELETE') return deleteAlbumPhotos(data)
+  // /album/photos 两条路由已于 2026-08-17 随「我的图库」接口一并删除（端上无消费方）
 
   if (path === '/projection/upload' && method === 'POST') return uploadProjection(data)
   if (path === '/projection/records' && method === 'GET') return delay(store.records)

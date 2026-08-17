@@ -226,29 +226,8 @@ function normalizeDevice(device = {}) {
   })
 }
 
-function normalizePhoto(photo = {}, index = 0) {
-  const id = firstValue(
-    photo.uProductImgId,
-    photo.uproductImgId,
-    photo.id,
-    `photo_${index}`
-  )
-  return Object.assign({}, photo, {
-    id: String(id),
-    uProductImgId: firstValue(photo.uProductImgId, photo.uproductImgId, id),
-    deviceId: firstValue(photo.userProductId, photo.deviceId, ''),
-    deviceName: firstValue(photo.productName, photo.deviceName, '相框'),
-    title: firstValue(photo.title, photo.productName, `照片 ${index + 1}`),
-    url: firstValue(photo.img, photo.url, ''),
-    // 图库网格小图专用：优先后端新字段 imgThumb（缩略图），旧数据回退 img/url 避免空图
-    imgThumb: firstValue(photo.imgThumb, photo.img, photo.url, ''),
-    // 这张图在设备上的物理槽位索引（投屏成功时上报，String）：图库删除/刷新屏幕按它定位。
-    // firstValue 只跳过 undefined/null/''，所以 0 与 '0' 都能原样保留；取不到时为 '' 表示「无索引」。
-    imgIndex: firstValue(photo.imgIndex, ''),
-    createdAt: firstValue(photo.upTime, photo.joinTime, photo.createdAt, ''),
-    onDevice: photo.onDevice !== false
-  })
-}
+// 2026-08-17 删除：`normalizePhoto`（「我的图库」列表项归一化）。随 getAlbumPhotos 一起下线，
+// 端上已无图库列表的消费方；投屏记录的归一化在下面的 normalizeProjectionRecord。
 
 function normalizeProjectionRecord(record = {}, index = 0) {
   const state = Number(record.deviceUploadState)
@@ -614,35 +593,6 @@ module.exports = {
     })
   },
 
-  // 用户产品图片列表（我的图库）。params 支持分页与 userProductId 过滤
-  getUserProductImgList(params = {}) {
-    return http.get('/Client/UserProduct/getUserProductImgList', params, {
-      mock: false
-    })
-  },
-
-  // 删除产品图片，支持多选，id=uProductImgId。可传单 id、id 数组或 { idList }/{ ids }。
-  // 后端约定的字段名是 idList（不是 ids）。
-  delUserProductImg(ids) {
-    const list = Array.isArray(ids)
-      ? ids
-      : ids && Array.isArray(ids.idList)
-        ? ids.idList
-        : ids && Array.isArray(ids.ids)
-          ? ids.ids
-          : [ids]
-
-    return http.post(
-      '/Client/UserProduct/delUserProductImg',
-      { idList: list.filter(item => item !== undefined && item !== null) },
-      {
-        mock: false,
-        loading: true,
-        loadingText: '删除中'
-      }
-    )
-  },
-
   // 产品投屏记录列表（成功/失败投屏）。params 支持分页、keyword 搜索图片地址、userProductId
   getUserProductImgRecordList(params = {}) {
     return http.get('/Client/UserProduct/getUserProductImgRecordList', params, {
@@ -938,18 +888,11 @@ module.exports = {
     return module.exports.delUserProduct(deviceId)
   },
 
-  getAlbumPhotos() {
-    return module.exports
-      .getUserProductImgList({
-        pageIndex: 1,
-        pageSize: 100
-      })
-      .then(data => pageData(data).map(normalizePhoto))
-  },
-
-  deleteAlbumPhotos(ids) {
-    return module.exports.delUserProductImg(ids)
-  },
+  // 2026-08-17 删除：`getAlbumPhotos` / `deleteAlbumPhotos` 及其底层
+  // `getUserProductImgList` / `delUserProductImg`（「我的图库」列表与删除）。
+  // 端上已经没有任何页面渲染图库列表：「我的相册」铺的是**投屏成功记录**，删除只认记录自己的
+  // `imgIndex`（2026-08-10 起），再次投屏直接用记录自己的 `img`（2026-07-22 起上传的就是原图）。
+  // 图库照片的清理归后端。要恢复得先想清楚谁消费它，别只为「以前有」而接回来。
 
   uploadProjection(data) {
     const files = data && data.images ? data.images : []

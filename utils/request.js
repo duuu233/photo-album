@@ -162,8 +162,6 @@ const API_NAME_MAP = {
   delUserProduct: '删除电子纸设备',
   clearUserProductImg: '一键清空电子纸设备图片',
   getUserProductClearImg: '电子纸设备清空状态',
-  getUserProductImgList: '图库列表',
-  delUserProductImg: '删除图片',
   getUserProductImgRecordList: '投屏记录列表',
   editUserProductImgRecord: '更新投屏记录',
   addUserProductImgRecord: '新增投屏记录',

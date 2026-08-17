@@ -1,7 +1,7 @@
 # 客户端接口矩阵
 
 > 状态：current  
-> 最后核对：2026-08-13  
+> 最后核对：2026-08-17  
 > 适用范围：微信小程序；App/PC 差异仅作接口边界参考  
 > 上游权威来源：BoltFox Swagger
 
@@ -14,6 +14,24 @@
 > 🛠 **维护约定**：每次修改本表涉及的接口/字段，务必在下方「操作日志」补一条（日期 + 改了什么 + 关联文件/commit），**最新在上**——别让文档与代码脱节。
 
 ## 操作日志（最新在上）
+- **2026-08-17**：**「我的图库」两个接口从端上整体删除**：`GET /Client/UserProduct/getUserProductImgList`
+  与 `POST /Client/UserProduct/delUserProductImg`，连同 `api.getAlbumPhotos` / `deleteAlbumPhotos` /
+  `normalizePhoto`、`request.js` 的两条中文名、`mock.js` 的 `/album/photos` 两条路由一并清掉。
+  背景：「我的相册」自 2026-08-04 起铺的就是**投屏成功记录**，删除自 2026-08-10 起只认记录自己的
+  `imgIndex`、`delUserProductImg` 早已屏蔽；图库列表最后只剩两个消费方——
+  ① 再次投屏「取图库原图」：理由（记录 `img` 是后端按设备尺寸转换过的图）自 2026-07-22
+  `setUserProductUpload` 改传**原图**起就已失效，图库那条照片与投屏记录本就是同一次上传的同一张，
+  绕一圈只多一个请求（`album/list.js findPhotoOfRecord`、`projection/records.js resolveAlbumOriginalUrl`
+  两处同款，已一并删除，改为直接用 `record.img`）；
+  ② 默认设备规则「第一台有照片的设备」：判据取自图库照片、与本页数据源不同源，已删除，
+  `pickDefaultFilter` 收成「保留当前选中 → 连接中的设备 → 第一台」三档。
+  另外它还是「我的相册」首屏 `Promise.all` 的一半，**图库接口挂掉会把整页打成「加载失败」**。
+  ⚠️ 保留不动：`getUserProductClearImg`（进页面/切设备查一键清空状态并弹「请删除重新上传」提醒）与
+  `clearUserProductImg`——这两个是 UserProduct 侧的设备状态，不属于图库列表链路。
+  图库照片的后端清理归后端负责。关联：`subpackages/album/list/list.js`、
+  `subpackages/projection/records/records.js`、`utils/api.js`、`utils/request.js`、`utils/mock.js`、
+  `tests/album-slot-index.test.js`、`tests/album-default-device.test.js`、
+  [2026-08-17 变更记录](../changes/2026-08-17-我的相册去掉我的图库接口.md)。Flutter 待同步。
 - **2026-08-13**：**删除 mock 时代遗留的两个固件接口**（真实后端从来没有过这两条路由）：
   `GET /devices/:id/firmware`（`getDeviceFirmware`，零调用方）与
   `POST /devices/:id/firmware/upgrade-result`（`reportDeviceFirmwareUpgrade`，`ota.js` 三处在调、
@@ -163,7 +181,8 @@
 | 个人信息 | 忘记密码（未登录） | `POST /Client/User/resetPassword` | ⛔ | - | 邮箱账号找回密码 |
 | 个人信息 | 修改密码 | `POST /Client/User/changePassword` | ⛔ | - | 邮箱账号密码体系 |
 | 个人信息 | 用户注销 PC 版 | `POST /Client/User/userOffPC` | ⛔ | - | PC 版接口 |
-| 我的相册 | 相册列表/删除（支持多选） | `GET /Client/UserProduct/getUserProductImgRecordList`、`GET /Client/UserProduct/getUserProductImgList`、`POST /Client/UserProduct/delUserProductImg`、`POST /Client/UserProduct/delUserProductImgRecord` | ✅ | `getProjectionRecords`、`getAlbumPhotos`、`deleteAlbumPhotos`、`deleteProjectionRecords` | **2026-08-10 起**：删除只取**该条投屏记录自己的** `imgIndex`（下午修订，此前经 `uProductImgId` 关联图库照片、只认图库列表那份），转成固定 12 字节 `IMG_INDEX_MASK` 后发设备 `0x12`；不推算缺失索引。**同日下午补**：发 `0x12` 前读一次 `0x01` 的 `IMG_MASK`，设备上已经没有的槽位跳过（另一部手机删过图时本机列表还留着那条记录，一起下发会被固件回 `0x07` 打回整批），`0x05`/`0x07` 结果码也按「设备侧本来就没有」放行；设备侧无论跳过还是删成功，来源投屏记录一律删；中间的 `delUserProductImg`（删图库相册记录）**同日起暂时屏蔽**，代码保留在 `confirmDeleteSelected` 第 4 步 |
+| 我的相册 | 相册列表/删除（支持多选）/再次投屏 | `GET /Client/UserProduct/getUserProductImgRecordList`、`POST /Client/UserProduct/delUserProductImgRecord` | ✅ | `getProjectionRecords`、`deleteProjectionRecords` | **2026-08-17 起接口面收成这两个**：页面数据只有设备列表（`getDevices`，铺下拉分类）与投屏成功记录（铺网格），**再次投屏与删除都只吃这份记录**，不再调任何「我的图库」接口。删除只取**该条投屏记录自己的** `imgIndex`（2026-08-10 下午修订，此前经 `uProductImgId` 关联图库照片、只认图库列表那份），转成固定 12 字节 `IMG_INDEX_MASK` 后发设备 `0x12`；不推算缺失索引。发 `0x12` 前读一次 `0x01` 的 `IMG_MASK`，设备上已经没有的槽位跳过（另一部手机删过图时本机列表还留着那条记录，一起下发会被固件回 `0x07` 打回整批），`0x05`/`0x07` 结果码也按「设备侧本来就没有」放行；设备侧无论跳过还是删成功，来源投屏记录一律删，端上到此为止。再次投屏直接用记录自己的 `img` 写 `pendingProjection` 进预览页 |
+| 我的相册 | 一键清空提醒（**保留**） | `GET /Client/UserProduct/getUserProductClearImg`、`POST /Client/UserProduct/editUserProduct` | ✅ | `getUserProductClearImg`、`editUserProduct` | 进入页面/切换设备时查该设备的一键清空状态，`retData=1` 弹「照片在此电子纸设备异常，请删除重新上传」，确认后把 `isClearImg` 复位为 0（避免每次进来都弹）。设备在别处被一键清空过时，这是用户唯一能感知到的入口，**2026-08-17 清理图库接口时有意保留**：它查的是 UserProduct 侧设备状态，与图库列表链路无关 |
 | 我的（首屏统计） | 「我的相册」卡片的张数 | `GET /Client/UserProduct/getUserProductImgRecordList` | ✅ | `getProjectionSuccessCount` | **2026-08-05 起**：全部设备的投屏成功记录条数（`deviceUploadState=1`、不带 `userProductId`），与「我的相册」列表同口径，不再用 `getUserInfo` 的 `imgCount`。整页均为成功记录时取分页元数据 `recordCount`（一次请求即真实总数）；后端忽略过滤参数时逐页翻并按状态计数，20 页封顶 |
 | 我的设备 | 设备连接流程 | ➖ | ✅ | - | 稳定设备身份一律为 `0x01` 返回的完整 6 字节 ID；广播 4 字节短 ID + 尺寸仅用于筛选候选。连接后必须用完整 ID 严格确认，校验通过后才认领会话并写直连缓存。身份不一致时断开、排除错误候选并重扫，同时清理被污染的缓存。设备自定义名称不作为物理身份依据（2026-07-27） |
 | 我的设备 | 设备列表（设备图、名称、设备 ID） | `GET /Client/UserProduct/getUserProductList` | ✅ | `getUserProductList` | 接口 `deviceId` 非空且为完整 6 字节时展示，空值不显示；页面字段为 `productDeviceId`，避免与微信 BLE 临时句柄混淆 |
@@ -173,11 +192,11 @@
 | 我的设备 | 删除设备 | `POST /Client/UserProduct/delUserProduct` | ✅ | `delUserProduct` | id=userProductId |
 | 我的设备 | 一键清空（格式化设备） | `POST /Client/UserProduct/clearUserProductImg` | ✅ | `clearUserProductImg` | 后端文档口径是「一键删除我的图库」，端上**保持调它不变**。**2026-08-10 后端确认**：这一次调用会由后端**同步删掉该设备的投屏记录**（不只是图库照片）。名字与实际影响面有差：「我的相册」渲染的是投屏成功记录，所以一键清空后相册随之清空，不会留幽灵条目；端上仍先发设备 `0x12` 全删，再调本接口 |
 | 我的设备 | 开启\关闭轮播模式 | ➖ | ✅ | - | 顺序/随机轮播、关闭轮播；纯设备控制 |
-| 我的图库 | 列表 | `GET /Client/UserProduct/getUserProductImgList` | ✅ | `getUserProductImgList` | 2026-08-04 起不再直接渲染；2026-08-10 下午起**删除也不再读它的 `imgIndex`**（实测该字段不稳定回传，索引改取投屏记录那份），现仅作「我的相册」的原图来源与默认设备判断依据 |
-| 我的图库 | 删除 | `POST /Client/UserProduct/delUserProductImg` | ✅ | `delUserProductImg` | id=uProductImgId，支持多选。删除前先按 `imgIndex` 发 BLE `0x12` 删掉设备对应槽位 |
+| 我的图库 | 列表 | `GET /Client/UserProduct/getUserProductImgList` | ⛔ | ~~`getUserProductImgList` / `getAlbumPhotos`~~ | **2026-08-17 端上删除**（后端接口仍在）。演进：2026-08-04 起不再直接渲染 → 2026-08-10 下午起删除也不再读它的 `imgIndex`（实测该字段不稳定回传，索引改取投屏记录那份）→ 最后只剩「再次投屏取原图」和「默认设备规则」两个消费方，前者自 2026-07-22 上传改传原图后已无意义、后者与页面数据源不同源，一并去掉。**端上现在没有任何页面渲染或读取「我的图库」列表**，勿再接回 |
+| 我的图库 | 删除 | `POST /Client/UserProduct/delUserProductImg` | ⛔ | ~~`delUserProductImg` / `deleteAlbumPhotos`~~ | **2026-08-17 端上删除**（后端接口仍在）。2026-08-10 起就已在相册删除链路屏蔽，端上只删设备槽位(`0x12`) + 投屏记录；图库照片的清理归后端 |
 | 投屏管理 | 投屏记录图片列表（成功/失败） | `GET /Client/UserProduct/getUserProductImgRecordList` | ✅ | `getUserProductImgRecordList` | **Swagger 新增**。出参含 `imgIndex`(String)，记录页本身不消费，仅排查用。2026-08-04 起「我的相册」也用它（只取成功、按 `userProductId` 分类）；投屏记录页保留，入口改为投屏结果页「投屏明细」 |
 | 投屏管理 | 新增投屏记录（历史接口） | `POST /Client/UserProduct/addUserProductImgRecord` | ➖ | `addUserProductImgRecord`（无调用方） | 小程序已删除 `imgBle` 直传和补记链路；再次/重新投屏统一走正常投屏流程，由 `setUserProductUpload` 建立新记录 |
-| 投屏管理 | 操作：投屏\删除 | `POST /Client/UserProduct/delUserProductImgRecord` | ✅ | `delUserProductImgRecord`、`deleteProjectionRecords` | id=upirId，**Swagger 新增**。批量版 `deleteProjectionRecords` 串行逐条调用（后端无批量接口），供「我的相册」删照片时连同来源记录一并删。**级联问题（2026-08-04 挂起）已部分有结论**：`clearUserProductImg`（一键清空）后端**会**同步删投屏记录（2026-08-10 确认），一键清空链路无需端上再删记录；`delUserProductImg` 是否级联仍**待后端确认**，但该调用自 2026-08-10 起已在相册删除链路屏蔽（见 144 行），暂时不影响 |
+| 投屏管理 | 操作：投屏\删除 | `POST /Client/UserProduct/delUserProductImgRecord` | ✅ | `delUserProductImgRecord`、`deleteProjectionRecords` | id=upirId，**Swagger 新增**。批量版 `deleteProjectionRecords` 串行逐条调用（后端无批量接口），供「我的相册」删照片时连同来源记录一并删。**级联问题（2026-08-04 挂起）已收口**：`clearUserProductImg`（一键清空）后端**会**同步删投屏记录（2026-08-10 确认），一键清空链路无需端上再删记录；`delUserProductImg` 是否级联已**不再是端上的问题**——该调用 2026-08-10 屏蔽、2026-08-17 随整套图库接口从端上删除，图库照片的清理归后端 |
 | 操作指南 | 查看帮助文档（**不分设备，全局**） | `GET /Client/Product/getProductFaqList` | ✅ | `getProductFaqList` | 详情 `getProductFaqDetail`；按 `pageCount`/`recordCount` 翻页**全量**读取；Client 侧接口无 productId 参数，不做设备过滤；权重 `grade` 只在后台 DTO，排序由后端负责，前端不重排；随 `language` 走（2026-07-19） |
 | 设置 | 关于我们/联系方式/隐私政策/用户协议 | ➖ | ✅ | - | 静态页面 |
 | 设置 | 语种设置（简中\繁中\英\日） | ➖ | ✅ | - | 小程序默认中文；App 跟随手机语言（其他默认英语） |
