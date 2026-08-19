@@ -31,7 +31,8 @@
   图库照片的后端清理归后端负责。关联：`subpackages/album/list/list.js`、
   `subpackages/projection/records/records.js`、`utils/api.js`、`utils/request.js`、`utils/mock.js`、
   `tests/album-slot-index.test.js`、`tests/album-default-device.test.js`、
-  [2026-08-17 变更记录](../changes/2026-08-17-我的相册去掉我的图库接口.md)。Flutter 待同步。
+  [2026-08-17 变更记录](../changes/2026-08-17-我的相册去掉我的图库接口.md)。
+  **Flutter 2026-08-19 已同步**（`flutter/docs/history/2026-08/2026-08-17-我的相册去掉我的图库接口同步.md`）。
 - **2026-08-13**：**删除 mock 时代遗留的两个固件接口**（真实后端从来没有过这两条路由）：
   `GET /devices/:id/firmware`（`getDeviceFirmware`，零调用方）与
   `POST /devices/:id/firmware/upgrade-result`（`reportDeviceFirmwareUpgrade`，`ota.js` 三处在调、

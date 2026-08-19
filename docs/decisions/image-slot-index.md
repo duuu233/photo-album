@@ -14,7 +14,10 @@
   槽位(0x12) + 删投屏记录**，图库照片的清理归后端。同时「我的相册」再次投屏改为直接用记录自己的
   `img`（不再回图库找原图），默认设备规则去掉「第一台有照片的设备」一档。
   见 [2026-08-17 我的相册去掉我的图库接口](../changes/2026-08-17-我的相册去掉我的图库接口.md)。
-  ⚠️ Flutter 侧未同步，`state.dart` 仍在用图库列表。
+  **2026-08-19 Flutter 已同步**：待删槽位由新的 `PhotoFrameState.resolveDeleteSlots` 只认记录自己的
+  `imgIndex`（缺索引/越界整批终止），设备侧那一半收成 `deleteDevicePhotoSlots`；两个「按上传先后推算
+  槽位」的回退（`_resolveDeviceImageIndex` / `_inferDeviceImageIndex`）随图库账本一并删除。
+  见 `flutter/docs/history/2026-08/2026-08-17-我的相册去掉我的图库接口同步.md`。
 - **2026-08-11（Flutter 同步）**：上一条的分拨口径同步到 App
   （`flutter/lib/src/state.dart deleteAlbumPhotos` + `device/ble/frame_protocol.dart`
   `skippableDeleteResults`，见 `flutter/docs/history/2026-08/2026-08-11-相册删除跳过空槽位与AI八项优化.md`）。
