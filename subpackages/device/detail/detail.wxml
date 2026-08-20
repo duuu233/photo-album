@@ -158,7 +158,8 @@
           <view class="row-right">
             <!-- 2026-08-20：右侧回到「只显示设备当前在跑的固件版本号」（调试台 0x03 那个值），
                  未连接/读不到时按本页约定回落 '--'；有没有新版本不再用文案说，改成箭头旁的红点。
-                 红点与点击结论同源（detail.js hasFirmwareUpdate），不会出现「红点亮着、点进去弹已是最新」 -->
+                 未连接时整行就是 '--'、红点不亮（没有版本依据就不报警，与设备ID/内存/轮播设置一致）；
+                 已连接后红点与点击结论同源（detail.js hasFirmwareUpdate），不会出现「红点亮着、点进去弹已是最新」 -->
             <text>{{firmwareVersionText}}</text>
             <view wx:if="{{firmwareHasUpdate}}" class="firmware-dot">
             </view>

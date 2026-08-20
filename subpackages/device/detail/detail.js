@@ -235,14 +235,19 @@ function firmwareVersionText(device) {
   return textValue(device.firmwareVersion) || OTA_TEXT_UNKNOWN
 }
 
-// 「固件升级」行箭头旁的红点：检测到有新版本才亮。
-// 判定与点击流程 goOtaUpgrade 完全同源——包括「读不到设备当前版本时退回后端 isUpdate 标志」
-// 这一分支（2026-08-11 定的「不连蓝牙也能查版本」能力），否则会出现红点亮着、
-// 点进去却弹「当前固件已是最新版本」的自相矛盾。
+// 「固件升级」行箭头旁的红点：**已连接**且检测到有新版本才亮。
+//
+// 未连接一律不亮（2026-08-20 产品规则）：这一行整行回落 '--'，与设备ID/内存/轮播设置同一套
+// 占位约定——「不知道就说不知道」；未连接时右边写着 '--' 却挂个红色角标，是在没有版本依据的
+// 情况下报警，与本页其它 '--' 行自相矛盾。用户想查版本，点进这一行照样能查
+//（goOtaUpgrade 未连接时仍走接口 + isUpdate 回落，2026-08-11 定的能力没丢），只是不再由红点催。
+//
+// 已连接后判定与点击流程 goOtaUpgrade 同源——包括「0x03 读不到当前版本时退回后端 isUpdate
+// 标志」这一分支，否则会出现红点亮着、点进去却弹「当前固件已是最新版本」的自相矛盾。
 // 只有 'update'（版本不同 + 下载地址是有效 .bin）才算数：'invalid' 是后台数据有问题，
 // 点进去只会弹原因说明、升不了级，亮红点等于催用户去撞墙。
 function hasFirmwareUpdate(device) {
-  if (!device) {
+  if (!device || !device.connected) {
     return false
   }
 
@@ -270,7 +275,7 @@ Page(fold.adapt({
     macAddress: '',
     // 「固件升级」行右侧：设备当前固件版本号（0x03 读回），未连接/读不到为 '--'
     firmwareVersionText: '--',
-    // 「固件升级」行箭头旁的红点：检测到有新版本时亮
+    // 「固件升级」行箭头旁的红点：已连接且检测到有新版本时亮（未连接一律不亮）
     firmwareHasUpdate: false,
     batteryText: '--',
     playbackLabel: '',
@@ -757,9 +762,9 @@ Page(fold.adapt({
       memoryText: '--',
       memoryPercent: 0,
       playbackLabel: '--',
-      // 断开后读不到 0x03 当前固件版本：版本号回落 '--'。
-      // 红点仍按「最后读到的版本 + 接口数据」算：固件版本不会因为断开就变了，
-      // 灭掉红点反而是把已知的「有新版本」这件事藏起来。
+      // 断开后读不到 0x03 当前固件版本：整行回落 '--' 且红点熄灭（2026-08-20 产品规则）——
+      // 与本行版本号、设备ID/内存/轮播设置一致：没有版本依据就不报警。
+      // hasFirmwareUpdate 已按 connected 回落 false，这里照常调用保持单一出口。
       firmwareVersionText: '--',
       firmwareHasUpdate: hasFirmwareUpdate(updated)
     })

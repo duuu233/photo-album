@@ -4,9 +4,12 @@
 // 详情页由 deviceInfo.read 一并读回、落在 device.firmwareVersion）；读不到（未连接/0x03 失败）
 // 时按本页占位约定回落 '--'（接口不下发设备在跑的版本，拿 newVersionNo 顶上就是显示假版本）。
 //
-// 有没有新版本改由箭头旁的红点（firmwareHasUpdate）表达：设备当前版本与接口 newVersionNo
-// **不一样** 且 downloadPath 是有效 .bin 下载地址才亮；读不到当前版本时退回后端 isUpdate 标志
-// （2026-08-11 定的「不连蓝牙也能查版本」能力）。
+// 有没有新版本改由箭头旁的红点（firmwareHasUpdate）表达：**已连接**且设备当前版本与接口
+// newVersionNo **不一样** 且 downloadPath 是有效 .bin 下载地址才亮；已连接但 0x03 读不到当前
+// 版本时退回后端 isUpdate 标志（2026-08-11 定的「不连蓝牙也能查版本」能力）。
+//
+// 未连接一律不亮红点（2026-08-20 追加）：那时整行就是 '--'，没有版本依据就不报警；
+// 点进这一行照样能查版本（goOtaUpgrade 走接口 + isUpdate 回落），只是不再由红点催。
 //
 // 这里同时钉住「红点」与「点击固件升级」两处结论一致：两边共用 evaluateFirmwareUpdate + 同一套
 // unknown 回落，否则会出现红点亮着、点进去却弹「当前固件已是最新版本」的自相矛盾。
@@ -61,7 +64,8 @@ require.cache[deviceBlePath] = {
   loaded: true,
   exports: {
     isConnected: () => false,
-    getActiveConnections: () => []
+    getActiveConnections: () => [],
+    disconnect: () => {}
   }
 }
 
@@ -157,7 +161,9 @@ function hintAfterConnect(deviceFields, firmwareVersion) {
     { version: '--', dot: true }
   )
 
-  // ⑥ 未连接（详情接口刚拉回来、没有活动会话）→ 版本号 '--'；后台说有更新就亮红点
+  // ⑥ 未连接（详情接口刚拉回来、没有活动会话）→ 版本号 '--'，**红点不亮**：
+  //    哪怕后台 isUpdate=1 且包有效也不亮——未连接时这一行没有任何版本依据，
+  //    右边写着 '--' 却挂红点是在无凭据地报警（2026-08-20 产品规则）。
   latestDetail = {
     id: 'record-1',
     userProductId: 'record-1',
@@ -169,7 +175,42 @@ function hintAfterConnect(deviceFields, firmwareVersion) {
   const offline = newCtx()
   await offline.loadDetail()
   assert.strictEqual(offline.data.firmwareVersionText, '--')
-  assert.strictEqual(offline.data.firmwareHasUpdate, true)
+  assert.strictEqual(offline.data.firmwareHasUpdate, false)
+
+  // ⑥-2 断开连接后同样整行回落：版本号 '--' + 红点熄灭（断开前读到过版本、后台也说有更新）
+  const online = newCtx({
+    device: {
+      id: 'record-1',
+      name: '相框',
+      connected: true,
+      deviceId: 'ble-1',
+      firmwareVersion: 'V1.0.1',
+      isUpdate: 1,
+      newVersionNo: 'V1.0.2',
+      downloadPath: PKG
+    }
+  })
+  online.performDisconnect()
+  assert.strictEqual(online.data.firmwareVersionText, '--')
+  assert.strictEqual(online.data.firmwareHasUpdate, false)
+
+  // ⑥-3 未连接照样能点「固件升级」查版本（2026-08-11 的能力没被红点规则带走）
+  modals.length = 0
+  latestDetail = {
+    id: 'record-1',
+    isUpdate: 1,
+    newVersionNo: 'V1.0.2',
+    downloadPath: PKG
+  }
+  const offlineTap = newCtx({
+    device: { id: 'record-1', name: '相框', connected: false, firmwareVersion: '' }
+  })
+  await offlineTap.goOtaUpgrade()
+  assert.strictEqual(
+    modals[modals.length - 1].content,
+    '检测到新版本：V1.0.2，是否升级'
+  )
+  assert.strictEqual(offlineTap.data.firmwareHasUpdate, false)
 
   // ── 点击「固件升级」的结论必须与红点同源 ──
   async function tap(deviceFirmwareVersion, detail) {
