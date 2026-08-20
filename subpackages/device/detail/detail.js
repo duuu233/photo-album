@@ -163,9 +163,9 @@ function isBinFirmwareUrl(url) {
 // OTA 逐帧日志助手（describeOtaFrame / decodeFinalResultFrame / OTA_OP）随 2026-08-11 删除的
 // 「OTA测试升级」一并移除：真实升级在 subpackages/device/ota 页里跑，日志由 utils/ota-ble.js 自己打。
 
-// 「固件升级」行右侧的两种文案（2026-08-12 产品规则）
-const OTA_TEXT_UPDATE = '有版本可更新'
-const OTA_TEXT_LATEST = '已是最新版本'
+// 「固件升级」行右侧读不到设备当前版本时的占位（未连接 / 0x03 读失败）。
+// 2026-08-20 起右侧只展示版本号，「有版本可更新/已是最新版本」两句文案随之下线——
+// 有无新版本改由箭头旁的红点表达，弹窗里的结论文案在 goOtaUpgrade 内就地写。
 const OTA_TEXT_UNKNOWN = '--'
 
 // 版本号比较：去空格 + 不区分大小写（与 ota.js sameVersion 同口径）。
@@ -205,7 +205,7 @@ function firmwarePackageError(device) {
 //   'invalid' 版本号不同但缺号/缺地址/不是 .bin → 后台数据有问题，点击时如实说明原因
 //   'latest'  其余（版本号相同，或接口压根没给新版本号）→ 已是最新
 //
-// 右侧文案与点击流程必须共用这一个判定，否则会出现「右边写着有版本可更新、点进去弹已是最新」。
+// 右侧红点与点击流程必须共用这一个判定，否则会出现「红点亮着、点进去弹已是最新」。
 function evaluateFirmwareUpdate(device, currentVersion) {
   const current = textValue(currentVersion)
   if (!current) {
@@ -223,19 +223,34 @@ function evaluateFirmwareUpdate(device, currentVersion) {
     : { state: 'update', reason: '' }
 }
 
-// 「固件升级」行右侧文案：只有确认「版本不同 + 下载地址有效」才提示可更新。
-// 未连接/读不到 0x03 版本时回落 '--'，与本页设备ID、最大照片数量、轮播设置同一套占位约定：
-// 不知道就说不知道，写「已是最新版本」等于在不知情时给用户一个可能是假的结论。
-function firmwareUpdateText(device) {
+// 「固件升级」行右侧文案（2026-08-20 产品规则）：只展示**设备当前在跑的固件版本号**，
+// 有没有新版本改用箭头旁的红点表达（见 hasFirmwareUpdate），不再写「有版本可更新/已是最新版本」。
+// 版本号只认 0x03 GET_SW_VER 读回的值（deviceInfo.read → device.firmwareVersion），
+// 未连接/读不到时回落 '--'，与本页设备ID、最大照片数量、轮播设置同一套占位约定：
+// 不知道就说不知道，接口不下发设备实际在跑的版本，拿 newVersionNo 顶上等于显示了一个假版本。
+function firmwareVersionText(device) {
   if (!device || !device.connected) {
     return OTA_TEXT_UNKNOWN
   }
+  return textValue(device.firmwareVersion) || OTA_TEXT_UNKNOWN
+}
+
+// 「固件升级」行箭头旁的红点：检测到有新版本才亮。
+// 判定与点击流程 goOtaUpgrade 完全同源——包括「读不到设备当前版本时退回后端 isUpdate 标志」
+// 这一分支（2026-08-11 定的「不连蓝牙也能查版本」能力），否则会出现红点亮着、
+// 点进去却弹「当前固件已是最新版本」的自相矛盾。
+// 只有 'update'（版本不同 + 下载地址是有效 .bin）才算数：'invalid' 是后台数据有问题，
+// 点进去只会弹原因说明、升不了级，亮红点等于催用户去撞墙。
+function hasFirmwareUpdate(device) {
+  if (!device) {
+    return false
+  }
 
   const result = evaluateFirmwareUpdate(device, device.firmwareVersion)
-  if (result.state === 'unknown') {
-    return OTA_TEXT_UNKNOWN
+  if (result.state !== 'unknown') {
+    return result.state === 'update'
   }
-  return result.state === 'update' ? OTA_TEXT_UPDATE : OTA_TEXT_LATEST
+  return isUpdateFlag(device) && !firmwarePackageError(device)
 }
 
 // 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
@@ -253,8 +268,10 @@ Page(fold.adapt({
     resolutionText: '--',
     memoryText: '',
     macAddress: '',
-    // 「固件升级」行右侧：有版本可更新 / 已是最新版本 / --（未连接、读不到当前固件版本）
-    firmwareUpdateText: '--',
+    // 「固件升级」行右侧：设备当前固件版本号（0x03 读回），未连接/读不到为 '--'
+    firmwareVersionText: '--',
+    // 「固件升级」行箭头旁的红点：检测到有新版本时亮
+    firmwareHasUpdate: false,
     batteryText: '--',
     playbackLabel: '',
     intervalOptions: [1, 2, 4, 8, 24],
@@ -465,8 +482,9 @@ Page(fold.adapt({
       resolutionText: resolutionText(device),
       memoryText: memoryText(device),
       macAddress: device && device.macAddress ? device.macAddress : '--',
-      // 固件升级行右侧不再展示版本号，改为「设备当前固件版本 vs 接口 newVersionNo」的比较结论
-      firmwareUpdateText: firmwareUpdateText(device),
+      // 固件升级行右侧展示设备当前固件版本；有无新版本由箭头旁的红点表达
+      firmwareVersionText: firmwareVersionText(device),
+      firmwareHasUpdate: hasFirmwareUpdate(device),
       playbackLabel: connected ? getPlaybackLabel(device) : '--',
       intervalIndex: intervalIndex > -1 ? intervalIndex : 1,
       loading: false,
@@ -739,8 +757,11 @@ Page(fold.adapt({
       memoryText: '--',
       memoryPercent: 0,
       playbackLabel: '--',
-      // 断开后读不到 0x03 当前固件版本，也就无从比较：回落 '--'，不写「已是最新版本」
-      firmwareUpdateText: '--'
+      // 断开后读不到 0x03 当前固件版本：版本号回落 '--'。
+      // 红点仍按「最后读到的版本 + 接口数据」算：固件版本不会因为断开就变了，
+      // 灭掉红点反而是把已知的「有新版本」这件事藏起来。
+      firmwareVersionText: '--',
+      firmwareHasUpdate: hasFirmwareUpdate(updated)
     })
     // 断开成功不再弹提示（顶部按钮已切「未连接」态即为反馈）；仅失败时提示。
   },
@@ -840,7 +861,8 @@ Page(fold.adapt({
       // 连上后 0x01 的 screenType 才到手，分辨率这时才可能从「后端宽高/--」升级为权威值
       resolutionText: resolutionText(updated),
       playbackLabel: getPlaybackLabel(updated),
-      firmwareUpdateText: firmwareUpdateText(updated),
+      firmwareVersionText: firmwareVersionText(updated),
+      firmwareHasUpdate: hasFirmwareUpdate(updated),
       // 在详情页内点「连接」成功后只展示完整 6 字节 Device_ID。
       deviceCode:
         deviceIdUtil.canonical(updated.firmwareDeviceId) ||
@@ -896,7 +918,7 @@ Page(fold.adapt({
       return
     }
 
-    // 刚拉到的接口数据顺手回写并刷新右侧文案：本行可能还是进页面时拉的，已经过期。
+    // 刚拉到的接口数据顺手回写并刷新红点：本行可能还是进页面时拉的，已经过期。
     const refreshed = Object.assign({}, device, {
       newVersionNo: latest.newVersionNo,
       downloadPath: latest.downloadPath,
@@ -904,10 +926,11 @@ Page(fold.adapt({
     })
     this.setData({
       device: refreshed,
-      firmwareUpdateText: firmwareUpdateText(refreshed)
+      firmwareVersionText: firmwareVersionText(refreshed),
+      firmwareHasUpdate: hasFirmwareUpdate(refreshed)
     })
 
-    // 与右侧文案同一套判定：设备实际固件版本(0x03) vs 接口 newVersionNo + 下载地址有效性。
+    // 与右侧红点同一套判定：设备实际固件版本(0x03) vs 接口 newVersionNo + 下载地址有效性。
     const result = evaluateFirmwareUpdate(latest, device.firmwareVersion)
     let state = result.state
     let reason = result.reason

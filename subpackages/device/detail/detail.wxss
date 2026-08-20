@@ -218,6 +218,18 @@
   color: #7d858f;
 }
 
+/* 「固件升级」行的新版本提示点（2026-08-20）：检测到有新版本时亮，纯提示、不承载点击
+   （整行本来就可点）。.row-right 的 gap 是 16rpx，对「贴着箭头」来说太散，
+   用负 margin 把它往箭头收一半，视觉上就是箭头旁边的一颗红点。 */
+.firmware-dot {
+  flex: 0 0 auto;
+  width: 14rpx;
+  height: 14rpx;
+  margin-right: -8rpx;
+  border-radius: 50%;
+  background: #ff3b30;
+}
+
 .action-list {
   margin-top: 2rpx;
 }

@@ -401,8 +401,15 @@ Page(fold.adapt({
     // 代价：成功页出现时设备可能还在刷屏，立刻「继续投屏」可能撞上设备忙(0x0B)/暂时断连，
     // 已有归类提示兜底（「当前设备繁忙…」/「设备未连接…」）。
     const scheduleFinalRefresh = () => {
+      // 每个出口都打日志（2026-08-20：真机排查时「发送那一刻」曾无任何输出，
+      // 旧的完成/失败日志要等墨水屏刷完 ~4s 的应答才打，提前退出页面就什么都看不到）。
       // 一张都没成功 → 设备上没有本批的图，不刷；已排过 → 不重复排（收尾路径只会走其一）。
-      if (firstSuccessfulIndex === null || lastRefreshPromise) {
+      if (firstSuccessfulIndex === null) {
+        console.log('[投屏] 收尾刷屏跳过：本单没有成功写入设备的图片，无可刷槽位')
+        return
+      }
+      if (lastRefreshPromise) {
+        console.log('[投屏] 收尾刷屏已在途，不重复发送')
         return
       }
       // 总开关关闭时（默认开启，排查时才关）：整条收尾刷屏空转，只留一条日志。
@@ -415,6 +422,10 @@ Page(fold.adapt({
         )
         return
       }
+      console.log(
+        `[投屏] 收尾刷屏(0x24)发送：deviceId=${deviceId} index=${firstSuccessfulIndex}` +
+          `（本批第一张成功写入的槽位；应答要等墨水屏物理刷完 ~4s 才回，完成/失败另有一条日志）`
+      )
       const refreshStartedAt = Date.now()
       lastRefreshPromise = deviceBle
         .refreshScreen(deviceId, firstSuccessfulIndex)

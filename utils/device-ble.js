@@ -1435,9 +1435,15 @@ async function deleteImage(deviceId, indexes, timeout) {
 // 切换/刷新当前显示（CMD=0x24）：指定要显示的图片索引；0xFF 表示保持不变。
 async function refreshScreen(deviceId, index) {
   const value = index === undefined || index === null ? 0xff : index & 0xff
-  // 打出 0x24 的真实 payload 字节（0xFF=保持不变）：与上面 0x20 帧头日志对照，
-  // 即可确认「写入槽位」与「刷新槽位」用的是同一个索引。
-  console.log(`[BLE] 0x24 刷新显示：index=${value === 0xff ? '0xFF(保持不变)' : value}`)
+  // 0x24 的参数**只有一个**：IMG_INDEX(1 字节) = 要显示的图片槽位；0xFF 表示保持当前显示不变。
+  // 整帧结构（v1.5 §6.7.10）：SOF(0xAA) + CMD(0x24) + LEN(2,小端)=0x0001 + IMG_INDEX(1) + CRC16-Modbus(2,小端)，共 7 字节。
+  // 发送前把参数与**发出去的完整帧字节**都打出来（与 request() 内部实际写入的帧完全一致），
+  // 和 0x20 帧头日志对照即可确认「写入槽位」与「刷新槽位」是同一个索引。
+  console.log(
+    `[BLE] 0x24 刷新显示 → deviceId=${deviceId} ` +
+      `IMG_INDEX=${value === 0xff ? '0xFF(保持不变)' : value} ` +
+      `整帧=[${protocol.bytesToHex(protocol.buildFrame(protocol.CMD.SET_CUR_IMG, [value]))}]`
+  )
   const ack = await request(deviceId, protocol.CMD.SET_CUR_IMG, [value])
   // 设备拒绝(result≠0)时抛设备结果码的协议含义，避免「切换/刷新没成功却显示成功」
   if (ack.result !== 0x00) {

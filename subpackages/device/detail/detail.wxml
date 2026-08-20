@@ -156,10 +156,12 @@
             <text>固件升级</text>
           </view>
           <view class="row-right">
-            <!-- 2026-08-12：右侧不再显示版本号，改为比对结论——设备当前固件版本(调试台 0x03 那个值)
-                 与详情接口 newVersionNo 不同、且 downloadPath 是有效 .bin 地址时提示「有版本可更新」，
-                 否则「已是最新版本」；未连接/读不到当前版本时按本页约定回落 '--' -->
-            <text>{{firmwareUpdateText}}</text>
+            <!-- 2026-08-20：右侧回到「只显示设备当前在跑的固件版本号」（调试台 0x03 那个值），
+                 未连接/读不到时按本页约定回落 '--'；有没有新版本不再用文案说，改成箭头旁的红点。
+                 红点与点击结论同源（detail.js hasFirmwareUpdate），不会出现「红点亮着、点进去弹已是最新」 -->
+            <text>{{firmwareVersionText}}</text>
+            <view wx:if="{{firmwareHasUpdate}}" class="firmware-dot">
+            </view>
             <view class="ui-chevron">
             </view>
           </view>
