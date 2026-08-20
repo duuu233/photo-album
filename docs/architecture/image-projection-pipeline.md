@@ -20,6 +20,7 @@
   → BLE 发送 0x20 → 0x21 / 0x23 → 0x22
   → 成功后 editUserProductImgRecord 写成功状态和 imgIndex
   → 整单收尾（传完 / 中途失败 / 中断）发一次 0x24，切到本批第一张成功写入的槽位
+     ⚠️ 2026-08-20 起被总开关 FINAL_REFRESH_ENABLED=false 临时屏蔽，当前实际不发
 ```
 
 ## 组件职责
@@ -61,6 +62,9 @@
 - frame 长度不等于 `width × height ÷ 2` 时禁止发送。
 - `imgIndex=0` 是合法槽位，任何判断都不能把 0 当成“无索引”。
 - 刷新屏幕（0x24）整单只发一次，且只在**整个投屏流程结束**时发（全部传完、中途某张失败、用户中断都算），索引取本批**第一张成功写入**的槽位；中途张一律不刷——部分固件收到 0x24 会断开蓝牙，会让后续图片传输全部失败。见 [2026-08-20 收尾刷屏改由流程结束触发](../changes/2026-08-20-批量投屏收尾刷屏改为流程结束触发.md)。
+- ⚠️ **收尾刷屏当前处于临时屏蔽态**（2026-08-20，供真机测试）：`result.js` 的 `FINAL_REFRESH_ENABLED = false`
+  → `scheduleFinalRefresh` 空转，只打一条日志；图片照常写进设备，其余流程一字不变。
+  存储键 `finalRefreshEnabled` 置 `true` 或把常量改回 `true` 即恢复。
 - 收尾刷屏的索引只来自**设备侧**：`0x01` 回的 `IMG_MASK` 现算出的 `firstFreeIndex`（真正写进相框的物理位置）。后端 `imgIndex` 是事后记的账（`editUserProductImgRecord` 允许失败、不回滚设备），**只往外写、不读回来刷屏**。
 - 设备图传成功但后端记账失败会造成设备与云端记录不一致，相关风险见 [imgIndex 决策](../decisions/image-slot-index.md)。
 

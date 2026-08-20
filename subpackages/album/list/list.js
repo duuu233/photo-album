@@ -7,6 +7,8 @@
 //   · 底部第一枚由原「刷新屏幕」改为投屏记录页的「再次投屏」：单选=再投这一张（可在预览页重新构图），
 //     多选/全选=按批量传输走同一条链路（一次最多 utils/upload-limit 张）；
 //   · 底部第二枚是删除：先删设备槽位(0x12)，再删来源投屏记录，删完不会「还在列表里」。
+//     两半**互不阻断**（2026-08-20）：设备指令失败照样删记录，记录接口失败也不回滚设备，
+//     最后把两边结果合并成一条提示。
 //
 // ⚠️ 本页**不再调用任何「我的图库」接口**（2026-08-17 清理）：数据来源只剩两个——
 //    设备列表 getDevices（铺设备下拉）与投屏成功记录 getProjectionRecords（铺网格）。
@@ -719,6 +721,15 @@ Page(fold.adapt({
     }
 
     // 4) 剩下的槽位交给 deviceBle.deleteImage，内部转成 12 字节 IMG_INDEX_MASK 后发送 0x12。
+    //
+    // ⚠️ 2026-08-20 口径变更：**设备侧与记录侧互不阻断**——先发设备删除指令(0x12)，无论它成功、
+    // 失败还是设备根本没应答，都继续往下调投屏记录删除接口；反过来记录接口失败也不回滚设备。
+    // 两半各自的结果最后合并成一条提示（见第 6 步），失败的那半让用户重试即可。
+    // 改前是「非良性结果码直接 return」：设备忙(0x0B)/Flash 写失败(0x04)/断连超时时整批中止，
+    // 记录一条都不删，用户回到相册看见照片还在、再点一次还是同样的报错。
+    // 代价（产品已确认接受）：设备真的没删掉时，记录先没了 → 相框上那张图成了「相册里看不到」的
+    // 幽灵图，端上不再有它的 imgIndex，只能靠「一键清空」清理。
+    let deviceError = ''
     if (slotsOnDevice.length) {
       try {
         console.log(
@@ -729,23 +740,23 @@ Page(fold.adapt({
         await deviceBle.deleteImage(device.deviceId, slotsOnDevice)
       } catch (error) {
         // 「图片不存在(0x05) / 掩码不一致(0x07)」：要删的图设备上本来就没有——上一步的掩码回读
-        // 与真正下发之间，另一端仍可能再删一张，所以这里还要兜一次。这类结果码按已删继续走记录删除。
-        // 设备忙(0x0B)、Flash 写入失败(0x04)、传输中断(0x09)、断连/应答超时仍如实中止：
-        // 那些是「可能真的没删掉」，放行会变成记录删了、图还挂在相框上。
-        if (!protocol.isSkippableDeleteError(error)) {
-          wx.hideLoading()
-          toast.warn({
-            title: activeDevice.friendlyConnectMessage(
-              (error && error.message) || '电子纸设备删除失败'
-            ),
-            icon: 'none'
-          })
-          return
+        // 与真正下发之间，另一端仍可能再删一张，所以这里还要兜一次。这类结果码本就算已删。
+        if (protocol.isSkippableDeleteError(error)) {
+          console.log(
+            '[相册删除] 0x12 回了「图片不存在/掩码不一致」，按设备侧已无此图继续删记录：',
+            (error && error.message) || error
+          )
+        } else {
+          // 设备忙(0x0B)、Flash 写入失败(0x04)、传输中断(0x09)、断连/应答超时：设备侧「可能真的
+          // 没删掉」。只记下来，不再中止——记录侧照删（见上方口径）。
+          deviceError = activeDevice.friendlyConnectMessage(
+            (error && error.message) || '电子纸设备删除失败'
+          )
+          console.warn(
+            '[相册删除] 设备删除(0x12)失败，不影响后续记录删除：',
+            (error && error.message) || error
+          )
         }
-        console.log(
-          '[相册删除] 0x12 回了「图片不存在/掩码不一致」，按设备侧已无此图继续删记录：',
-          (error && error.message) || error
-        )
       }
     } else {
       console.log('[相册删除] 选中照片在设备上都已不存在，跳过 0x12，直接删后端记录')
@@ -756,7 +767,8 @@ Page(fold.adapt({
     //    「我的相册」下次进来仍会把它列出来（列表就是按成功记录铺的）。
     //    这一步对「设备上已经没有的那几张」同样要执行：它们本就是另一端删过、只剩记录的幽灵条目，
     //    删掉记录正是用户点这个按钮想要的结果。
-    //    允许部分失败：设备上的图已经删掉，不能因为记录没删干净就整体报错回滚。
+    //    允许部分失败：设备侧结果与这一步互不影响，不能因为记录没删干净就回滚设备、
+    //    也不会因为设备没删掉就跳过这一步（2026-08-20 口径）。
     //    ⚠️ 端上到此为止，**不再调 delUserProductImg 删图库照片**（2026-08-10 屏蔽、2026-08-17 删除）：
     //       图库记录的清理归后端，端上删设备槽位 + 删投屏记录就是「从我的相册里消失」的完整定义。
     let recordResult = { total: ids.length, failed: 0 }
@@ -768,8 +780,14 @@ Page(fold.adapt({
     }
     wx.hideLoading()
 
-    // 提示只报「真实发生的失败」：接口/设备错误在上面各自 return 时已带原文报出。
-    if (recordResult.failed) {
+    // 6) 两半的结果合并成一条提示：谁失败就说谁，都失败就都说，都成功才是「已删除」。
+    //    （不再有「设备失败就整批中止」那条路径，所以这里必须把设备侧的失败也报出来，
+    //     否则用户只会看到「已删除」，而相框上那张图其实还在。）
+    if (deviceError && recordResult.failed) {
+      toast.warn({ title: `电子纸设备与投屏记录都未删除成功：${deviceError}`, icon: 'none' })
+    } else if (deviceError) {
+      toast.warn({ title: `投屏记录已删除，${deviceError}`, icon: 'none' })
+    } else if (recordResult.failed) {
       toast.warn({ title: '照片已删除，投屏记录未全部删除，请稍后重试', icon: 'none' })
     } else {
       toast.show({ title: '已删除', icon: 'none' })

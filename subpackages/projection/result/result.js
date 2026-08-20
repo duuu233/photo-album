@@ -31,6 +31,28 @@ const smoothProgress = require('../../../utils/smooth-progress')
 // ⚠️ 少了过采样余量，抖动(dither)细节可能略糙——先真机对比画质再决定是否保留。
 const UPLOAD_COMPRESS_QUALITY = 90
 
+// ⚠️ 投屏收尾刷屏(0x24)总开关（2026-08-20 **临时屏蔽**，供真机测试用）。
+// 关闭后 scheduleFinalRefresh 直接空转：整批图传完成后不再下发 0x24，设备当前显示保持不变
+//（图片照常写进设备槽位，投屏成功/失败判定、记账、进度、连接间隔回落一律不受影响）。
+// 只是屏蔽、不是删除：收尾函数与三处调用点原样保留，把这里改回 true 即完全恢复原逻辑。
+const FINAL_REFRESH_ENABLED = false
+// 存储覆盖键：调试时 wx.setStorageSync('finalRefreshEnabled', true) 即可临时打开，不必改代码重编译
+//（与 device-ble 的 idleConnIntervalEnabled 同一套「存储值优先于默认值」机制）。
+const FINAL_REFRESH_STORAGE_KEY = 'finalRefreshEnabled'
+
+// 收尾刷屏是否生效：存储里显式写过 true/false 就听它的，否则用上面的默认值。
+function isFinalRefreshEnabled() {
+  try {
+    const stored = wx.getStorageSync(FINAL_REFRESH_STORAGE_KEY)
+    if (stored === true || stored === false) {
+      return stored
+    }
+  } catch (error) {
+    // 读存储失败按默认值走，不影响投屏
+  }
+  return FINAL_REFRESH_ENABLED
+}
+
 const STATUS_TEXT = {
   progress: {
     title: '图片转码中',
@@ -380,6 +402,16 @@ Page(fold.adapt({
     const scheduleFinalRefresh = () => {
       // 一张都没成功 → 设备上没有本批的图，不刷；已排过 → 不重复排（收尾路径只会走其一）。
       if (firstSuccessfulIndex === null || lastRefreshPromise) {
+        return
+      }
+      // 总开关关闭（2026-08-20 临时屏蔽，测试用）：整条收尾刷屏空转，只留一条日志。
+      // lastRefreshPromise 保持 null → finally 里的连接间隔回落立即执行，不必等刷屏。
+      if (!isFinalRefreshEnabled()) {
+        performance.refreshScreenSkipped = true
+        console.warn(
+          `[投屏] 收尾刷屏(0x24)已屏蔽(FINAL_REFRESH_ENABLED=false)，设备当前显示保持不变；` +
+            `本应刷到的槽位=${firstSuccessfulIndex}`
+        )
         return
       }
       const refreshStartedAt = Date.now()

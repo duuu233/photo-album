@@ -7,6 +7,10 @@
 //   ⑤ 一张都没成功（设备上没有本批的图）才完全不刷；
 //   ⑥ 索引恒取**设备侧**槽位——由 0x01 读回的 IMG_MASK 现算的 firstFreeIndex，
 //      绝不用后端记录接口回的 imgIndex（后端那份是我们写上去的账，不是设备事实）。
+//
+// ⚠️ 2026-08-20 起收尾刷屏有总开关 FINAL_REFRESH_ENABLED，**当前默认关闭**（真机测试用，
+//    存储键 finalRefreshEnabled 可覆盖）。所以用例分两拨：前 5 组显式把开关打开，验上面那套
+//    刷屏口径；最后一组验关闭态——整批传完也一条 0x24 都不发。开关改回 true 时本文件无需改动。
 const assert = require('assert')
 const protocol = require('../utils/frame-protocol')
 
@@ -107,10 +111,12 @@ global.Page = options => {
 require('../subpackages/projection/result/result.js')
 
 // ── 驱动一次真实投屏主流程 ─────────────────────────────────
-const runProjection = async (imageCount, plan, usedSlots = []) => {
+const runProjection = async (imageCount, plan, usedSlots = [], refreshEnabled = true) => {
   trace = []
   uploadPlan = plan
   deviceMask = protocol.indexesToMask(usedSlots)
+  // 存储值优先于代码默认值：用例自己决定收尾刷屏开关的状态，不受默认值改动影响
+  storage.finalRefreshEnabled = refreshEnabled
   storage.pendingProjection = {
     device: { deviceId: 'BLE-1', id: 'D1', name: '相框', width: 4, height: 4 },
     images: Array.from({ length: imageCount }, (_, i) => ({
@@ -212,7 +218,15 @@ const unmute = () => {
   unmute()
   assert.deepStrictEqual(r.trace, ['upload:2', 'upload:3', 'refresh:2'])
 
-  console.log('projection-final-refresh: 5 组用例通过')
+  // ⑥ 开关关闭（2026-08-20 起的默认态）：三张全部传完也一条 0x24 都不发，设备显示保持不变；
+  //    图传/回滚/成功判定不受影响。
+  mute()
+  r = await runProjection(3, [true, true, true], [], false)
+  unmute()
+  assert.deepStrictEqual(r.trace, ['upload:0', 'upload:1', 'upload:2'])
+  assert.strictEqual(r.finished.uploaded, 3)
+
+  console.log('projection-final-refresh: 6 组用例通过')
 })().catch(error => {
   unmute()
   console.error(error)
