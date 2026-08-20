@@ -31,12 +31,13 @@ const smoothProgress = require('../../../utils/smooth-progress')
 // ⚠️ 少了过采样余量，抖动(dither)细节可能略糙——先真机对比画质再决定是否保留。
 const UPLOAD_COMPRESS_QUALITY = 90
 
-// ⚠️ 投屏收尾刷屏(0x24)总开关（2026-08-20 **临时屏蔽**，供真机测试用）。
-// 关闭后 scheduleFinalRefresh 直接空转：整批图传完成后不再下发 0x24，设备当前显示保持不变
+// 投屏收尾刷屏(0x24)总开关。2026-08-20 曾临时置 false 做真机对照（观察「不发 0x24 时设备显示什么」），
+// **当日测完即恢复为 true**，收尾刷屏按正常口径下发。
+// 置 false 时 scheduleFinalRefresh 直接空转：整批图传完成后不再下发 0x24，设备当前显示保持不变
 //（图片照常写进设备槽位，投屏成功/失败判定、记账、进度、连接间隔回落一律不受影响）。
-// 只是屏蔽、不是删除：收尾函数与三处调用点原样保留，把这里改回 true 即完全恢复原逻辑。
-const FINAL_REFRESH_ENABLED = false
-// 存储覆盖键：调试时 wx.setStorageSync('finalRefreshEnabled', true) 即可临时打开，不必改代码重编译
+// 开关保留下来做排查用：怀疑「刷屏把设备搞忙/搞断」时，关掉它就能把这一步从链路里摘出来对照。
+const FINAL_REFRESH_ENABLED = true
+// 存储覆盖键：调试时 wx.setStorageSync('finalRefreshEnabled', false) 即可临时关掉（true 打开），不必改代码重编译
 //（与 device-ble 的 idleConnIntervalEnabled 同一套「存储值优先于默认值」机制）。
 const FINAL_REFRESH_STORAGE_KEY = 'finalRefreshEnabled'
 
@@ -404,12 +405,12 @@ Page(fold.adapt({
       if (firstSuccessfulIndex === null || lastRefreshPromise) {
         return
       }
-      // 总开关关闭（2026-08-20 临时屏蔽，测试用）：整条收尾刷屏空转，只留一条日志。
+      // 总开关关闭时（默认开启，排查时才关）：整条收尾刷屏空转，只留一条日志。
       // lastRefreshPromise 保持 null → finally 里的连接间隔回落立即执行，不必等刷屏。
       if (!isFinalRefreshEnabled()) {
         performance.refreshScreenSkipped = true
         console.warn(
-          `[投屏] 收尾刷屏(0x24)已屏蔽(FINAL_REFRESH_ENABLED=false)，设备当前显示保持不变；` +
+          `[投屏] 收尾刷屏(0x24)已被开关关闭，设备当前显示保持不变；` +
             `本应刷到的槽位=${firstSuccessfulIndex}`
         )
         return
@@ -417,11 +418,21 @@ Page(fold.adapt({
       const refreshStartedAt = Date.now()
       lastRefreshPromise = deviceBle
         .refreshScreen(deviceId, firstSuccessfulIndex)
-        .then(() => {
+        .then(result => {
           performance.phases.refreshScreenMs = Date.now() - refreshStartedAt
+          // 0x24 应答带 CUR_IMG_INDEX：设备自己说它现在显示的是哪个槽位。
+          // 与请求值不一致就是固件没切过去（此时页面仍显示投屏成功，只有这条日志能看出来）。
+          const shown = result && result.curImgIndex
+          performance.refreshScreenShownIndex = shown
           console.log(
-            `[投屏性能] 刷屏完成(异步)：${performance.phases.refreshScreenMs}ms`
+            `[投屏性能] 刷屏完成(异步)：${performance.phases.refreshScreenMs}ms，` +
+              `请求槽位=${firstSuccessfulIndex}，设备回当前显示槽位=${shown}`
           )
+          if (shown !== undefined && shown !== firstSuccessfulIndex) {
+            console.warn(
+              `[投屏] ⚠️ 刷屏后设备显示的槽位(${shown})不是本批第一张的槽位(${firstSuccessfulIndex})`
+            )
+          }
         })
         .catch(error => {
           performance.phases.refreshScreenMs = Date.now() - refreshStartedAt
@@ -489,12 +500,18 @@ Page(fold.adapt({
         capacity: info.capacity,
         firmwareVersion: device.firmwareVersion || ''
       }
+      // curImgIndex/imgMask 都在 0x01 这一帧里，顺手打出来（不额外发指令）：
+      // 排查「投完屏设备显示的不是这张」时，这行就是上一次投屏收尾 0x24 到底有没有生效的证据——
+      // 本次开场读到的 curImgIndex 正是设备现在显示的槽位。
       console.log('[投屏] 设备信息：', {
         screenType: info.screenType,
         width: info.width,
         height: info.height,
         capacity: info.capacity,
-        imgCount: info.imgCount
+        imgCount: info.imgCount,
+        curImgIndex: info.curImgIndex,
+        imgMask: protocol.bytesToHex(info.imgMask),
+        已存槽位: protocol.maskToIndexes(info.imgMask)
       })
 
       if (info.screenType === 0x03) {
@@ -643,6 +660,18 @@ Page(fold.adapt({
           })
           imagePerformance.ble = summary.transferStats || {}
           console.log(`[投屏] 第 ${i + 1}/${total} 张 设备图传成功`, summary)
+          // 核对设备回的新 IMG_MASK：0x20 里我们指定了 IMG_INDEX=index，写完这一位就该是 1。
+          // 若没置上，说明**固件没把图存在我们指定的槽位**（或掩码陈旧、槽位被别的端占了），
+          // 那么收尾 0x24 指过去的就是别的图——「投屏成功但设备显示的不是这张」正是这么来的。
+          // 只告警不拦截：图已经写进设备，判失败/回滚只会更糟。
+          const storedIndexes = protocol.maskToIndexes(summary && summary.imgMask)
+          if (storedIndexes.indexOf(index) === -1) {
+            imagePerformance.slotMismatch = true
+            console.warn(
+              `[投屏] ⚠️ 第 ${i + 1}/${total} 张 写入槽位与设备掩码不符：请求 index=${index}，` +
+                `设备回的已存槽位=${JSON.stringify(storedIndexes)}（收尾刷屏会指向 ${index}，可能刷出别的图）`
+            )
+          }
         } catch (error) {
           imagePerformance.ble = (error && error.transferStats) || {}
           // 进度条就地冻结：失败时最后一段增量往往还没铺完，不冻结会在报错后继续往前爬，

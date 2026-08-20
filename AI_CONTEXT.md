@@ -338,7 +338,7 @@ App.onShow
   → 0x22 结束和设备校验
   → editUserProductImgRecord 写成功状态和 imgIndex
   → 整单收尾（传完/中途失败/中断）0x24 刷屏一次，切到本批第一张成功写入的槽位
-     ⚠️ 2026-08-20 起总开关 FINAL_REFRESH_ENABLED=false 临时屏蔽，当前实际不发 0x24
+    （总开关 FINAL_REFRESH_ENABLED 默认开启；排查时可经存储键 finalRefreshEnabled 关掉对照）
 ```
 
 多张投屏会让下一张网络出帧、CRC 和预组包与当前张 BLE 传输重叠。预取只用于性能优化，使用前仍要重新校验设备尺寸、帧长度和 chunk 参数。

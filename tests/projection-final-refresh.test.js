@@ -8,9 +8,9 @@
 //   ⑥ 索引恒取**设备侧**槽位——由 0x01 读回的 IMG_MASK 现算的 firstFreeIndex，
 //      绝不用后端记录接口回的 imgIndex（后端那份是我们写上去的账，不是设备事实）。
 //
-// ⚠️ 2026-08-20 起收尾刷屏有总开关 FINAL_REFRESH_ENABLED，**当前默认关闭**（真机测试用，
-//    存储键 finalRefreshEnabled 可覆盖）。所以用例分两拨：前 5 组显式把开关打开，验上面那套
-//    刷屏口径；最后一组验关闭态——整批传完也一条 0x24 都不发。开关改回 true 时本文件无需改动。
+// 收尾刷屏有总开关 FINAL_REFRESH_ENABLED（**默认开启**；2026-08-20 曾临时关闭做真机对照，
+//    当日已恢复。存储键 finalRefreshEnabled 可覆盖）。用例分两拨：前 5 组显式把开关打开验刷屏
+//    口径，最后一组显式关掉验屏蔽态——整批传完也一条 0x24 都不发。默认值改动不影响本文件。
 const assert = require('assert')
 const protocol = require('../utils/frame-protocol')
 
@@ -59,6 +59,7 @@ const stubModule = (request, exports) => {
 let trace = []
 let uploadPlan = [] // 每张的结果：true=图传成功，Error=图传失败
 let deviceMask = new Array(12).fill(0) // 设备 0x01 回的 IMG_MASK：槽位事实的唯一来源
+let storedSlots = [] // 设备上已存的槽位，随每张写入累加（喂 0x22 结束应答回的新掩码）
 const deviceBle = {
   isConnected: () => true,
   readTransferInfo: () =>
@@ -68,16 +69,24 @@ const deviceBle = {
       height: 4,
       capacity: 8,
       imgCount: 0,
-      imgMask: deviceMask // 设备为空时第一张落 0 号槽（0 是合法值）
+      imgMask: deviceMask, // 设备为空时第一张落 0 号槽（0 是合法值）
+      curImgIndex: 0xff
     }),
   optimizeConnectionIntervalForTransfer: () => Promise.resolve({}),
   prepareImageTransfer: () => Promise.resolve(null),
   uploadImage: (deviceId, options) => {
     trace.push(`upload:${options.index}`)
     const planned = uploadPlan[options.imageIndex]
-    return planned instanceof Error
-      ? Promise.reject(planned)
-      : Promise.resolve({ transferStats: {} })
+    if (planned instanceof Error) {
+      return Promise.reject(planned)
+    }
+    // 0x22 结束应答会回设备写完后的新 IMG_MASK：把本张的槽位置上，与真机同形态
+    //（result.js 会拿它核对「这张确实落在我们指定的槽位」）。
+    storedSlots = storedSlots.concat(options.index)
+    return Promise.resolve({
+      transferStats: {},
+      imgMask: protocol.indexesToMask(storedSlots)
+    })
   },
   deleteImage: (deviceId, indexes) => {
     trace.push(`rollback:${indexes.join(',')}`)
@@ -85,7 +94,8 @@ const deviceBle = {
   },
   refreshScreen: (deviceId, index) => {
     trace.push(`refresh:${index}`)
-    return Promise.resolve()
+    // 真机 0x24 应答带 CUR_IMG_INDEX（设备自己说现在显示哪个槽位）
+    return Promise.resolve({ result: 0, curImgIndex: index })
   },
   applyIdleConnectionInterval: () => Promise.resolve()
 }
@@ -115,6 +125,7 @@ const runProjection = async (imageCount, plan, usedSlots = [], refreshEnabled = 
   trace = []
   uploadPlan = plan
   deviceMask = protocol.indexesToMask(usedSlots)
+  storedSlots = usedSlots.slice()
   // 存储值优先于代码默认值：用例自己决定收尾刷屏开关的状态，不受默认值改动影响
   storage.finalRefreshEnabled = refreshEnabled
   storage.pendingProjection = {
@@ -218,7 +229,7 @@ const unmute = () => {
   unmute()
   assert.deepStrictEqual(r.trace, ['upload:2', 'upload:3', 'refresh:2'])
 
-  // ⑥ 开关关闭（2026-08-20 起的默认态）：三张全部传完也一条 0x24 都不发，设备显示保持不变；
+  // ⑥ 开关关闭（排查/对照时手动关）：三张全部传完也一条 0x24 都不发，设备显示保持不变；
   //    图传/回滚/成功判定不受影响。
   mute()
   r = await runProjection(3, [true, true, true], [], false)
