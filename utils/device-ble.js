@@ -1435,6 +1435,9 @@ async function deleteImage(deviceId, indexes, timeout) {
 // 切换/刷新当前显示（CMD=0x24）：指定要显示的图片索引；0xFF 表示保持不变。
 async function refreshScreen(deviceId, index) {
   const value = index === undefined || index === null ? 0xff : index & 0xff
+  // 打出 0x24 的真实 payload 字节（0xFF=保持不变）：与上面 0x20 帧头日志对照，
+  // 即可确认「写入槽位」与「刷新槽位」用的是同一个索引。
+  console.log(`[BLE] 0x24 刷新显示：index=${value === 0xff ? '0xFF(保持不变)' : value}`)
   const ack = await request(deviceId, protocol.CMD.SET_CUR_IMG, [value])
   // 设备拒绝(result≠0)时抛设备结果码的协议含义，避免「切换/刷新没成功却显示成功」
   if (ack.result !== 0x00) {
@@ -1534,6 +1537,14 @@ async function uploadImage(deviceId, options) {
         : imageCodec.crc32Mpeg2(data)
     stats.crcMs = Date.now() - crcStartedAt
     stats.crcPrecomputed = !!(prepared && Number.isFinite(prepared.crc32))
+    // 打出 0x20 帧头的**全部字段**（与 buildImgStartPayload 写进 BLE 帧的字节一一对应）：
+    // 排查「设备显示的不是这张」时，这行就是「我们到底让固件把图存进哪个槽位」的最终证据——
+    // 后面 0x24 刷的也是同一个 index，两行日志一对即可确认索引全程一致。
+    console.log(
+      `[BLE] 0x20 图传帧头：index=${options.index} screenType=${options.screenType} ` +
+        `${options.width}x${options.height} format=0x01 dataSize=${dataSize} ` +
+        `crc32=0x${(crc32 >>> 0).toString(16).padStart(8, '0').toUpperCase()}`
+    )
     const startAckStartedAt = Date.now()
     let startAck
     try {

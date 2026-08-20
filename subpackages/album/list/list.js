@@ -847,6 +847,10 @@ Page(fold.adapt({
         if (!record) {
           return null
         }
+        // 排查用：把选中的记录对象**整个**打出来（含它的 imgIndex——注意这是这条记录当年
+        // 写入设备的旧槽位，再次投屏会走完整链路选**新的**空闲槽位建**新**记录，旧值不参与本次投屏；
+        // 本次真正写入/刷新的槽位看结果页 `[BLE] 0x20 图传帧头` 与 `[BLE] 0x24 刷新显示` 两行）。
+        console.log('[相册再投] 选中记录 item=', JSON.stringify(record))
         const url = record.img || record.thumbUrl || record.url || ''
         return url ? { url } : null
       })
