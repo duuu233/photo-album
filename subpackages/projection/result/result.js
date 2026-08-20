@@ -6,7 +6,8 @@
 //     ② 投屏记录：原图（进预览页前未操作过的图，_origSrc）→ 同一套统一压缩 →
 //        setUserProductUpload 建记录拿 taskId/upirId（接口返回的 .bin url 不再下载使用）
 //   → ① 的帧图传到设备(0x20/0x21/0x22)
-//   → 设备成功才编辑投屏记录(editUserProductImgRecord 置 deviceUploadState=1，逻辑不变) → 刷新显示(0x24)。
+//   → 设备成功才编辑投屏记录(editUserProductImgRecord 置 deviceUploadState=1，逻辑不变)
+//   → 整单收尾（传完/中途失败/中断）刷新显示(0x24)一次，切到本批第一张成功写入的槽位。
 // 再次/重新投屏（投屏记录页进入）：2026-07-23 起与正常投屏完全同链路——记录页只把后端图片地址
 //     写进 pendingProjection（与首页手选图片同形态），出帧/图传/建记录/记账全走上面的正常链路。
 //     旧「imgBle(.bin) 直传 + addUserProductImgRecord 补记」机制已删除（后端不再生成 .bin）。
@@ -356,12 +357,48 @@ Page(fold.adapt({
     console.log(`[投屏] 开始：目标设备=${device.id || device.deviceNo || '--'}，待投 ${total} 张`)
 
     let uploaded = 0
-    // 多图全部写入后仍只刷新一次，但最终展示首张成功写入的照片。
+    // 本批第一张成功写入设备的真实槽位：整单收尾只刷一次屏，刷的就是它（最终展示首张）。
     // 用 null 作为未设置标记，避免合法槽位 0 被误判成空值。
     let firstSuccessfulIndex = null
-    // 最后一张的异步刷屏(0x24)Promise：收尾把连接间隔回落到空闲档(100ms)时要等它跑完再发——
-    // 刷屏期间设备对新指令回忙(0x0B)，两者挤在一起会让回落白白失败。失败/中断路径无刷屏则保持 null。
+    // 收尾那一次异步刷屏(0x24)的 Promise：把连接间隔回落到空闲档(100ms)时要等它跑完再发——
+    // 刷屏期间设备对新指令回忙(0x0B)，两者挤在一起会让回落白白失败。一张都没成功则保持 null。
     let lastRefreshPromise = null
+    // 整单只刷一次屏，刷的是本批**第一张**成功写入设备的槽位，触发点是「整个投屏流程结束」：
+    // 全部传完、中途某张失败、用户中断都算收尾，只要已经有图物理写进设备就补这一次 0x24。
+    // ⚠️ 2026-08-20 口径修正：此前只在「最后一张传完」那一格触发，选 5 张第 3 张失败时前 2 张
+    // 已经在设备里、屏上却还停在投屏前那张（页面还按部分成功进成功页），与产品口径不符。
+    // 中途张一律不刷：部分固件收到 0x24 会断蓝牙，批量传输中途刷屏会让后续图片传输失败。
+    // ⚠️ 索引来源只有一个：本张图传时由设备 0x01 回的 IMG_MASK 现算出的空闲槽位(firstFreeIndex)，
+    // 也就是真正写进相框的那个物理位置。**不要改成后端回的 imgIndex** —— 后端那份是我们
+    // 事后写上去的账(editUserProductImgRecord 是 fire-and-forget 的记账，还可能失败)，
+    // 拿账本去刷屏就等于用可能过期/写失败的值定位物理槽位，会刷出别的图。
+    // 感知优化(2026-07-10)：0x24 的应答要等墨水屏物理刷完才回（真机实测 ~4s），而刷屏结果本来
+    // 就不影响投屏成败（此前失败也被吞掉）。故不 await——图片已写入设备，立即进入收尾/成功页，
+    // 刷屏在后台继续；耗时/失败异步补记 trace 并单独打一条日志（整单汇总先打出，不含此项）。
+    // 代价：成功页出现时设备可能还在刷屏，立刻「继续投屏」可能撞上设备忙(0x0B)/暂时断连，
+    // 已有归类提示兜底（「当前设备繁忙…」/「设备未连接…」）。
+    const scheduleFinalRefresh = () => {
+      // 一张都没成功 → 设备上没有本批的图，不刷；已排过 → 不重复排（收尾路径只会走其一）。
+      if (firstSuccessfulIndex === null || lastRefreshPromise) {
+        return
+      }
+      const refreshStartedAt = Date.now()
+      lastRefreshPromise = deviceBle
+        .refreshScreen(deviceId, firstSuccessfulIndex)
+        .then(() => {
+          performance.phases.refreshScreenMs = Date.now() - refreshStartedAt
+          console.log(
+            `[投屏性能] 刷屏完成(异步)：${performance.phases.refreshScreenMs}ms`
+          )
+        })
+        .catch(error => {
+          performance.phases.refreshScreenMs = Date.now() - refreshStartedAt
+          performance.refreshScreenError = (error && error.message) || '刷新失败'
+          console.warn(
+            `[投屏性能] 刷屏失败(异步，不影响投屏结果)：${performance.refreshScreenError}`
+          )
+        })
+    }
     try {
       // A3 预取流水线：设备帧的「抖动接口出帧」与「记录上传」是纯网络，与「BLE 图传」互不占用资源。
       // 投第 i 张(走蓝牙)的同时提前并行拉取第 i+1 张的设备帧；只预取下一张(最多 1 张在后台)，中断时浪费最小。
@@ -609,10 +646,11 @@ Page(fold.adapt({
           imagePerformance
         )
 
-        // 该槽位记为已用，供下一张选空闲槽位
+        // 记下本批第一张成功写入的真实槽位（收尾那一次 0x24 用它），只记不刷。
         if (firstSuccessfulIndex === null) {
           firstSuccessfulIndex = index
         }
+        // 该槽位记为已用，供下一张选空闲槽位
         usedIndexes = usedIndexes.concat(index)
         uploaded++
         // 本张传输完成：进度条直接置 100%（不再走递进动画，收尾要干脆），张数 +1（下一张从 0 开始）
@@ -623,40 +661,22 @@ Page(fold.adapt({
         // 批量投屏峰值内存随张数线性涨。只清本张，第 i+1 张的在途预取不动。
         framePrefetch[i] = null
 
-        // 只有最后一张传完后才刷新屏幕(0x24)：部分固件收到 0x24 会断开蓝牙，
-        // 批量传输时中途刷屏会导致后续图片传输失败。故中间张一律不刷屏，
-        // 等全部传完后只执行一次 0x24，并切到首张成功写入的照片显示。
-        // 感知优化(2026-07-10)：0x24 的应答要等墨水屏物理刷完才回（真机实测 ~4s），而刷屏结果
-        // 本来就不影响投屏成败（此前失败也被吞掉）。改为不 await——图片已全部写入设备，
-        // 立即进入收尾/成功页，刷屏在后台继续；耗时/失败异步补记 trace 并单独打一条日志
-        //（整单汇总先打出，不含此项）。代价：成功页出现时设备可能还在刷屏，立刻「继续投屏」
-        // 可能撞上设备忙(0x0B)/暂时断连，已有归类提示兜底（「当前设备繁忙…」/「设备未连接…」）。
-        if (i === total - 1) {
-          const refreshStartedAt = Date.now()
-          lastRefreshPromise = deviceBle
-            .refreshScreen(deviceId, firstSuccessfulIndex)
-            .then(() => {
-              performance.phases.refreshScreenMs = Date.now() - refreshStartedAt
-              console.log(
-                `[投屏性能] 刷屏完成(异步)：${performance.phases.refreshScreenMs}ms`
-              )
-            })
-            .catch(error => {
-              performance.phases.refreshScreenMs = Date.now() - refreshStartedAt
-              performance.refreshScreenError =
-                (error && error.message) || '刷新失败'
-              console.warn(
-                `[投屏性能] 刷屏失败(异步，不影响投屏结果)：${performance.refreshScreenError}`
-              )
-            })
-        }
+        // 刷屏(0x24)不在循环里发：中途刷屏会让部分固件断蓝牙、拖垮后续图片传输。
+        // 统一由收尾的 scheduleFinalRefresh() 只发一次（见上方声明处的口径注释）。
       }
 
+      // 整批传完 → 流程结束，按本批第一张成功的槽位刷一次屏。放在记账收敛(drain)之前排，
+      // 免得设备刷屏白等一轮纯后端的网络请求。
+      scheduleFinalRefresh()
       performance.phases.recordDrainMs = await this.drainRecordTasks()
       console.log(`[投屏] 全部完成：成功 ${uploaded}/${total} 张`)
       performance.outcome = 'success'
       this.finishProjection(device, { uploaded, failCount: 0, total, message: '' })
     } catch (error) {
+      // 中途失败/中断同样是「投屏流程结束」：失败的那张已在上面回滚(0x12)，之前成功的几张仍
+      // 物理留在设备上，照口径按第一张成功的槽位补这一次 0x24（一张都没成功则内部直接跳过）。
+      // 链路已断/设备忙时这次刷屏会失败，失败被吞掉，不影响本单的成功/失败判定。
+      scheduleFinalRefresh()
       performance.phases.recordDrainMs = await this.drainRecordTasks()
       const aborted =
         this._aborted || (error && error.message === 'UPLOAD_ABORTED')
@@ -688,8 +708,8 @@ Page(fold.adapt({
       // 仅在物理断开(onBLEConnectionStateChange 清理)或用户手动断开时才真正断开。
       this._activeDeviceId = ''
       // 图传结束：把连接间隔从图传极速档(7.5/15ms)回落到省电的空闲档(100ms)。best-effort、不 await 收尾。
-      // 若最后一张刚触发了异步刷屏(0x24)，等它跑完再回落——刷屏期间设备对新指令回忙(0x0B)，挤在一起会白白失败；
-      // 没有在途刷屏(失败/中断路径)则立即回落。applyIdleConnectionInterval 内部已吞错、未连接会自行跳过。
+      // 若收尾刚触发了异步刷屏(0x24)，等它跑完再回落——刷屏期间设备对新指令回忙(0x0B)，挤在一起会白白失败；
+      // 没有在途刷屏(一张都没成功)则立即回落。applyIdleConnectionInterval 内部已吞错、未连接会自行跳过。
       // ⚠️ 空闲省电档总开关(device-ble.IDLE_CONN_INTERVAL_ENABLED)当前为 false → 这里实际空转，
       // 传完后链路会一直停在图传极速档上。等刷屏的时序保留着，开关打开即恢复原行为。
       const resetIdleInterval = () =>
