@@ -2,6 +2,7 @@ const api = require('../../../utils/api')
 const toast = require('../../../utils/toast')
 const system = require('../../../utils/system')
 const batteryUtil = require('../../../utils/battery')
+const lowBattery = require('../../../utils/low-battery')
 const deviceBle = require('../../../utils/device-ble')
 const media = require('../../../utils/media')
 const activeDevice = require('../../../utils/active-device')
@@ -302,6 +303,8 @@ Page(fold.adapt({
         bleDeviceId: liveId,
         connected: true
       })
+      // 已连接这一支没走 connectDevice，低电量提醒在这里补（2026-08-21：主动点投屏就要提示）
+      await lowBattery.warnIfLow(liveId, { device })
     }
 
     // 设为当前选中设备，预览/结果页据此连接并图传；记住本次投屏的设备供选图后使用
@@ -395,6 +398,11 @@ Page(fold.adapt({
       })
       const updated = this.applyConnectedDevice(device, res.deviceId, res.info)
       // 连接成功不再弹提示（卡片切「已连接」态即为反馈，投屏流程也直接继续）；仅连接失败时提示。
+      // 例外是低电量：主动点「连接」/「投屏」时电量 ≤10% 要提醒一次（电量用本次连接读到的值，不多发 0x04）。
+      await lowBattery.warnIfLow(res.deviceId, {
+        device: updated,
+        battery: res.info && res.info.battery
+      })
       return updated
     } catch (error) {
       // 系统级「附近设备」权限被拒：弹引导去系统设置，而非笼统的「连接失败」

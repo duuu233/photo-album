@@ -33,7 +33,8 @@
           bindtap="onSelectChannel"
         >
           <image class="pay-icon" src="/assets/images/pay-wechat.png" mode="aspectFit"></image>
-          <text class="pay-name">微信虚拟支付</text>
+          <!-- 2026-08-21 产品口径：这一行只对用户说「微信支付」；底层走的仍是小程序虚拟支付（见 utils/wx-virtual-pay.js）。 -->
+          <text class="pay-name">微信支付</text>
           <image class="pay-chevron" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
         </view>
         <!-- PayPal 支付选项按产品要求隐藏：小程序内无原生 SDK，通道尚未接入

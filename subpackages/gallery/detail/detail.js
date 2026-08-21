@@ -13,6 +13,7 @@
 const fold = require('../../../utils/fold-adapt')
 const galleryApi = require('../../../utils/gallery-api')
 const activeDevice = require('../../../utils/active-device')
+const lowBattery = require('../../../utils/low-battery')
 const api = require('../../../utils/api')
 const toast = require('../../../utils/toast')
 
@@ -174,8 +175,12 @@ Page(fold.adapt({
   },
 
   async startProjection(device) {
+    // 先占住重入闸再弹提醒：低电量弹窗期间这一按钮保持「投屏中」态，点不出第二次投屏。
     this._projecting = true
     this.setData({ projecting: true })
+    // 主动点「投屏 / 连接并投屏」：这台设备此刻已连接（电量读得到）且 ≤10% 就先提醒一次（2026-08-21）。
+    // 口径同 AI 对话页——未连接那一支的连接发生在预览/结果页，属自动连接，不弹。
+    await lowBattery.warnIfLow(activeDevice.findConnectedDeviceId(device), { device })
     wx.showLoading({ title: '准备投屏', mask: true })
 
     let tempFilePath

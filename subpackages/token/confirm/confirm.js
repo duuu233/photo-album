@@ -8,7 +8,8 @@
 //    （微信异常退出就可能丢），绝不能拿它直接给用户加余额。
 //
 // 需求文档口径：小程序/Android 选「微信支付 / PayPal」，iOS 直接走 Apple IAP。
-// 本页是小程序端：PayPal 通道未接入，按产品要求**已在 wxml 里隐藏**，当前只呈现「微信虚拟支付」一项；
+// 本页是小程序端：PayPal 通道未接入，按产品要求**已在 wxml 里隐藏**，当前只呈现微信这一项；
+// ⚠️ 面向用户的文案 2026-08-21 起是「微信支付」（底层通道没变，仍是小程序虚拟支付）；
 // iOS IAP 属 APP 端，等 Flutter 侧补齐。channel 仍保留 'paypal' 分支，恢复选项时端上无需改动。
 const fold = require('../../../utils/fold-adapt')
 const tokenApi = require('../../../utils/token-api')

@@ -2,6 +2,7 @@ const api = require('../../../utils/api')
 const toast = require('../../../utils/toast')
 const system = require('../../../utils/system')
 const batteryUtil = require('../../../utils/battery')
+const lowBattery = require('../../../utils/low-battery')
 const deviceBle = require('../../../utils/device-ble')
 const deviceInfo = require('../../../utils/device-info')
 const protocol = require('../../../utils/frame-protocol')
@@ -56,6 +57,9 @@ function memoryPercent(device) {
   )
 }
 
+// 「轮播设置」右侧值：开着就是「已开启」，关着维持原来的「未启用」。
+// 2026-08-21 产品口径：这一行只回答「开没开」，具体是顺序还是随机进设置页看（原来右侧显示
+// 「顺序轮播/随机轮播」，把一个二选一的细节摆在概览行上，反而看不出开关状态）。
 function getPlaybackLabel(device) {
   if (
     !device ||
@@ -64,7 +68,7 @@ function getPlaybackLabel(device) {
   ) {
     return '未启用'
   }
-  return device.playbackMode === 'random' ? '随机轮播' : '顺序轮播'
+  return '已开启'
 }
 
 function hexStringToBytes(hex) {
@@ -666,6 +670,9 @@ Page(fold.adapt({
       if (!device) {
         return // 连接失败，提示已由 connectDevice 弹出
       }
+    } else {
+      // 已连接这一支没走 connectDevice，低电量提醒在这里补（2026-08-21：主动点投屏就要提示）
+      await lowBattery.warnIfLow(activeDevice.findConnectedDeviceId(device), { device })
     }
 
     // 设为当前选中设备，预览/结果页据此连接并图传
@@ -801,6 +808,11 @@ Page(fold.adapt({
       })
       const updated = this.applyConnectedDevice(device, res.deviceId, res.info)
       // 连接成功不再弹提示（顶部切「已连接」态即为反馈，投屏流程也直接继续）；仅连接失败时提示。
+      // 例外是低电量：主动点「连接」/「投屏」时电量 ≤10% 要提醒一次（电量用本次连接读到的值，不多发 0x04）。
+      await lowBattery.warnIfLow(res.deviceId, {
+        device: updated,
+        battery: res.info && res.info.battery
+      })
       return updated
     } catch (error) {
       // 系统级「附近设备」权限被拒：弹引导去系统设置，而非笼统的「连接失败」
@@ -1044,12 +1056,18 @@ Page(fold.adapt({
     }, 220)
   },
 
-  clearCopies() {
+  async clearCopies() {
     // 一键清空需与固件交互：未连接不自动重连，直接提示「请先连接设备」
     if (!activeDevice.isDeviceConnected(this.data.device)) {
       toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
       return
     }
+    // 一键清空不走 ensureConnectedForAction（未连接不自动重连），低电量提醒得自己弹一次，
+    // 放在二次确认框之前：先告知电量状况，再让用户决定要不要清空。
+    await lowBattery.warnIfLow(
+      activeDevice.findConnectedDeviceId(this.data.device),
+      { device: this.data.device }
+    )
     this.showClearConfirm()
   },
 

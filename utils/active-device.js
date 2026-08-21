@@ -12,6 +12,7 @@ const toast = require('./toast')
 const protocol = require('./frame-protocol')
 const connCache = require('./device-conn-cache')
 const batteryUtil = require('./battery')
+const lowBattery = require('./low-battery')
 const deviceIdUtil = require('./device-id')
 const identityStore = require('./device-identity')
 
@@ -994,13 +995,19 @@ function isConnectTimeoutMessage(message) {
 
 // 操作前确保已连接（未连接自动重连）。成功返回有效 deviceId；失败按标准 UI 提示并返回 ''（调用方据此 return）。
 // 提示规则：与三处「连接蓝牙」按钮共用 showConnectError——权限被拒弹系统设置引导，其余如实展示原因。
+//
+// 本函数是「主动点功能按钮」的统一入口（相册再投/删除、记录再投、轮播设置、一键清空、固件升级、
+// 结果页再选图…调用方清一色是点击处理函数），所以低电量提醒挂在这里；底层 ensureDeviceConnected
+// 不挂，投屏预览预热、结果页图传续连这些**自动连接**因此天然不弹（2026-08-21 产品口径）。
 async function ensureConnectedForAction(device) {
   if (!device || !(device.deviceId || device.bleDeviceId || device.deviceNo || device.name)) {
     toast.warn({ title: '请先连接电子纸设备', icon: 'none' })
     return ''
   }
   try {
-    return await ensureDeviceConnected(device)
+    const deviceId = await ensureDeviceConnected(device)
+    await lowBattery.warnIfLow(deviceId, { device })
+    return deviceId
   } catch (error) {
     // 如实展示失败原因（未搜到/超时/权限…）：用户此刻正是在等自动连接，笼统的「请先连接设备」
     // 与其行为矛盾且不可操作；scanMatchConnect 生成的具体原因不该被吞掉。

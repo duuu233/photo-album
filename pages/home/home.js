@@ -2,6 +2,7 @@ const api = require('../../utils/api')
 const toast = require('../../utils/toast')
 const media = require('../../utils/media')
 const batteryUtil = require('../../utils/battery')
+const lowBattery = require('../../utils/low-battery')
 const deviceBle = require('../../utils/device-ble')
 const activeDevice = require('../../utils/active-device')
 const deviceIdentity = require('../../utils/device-identity')
@@ -830,8 +831,13 @@ Page({
       return false
     }
     if (!this.isCurrentDeviceConnected()) {
-      return this.connectCurrentDevice()
+      return this.connectCurrentDevice() // 连上后由它弹低电量提醒，这里不再弹第二次
     }
+    // 已连接：这一次没走连接流程，低电量提醒得在这里补（2026-08-21：主动点投屏入口就要提示）
+    const selected = app.globalData.selectedDevice || this.data.currentDevice
+    await lowBattery.warnIfLow(activeDevice.findConnectedDeviceId(selected), {
+      device: selected
+    })
     return true
   },
 
@@ -856,6 +862,12 @@ Page({
       const res = await activeDevice.connectBoundDevice(selected)
       this.markCurrentDeviceConnected(res.deviceId, res.info)
       // 连接成功不再弹提示（卡片已切「已连接」态即为反馈）；仅连接失败时提示。
+      // 例外是低电量：主动点「连接蓝牙」/投屏入口时电量 ≤10% 要提醒一次（电量取本次连接读到的值，
+      // 不再多发一条 0x04）。
+      await lowBattery.warnIfLow(res.deviceId, {
+        device: selected,
+        battery: res.info && res.info.battery
+      })
       return true
     } catch (error) {
       // 系统级「附近设备」权限被拒：引导去系统设置；其余原因 toast 提示，停留在已绑定首页

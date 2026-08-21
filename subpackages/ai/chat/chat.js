@@ -28,6 +28,7 @@ const media = require('../../../utils/media')
 const system = require('../../../utils/system')
 const toast = require('../../../utils/toast')
 const activeDevice = require('../../../utils/active-device')
+const lowBattery = require('../../../utils/low-battery')
 const language = require('../../../utils/language')
 const aiServiceConsent = require('../../../utils/ai-service-consent')
 const aiLastSession = require('../../../utils/ai-last-session')
@@ -2549,6 +2550,9 @@ Page(fold.adapt({
   },
 
   async startProjection(device, url) {
+    // 主动点「投屏 / 连接并投屏」：这台设备此刻已连接（电量读得到）且 ≤10% 就先提醒一次（2026-08-21）。
+    // 未连接那一支读不到电量、真正的连接又发生在预览/结果页（自动连接不弹），所以这里天然只对已连接的情形生效。
+    await lowBattery.warnIfLow(activeDevice.findConnectedDeviceId(device), { device })
     wx.showLoading({ title: '准备投屏', mask: true })
     let tempFilePath
     try {
