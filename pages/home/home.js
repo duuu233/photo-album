@@ -5,6 +5,7 @@ const batteryUtil = require('../../utils/battery')
 const lowBattery = require('../../utils/low-battery')
 const deviceBle = require('../../utils/device-ble')
 const activeDevice = require('../../utils/active-device')
+const aiLastSession = require('../../utils/ai-last-session')
 const deviceIdentity = require('../../utils/device-identity')
 
 const app = getApp()
@@ -86,6 +87,65 @@ const NEARBY_DEVICES = [
   }
 ]
 
+// 首页六大入口（2026-08-21 改版，设计稿 assets/首页调整/首页-内容调整UI.jpg）。
+// 原来这里只有「拍照 / 相册」两张卡，底部 tabBar 的「AI助手」「官方图库」两格取消后，
+// 连同「我的上传」「我的设备」一起收进这张 3×2 宫格，tabBar 只剩「首页 / 我的」。
+//
+// 素材命名规律来自设计：home-icon0N 是第 N 项的线稿图标，home-icon1N 是同一项的箭头徽标
+//（颜色成对，1↔11、2↔12…6↔16）。color 取徽标箭头色，用作标题文字色。
+// ⚠️ home-icon04（AI创作）第一版设计给错了图（与 05 官方图库是同一张），当天产品已换成正确的魔法棒，
+//    这里用的就是换过之后那张。以后再要换图，覆盖 assets/images/home-icon04.png（PNG、透明底）即可，代码不用动。
+const HOME_ENTRIES = [
+  {
+    key: 'camera',
+    name: '拍照投屏',
+    desc: '拍摄照片并投屏',
+    color: '#EE6242',
+    icon: '/assets/images/home-icon01.png',
+    arrow: '/assets/images/home-icon11.png'
+  },
+  {
+    key: 'album',
+    name: '相册投屏',
+    desc: '选择照片并投屏',
+    color: '#3E92E8',
+    icon: '/assets/images/home-icon02.png',
+    arrow: '/assets/images/home-icon12.png'
+  },
+  {
+    key: 'uploads',
+    name: '我的上传',
+    desc: '管理我的照片',
+    color: '#7B5FE8',
+    icon: '/assets/images/home-icon03.png',
+    arrow: '/assets/images/home-icon13.png'
+  },
+  {
+    key: 'ai',
+    name: 'AI创作',
+    desc: 'AI生成精美图片',
+    color: '#11AE7B',
+    icon: '/assets/images/home-icon04.png',
+    arrow: '/assets/images/home-icon14.png'
+  },
+  {
+    key: 'gallery',
+    name: '官方图库',
+    desc: '海量精选美图',
+    color: '#F0982B',
+    icon: '/assets/images/home-icon05.png',
+    arrow: '/assets/images/home-icon15.png'
+  },
+  {
+    key: 'devices',
+    name: '我的设备',
+    desc: '管理我的设备',
+    color: '#05A6B1',
+    icon: '/assets/images/home-icon06.png',
+    arrow: '/assets/images/home-icon16.png'
+  }
+]
+
 // 电量的归一化/新鲜度/文案统一由 utils/battery.js 承担，本页不再自备兜底逻辑
 // （原本这里有个「非法值兜底 30」的 clampBattery，是首页显示假电量的源头）。
 
@@ -94,9 +154,11 @@ function normalizeScene(scene) {
   return SCENE_ALIASES[scene] || SCENES.UNBOUND
 }
 
-// 首页大背景图统一用 OSS 线上图，不再按场景区分本地 bg01/bg02
+// 首页大背景图统一用 OSS 线上图，不再按场景区分本地 bg01/bg02。
+// 2026-08-21 换成新版浅蓝墙面背景；assets/images/home-bg-placeholder.jpg 是它的强压缩本地版，
+// 两者必须同源——占位图先铺、OSS 大图到位再淡入，不同源就会看见一次「换底色」。
 function getHomeBgImage() {
-  return 'https://oss.boltfox.cn/prodFile/202607310920402821453.png'
+  return 'https://oss.boltfox.cn/prodFile/202608211340094498724.jpg'
 }
 
 // 首页前景图：与大背景图一起做「加载完成再展示首页」的门控，未加载完先展示 loading
@@ -205,6 +267,7 @@ function sceneState(scene) {
     isBindingFound,
     isScanHelp,
     showNavBack,
+    homeEntries: HOME_ENTRIES,
     homeBgImage: getHomeBgImage(),
     homeFgImage: getHomeFgImage(),
     promptTitle:
@@ -800,6 +863,60 @@ Page({
       complete: () => {
         this.navigatingDeviceList = false
       }
+    })
+  },
+
+  // 六大入口的统一点击分发（2026-08-21）：六张卡共用一个处理函数，靠 data-key 分流。
+  // 前两项要过「登录 → 已绑定 → 已连接」三道闸（见 ensureCanProject）；后四项与设备无关，
+  // 各自按原入口的规矩走——「我的上传/我的设备」要登录（口径同「我的」页），
+  // 「AI创作/官方图库」不额外拦（与原底部 tabBar 两格的行为保持一致，不借改版顺手加闸）。
+  tapHomeEntry(event) {
+    const key = event.currentTarget.dataset.key
+    switch (key) {
+      case 'camera':
+        return this.tapCameraEntry()
+      case 'album':
+        return this.tapAlbumEntry()
+      case 'uploads':
+        return this.goMyUploads()
+      case 'ai':
+        return this.goAi()
+      case 'gallery':
+        return this.goGallery()
+      case 'devices':
+        return this.goDeviceList()
+      default:
+        return undefined
+    }
+  },
+
+  // 「我的上传」：即「我的相册」页（投屏成功记录），与「我的」页同一个入口地址与登录口径
+  goMyUploads() {
+    if (!app.requireLogin()) {
+      return
+    }
+    wx.navigateTo({
+      url: '/subpackages/album/list/list'
+    })
+  },
+
+  // 「AI创作」：原底部 tabBar「AI助手」那一格搬过来，连同它的「接着上次那一页」规则
+  //（2026-08-13 需求 5）——上次在某条会话里返回的就回那条会话，否则进 AI 默认页。
+  // 记录由聊天页自己写、只活在本次运行里（为什么不落 storage 见 utils/ai-last-session.js）。
+  goAi() {
+    const last = aiLastSession.get()
+    const query = last.sessionId
+      ? `?sessionId=${last.sessionId}&title=${encodeURIComponent(last.title || '')}`
+      : ''
+    wx.navigateTo({
+      url: `/subpackages/ai/chat/chat${query}`
+    })
+  },
+
+  // 「官方图库」：原底部 tabBar 第三格搬过来，仍是分包页面，navigateTo 进入
+  goGallery() {
+    wx.navigateTo({
+      url: '/subpackages/gallery/list/list'
     })
   },
 

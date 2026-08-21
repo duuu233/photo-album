@@ -5,9 +5,9 @@
   bottom: calc(26rpx + var(--safe-bottom));
   z-index: 5;
   display: grid;
-  /* 2026-08-06 由三格扩到四格（首页 / AI助手 / 官方图库 / 我的）。胶囊本身宽高没变，
-     只是每格从 218rpx 收到 163rpx——「官方图库」四个字按 24rpx 排下来约 96rpx，仍有富余。 */
-  grid-template-columns: repeat(4, 1fr);
+  /* 2026-08-21 由四格收回两格（首页 / 我的）：中间的「AI助手」「官方图库」入口已搬到首页六宫格。
+     胶囊本身宽高没变，只是每格从 163rpx 回到 327rpx，两个 tab 各占半边、图标文字自然居中。 */
+  grid-template-columns: repeat(2, 1fr);
   height: 112rpx;
   border-radius: 999rpx;
 }
@@ -59,16 +59,4 @@ button {
 .tab-icon {
   width: 48rpx;
   height: 48rpx;
-}
-
-.tab-item--ai {
-  gap: 4rpx;
-}
-
-.tab-icon--ai {
-  opacity: 1;
-}
-
-.tab-item--ai.active .tab-icon--ai {
-  opacity: 1;
 }

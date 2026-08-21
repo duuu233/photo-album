@@ -10,6 +10,10 @@
       {
         "value": "assets/ai/图标",
         "type": "folder"
+      },
+      {
+        "value": "assets/首页调整",
+        "type": "folder"
       }
     ],
     "include": [

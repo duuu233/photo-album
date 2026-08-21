@@ -1,4 +1,7 @@
-// 底栏 AI 图标「接着上次那一页」的路由记忆（2026-08-13 需求 5）。
+// AI 入口「接着上次那一页」的路由记忆（2026-08-13 需求 5）。
+//
+// ⚠️ 2026-08-21 入口搬家：底栏四格收回两格（首页 / 我的），AI 由首页六宫格进入，
+//    这条规则跟着搬到 pages/home/home.js 的 goAi —— 规则本身一字未改，只是换了触发的按钮。
 //
 // 需求原文两条：
 //   1) 在某条会话里点左上返回退回首页/我的之后，再点 AI 图标应当回到**那条会话**，不是默认页；
@@ -7,10 +10,10 @@
 //
 // 这里锁四件事：
 //   ① 记忆本身的语义：记会话 / 记空态 / 删别人不受影响 / 删自己就清空；
-//   ② 底栏按记忆拼 URL：有会话带 sessionId+title 进去（与会话列表点进去同一条路），没有就是干净的默认页；
+//   ② 首页 AI 入口按记忆拼 URL：有会话带 sessionId+title 进去（与会话列表点进去同一条路），没有就是干净的默认页；
 //   ③ 聊天页在 onShow / onUnload 两个时刻把自己记下来 —— 且**栈里还有别的聊天页时 onUnload 不许记**
 //      （那种情况用户看的是下层那页，该由它的 onShow 记自己；两者触发顺序在各基础库上并不一致）；
-//   ④ 会话被删时记忆要一并清掉，否则下次点 AI 会打开一条已删会话，只能拿到报错的空聊天页。
+//   ④ 会话被删时记忆要一并清掉，否则下次点「AI创作」会打开一条已删会话，只能拿到报错的空聊天页。
 const assert = require('node:assert/strict')
 const fs = require('fs')
 const path = require('path')
@@ -46,23 +49,40 @@ function freshRequire(modulePath) {
   )
 }
 
-// ── ② 底栏 AI 图标按记忆拼 URL ──────────────────────────────────
+// ── ② 首页「AI创作」入口按记忆拼 URL ──────────────────────────────
 {
   const memo = freshRequire('../utils/ai-last-session')
   const navigations = []
-  global.wx = {
-    navigateTo: options => navigations.push(options.url),
-    switchTab: () => {}
+  global.wx = new Proxy(
+    {
+      navigateTo: options => navigations.push(options.url),
+      switchTab: () => {},
+      getStorageSync: () => '',
+      setStorageSync: () => {},
+      removeStorageSync: () => {}
+    },
+    {
+      get(target, prop) {
+        return prop in target ? target[prop] : () => {}
+      }
+    }
+  )
+  global.getApp = () => ({
+    globalData: { selectedDevice: null },
+    requireLogin: () => true,
+    setSelectedDevice: () => {}
+  })
+  let homePage = null
+  global.Page = config => {
+    homePage = config
   }
-  let tabbar = null
-  global.Component = config => {
-    tabbar = config
-  }
-  delete require.cache[require.resolve('../components/custom-tabbar/custom-tabbar.js')]
-  require('../components/custom-tabbar/custom-tabbar.js')
-  assert.ok(tabbar && tabbar.methods && tabbar.methods.goAi, 'custom-tabbar 没有注册 goAi')
+  delete require.cache[require.resolve('../pages/home/home.js')]
+  require('../pages/home/home.js')
+  assert.ok(homePage && homePage.goAi, '首页没有注册 goAi（AI 入口 2026-08-21 由底栏搬到首页六宫格）')
 
-  const tapAi = () => tabbar.methods.goAi.call({ data: { active: 'home' } })
+  // 六宫格共用一个 tapHomeEntry 分发，这里连分发一起验：点的是 key='ai' 那张卡
+  const tapAi = () =>
+    homePage.tapHomeEntry.call(homePage, { currentTarget: { dataset: { key: 'ai' } } })
 
   // 没有记录（本次运行还没进过 AI）→ 干净的默认页
   memo.forget()
@@ -75,7 +95,7 @@ function freshRequire(modulePath) {
   assert.equal(
     navigations.pop(),
     `/subpackages/ai/chat/chat?sessionId=sess-9&title=${encodeURIComponent('我的 猫')}`,
-    '上次停在会话里，再点 AI 图标要回到那条会话（标题必须 encode，空格/&/% 都会毁掉 query）'
+    '上次停在会话里，再点「AI创作」要回到那条会话（标题必须 encode，空格/&/% 都会毁掉 query）'
   )
 
   // 上次停在 AI 默认页 → 还是默认页（需求第 2 条）
@@ -142,7 +162,7 @@ function freshRequire(modulePath) {
   )
   assert.ok(
     /aiLastSession\.forget\(session\.sessionId\)/.test(sessionsSource),
-    '删会话时必须清掉指向它的路由记忆，否则下次点 AI 图标会打开一条已删会话'
+    '删会话时必须清掉指向它的路由记忆，否则下次点「AI创作」会打开一条已删会话'
   )
 }
 

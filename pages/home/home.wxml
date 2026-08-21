@@ -104,7 +104,7 @@
                 mode="aspectFill" />
               <image
                 class="device-orbit"
-                src="/assets/images/home-icon02.png"
+                src="/assets/images/home-device-thumb.png"
                 mode="aspectFill" />
               <view class="device-info">
                 <view class="device-title">{{item.name}}</view>
@@ -171,57 +171,28 @@
           <view class="bind-pill-text">绑定设备</view>
         </view>
       </block>
-      <!-- 投屏方式入口（拍照 / 相册），两种场景共用；未绑定时点击会先引导绑定 -->
-      <view class="projection-title">选择投屏方式</view>
-      <view class="projection-grid">
+      <!-- 首页六大入口（2026-08-21 改版）：原来只有「拍照 / 相册」两张卡，底部 tabBar 的
+           「AI助手」「官方图库」两格连同「我的上传」「我的设备」一并收到这里，按设计稿排成 3×2。
+           两种场景共用；未绑定时点「拍照/相册」会先引导绑定（其余四项与设备无关，直接进）。
+           六项的图标/文案/主色都在 home.js 的 HOME_ENTRIES 里，改一处即可，不在模板里逐张抄。 -->
+      <!-- 2026-08-21：小标题「选择投屏方式」按产品要求去掉——六项里已有四项与投屏无关，
+           这句话反而把入口说窄了；原来标题承担的上间距挪到 .entry-grid 自己身上。 -->
+      <view class="entry-grid">
         <view
-          class="projection-card camera-card"
+          class="entry-card"
+          wx:for="{{homeEntries}}"
+          wx:key="key"
           hover-class="none"
-          bindtap="tapCameraEntry"
+          data-key="{{item.key}}"
+          bindtap="tapHomeEntry"
         >
-          <image
-            class="projection-card-bg"
-            src="/assets/images/home-camera-card-bg.png"
-            mode="scaleToFill" />
-          <image
-            class="media-art camera-art"
-            src="/assets/images/camera_material.png"
-            mode="aspectFit" />
-          <view class="projection-copy">
-            <view>
-              <view class="projection-name">拍照</view>
-              <view class="projection-desc">拍摄照片并投屏</view>
+          <image class="entry-icon" src="{{item.icon}}" mode="aspectFit" />
+          <view class="entry-copy">
+            <view class="entry-text">
+              <view class="entry-name" style="color: {{item.color}}">{{item.name}}</view>
+              <view class="entry-desc">{{item.desc}}</view>
             </view>
-            <image
-              class="projection-arrow"
-              src="/assets/images/home-icon05.png"
-              mode="aspectFit"
-            />
-          </view>
-        </view>
-        <view
-          class="projection-card album-card"
-          hover-class="none"
-          bindtap="tapAlbumEntry"
-        >
-          <image
-            class="projection-card-bg"
-            src="/assets/images/home-album-card-bg.png"
-            mode="scaleToFill" />
-          <image
-            class="media-art album-art"
-            src="/assets/images/album_material.png"
-            mode="aspectFit" />
-          <view class="projection-copy">
-            <view>
-              <view class="projection-name">相册</view>
-              <view class="projection-desc">选择照片并投屏</view>
-            </view>
-            <image
-              class="projection-arrow"
-              src="/assets/images/home-icon06.png"
-              mode="aspectFit"
-            />
+            <image class="entry-arrow" src="{{item.arrow}}" mode="aspectFit" />
           </view>
         </view>
       </view>

@@ -472,103 +472,90 @@ button {
   font-size: 22rpx;
 }
 
-.projection-title {
-  color: #2a2d32;
-  font-size: 32rpx;
-  font-weight: 600;
-  padding: 0 48rpx;
+/* 六大入口宫格（2026-08-21 改版）：3 列 × 2 行。
+   卡宽按「750 − 两侧 48rpx 页边距 − 两条 18rpx 列间距」三等分 ≈ 206rpx，与设计稿量得的 202rpx 一致，
+   所以不写死宽度、交给 flex 均分——折叠屏/小窗下 rpx 基准变了也仍是三等分。 */
+.entry-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24rpx 18rpx;
+  margin: 0 48rpx;
 }
 
-.bound-home .projection-title {
+/* 与上方内容的间距：原来由小标题「选择投屏方式」的 margin-top 承担（已按产品要求删掉），
+   现在直接落在宫格上。两种场景不同——已绑定时上面是设备轮播+指示点，未绑定时是空态插画。 */
+.bound-home .entry-grid {
   margin-top: 62rpx;
 }
-.unbound-home .projection-title {
+
+.unbound-home .entry-grid {
   margin-top: 136rpx;
 }
-.projection-grid {
+
+/* 卡片本体：半透明白 + 毛玻璃，压在首页背景图上（背景是浅蓝白墙面，纯白卡会糊成一片，
+   0.55 的白刚好把卡从背景里提起来）。阴影沿用设备卡 .carousel-glass 那一套，观感统一。 */
+.entry-card {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-
-  margin: 20rpx 48rpx 0 48rpx;
-
-  /* overflow: hidden; */
-}
-
-.bound-home .projection-grid,
-.unbound-home .projection-grid {
-  margin-top: 16rpx;
-}
-
-.projection-card {
-  position: relative;
   flex-direction: column;
-  display: flex;
-  /* 让「图标 + 文案行」整体在卡片内垂直居中，替代原来的顶部大留白，观感更均衡居中 */
-  justify-content: center;
-  width: 318rpx;
-  height: 310rpx;
-  border-radius: 40rpx;
-  /* 模仿 .carousel-glass 的阴影（0px 4px 16px rgba(60,53,16,0.12)），px→rpx 适配卡片 rpx 尺寸 */
-  box-shadow: 0 8rpx 32rpx rgba(60, 53, 16, 0.12);
+  justify-content: space-between;
+  box-sizing: border-box;
+  /* 三等分：减去两条 18rpx 列间距后再均分，calc 写在 flex-basis 上比写死 206rpx 更耐折叠屏 */
+  flex: 0 0 calc((100% - 36rpx) / 3);
+  height: 250rpx;
+  padding: 30rpx 16rpx 22rpx;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 28rpx;
+  box-shadow: 0 8rpx 32rpx rgba(60, 53, 16, 0.1);
+  backdrop-filter: blur(10px);
 }
 
-.projection-card-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: -1;
-  width: 100%;
-  height: 100%;
+.entry-icon {
+  width: 70rpx;
+  height: 70rpx;
 }
 
-.media-art {
-  z-index: 2;
-  width: 96rpx;
-  height: 96rpx;
-}
-.projection-grid .media-art {
-  /* 左端与下方文案统一到 34rpx 对齐（原来 46rpx 比文案更靠右、显得错位）；与文案间距 8rpx。
-     顶部 28rpx：抵消右下角箭头图标(home-icon05/06)自带的底部阴影透明留白(约 28rpx)——
-     否则 justify-content:center 只居中盒子、看起来会整体偏上，加这段让「可视内容」真正视觉居中。 */
-  margin: 28rpx 0 8rpx 34rpx;
-}
-.projection-copy {
-  z-index: 2;
-  /* 左内边距与图标对齐到 34rpx；顶间距交给 media-art 的 margin-bottom，避免叠加 */
-  padding: 0 0 0 34rpx;
+/* 文案块与右侧箭头徽标：徽标垂直居中于「标题+副标题」整体，与设计稿一致（不是只对齐标题） */
+.entry-copy {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.projection-name {
-  margin-bottom: 18rpx;
-  color: #2a2d32;
-  font-size: 36rpx;
-  font-weight: 500;
-  line-height: 1;
+/* min-width:0 不可省：不加的话 flex 子项按内容最小宽度撑开，标题会把箭头挤出卡片 */
+.entry-text {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-.projection-desc {
-  color: #8a9099;
-  font-size: 21rpx;
-  line-height: 1;
+/* 标题颜色逐项不同（每张卡的主色，见 home.js HOME_ENTRIES），故写在行内 style 里。
+   28rpx × 4 字 = 112rpx，加箭头 40rpx 与间距后仍在卡片内宽 174rpx 之内，不会换行。 */
+.entry-name {
+  margin-bottom: 8rpx;
+  overflow: hidden;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.round-arrow {
-  width: 118rpx;
-  height: 118rpx;
+/* 副标题按设计稿是很小的一行（7 字 × 17rpx ≈ 119rpx，正好落在文案列 126rpx 内）。
+   nowrap + 省略号是兜底：换了更长的文案时宁可截断，也不要把卡片撑成两行高低不齐。 */
+.entry-desc {
+  overflow: hidden;
+  color: #9aa0a8;
+  font-size: 17rpx;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* 拍照/相册卡片右下角图标：home-icon05/06 是完整图标（玻璃圆 + 箭头 + 阴影已内置），直接展示、无需再加样式。
-   图标画布 133×133，底部留白用于阴影 → 圆盘视觉中心(y≈60)比画布中心(y≈66)高约 6px，
-   与左侧文字用 align-items:center 对齐时圆盘偏上；等比展示 132rpx 并整体下移 6rpx，让圆盘中心与文字垂直居中。 */
-.projection-arrow {
-  z-index: 1;
-  width: 132rpx;
-  height: 132rpx;
-  transform: translateY(4rpx);
+/* 箭头徽标：素材画布 90×90 里白圆盘约占 62，展示 40rpx 时圆盘 ≈ 28rpx，与设计稿一致 */
+.entry-arrow {
+  flex: 0 0 auto;
+  width: 40rpx;
+  height: 40rpx;
+  margin-left: 8rpx;
 }
 
 .home-mask {
@@ -649,82 +636,6 @@ button {
   left: 48rpx;
   width: auto;
   margin-top: 0;
-}
-
-.media-sheet {
-  height: 706rpx;
-  padding: 42rpx 48rpx 0;
-}
-
-.media-sheet-title {
-  margin-bottom: 46rpx;
-  color: #2a2b2b;
-  font-size: 40rpx;
-  font-weight: 500;
-}
-
-.media-option {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 128rpx;
-  margin-bottom: 20rpx;
-  padding: 0 24rpx;
-  justify-content: space-between;
-  background: #f8f9fb;
-  border-radius: 28rpx;
-}
-.media-option-left {
-  display: flex;
-  align-items: center;
-}
-.media-art.mini {
-  position: relative;
-
-  width: 98rpx;
-  height: 96rpx;
-}
-
-.media-option-copy {
-  height: 100%;
-  display: flex;
-  /* align-items: center; */
-  justify-content: center;
-  flex-direction: column;
-  padding-left: 28rpx;
-}
-
-.media-option-copy view {
-  color: #2a2d32;
-  font-size: 32rpx;
-  font-weight: 500;
-}
-
-.media-option-copy text {
-  display: block;
-  margin-top: 12rpx;
-  color: #858b96;
-  font-size: 22rpx;
-  line-height: 1;
-}
-
-.cancel-action {
-  position: absolute;
-  right: 48rpx;
-  bottom: 108rpx;
-  left: 48rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: auto;
-  height: 112rpx;
-  margin-top: 0;
-  color: #2a2d32;
-  background: #ededed;
-  border-radius: 999rpx;
-  font-size: 36rpx;
-  font-weight: 500;
 }
 
 .radar-wrap {
