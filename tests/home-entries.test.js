@@ -6,7 +6,7 @@
 //      12 个文件必须真实存在——引用一张不存在的图，小程序不会报错，只会渲染成空白；
 //   ② 六项各自跳去哪：前两项走投屏三道闸（登录/绑定/连接），后四项各进各的页面；
 //   ③ 设备图（原 home-icon02，现 home-device-thumb）在六处引用点上不许被新素材顶掉；
-//   ④ 底栏只剩「首页 / 我的」两格，AI 与官方图库不再有 tab 入口。
+//   ④ 底栏只剩「首页 / 我的」两格、底色纯白不再用背景图，AI 与官方图库不再有 tab 入口。
 const assert = require('node:assert/strict')
 const fs = require('fs')
 const path = require('path')
@@ -117,24 +117,71 @@ assert.ok(
   '本地占位背景图必须在'
 )
 
-// 「我的」页仍用原来那张 OSS 背景，占位图必须跟着是**原背景**的压缩版：
-// 两页共用一张占位图的话，首页换背景就会把「我的」页的打底也换掉，进页面先闪一下新底色。
+// 2026-08-21（当日追加）：**全项目页面背景统一成首页这张**。
+// 判据分两半：全项目不许再有「活着的」旧背景引用；最早换的那四处要把旧地址留在注释里
+//（产品要求：怕要用回去。其余页面的回滚依据写在 app.wxss .mock-bg 那段注释里）。
+const BG_NEW = '202608211340094498724.jpg'
+const BG_OLD = '202607310920402821453'
+
+// 判「活着的引用」要先把注释剥掉——旧图正是**整段注释在文件里**（产品要求留着），
+// 直接搜字符串会把注释当成没删干净。
+const stripComments = (text, isStyle) =>
+  isStyle
+    ? text.replace(/\/\*[\s\S]*?\*\//g, '')
+    : text.replace(/<!--[\s\S]*?-->/g, '')
+
+const walk_ = dir => {
+  const out = []
+  fs.readdirSync(dir, { withFileTypes: true }).forEach(item => {
+    if (item.name === 'node_modules' || item.name === '.git' || item.name === 'docs') return
+    const full = path.join(dir, item.name)
+    if (item.isDirectory()) out.push(...walk_(full))
+    else if (/\.(wxml|wxss)$/.test(item.name)) out.push(full)
+  })
+  return out
+}
+
+const liveOldBg = walk_(root).filter(file =>
+  stripComments(fs.readFileSync(file, 'utf8'), file.endsWith('.wxss')).indexOf(BG_OLD) > -1
+)
+assert.deepEqual(
+  liveOldBg.map(f => path.relative(root, f)),
+  [],
+  '全项目页面背景已统一成首页那张，不该还有活着的旧背景引用（旧地址留注释即可）'
+)
+
+// 最早换的四处：旧地址必须留在注释里，方便产品随时换回去
+const archivedOldBg = [
+  ['pages/mine/mine.wxml', '我的'],
+  ['subpackages/ai/chat/chat.wxml', 'AI助手'],
+  ['subpackages/album/list/list.wxml', '我的相册'],
+  ['subpackages/gallery/shared.wxss', '官方图库（三页共用 .gallery-shell）']
+]
+archivedOldBg.forEach(([file, label]) => {
+  const text = fs.readFileSync(path.join(root, file), 'utf8')
+  assert.ok(text.indexOf(BG_NEW) > -1, `${label} 的背景要换成首页那张`)
+  assert.ok(
+    text.indexOf(BG_OLD) > -1,
+    `${label} 要把旧背景注释保留下来（产品要求：怕还要用回去）`
+  )
+})
+
+// 整体回滚的依据写在 app.wxss 里（19 个页面逐个加注释太吵，收口成一处）
+const appWxss = fs.readFileSync(path.join(root, 'app.wxss'), 'utf8')
+assert.ok(
+  appWxss.indexOf(BG_OLD) > -1 && appWxss.indexOf(BG_NEW) > -1,
+  'app.wxss 的 .mock-bg 注释里要同时记着新旧两个背景地址，否则全站回滚无据可依'
+)
+
+// 「我的」页是唯一带本地占位图的一页：占位图必须与它的大图同源，两者一起换
 const mineWxml = fs.readFileSync(path.join(root, 'pages/mine/mine.wxml'), 'utf8')
 assert.ok(
-  mineWxml.indexOf('/assets/images/mine-bg-placeholder.jpg') > -1,
-  '「我的」页要用自己的占位图 mine-bg-placeholder.jpg'
-)
-assert.ok(
-  mineWxml.indexOf('src="/assets/images/home-bg-placeholder.jpg"') === -1,
-  '「我的」页不能再引用首页那张占位图（首页背景已换新）'
-)
-assert.ok(
-  mineWxml.indexOf('202607310920402821453.png') > -1,
-  '「我的」页的 OSS 背景保持原样，本次只换首页'
+  mineWxml.indexOf('src="/assets/images/home-bg-placeholder.jpg"') > -1,
+  '「我的」页背景已与首页同源，占位图要跟着用 home-bg-placeholder.jpg'
 )
 assert.ok(
   fs.existsSync(path.join(root, 'assets/images/mine-bg-placeholder.jpg')),
-  '「我的」页的占位图必须在'
+  '原背景的占位图按产品要求留着（要换回旧背景时和注释里那两行一起恢复）'
 )
 // 只认节点、不认文字：注释里还留着这句话（说明为什么删的），不该被当成漏删
 assert.ok(
@@ -216,6 +263,21 @@ const tabbarWxss = fs.readFileSync(
 assert.ok(
   /grid-template-columns:\s*repeat\(2,\s*1fr\)/.test(tabbarWxss),
   '两格就得按两列分，否则两个 tab 会挤在胶囊左半边'
+)
+
+// 2026-08-21（当日二次要求）：胶囊底色改纯白、不再用背景图，阴影改由 CSS 画。
+// 旧的整图方案按产品要求留在注释里，所以判据同样得先剥注释。
+assert.ok(
+  /background:\s*#ffffff/.test(stripComments(tabbarWxss)),
+  '底栏胶囊底色＝纯白'
+)
+assert.ok(
+  /box-shadow:/.test(stripComments(tabbarWxss)),
+  '原来的阴影内置在背景图里，去掉图之后必须由 CSS 补上，否则胶囊会「浮不起来」'
+)
+assert.ok(
+  stripComments(tabbarWxml).indexOf('home-bottom-btn.png') === -1,
+  '底栏不再引用背景图（图片文件与旧样式留注释备查）'
 )
 
 console.log('home-entries.test.js 全部通过')

@@ -2,9 +2,12 @@
   class="ai-root"
   style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px; --menu-offset-top: {{menuButtonOffsetTop}}px; --menu-height: {{menuButtonHeight}}px; --navigation-height: {{navigationHeight}}px;"
 >
+  <!-- 背景：2026-08-21 起与首页同一张（浅蓝墙面）。
+       ⚠️ 原来那张按产品要求先注释保留，怕还要用回去：
+           src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" -->
   <image
     class="ai-page-background"
-    src="https://oss.boltfox.cn/prodFile/202607310920402821453.png"
+    src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg"
     mode="aspectFill"
   ></image>
 

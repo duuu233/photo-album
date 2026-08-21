@@ -6,7 +6,7 @@
   min-height: 100vh;
   overflow: hidden;
   color: #2a2d32;
-  background: #f8f5ef url(https://oss.boltfox.cn/prodFile/202607310920402821453.png) center / cover no-repeat;
+  background: #eff3f8 url(https://oss.boltfox.cn/prodFile/202608211340094498724.jpg) center / cover no-repeat;
 }
 
 /* 页面左右留白。贴底按钮的高度让位由公共类 `.cta-button-gap` 负责

@@ -1,6 +1,9 @@
 <view class="mock-root album-root" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <!-- 背景：2026-08-21 起与首页同一张（浅蓝墙面）。
+       ⚠️ 原来那张按产品要求先注释保留，怕还要用回去：
+           <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" mode="aspectFill"></image> -->
   <view class="mock-bg">
-    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" mode="aspectFill"></image>
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
   </view>
 
   <!-- 「我的相册」（2026-08-04 由「设备照片」+「投屏管理」合并）：列表 = 投屏成功记录，

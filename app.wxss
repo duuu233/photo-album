@@ -387,6 +387,14 @@ input {
     linear-gradient(180deg, #f5f9ff 0%, #edf6ff 100%); */
 }
 
+/* 全站页面背景层。
+   ⚠️ 2026-08-21：**全项目背景统一成首页那张**
+   `https://oss.boltfox.cn/prodFile/202608211340094498724.jpg`（浅蓝墙面）。
+   在这之前用的是 `https://oss.boltfox.cn/prodFile/202607310920402821453.png`（暖白），
+   要整体换回去就把这两个地址对调一遍（各页 wxml 里是写死的 src，settings/token/gallery/debug
+   四处写在各自的 shared.wxss 里，配套的兜底底色是 #eff3f8 ↔ 旧的 #f8f5ef）。
+   首页/「我的」另有一张本地占位图先铺底（home-bg-placeholder.jpg），它必须与线上大图同源，
+   换背景时要一起换，否则首屏会先闪一次旧底色。 */
 .mock-bg {
   position: fixed;
   top: 0;

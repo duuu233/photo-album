@@ -4,7 +4,7 @@
      min-height:100% 承担同一职责，内容装得下时观感不变。 -->
 <view class="mock-root result-page fold-viewport" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
-    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" mode="aspectFill"></image>
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
   </view>
 
   <page-nav title="{{title}}"></page-nav> 

@@ -4,17 +4,20 @@
   class="mine-root"
   style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;"
 >
-  <!-- 「我的」页仍用原来那张 OSS 背景（2026-08-21 只换了首页），所以占位图也必须是**原背景**的
-       压缩版：占位图与大图不同源就会看见一次换底色。首页换新背景后 home-bg-placeholder.jpg
-       跟着换成了新图，本页因此改用自己的 mine-bg-placeholder.jpg（内容就是原来那张占位图）。 -->
+  <!-- 背景：2026-08-21 起与首页同一张（浅蓝墙面）。占位图与 OSS 大图**必须同源**，两个要一起换，
+       否则首屏会先铺一张旧底色再跳成新的。
+       ⚠️ 原来那套（本页专属的暖白背景 + 专属占位图）按产品要求先注释保留，怕还要用回去：
+           <image class="mine-bg-placeholder" src="/assets/images/mine-bg-placeholder.jpg" mode="aspectFill" />
+           <image class="mine-bg-image {{bgReady ? 'is-ready' : ''}}" src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" mode="aspectFill" bindload="onMineBgLoaded" />
+       assets/images/mine-bg-placeholder.jpg 也一并留着（它就是原背景的压缩版），换回去时两行一起恢复。 -->
   <view class="mine-bg" aria-hidden="true">
     <image
       class="mine-bg-placeholder"
-      src="/assets/images/mine-bg-placeholder.jpg"
+      src="/assets/images/home-bg-placeholder.jpg"
       mode="aspectFill" />
     <image
       class="mine-bg-image {{bgReady ? 'is-ready' : ''}}"
-      src="https://oss.boltfox.cn/prodFile/202607310920402821453.png"
+      src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg"
       mode="aspectFill"
       bindload="onMineBgLoaded" />
   </view>

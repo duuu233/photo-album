@@ -3,7 +3,7 @@
      贴底提交按钮本来就是 position: fixed（钉在视口上），留在原处不受滚动影响。 -->
 <view class="mock-root fold-viewport profile-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
-    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" mode="aspectFill"></image>
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
   </view>
 
   <page-nav title="个人信息"></page-nav>

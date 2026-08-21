@@ -1,5 +1,7 @@
 <view class="custom-tabbar {{dimmed ? 'content-dimmed' : ''}}" style="--safe-bottom: {{safeBottom}}px;">
-  <image class="tabbar-bg" src="/assets/images/home-bottom-btn.png" mode="scaleToFill"></image>
+  <!-- 2026-08-21：胶囊背景改成纯白（.custom-tabbar 自己的 background + box-shadow），
+       原来那张带阴影的整图按产品要求先注释保留、图片文件也留着，怕还要用回去：
+       <image class="tabbar-bg" src="/assets/images/home-bottom-btn.png" mode="scaleToFill"></image> -->
   <view class="tab-item {{active === 'home' ? 'active' : ''}}" hover-class="none" bindtap="switchToHome">
     <image class="tab-icon" src="{{active === 'home' ? '/assets/images/tabbar-home02.svg' : '/assets/images/tabbar-home01.svg'}}" mode="aspectFit"></image>
     <view>首页</view>
