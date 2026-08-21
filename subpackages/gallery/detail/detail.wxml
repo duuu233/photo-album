@@ -15,14 +15,23 @@
     style="height: {{heroPad}}vw"
     bindload="onHeroLoad"
   ></image>
-  <page-nav title="图片详情" immersive="{{true}}"></page-nav>
+  <!-- bind:measure 取实测导航高度：本页大图是 absolute、从**屏幕顶端**起算，
+       而下面的滚动区是 .fold-viewport 的第二个 flex 子项、从**导航栏下沿**起算，
+       两者差了一整个 navHeight —— 留白必须把这段减掉，见 .detail-spacer。 -->
+  <page-nav title="图片详情" immersive="{{true}}" bind:measure="onNavMeasure"></page-nav>
 
   <scroll-view class="fold-scroll" scroll-y="{{true}}">
     <view class="detail-body">
       <!-- 留白让出大图的可见高度；用户上滑时白卡从这里往上盖。
            高度跟着大图走（比它矮 3vh，白卡圆角正好压在图上，设计稿如此）：大图高度现在由
-           图片真实比例决定，这里写死就会在图矮时露出一条底色、图高时提前盖住图。 -->
-      <view class="detail-spacer" style="height: calc({{heroPad}}vw - 3vh)"></view>
+           图片真实比例决定，这里写死就会在图矮时露出一条底色、图高时提前盖住图。
+
+           ⚠️ 2026-08-21 修：必须再减掉一个 navHeight。大图是 `position:absolute; top:0`，
+           从**屏幕顶端**起算；而本块在 .fold-scroll 里，滚动区是 .fold-viewport 的第二个
+           flex 子项、从**导航栏下沿**起算。原来两边都写 `heroPad vw`，等于让白卡从
+           「导航高度 + 图高」处开始 —— 图片下沿与白卡之间凭空空出 navHeight − 3vh
+           （约 60~70px）的一条断层，正是产品看到的空白。 -->
+      <view class="detail-spacer" style="height: calc({{heroPad}}vw - {{navHeight}}px - 3vh)"></view>
 
       <view class="detail-card">
         <view class="detail-head">

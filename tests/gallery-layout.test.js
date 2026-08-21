@@ -167,17 +167,23 @@ const ruleBody = (file, selector) => {
     '必须 bindload 校正比例——后端列表/详情都不下发图片宽高，只有这里拿得到真实尺寸'
   )
 
-  // 大图与留白仍必须同源：留白比图矮 3vh，白卡圆角才压在图上（设计稿如此）
+  // 大图与留白仍必须同源：留白比图矮 3vh，白卡圆角才压在图上（设计稿如此）。
+  // ⚠️ 2026-08-21 起表达式里还要减一个 navHeight：大图是 absolute、从屏幕顶端起算，
+  // 而留白在滚动区里、从导航栏下沿起算，不减这一段白卡会整体下沉、露出一条断层。
+  // 几何本身（白卡顶 = 图片底 − 3vh）由 tests/gallery-detail-hero.test.js 按真实机型算数验证。
   const spacerTag = /<view class="detail-spacer"[^>]*>/.exec(detailWxml)
   assert.ok(spacerTag, '详情页应有 .detail-spacer')
-  const spacerCalc = /calc\(\{\{heroPad\}\}vw\s*-\s*([0-9.]+)vh\)/.exec(spacerTag[0])
+  const spacerCalc =
+    /calc\(\{\{heroPad\}\}vw\s*-\s*\{\{navHeight\}\}px\s*-\s*([0-9.]+)vh\)/.exec(
+      spacerTag[0]
+    )
   assert.ok(
     spacerCalc,
-    '留白必须用与大图**同一个** heroPad 算，否则图矮时露底色、图高时提前盖住图'
+    '留白必须用与大图**同一个** heroPad 算，并减去实测 navHeight（两个盒子起点差一个导航高度）'
   )
   assert.ok(
     Number(spacerCalc[1]) > 0,
-    `留白要比大图矮（当前差 ${spacerCalc[1]}vh），白卡的圆角才压在图上`
+    `留白要比大图再矮一点（当前差 ${spacerCalc[1]}vh），白卡的圆角才压在图上`
   )
 
   const detailJs = readCode('subpackages/gallery/detail/detail.js')
