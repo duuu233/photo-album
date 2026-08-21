@@ -221,12 +221,12 @@
 
 .service-icon {
   position: relative;
-  flex: 0 0 52rpx;
+  flex: 0 0 68rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 52rpx;
-  height: 52rpx;
+  width: 68rpx;
+  height: 68rpx;
   margin: 0 28rpx 0 0;
   border-radius: 50%;
 }
