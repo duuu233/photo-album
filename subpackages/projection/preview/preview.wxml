@@ -5,7 +5,7 @@
   <view class="mock-bg">
     <image
       class="mock-bg__image"
-      src="https://oss.boltfox.cn/prodFile/202607310920402821453.png"
+      src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg"
       mode="aspectFill" />
   </view>
   <!-- class 落在组件宿主节点上（即本页纵向 flex 的第一个 flex 项），

@@ -9,13 +9,17 @@
      胶囊本身宽高没变，只是每格从 163rpx 回到 327rpx，两个 tab 各占半边、图标文字自然居中。 */
   grid-template-columns: repeat(2, 1fr);
   height: 112rpx;
+  /* 2026-08-21：底色改成纯白，不再用背景图（原来是 home-bottom-btn.png 那张「胶囊实体 + 投影」整图）。
+     阴影随之由 CSS 自己画：与首页设备卡 .carousel-glass 同一套参数，观感一致。 */
+  background: #ffffff;
   border-radius: 999rpx;
+  box-shadow: 0 8rpx 32rpx rgba(60, 53, 16, 0.12);
 }
 
-/* 底部胶囊背景改用带阴影的整图 home-bottom-btn.png（720×183，胶囊实体 + 投影已内置），替代原背景色 + box-shadow。
-   实测胶囊实体 x[32,687] y[32,145]=656×114，四周投影留白 L32/R32/T32/B37。
-   等比映射为 718×180rpx，使胶囊实体正好覆盖 tabbar 可视区(654×112rpx)；图向四周外扩到阴影范围、用负偏移定位，
-   从而保持可视宽高不变。z-index:-1 垫在三个 tab-item 之下。 */
+/* ⚠️ 2026-08-21 起底栏不再用背景图，下面这块按产品要求注释保留（怕要换回去，图片文件也还在）：
+   home-bottom-btn.png 是 720×183 的「胶囊实体 + 投影」整图，实测实体 x[32,687] y[32,145]=656×114、
+   四周投影留白 L32/R32/T32/B37，等比映射成 718×180rpx 并用负偏移定位，使实体正好覆盖可视区 654×112rpx。
+
 .tabbar-bg {
   position: absolute;
   left: -32rpx;
@@ -24,6 +28,7 @@
   height: 180rpx;
   z-index: -1;
 }
+*/
 
 .content-dimmed {
   opacity: 0.42;

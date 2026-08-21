@@ -1,11 +1,15 @@
 /* 官方图库三个页面（图库 / 收藏 / 详情）的公共样式。
-   背景与设置类、Token 类页面同一张 OSS 图，底色 #f8f5ef 兼作兜底与设计稿页面底色。 */
+   背景 2026-08-21 起与首页同一张（浅蓝墙面），兜底底色随之从暖白 #f8f5ef 改成浅蓝白 #eff3f8——
+   底色是图没加载出来时那一瞬间的画面，跟着背景一起换才不会闪一下暖白。
+   ⚠️ 本页背景由 .gallery-shell 一处决定，图库 / 收藏 / 图库详情**三页一起变**。
+   ⚠️ 原来那行按产品要求先注释保留，怕还要用回去：
+      background: #f8f5ef url(https://oss.boltfox.cn/prodFile/202607310920402821453.png) center / cover no-repeat; */
 .gallery-shell {
   position: relative;
   min-height: 100vh;
   overflow: hidden;
   color: #2a2d32;
-  background: #f8f5ef url(https://oss.boltfox.cn/prodFile/202607310920402821453.png) center / cover no-repeat;
+  background: #eff3f8 url(https://oss.boltfox.cn/prodFile/202608211340094498724.jpg) center / cover no-repeat;
 }
 
 /* ⚠️ 左右留白写 padding-left/right 长写法，不用 `padding: 0 48rpx` 简写：

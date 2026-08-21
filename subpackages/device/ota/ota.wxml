@@ -2,7 +2,7 @@
      图标暂用投屏结果页的三张占位插画（progress/success/fail），后续换成 OTA 专用图即可。 -->
 <view class="mock-root ota-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
-    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202607310920402821453.png" mode="aspectFill"></image>
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
   </view>
 
   <!-- 顶部导航**不给返回箭头**（2026-08-13 需求 1）：升级不可逆且中断有代价（见下方规则），
