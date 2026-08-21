@@ -412,7 +412,7 @@ button {
   display: flex;
   align-self: center;
   gap: 24rpx;
-  margin-top: 40rpx;
+  /* margin-top: 30rpx; */
 }
 
 .dot {
@@ -491,7 +491,7 @@ button {
 /* 与上方内容的间距：原来由小标题「选择投屏方式」的 margin-top 承担（已按产品要求删掉），
    现在直接落在宫格上。两种场景不同——已绑定时上面是设备轮播+指示点，未绑定时是空态插画。 */
 .bound-home .entry-grid {
-  margin-top: 62rpx;
+  margin-top: 40rpx;
 }
 
 .unbound-home .entry-grid {
@@ -553,7 +553,7 @@ button {
   margin-bottom: 8rpx;
   overflow: hidden;
   font-size: 28rpx;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;

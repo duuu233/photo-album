@@ -78,7 +78,7 @@
               src="/assets/images/mine-icon06.png"
               mode="aspectFit" />
           </view>
-          <view class="quick-title">我的相册</view>
+          <view class="quick-title">我的上传</view>
           <view class="quick-desc">{{photoCount}}张照片</view>
         </view>
       </view>
