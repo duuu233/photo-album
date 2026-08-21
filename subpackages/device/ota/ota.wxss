@@ -119,15 +119,10 @@
   font-weight: 700;
 }
 
-  /* 底图改用 primary-btn-bg.png（2026-08-21 全站主按钮统一）：图是 <image class="cta-button-bg"> 子节点，
-     WXSS 引不了本地图，只能这么挂。原来的橙色渐变与外发光 box-shadow 一并去掉——发光已画在图里，
-     两层叠着会糊出一圈脏边。position:relative 是底图定位的父级，不可省。 */
 .ota-primary {
-  position: relative;
-  /* ⚠️ z-index 不可省：底图是 z-index:-1 的子节点，只有当本元素**建立层叠上下文**
-     （position + z-index 非 auto）时，它才停在按钮自己这一层；否则会掉到父级背景底下，整张图看不见。 */
-  z-index: 0;
   color: #ffffff;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
+  box-shadow: 0 18rpx 36rpx rgba(255, 98, 31, 0.22);
 }
 
 .ota-secondary {

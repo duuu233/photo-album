@@ -1,21 +1,22 @@
 /* 贴底主行动按钮（2026-08-06）。
-   设计稿里 Token 管理 / 确认购买 / 图片详情三页底部是同一枚按钮，底图也是同一张
-   （assets/ai/图标/Group19444483.png → assets/images/primary-btn-bg.png）。
+   Token 管理 / 确认购买 / 图片详情三页底部是同一枚按钮。
+
+   ⚠️ 2026-08-21 产品定案：**全站主按钮统一用橙色渐变**，本类不再用底图
+   `primary-btn-bg.png`（那张 122KB 的整图已随「清理未引用图片」删除，要用回去先从 git 取回，
+   同时恢复本文件里注释掉的 .cta-button-bg）。渐变与外发光的数值与 settings/shared.wxss 的
+   `.primary-btn`、首页 `.primary-action` 等处完全一致——全站就这一套主按钮观感。
 
    单独成文件、由 app.wxss 统一 @import 一次，理由同 styles/fold-adapt.wxss：
    ① 三个页面分属 gallery / token 两个**不同分包**，分包之间不能互相引用，
       从一个分包 @import 另一个分包的 wxss 不可取；
    ② 放主包一份，两个分包都能用，也不必各自复制一遍。
 
-   与 subpackages/settings/shared.wxss 的 `.primary-btn` 的区别：那枚是纯 CSS 渐变，
-   这枚用设计稿给的磨砂底图（带外发光），两者并存，不要互相替换。 */
+   与 subpackages/settings/shared.wxss 的 `.primary-btn` 的区别只剩定位：那枚跟着页面布局走，
+   这枚是 absolute 贴底。底色/圆角/外发光两边一模一样（2026-08-21 起统一成渐变）。 */
 
 /* ⚠️ `z-index: 2` 不可省：`.fold-scroll` 是 z-index:1 的透明层，从导航栏一直铺到根容器底部，
       正好压在这枚贴底按钮上；层级缺省时按钮「看得见、点不动」
-      （2026-08-05 设置页退出登录/用户注销的线上故障，说明见 styles/fold-adapt.wxss）。
-
-   底图 primary-btn-bg.png 是 726×184 的整图，实心胶囊只占其中 654×112
-   （实测 alpha 边界 x[36,689] y[30,141]），四周是外发光。 */
+      （2026-08-05 设置页退出登录/用户注销的线上故障，说明见 styles/fold-adapt.wxss）。 */
 .cta-button {
   position: absolute;
   right: 48rpx;
@@ -27,23 +28,20 @@
   justify-content: center;
   height: 112rpx;
   color: #ffffff;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
+  border-radius: 999rpx;
+  box-shadow: 0 18rpx 36rpx rgba(255, 98, 31, 0.22);
   font-size: 34rpx;
   font-weight: 600;
   line-height: 1;
 }
 
-/* 主按钮底图层（2026-08-21 起全站主按钮共用）。
-   ⚠️ 小程序的 WXSS **不能用 `url()` 引本地图片**，所以底图只能是按钮里的一个 `<image>` 子节点：
-       <view class="某某按钮"><image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill" />文案</view>
-   父节点必须是定位元素（`position: relative/absolute`），否则百分比与负偏移会算到更外层的盒子上。
+/* ⚠️ 底图方案已下线（2026-08-21，产品改回渐变），下面整块注释保留，要换回底图时连同
+   `<image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill">`
+   子节点一起恢复（WXSS 引不了本地图，底图只能是子节点；父级还要 position + z-index 建层叠上下文，
+   否则 z-index:-1 的底图会掉到父级背景之下）。几何用百分比，任意尺寸按钮通用：
+   726/654 = 111.009%、184/112 = 164.286%、-36/654 = -5.505%、-30/112 = -26.786%。
 
-   尺寸全用百分比，于是**任意尺寸的按钮都能直接套**，不必每个按钮各算一遍 rpx：
-     宽 726/654 = 111.009%      左 -36/654 = -5.505%
-     高 184/112 = 164.286%      上 -30/112 = -26.786%
-   （百分比的 top 按父盒**高**算、left 按父盒**宽**算，正是这里要的。）
-   代入后胶囊实体恰好铺满按钮盒本身，外发光溢到盒外——按钮多宽多高都对得上，
-   胶囊的圆角也跟着按钮高度等比缩放，不会被拉成椭圆。
-   原来这里写的是固定的 726×184rpx + -36/-30rpx，只有 654×112rpx 那一种按钮能用。 */
 .cta-button-bg {
   position: absolute;
   top: -26.786%;
@@ -52,6 +50,7 @@
   width: 111.009%;
   height: 164.286%;
 }
+*/
 
 .cta-button--disabled {
   opacity: 0.55;

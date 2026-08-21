@@ -59,7 +59,6 @@
         </view>
       </scroll-view>
       <view class="primary-action bind-bottom" hover-class="none" bindtap="confirmBind">
-        <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
         立即绑定
       </view>
     </block>
@@ -71,7 +70,6 @@
       </view>
       <view class="scan-help-link" hover-class="none" bindtap="openHelp">扫描不到怎么办?</view>
       <view class="primary-action bind-bottom" hover-class="none" bindtap="cancelScan">
-        <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
         取消搜索
       </view>
     </block>
@@ -83,7 +81,6 @@
       </view>
       <view class="scan-help-link" hover-class="none" bindtap="openHelp">扫描不到怎么办?</view>
       <view class="primary-action bind-bottom" hover-class="none" bindtap="scan">
-        <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
         重新扫描
       </view>
     </block>

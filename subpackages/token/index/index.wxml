@@ -124,7 +124,6 @@
     hover-class="none"
     bindtap="goConfirm"
   >
-    <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
     立即购买
   </view>
 

@@ -37,7 +37,6 @@
 
   <view wx:if="{{screenStatus !== 'progress'}}" class="ota-actions">
     <view wx:if="{{showPrimary}}" class="ota-primary" hover-class="none" bindtap="startUpgrade">
-      <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
       {{actionText}}
     </view>
     <view class="ota-secondary" hover-class="none" bindtap="goBack">返回</view>

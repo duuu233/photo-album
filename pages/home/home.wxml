@@ -262,7 +262,6 @@
           hover-class="none"
           bindtap="finishBind"
         >
-          <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
           立即绑定
         </view>
       </block>
@@ -343,7 +342,6 @@
         hover-class="none"
         bindtap="confirmPrompt"
       >
-        <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
         {{promptButton}}
       </view>
     </view>
@@ -369,7 +367,6 @@
         hover-class="none"
         bindtap="closeOfflineMode"
       >
-        <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
         我知道了
       </view>
     </view>

@@ -47,7 +47,6 @@
       hover-class="none"
       bindtap="onConfirm"
     >
-      <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
       {{confirmText}}
     </view>
     <view class="picker-cancel" hover-class="none" bindtap="onCancel">取消</view>

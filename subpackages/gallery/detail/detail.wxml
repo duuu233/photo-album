@@ -63,7 +63,6 @@
     hover-class="none"
     bindtap="onProject"
   >
-    <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
     {{projecting ? '准备中…' : '开始投屏'}}
   </view>
 

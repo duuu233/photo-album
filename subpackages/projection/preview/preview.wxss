@@ -303,11 +303,10 @@
   justify-content: center;
   height: 112rpx;
   margin: auto 46rpx calc(48rpx + var(--safe-bottom));
-  /* 底图改用 primary-btn-bg.png（2026-08-21 全站主按钮统一）：图是 <image class="cta-button-bg"> 子节点，
-     WXSS 引不了本地图，只能这么挂。原来的橙色渐变与外发光 box-shadow 一并去掉——发光已画在图里，
-     两层叠着会糊出一圈脏边。position:relative 是底图定位的父级，不可省。 */
   color: #ffffff;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
   border-radius: 999rpx;
+  box-shadow: 0 18rpx 36rpx rgba(255, 98, 31, 0.22);
   font-size: 34rpx;
   font-weight: 700;
 }
@@ -316,11 +315,6 @@
 .preview-submit.is-disabled {
   background: #c8ccd2;
   box-shadow: none;
-}
-
-/* 禁用态把底图藏掉，露出上面那层灰底——否则橙色底图盖在灰底上，按钮看着还是可点的 */
-.preview-submit.is-disabled .cta-button-bg {
-  display: none;
 }
 
 /* 离屏导出画布：移到屏幕外，仅用于投屏前出图 */

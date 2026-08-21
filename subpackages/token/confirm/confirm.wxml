@@ -50,7 +50,6 @@
     hover-class="none"
     bindtap="onPay"
   >
-    <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
     {{paying ? '支付中…' : '立即购买'}}
   </view>
 
