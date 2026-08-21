@@ -170,7 +170,7 @@
   color: #ff5a1e;
 }
 
-/* 换成首页的 home-icon02 后，橙色底色块要去掉（含选中态的加深底色）：
+/* 换成首页的 home-device-thumb（旧名 home-icon02）后，橙色底色块要去掉（含选中态的加深底色）：
    这张图四角透明、自带圆角底衬，外面再套一层色块会在四角露出色晕。
    与 list.wxss / detail.wxss 换图时的处理一致。选中态仍有橙色描边+橙色设备名+右侧对勾，识别度足够。 */
 .nearby-icon {
@@ -183,7 +183,7 @@
   margin-right: 26rpx;
 }
 
-/* 与容器同尺寸：home-icon02 是带细节的插画，塞在 56rpx 的内框里会糊 */
+/* 与容器同尺寸：home-device-thumb 是带细节的插画，塞在 56rpx 的内框里会糊 */
 .nearby-icon__img {
   width: 88rpx;
   height: 88rpx;

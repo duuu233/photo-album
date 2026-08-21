@@ -12,10 +12,10 @@
     <!-- 图标与标题同行（2026-08-01 产品要求）：原先 152rpx 的大图单独占一行，
          把弹窗撑得很高、键盘一弹就没地方放按钮。缩到 64rpx 并与标题并排。 -->
     <view class="name-dialog__head">
-      <!-- 设备图：与首页/设备列表/设备详情统一的 home-icon02，该图四角透明自带圆角，不加底色方块。 -->
+      <!-- 设备图：与首页/设备列表/设备详情统一的 home-device-thumb（旧名 home-icon02），该图四角透明自带圆角，不加底色方块。 -->
       <image
         class="name-dialog__device"
-        src="/assets/images/home-icon02.png"
+        src="/assets/images/home-device-thumb.png"
         mode="aspectFit" />
       <view class="name-dialog__title">{{title}}</view>
     </view>

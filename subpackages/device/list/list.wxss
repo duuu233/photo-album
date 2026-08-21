@@ -90,7 +90,7 @@
   border-radius: 16px;
   background: rgba(42, 43, 43, 0.04); */
 
-  /* 2026-07-19：设备图改用首页那张 home-icon02，它四角透明、自带圆角底色，
+  /* 2026-07-19：设备图改用首页设备卡那张 home-device-thumb（旧名 home-icon02），它四角透明、自带圆角底色，
      再叠一层底色会在四角露出色晕（首页并没有底色容器），故这里不设 background。 */
 }
 .device-logo__icon {

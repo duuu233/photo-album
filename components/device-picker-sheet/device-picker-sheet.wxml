@@ -22,9 +22,9 @@
         data-id="{{item.pickerId}}"
         bindtap="onSelect"
       >
-        <!-- 设备图与首页/列表/详情/搜索四处同一张 home-icon02（该图四角透明自带圆角，别再套底色块） -->
+        <!-- 设备图与首页/列表/详情/搜索四处同一张 home-device-thumb（旧名 home-icon02，该图四角透明自带圆角，别再套底色块） -->
         <view class="picker-device__icon">
-          <image class="picker-device__icon-img" src="/assets/images/home-icon02.png" mode="aspectFit"></image>
+          <image class="picker-device__icon-img" src="/assets/images/home-device-thumb.png" mode="aspectFit"></image>
         </view>
         <view class="picker-device__copy">
           <text class="picker-device__name">{{item.name || item.productName || '电子纸设备'}}</text>

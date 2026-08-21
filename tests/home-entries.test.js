@@ -5,7 +5,8 @@
 //      素材命名规律是「home-icon0N = 第 N 项线稿图标，home-icon1N = 同一项的箭头徽标」，
 //      12 个文件必须真实存在——引用一张不存在的图，小程序不会报错，只会渲染成空白；
 //   ② 六项各自跳去哪：前两项走投屏三道闸（登录/绑定/连接），后四项各进各的页面；
-//   ③ 底栏只剩「首页 / 我的」两格，AI 与官方图库不再有 tab 入口。
+//   ③ 设备图（原 home-icon02，现 home-device-thumb）在六处引用点上不许被新素材顶掉；
+//   ④ 底栏只剩「首页 / 我的」两格，AI 与官方图库不再有 tab 入口。
 const assert = require('node:assert/strict')
 const fs = require('fs')
 const path = require('path')
@@ -141,7 +142,57 @@ assert.ok(
   '小标题「选择投屏方式」按产品要求已去掉'
 )
 
-// ── ③ 底栏只剩两格 ────────────────────────────────────────────
+// ── ③ home-icon0N/1N 是首页宫格专属，别的页面不许再引用 ──────────
+//
+// 2026-08-21 改版把 home-icon01~06 这批名字给了新素材，而**旧的** home-icon02.png 是
+// 首页/设备列表/设备详情/搜索设备/命名弹窗/投屏选设备六处共用的那张橙色设备图 ——
+// 改名时漏改任何一处，那一处不会报错，只会安静地换成新的蓝色相册图标（当天就这么翻过车）。
+// 旧图已更名为 home-device-thumb.png，这里把「谁该用哪张」钉死。
+{
+  const deviceThumbUsers = [
+    'pages/home/home.wxml',
+    'subpackages/device/list/list.wxml',
+    'subpackages/device/detail/detail.wxml',
+    'subpackages/device/bind/bind.wxml',
+    'components/device-name-dialog/device-name-dialog.wxml',
+    'components/device-picker-sheet/device-picker-sheet.wxml'
+  ]
+  deviceThumbUsers.forEach(file => {
+    const text = fs.readFileSync(path.join(root, file), 'utf8')
+    assert.ok(
+      text.indexOf('src="/assets/images/home-device-thumb.png"') > -1,
+      `${file} 的设备图必须是 home-device-thumb.png`
+    )
+  })
+  assert.ok(
+    fs.existsSync(path.join(root, 'assets/images/home-device-thumb.png')),
+    '设备图文件必须在'
+  )
+
+  // 全项目扫一遍：除首页的 HOME_ENTRIES 之外，任何地方都不该再出现 home-icon0N/1N
+  const walk = dir => {
+    const out = []
+    fs.readdirSync(dir, { withFileTypes: true }).forEach(item => {
+      if (item.name === 'node_modules' || item.name === '.git') return
+      const full = path.join(dir, item.name)
+      if (item.isDirectory()) out.push(...walk(full))
+      else if (/\.(wxml|wxss)$/.test(item.name)) out.push(full)
+    })
+    return out
+  }
+  const offenders = walk(root)
+    .filter(file => !file.includes(`${path.sep}docs${path.sep}`))
+    .filter(file =>
+      /src="\/assets\/images\/home-icon\d\d\.png"/.test(fs.readFileSync(file, 'utf8'))
+    )
+  assert.deepEqual(
+    offenders,
+    [],
+    'home-icon0N/1N 只属于首页宫格，且只在 home.js 的 HOME_ENTRIES 里拼路径；模板里直接写死＝多半是改名漏改'
+  )
+}
+
+// ── ④ 底栏只剩两格 ────────────────────────────────────────────
 const tabbarWxml = fs.readFileSync(
   path.join(root, 'components/custom-tabbar/custom-tabbar.wxml'),
   'utf8'

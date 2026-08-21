@@ -12,12 +12,13 @@
   <block wx:if="{{device}}">
     <view class="mock-content detail-content">
       <view class="device-summary glass-panel">
-        <!-- 2026-07-19 产品要求：设备图统一用首页那张 home-icon02（原来是 mine-icon03）；
-             不分连接状态。该图四角透明自带圆角，故 .summary-icon 不再加底色。 -->
+        <!-- 2026-07-19 产品要求：设备图统一用首页设备卡那张 home-device-thumb（原来是 mine-icon03）；
+             不分连接状态。该图四角透明自带圆角，故 .summary-icon 不再加底色。
+             ⚠️ 2026-08-21 前它叫 home-icon02.png，首页改版的新素材占了这个名字，故文件更名、图没换。 -->
         <view class="summary-icon">
           <image
             class="summary-icon__img"
-            src="/assets/images/home-icon02.png"
+            src="/assets/images/home-device-thumb.png"
             mode="aspectFit" />
         </view>
         <view class="summary-copy">
