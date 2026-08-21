@@ -1,3 +1,8 @@
+/* 主按钮底图类 .cta-button-bg 定义在主包的 styles/cta-button.wxss 里。
+   ⚠️ 自定义组件默认样式隔离、**吃不到 app.wxss 的全局 @import**，所以这里要自己再 import 一次
+   （本组件在主包，import 主包样式没有分包互引问题）。 */
+@import "../../styles/cta-button.wxss";
+
 /* 「选择投屏设备」底部弹层（2026-08-13 需求 2/3）。
    容器沿用两处原来的底部弹层观感（圆角上浮 + 毛玻璃底），**列表行照搬搜索设备页**
    （bind.wxss 的 .nearby-device：白卡 + 设备图 + 名称/设备ID 两行 + 右侧单选圈，
@@ -133,16 +138,21 @@
 }
 
 /* 主按钮与搜索设备页的「立即绑定」同款（primary-action） */
+  /* 底图改用 primary-btn-bg.png（2026-08-21 全站主按钮统一）：图是 <image class="cta-button-bg"> 子节点，
+     WXSS 引不了本地图，只能这么挂。原来的橙色渐变与外发光 box-shadow 一并去掉——发光已画在图里，
+     两层叠着会糊出一圈脏边。position:relative 是底图定位的父级，不可省。 */
 .picker-confirm {
+  position: relative;
+  /* ⚠️ z-index 不可省：底图是 z-index:-1 的子节点，只有当本元素**建立层叠上下文**
+     （position + z-index 非 auto）时，它才停在按钮自己这一层；否则会掉到父级背景底下，整张图看不见。 */
+  z-index: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   height: 104rpx;
   margin-top: 8rpx;
   color: #ffffff;
-  background: linear-gradient(90deg, #ff8338, #ff621f);
   border-radius: 999rpx;
-  box-shadow: 0 18rpx 36rpx rgba(255, 98, 31, 0.2);
   font-size: 34rpx;
   font-weight: 700;
 }
@@ -153,6 +163,11 @@
   color: #ffffff;
   background: #d8d4cf;
   box-shadow: none;
+}
+
+/* 未选设备时把底图藏掉，露出灰底（否则橙色底图盖着，按钮看着还是可点的） */
+.picker-confirm--disabled .cta-button-bg {
+  display: none;
 }
 
 .picker-cancel {

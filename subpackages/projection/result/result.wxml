@@ -94,8 +94,14 @@
 
   <!-- 底部按钮组留在滚动区外：本来就是贴在一屏底部的一栏，不该跟着正文滚 -->
   <view wx:if="{{status !== 'progress'}}" class="result-actions">
-    <view wx:if="{{status === 'success'}}" class="result-primary" hover-class="none" bindtap="continueProjection">继续投屏</view>
-    <view wx:else class="result-primary" hover-class="none" bindtap="retry">重新投屏</view>
+    <view wx:if="{{status === 'success'}}" class="result-primary" hover-class="none" bindtap="continueProjection">
+      <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
+      继续投屏
+    </view>
+    <view wx:else class="result-primary" hover-class="none" bindtap="retry">
+      <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
+      重新投屏
+    </view>
     <view class="result-secondary" hover-class="none" bindtap="backHome">返回首页</view>
   </view>
 

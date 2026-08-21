@@ -15,9 +15,7 @@
       （2026-08-05 设置页退出登录/用户注销的线上故障，说明见 styles/fold-adapt.wxss）。
 
    底图 primary-btn-bg.png 是 726×184 的整图，实心胶囊只占其中 654×112
-   （实测 alpha 边界 x[36,689] y[30,141]），四周是外发光。按 726×184rpx 铺、再用
-   -36/-30 的负偏移，胶囊就正好落满 654×112rpx 的按钮盒——654rpx 也正是全站内容宽度
-   （页面左右各留 48rpx），所以底图不需要拉伸，1:1 就对齐。 */
+   （实测 alpha 边界 x[36,689] y[30,141]），四周是外发光。 */
 .cta-button {
   position: absolute;
   right: 48rpx;
@@ -34,13 +32,25 @@
   line-height: 1;
 }
 
+/* 主按钮底图层（2026-08-21 起全站主按钮共用）。
+   ⚠️ 小程序的 WXSS **不能用 `url()` 引本地图片**，所以底图只能是按钮里的一个 `<image>` 子节点：
+       <view class="某某按钮"><image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill" />文案</view>
+   父节点必须是定位元素（`position: relative/absolute`），否则百分比与负偏移会算到更外层的盒子上。
+
+   尺寸全用百分比，于是**任意尺寸的按钮都能直接套**，不必每个按钮各算一遍 rpx：
+     宽 726/654 = 111.009%      左 -36/654 = -5.505%
+     高 184/112 = 164.286%      上 -30/112 = -26.786%
+   （百分比的 top 按父盒**高**算、left 按父盒**宽**算，正是这里要的。）
+   代入后胶囊实体恰好铺满按钮盒本身，外发光溢到盒外——按钮多宽多高都对得上，
+   胶囊的圆角也跟着按钮高度等比缩放，不会被拉成椭圆。
+   原来这里写的是固定的 726×184rpx + -36/-30rpx，只有 654×112rpx 那一种按钮能用。 */
 .cta-button-bg {
   position: absolute;
-  top: -30rpx;
-  left: -36rpx;
+  top: -26.786%;
+  left: -5.505%;
   z-index: -1;
-  width: 726rpx;
-  height: 184rpx;
+  width: 111.009%;
+  height: 164.286%;
 }
 
 .cta-button--disabled {

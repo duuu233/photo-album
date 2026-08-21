@@ -27,7 +27,7 @@
   </scroll-view>
 
   <!-- 贴底按钮留在滚动区外：定位父级仍是根容器（一屏高），位置与改动前逐像素一致 -->
-  <button wx:if="{{state === 'available'}}" class="primary-btn update-btn" hover-class="none" bindtap="startUpdate">立即更新</button>
+  <button wx:if="{{state === 'available'}}" class="primary-btn update-btn" hover-class="none" bindtap="startUpdate"><image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>立即更新</button>
   <button class="delete-account" hover-class="none">用户注销</button>
 
   <global-toast id="globalToast"></global-toast>

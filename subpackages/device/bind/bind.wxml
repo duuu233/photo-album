@@ -58,7 +58,10 @@
           <view wx:else class="select-circle select-circle--empty"></view>
         </view>
       </scroll-view>
-      <view class="primary-action bind-bottom" hover-class="none" bindtap="confirmBind">立即绑定</view>
+      <view class="primary-action bind-bottom" hover-class="none" bindtap="confirmBind">
+        <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
+        立即绑定
+      </view>
     </block>
 
     <block wx:elif="{{scanning}}">
@@ -67,7 +70,10 @@
         <view class="scan-desc">请尽量将手机靠近需要添加的电子纸设备...</view>
       </view>
       <view class="scan-help-link" hover-class="none" bindtap="openHelp">扫描不到怎么办?</view>
-      <view class="primary-action bind-bottom" hover-class="none" bindtap="cancelScan">取消搜索</view>
+      <view class="primary-action bind-bottom" hover-class="none" bindtap="cancelScan">
+        <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
+        取消搜索
+      </view>
     </block>
 
     <block wx:else>
@@ -76,7 +82,10 @@
         <view class="scan-desc">未搜索到附近电子纸设备，请确认电子纸设备已开机并靠近手机</view>
       </view>
       <view class="scan-help-link" hover-class="none" bindtap="openHelp">扫描不到怎么办?</view>
-      <view class="primary-action bind-bottom" hover-class="none" bindtap="scan">重新扫描</view>
+      <view class="primary-action bind-bottom" hover-class="none" bindtap="scan">
+        <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
+        重新扫描
+      </view>
     </block>
   </view>
 

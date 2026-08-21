@@ -19,7 +19,7 @@
   </scroll-view>
 
   <!-- 贴底按钮留在滚动区外：定位父级仍是根容器（一屏高），位置与改动前逐像素一致 -->
-  <view class="primary-btn save-language" hover-class="none" bindtap="saveLanguage">保存设置</view>
+  <view class="primary-btn save-language" hover-class="none" bindtap="saveLanguage"><image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>保存设置</view>
 
   <global-toast id="globalToast"></global-toast>
 </view>

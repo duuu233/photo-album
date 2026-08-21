@@ -148,6 +148,7 @@
     hover-class="none"
     bindtap="confirmProjection"
   >
+    <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
     {{projecting ? '投屏中' : '开始投屏'}}
   </view>
   <!-- 离屏导出用画布（定位到屏幕外不可见）：投屏前把「取景框内所见」绘制到这里再导出临时文件 -->

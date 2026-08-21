@@ -70,6 +70,9 @@
   box-shadow: 0 24rpx 52rpx rgba(128, 151, 184, 0.12);
 }
 
+  /* 底图改用 primary-btn-bg.png（2026-08-21 全站主按钮统一）：图是 <image class="cta-button-bg"> 子节点，
+     WXSS 引不了本地图，只能这么挂。原来的橙色渐变与外发光 box-shadow 一并去掉——发光已画在图里，
+     两层叠着会糊出一圈脏边。position:relative 是底图定位的父级，不可省。 */
 .primary-btn {
   position: relative;
   z-index: 1;
@@ -78,9 +81,7 @@
   justify-content: center;
   height: 112rpx;
   color: #ffffff;
-  background: linear-gradient(90deg, #ff8338, #ff621f);
   border-radius: 999rpx;
-  box-shadow: 0 18rpx 36rpx rgba(255, 98, 31, 0.22);
   font-size: 36rpx;
   font-weight: 700;
   line-height: 1;
@@ -90,6 +91,11 @@
   color: rgba(255, 255, 255, 0.82);
   background: #e1e7f0;
   box-shadow: none;
+}
+
+/* 禁用态把底图藏掉，露出上面那层灰底（否则橙色底图盖着，按钮看着还是可点的） */
+.disabled-btn .cta-button-bg {
+  display: none;
 }
 
 .row {

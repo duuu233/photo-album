@@ -46,7 +46,10 @@
       class="picker-confirm {{selectedId ? '' : 'picker-confirm--disabled'}}"
       hover-class="none"
       bindtap="onConfirm"
-    >{{confirmText}}</view>
+    >
+      <image class="cta-button-bg" src="/assets/images/primary-btn-bg.png" mode="scaleToFill"></image>
+      {{confirmText}}
+    </view>
     <view class="picker-cancel" hover-class="none" bindtap="onCancel">取消</view>
   </view>
 </view>
