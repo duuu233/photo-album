@@ -474,11 +474,17 @@ button {
 
 /* 六大入口宫格（2026-08-21 改版）：3 列 × 2 行。
    卡宽按「750 − 两侧 48rpx 页边距 − 两条 18rpx 列间距」三等分 ≈ 206rpx，与设计稿量得的 202rpx 一致，
-   所以不写死宽度、交给 flex 均分——折叠屏/小窗下 rpx 基准变了也仍是三等分。 */
+   所以不写死宽度、交给 flex 均分——折叠屏/小窗下 rpx 基准变了也仍是三等分。
+
+   ⚠️ 列间距**不靠 flex gap 单打**：老一点的安卓 WebView 不认 flex 的 gap，那时三张卡按
+   「(100%−36rpx)/3」并排后右边会空出 36rpx，整行看着往左缩。space-between 在两种引擎上
+   结果都一样（认 gap 时剩余空间恰好为 0，space-between 不再额外分配），所以两个一起写。
+   行间距同理不能交给 row-gap，改由前三张卡的 margin-bottom 给。 */
 .entry-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 24rpx 18rpx;
+  justify-content: space-between;
+  column-gap: 18rpx;
   margin: 0 48rpx;
 }
 
@@ -494,58 +500,54 @@ button {
 }
 
 /* 卡片本体：半透明白 + 毛玻璃，压在首页背景图上（背景是浅蓝白墙面，纯白卡会糊成一片，
-   0.55 的白刚好把卡从背景里提起来）。阴影沿用设备卡 .carousel-glass 那一套，观感统一。 */
+   0.55 的白刚好把卡从背景里提起来）。阴影沿用设备卡 .carousel-glass 那一套，观感统一。
+
+   内容排布（2026-08-21 二次调整）：原来卡高 250rpx + justify-content:space-between，
+   图标被顶到最上、文案被压到最下，中间空出 68rpx 的死档；现在卡高收到 220rpx、
+   图标与文案按固定 20rpx 间距成组、整组垂直居中，上下留白由卡片自己均分。
+   左右内边距由 16rpx 提到 22rpx——16rpx 时内容几乎贴着卡片左边缘。 */
 .entry-card {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: center;
   box-sizing: border-box;
   /* 三等分：减去两条 18rpx 列间距后再均分，calc 写在 flex-basis 上比写死 206rpx 更耐折叠屏 */
   flex: 0 0 calc((100% - 36rpx) / 3);
-  height: 250rpx;
-  padding: 30rpx 16rpx 22rpx;
+  height: 220rpx;
+  padding: 0 22rpx;
   background: rgba(255, 255, 255, 0.55);
   border-radius: 28rpx;
   box-shadow: 0 8rpx 32rpx rgba(60, 53, 16, 0.1);
   backdrop-filter: blur(10px);
 }
 
-.entry-icon {
-  width: 70rpx;
-  height: 70rpx;
+/* 行间距（见 .entry-grid 注释：row-gap 不可靠）。六项两行，只给第一行那三张加。 */
+.entry-card:nth-child(-n + 3) {
+  margin-bottom: 24rpx;
 }
 
-/* 文案块与右侧箭头徽标：徽标垂直居中于「标题+副标题」整体，与设计稿一致（不是只对齐标题） */
+.entry-icon {
+  width: 66rpx;
+  height: 66rpx;
+  margin-bottom: 20rpx;
+}
+
+/* 标题行：标题在左、箭头徽标顶到右边缘，把卡片右上那块空白用起来 */
 .entry-copy {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-/* min-width:0 不可省：不加的话 flex 子项按内容最小宽度撑开，标题会把箭头挤出卡片 */
-.entry-text {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 /* 标题颜色逐项不同（每张卡的主色，见 home.js HOME_ENTRIES），故写在行内 style 里。
-   28rpx × 4 字 = 112rpx，加箭头 40rpx 与间距后仍在卡片内宽 174rpx 之内，不会换行。 */
+   28rpx × 4 字 = 112rpx，加箭头 40rpx 与 6rpx 间距 = 158rpx，仍在卡片内宽 162rpx 之内。
+   min-width:0 + 省略号是兜底：换更长的文案时宁可截断，也不要把箭头挤出卡片。 */
 .entry-name {
-  margin-bottom: 8rpx;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   font-size: 28rpx;
   font-weight: 600;
-  line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 副标题按设计稿是很小的一行（7 字 × 17rpx ≈ 119rpx，正好落在文案列 126rpx 内）。
-   nowrap + 省略号是兜底：换了更长的文案时宁可截断，也不要把卡片撑成两行高低不齐。 */
-.entry-desc {
-  overflow: hidden;
-  color: #9aa0a8;
-  font-size: 17rpx;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -556,7 +558,19 @@ button {
   flex: 0 0 auto;
   width: 40rpx;
   height: 40rpx;
-  margin-left: 8rpx;
+  margin-left: 6rpx;
+}
+
+/* 副标题独占一行、拿满卡片内宽（162rpx），所以字号能从原来被箭头挤出来的 17rpx 提到 19rpx：
+   最长的「拍摄照片并投屏」7 字 = 133rpx，仍有富余。 */
+.entry-desc {
+  margin-top: 10rpx;
+  overflow: hidden;
+  color: #8f959d;
+  font-size: 19rpx;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .home-mask {

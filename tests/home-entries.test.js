@@ -115,6 +115,26 @@ assert.ok(
   fs.existsSync(path.join(root, 'assets/images/home-bg-placeholder.jpg')),
   '本地占位背景图必须在'
 )
+
+// 「我的」页仍用原来那张 OSS 背景，占位图必须跟着是**原背景**的压缩版：
+// 两页共用一张占位图的话，首页换背景就会把「我的」页的打底也换掉，进页面先闪一下新底色。
+const mineWxml = fs.readFileSync(path.join(root, 'pages/mine/mine.wxml'), 'utf8')
+assert.ok(
+  mineWxml.indexOf('/assets/images/mine-bg-placeholder.jpg') > -1,
+  '「我的」页要用自己的占位图 mine-bg-placeholder.jpg'
+)
+assert.ok(
+  mineWxml.indexOf('src="/assets/images/home-bg-placeholder.jpg"') === -1,
+  '「我的」页不能再引用首页那张占位图（首页背景已换新）'
+)
+assert.ok(
+  mineWxml.indexOf('202607310920402821453.png') > -1,
+  '「我的」页的 OSS 背景保持原样，本次只换首页'
+)
+assert.ok(
+  fs.existsSync(path.join(root, 'assets/images/mine-bg-placeholder.jpg')),
+  '「我的」页的占位图必须在'
+)
 // 只认节点、不认文字：注释里还留着这句话（说明为什么删的），不该被当成漏删
 assert.ok(
   homeWxml.indexOf('class="projection-title"') === -1,
