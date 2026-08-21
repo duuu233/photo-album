@@ -98,10 +98,10 @@
               <!-- 玻璃背景层（融入自设计稿）：渐变 + 阴影 + 圆角 + 毛玻璃，作为最顶层 view 垫在整张背景图之下 -->
               <view class="carousel-glass">
               </view>
-              <image
+              <!-- <image
                 class="device-carousel-bg"
                 src="https://oss.boltfox.cn/prodFile/202607072104114724571.png"
-                mode="aspectFill" />
+                mode="aspectFill" /> -->
               <image
                 class="device-orbit"
                 src="/assets/images/home-device-thumb.png"
