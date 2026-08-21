@@ -505,7 +505,8 @@ button {
    内容排布（2026-08-21 二次调整）：原来卡高 250rpx + justify-content:space-between，
    图标被顶到最上、文案被压到最下，中间空出 68rpx 的死档；现在卡高收到 220rpx、
    图标与文案按固定 20rpx 间距成组、整组垂直居中，上下留白由卡片自己均分。
-   左右内边距由 16rpx 提到 22rpx——16rpx 时内容几乎贴着卡片左边缘。 */
+   内边距左 20rpx（原来 16rpx 时内容几乎贴着卡片左边缘）、右 12rpx——右边那侧是箭头徽标，
+   它自带一圈透明阴影留白，视觉上并不贴边，与设计稿量得的「左 18 / 右 12」同一套。 */
 .entry-card {
   display: flex;
   flex-direction: column;
@@ -514,7 +515,7 @@ button {
   /* 三等分：减去两条 18rpx 列间距后再均分，calc 写在 flex-basis 上比写死 206rpx 更耐折叠屏 */
   flex: 0 0 calc((100% - 36rpx) / 3);
   height: 220rpx;
-  padding: 0 22rpx;
+  padding: 0 12rpx 0 20rpx;
   background: rgba(255, 255, 255, 0.55);
   border-radius: 28rpx;
   box-shadow: 0 8rpx 32rpx rgba(60, 53, 16, 0.1);
@@ -532,19 +533,24 @@ button {
   margin-bottom: 20rpx;
 }
 
-/* 标题行：标题在左、箭头徽标顶到右边缘，把卡片右上那块空白用起来 */
+/* 文案行：左边是「标题 + 副标题」两行一组，右边是箭头徽标，徽标**垂直居中于这两行整体**
+   （align-items:center 对齐的是 .entry-text 这个整块，不是标题那一行）。 */
 .entry-copy {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-/* 标题颜色逐项不同（每张卡的主色，见 home.js HOME_ENTRIES），故写在行内 style 里。
-   28rpx × 4 字 = 112rpx，加箭头 40rpx 与 6rpx 间距 = 158rpx，仍在卡片内宽 162rpx 之内。
-   min-width:0 + 省略号是兜底：换更长的文案时宁可截断，也不要把箭头挤出卡片。 */
-.entry-name {
-  flex: 0 1 auto;
+/* min-width:0 不可省：不加的话 flex 子项按内容最小宽度撑开，文案会把箭头挤出卡片 */
+.entry-text {
+  flex: 1 1 auto;
   min-width: 0;
+}
+
+/* 标题颜色逐项不同（每张卡的主色，见 home.js HOME_ENTRIES），故写在行内 style 里。
+   省略号是兜底：换更长的文案时宁可截断，也不要把箭头挤出卡片。 */
+.entry-name {
+  margin-bottom: 8rpx;
   overflow: hidden;
   font-size: 28rpx;
   font-weight: 600;
@@ -553,24 +559,27 @@ button {
   white-space: nowrap;
 }
 
-/* 箭头徽标：素材画布 90×90 里白圆盘约占 62，展示 40rpx 时圆盘 ≈ 28rpx，与设计稿一致 */
-.entry-arrow {
-  flex: 0 0 auto;
-  width: 40rpx;
-  height: 40rpx;
-  margin-left: 6rpx;
-}
-
-/* 副标题独占一行、拿满卡片内宽（162rpx），所以字号能从原来被箭头挤出来的 17rpx 提到 19rpx：
-   最长的「拍摄照片并投屏」7 字 = 133rpx，仍有富余。 */
+/* 副标题最长是 7 个字（「拍摄照片并投屏」），18rpx 下 126rpx，文案列宽 130rpx 放得下 */
 .entry-desc {
-  margin-top: 10rpx;
   overflow: hidden;
   color: #8f959d;
-  font-size: 19rpx;
+  font-size: 18rpx;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 箭头徽标（2026-08-21 三次调整：产品要求「再放大一点」）。
+   素材画布 90×90 里白圆盘只占中间约 62（四周是透明阴影留白），所以**画布尺寸不等于观感尺寸**：
+   展示 50rpx 时圆盘 ≈ 34rpx，比上一版 40rpx（圆盘 ≈ 28rpx）大了两成。
+   右侧 -10rpx 负外边距让那圈透明留白压进卡片的右内边距里——它本来就不可见，
+   占着布局宽度纯属浪费，让出来的 10rpx 正好还给左边的文案列（130rpx，够 7 个字 × 18rpx）。 */
+.entry-arrow {
+  flex: 0 0 auto;
+  width: 50rpx;
+  height: 50rpx;
+  margin-right: -10rpx;
+  margin-left: 4rpx;
 }
 
 .home-mask {

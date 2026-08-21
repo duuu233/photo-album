@@ -187,13 +187,15 @@
           bindtap="tapHomeEntry"
         >
           <image class="entry-icon" src="{{item.icon}}" mode="aspectFit" />
-          <!-- 标题与箭头徽标同一行、副标题独占一行：副标题因此拿得到整个卡片内宽，
-               字号才提得上去（挤在箭头左边时 7 个字只剩 120rpx，字号被卡死在 17rpx）。 -->
+          <!-- 箭头徽标对齐的是**标题+副标题两行整体**（垂直居中），所以两行文案要包在
+               .entry-text 里与徽标同排；徽标单独对齐标题那一行会偏高。 -->
           <view class="entry-copy">
-            <view class="entry-name" style="color: {{item.color}}">{{item.name}}</view>
+            <view class="entry-text">
+              <view class="entry-name" style="color: {{item.color}}">{{item.name}}</view>
+              <view class="entry-desc">{{item.desc}}</view>
+            </view>
             <image class="entry-arrow" src="{{item.arrow}}" mode="aspectFit" />
           </view>
-          <view class="entry-desc">{{item.desc}}</view>
         </view>
       </view>
     </view>
