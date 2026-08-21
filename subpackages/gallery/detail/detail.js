@@ -26,6 +26,9 @@ const HERO_PAD_DEFAULT = 133.33
 // 下半截本来就在屏幕外（大图 absolute 不跟着滚），再长只是把白卡推得更远、什么也换不来。
 const HERO_PAD_MIN = 40
 const HERO_PAD_MAX = 240
+// 导航栏高度的兜底值，与 page-nav 组件自己的默认值一致（含状态栏，px）。
+// 真值由它的 measure 事件回抛；测量到之前先用这个，免得首帧闪一条断层。
+const NAV_HEIGHT_DEFAULT = 64
 
 Page(fold.adapt({
   data: {
@@ -43,6 +46,10 @@ Page(fold.adapt({
     // 首屏用 3:4 兜底（与图库列表 DEFAULT_RATIO 同源——后端列表/详情都还没给宽高，
     // 见 utils/gallery-api.js 文件头的后端缺口清单），bindload 拿到真实尺寸后校正。
     heroPad: HERO_PAD_DEFAULT,
+    // 实测导航栏高度（含状态栏，px），由 page-nav 的 measure 事件回抛。
+    // 大图从屏幕顶端起算、滚动区从导航栏下沿起算，.detail-spacer 要拿它抹平这段差值。
+    // 默认值取 page-nav 自己的兜底 64，测量到之前也不会先闪一条断层。
+    navHeight: NAV_HEIGHT_DEFAULT,
     projecting: false,
     // 选中态在 device-picker-sheet 组件内部持有（2026-08-13 需求 3 起不再默认选中）
     devicePicker: {
@@ -69,6 +76,15 @@ Page(fold.adapt({
     } catch (error) {
       toast.show((error && error.message) || '图片加载失败')
       setTimeout(() => wx.navigateBack(), 1200)
+    }
+  },
+
+  // 导航栏实测高度回抛（见 .detail-spacer 的注释）：大图与滚动区起点差一个导航高度，
+  // 不减掉的话白卡会整体下沉，图片下沿与白卡之间露出一条空白断层。
+  onNavMeasure(event) {
+    const navHeight = Number((event && event.detail && event.detail.navHeight) || 0)
+    if (navHeight > 0 && navHeight !== this.data.navHeight) {
+      this.setData({ navHeight })
     }
   },
 
