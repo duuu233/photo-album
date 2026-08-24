@@ -226,7 +226,8 @@
     **进入本页/切换设备时查 `getUserProductClearImg` 弹「照片在此电子纸设备异常，请删除重新上传」
     的提醒必须保留**（`list.js checkDeviceClearStatus`）——那是用户能感知到「设备被别处清空过」的
     唯一入口，它查的是 UserProduct 侧状态，不属于图库列表链路；
-  - 「我的」页卡片上的张数 = 全部设备的投屏成功记录条数（`api.getProjectionSuccessCount`，2026-08-05）；
+  - 「我的」页卡片上的张数**不再由本模块口径决定**：2026-08-24 起改取用户信息接口的 `imgCount`
+    （见第 12 条）。`api.getProjectionSuccessCount` 保留但当前无调用方；
   - 默认选中的设备（`list.js pickDefaultFilter`，2026-08-17 收成三档）：
     保留当前选中 → **连接中的设备** → 第一台
     （连接态按真实 BLE 会话现算 `activeDevice.findConnectedDeviceId`，与投屏管理页同口径。
@@ -509,10 +510,14 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
       宽高比媒体查询只用来收紧留白（纯观感，正确性不依赖它）；
       `onResize` 作废实测矩形缓存并**强制**重进编辑态（`enterEdit({ remeasure: true })`）。
 
-12. **「我的」页两张卡片的数字各有口径。**（2026-08-05）
-    - 「我的相册」= 全部设备的**投屏成功记录条数**（`api.getProjectionSuccessCount`），与该页列表同口径；
-    - 「我的设备」= `getUserInfo` 的 `productCount`，缺失才回退设备列表长度；
-    - 用户信息里的 `imgCount` 仍解析但不再用于展示（相册口径，含失败/已删，与列表对不上）。
+12. **「我的」页两张卡片的数字都取用户信息接口。**（2026-08-24 起，接口文档口径）
+    - 「我的上传」= `imgCount`，「我的设备」= `productCount`；两个字段同时出现在登录
+      `setWechatAppLogin` 与 `getUserInfo` 的出参（同一份 `UserInfoDetailApiOut`），
+      页面进来只打一次 `getUserProfile()`，**不再打设备列表与投屏记录接口**；
+    - 这是对 2026-08-05「张数改用投屏成功记录条数」的**有意回退**：卡片文案已由「我的相册」
+      改成「我的上传」，口径就是用户上传过的张数（含投屏失败/已从设备删掉的），
+      与点进去的成功记录列表本来就对不上——别再为了对齐列表把它改回去；
+    - `api.getProjectionSuccessCount()` 与 `tests/projection-success-count.test.js` 保留备用，当前无调用方。
 
 13. **CodeGraph 和 Markdown 分工。**
     - CodeGraph 是当前符号、依赖、调用链和影响范围的来源；

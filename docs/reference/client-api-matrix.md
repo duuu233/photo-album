@@ -45,6 +45,13 @@
   不会发出请求，本轮未动。
   关联：`utils/api.js`、`utils/mock.js`、`utils/request.js`、`subpackages/device/ota/ota.js`、
   [2026-08-13 变更记录第 6 条](../changes/2026-08-13-OTA连接硬复位与AI入口续聊.md)
+- **2026-08-24**：「我的」页两张卡片的数字**统一回收到用户信息接口**（接口文档口径）：
+  「我的上传」= `imgCount`、「我的设备」= `productCount`，两个字段登录 `setWechatAppLogin` 与
+  `getUserInfo` 都下发（同一份 `UserInfoDetailApiOut`）。`pages/mine/mine.js` 的 `Promise.all`
+  收成单次 `getUserProfile()`，进页面少打两个请求（`getDevices`、`getProjectionSuccessCount`）。
+  这是对下面 2026-08-05 那条的**有意回退**——卡片文案已改成「我的上传」，口径就是上传过的张数，
+  不必再与「我的相册」列表对齐。`getProjectionSuccessCount` 及其用例保留备用。
+  详见 `docs/changes/2026-08-24-我的页两张卡片数字改取用户信息接口.md`。Flutter 待同步。
 - **2026-08-08**：**支付体系（Token）由 mock 切到真实后端，微信支付走小程序虚拟支付**。
   新增章节「支付体系（Token）」，接入 `/Client/Order/getUserAccount`、`getGoodsList`、
   `getUserAccountTrade`、`addOrder` 与支付查单（2026-08-11 改为 `/Client/Pay/getPayQuery`）；
@@ -184,7 +191,8 @@
 | 个人信息 | 用户注销 PC 版 | `POST /Client/User/userOffPC` | ⛔ | - | PC 版接口 |
 | 我的相册 | 相册列表/删除（支持多选）/再次投屏 | `GET /Client/UserProduct/getUserProductImgRecordList`、`POST /Client/UserProduct/delUserProductImgRecord` | ✅ | `getProjectionRecords`、`deleteProjectionRecords` | **2026-08-17 起接口面收成这两个**：页面数据只有设备列表（`getDevices`，铺下拉分类）与投屏成功记录（铺网格），**再次投屏与删除都只吃这份记录**，不再调任何「我的图库」接口。删除只取**该条投屏记录自己的** `imgIndex`（2026-08-10 下午修订，此前经 `uProductImgId` 关联图库照片、只认图库列表那份），转成固定 12 字节 `IMG_INDEX_MASK` 后发设备 `0x12`；不推算缺失索引。发 `0x12` 前读一次 `0x01` 的 `IMG_MASK`，设备上已经没有的槽位跳过（另一部手机删过图时本机列表还留着那条记录，一起下发会被固件回 `0x07` 打回整批），`0x05`/`0x07` 结果码也按「设备侧本来就没有」放行；设备侧无论跳过还是删成功，来源投屏记录一律删，端上到此为止。再次投屏直接用记录自己的 `img` 写 `pendingProjection` 进预览页 |
 | 我的相册 | 一键清空提醒（**保留**） | `GET /Client/UserProduct/getUserProductClearImg`、`POST /Client/UserProduct/editUserProduct` | ✅ | `getUserProductClearImg`、`editUserProduct` | 进入页面/切换设备时查该设备的一键清空状态，`retData=1` 弹「照片在此电子纸设备异常，请删除重新上传」，确认后把 `isClearImg` 复位为 0（避免每次进来都弹）。设备在别处被一键清空过时，这是用户唯一能感知到的入口，**2026-08-17 清理图库接口时有意保留**：它查的是 UserProduct 侧设备状态，与图库列表链路无关 |
-| 我的（首屏统计） | 「我的相册」卡片的张数 | `GET /Client/UserProduct/getUserProductImgRecordList` | ✅ | `getProjectionSuccessCount` | **2026-08-05 起**：全部设备的投屏成功记录条数（`deviceUploadState=1`、不带 `userProductId`），与「我的相册」列表同口径，不再用 `getUserInfo` 的 `imgCount`。整页均为成功记录时取分页元数据 `recordCount`（一次请求即真实总数）；后端忽略过滤参数时逐页翻并按状态计数，20 页封顶 |
+| 我的（首屏统计） | 「我的上传」「我的设备」两张卡片的数字 | `GET /Client/User/getUserInfo`（登录 `POST /Client/User/setWechatAppLogin` 同一份出参） | ✅ | `getUserProfile` | **2026-08-24 起**：「我的上传」= `imgCount`，「我的设备」= `productCount`，后端算什么就显示什么。页面进来只这一个请求，不再调设备列表与投屏记录接口。此前（2026-08-05～08-24）张数取投屏成功记录条数、设备数以 `productCount` 回退列表长度，本轮按接口文档统一回收到用户信息接口 |
+| 我的（首屏统计） | ~~投屏成功记录条数~~（保留备用，当前无调用方） | `GET /Client/UserProduct/getUserProductImgRecordList` | ➖ | `getProjectionSuccessCount` | 2026-08-05～08-24 曾是「我的相册」卡片的张数口径（`deviceUploadState=1`、不带 `userProductId`，整页均为成功记录时取分页元数据 `recordCount`，否则逐页翻并按状态计数、20 页封顶）。封装与 `tests/projection-success-count.test.js` 保留，页面已改取 `imgCount` |
 | 我的设备 | 设备连接流程 | ➖ | ✅ | - | 稳定设备身份一律为 `0x01` 返回的完整 6 字节 ID；广播 4 字节短 ID + 尺寸仅用于筛选候选。连接后必须用完整 ID 严格确认，校验通过后才认领会话并写直连缓存。身份不一致时断开、排除错误候选并重扫，同时清理被污染的缓存。设备自定义名称不作为物理身份依据（2026-07-27） |
 | 我的设备 | 设备列表（设备图、名称、设备 ID） | `GET /Client/UserProduct/getUserProductList` | ✅ | `getUserProductList` | 接口 `deviceId` 非空且为完整 6 字节时展示，空值不显示；页面字段为 `productDeviceId`，避免与微信 BLE 临时句柄混淆 |
 | 我的设备 | 设备详情 | `GET /Client/UserProduct/getUserProductDetail` | ✅ | `getUserProductDetail` | 出参含投屏导出旋转角：`rotationDegree`(横向构图，缺失回退 `270°`) 与 **`verticalRotation`(竖向构图，2026-08-04 新增，缺失即 `0°`=不旋转)**。两者各管一个取景方向、互不兜底；`0` 是合法值。列表接口同样透传（`normalizeDevice` 全量展开），首页展示模型需手动透传这两个字段 |

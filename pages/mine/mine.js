@@ -78,7 +78,9 @@ Page({
     this.setSystemMetrics()
   },
 
-  // 并行拉取用户信息、设备列表、投屏成功记录数，组装“我的”页头部与两张功能卡的展示数据
+  // 拉一次用户信息，组装“我的”页头部与两张功能卡的展示数据。
+  // 2026-08-24 起两张卡的数字都由用户信息接口直接下发（见下方 setData 处注释），
+  // 不再另外打设备列表与投屏记录接口——进页面只剩这一个请求。
   async loadUserInfo() {
     // 游客模式：未登录展示默认头部，不强制跳登录（登录留到具体操作时再触发）
     const token = app.globalData.token || wx.getStorageSync('token')
@@ -98,11 +100,7 @@ Page({
     }
 
     try {
-      const [userInfo, devices, castSuccessCount] = await Promise.all([
-        api.getUserProfile(),
-        api.getDevices(),
-        api.getProjectionSuccessCount()
-      ])
+      const userInfo = await api.getUserProfile()
 
       // Token 余额（2026-08-11 接口对账）：`getUserInfo` 的出参已带 `availableToken`，
       // 本页不再固定多打一次 `/Client/Order/getUserAccount`。
@@ -121,11 +119,14 @@ Page({
         avatarUrl: userInfo.avatarUrl || '',
         nickName: displayName,
         userId: displayUserId,
-        // 2026-08-05：「我的相册」卡片的张数改成**全部设备的投屏成功记录条数**，与点进去
-        // 看到的列表同一个口径。不再用用户信息里的 imgCount（相册口径：投屏失败的、已从设备
-        // 删掉的都算在内），那个数和列表对不上。
-        photoCount: castSuccessCount,
-        deviceCount: Number(userInfo.productCount) || devices.length,
+        // 2026-08-24 按接口文档统一口径：两张卡的数字都取用户信息接口
+        // （登录 setWechatAppLogin / getUserInfo 同一份 UserInfoDetailApiOut）下发的字段——
+        // 「我的上传」= imgCount，「我的设备」= productCount，后端算什么就显示什么。
+        // ⚠️ 这是对 2026-08-05「张数改用投屏成功记录条数」的有意回退：卡片文案已从
+        //    「我的相册」改成「我的上传」，口径就是用户上传过的张数（含投屏失败/已从设备删掉的），
+        //    与点进去的成功记录列表本来就不是同一个数，别再为了对齐列表把它改回去。
+        photoCount: Number(userInfo.imgCount) || 0,
+        deviceCount: Number(userInfo.productCount) || 0,
         tokenBalance
       })
     } catch (error) {
