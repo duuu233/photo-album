@@ -45,6 +45,12 @@
   不会发出请求，本轮未动。
   关联：`utils/api.js`、`utils/mock.js`、`utils/request.js`、`subpackages/device/ota/ota.js`、
   [2026-08-13 变更记录第 6 条](../changes/2026-08-13-OTA连接硬复位与AI入口续聊.md)
+- **2026-08-24**：「我的上传」（相册）删除**捕捉到设备繁忙 `0x0B` 时整批中止**，
+  `delUserProductImgRecord` 一次都不调、任何数据都不删，只提示「当前电子纸设备繁忙，请稍后重试」。
+  繁忙 = 指令被设备主动拒绝、根本没执行（规格书 v1.5 §6.6.1），重试即可；其余真失败
+  （`0x04`/`0x09`/断连超时）仍按 2026-08-20 的「两半互不阻断」照删记录。新增
+  `protocol.isBusyError()` 收口判据。详见 `docs/changes/2026-08-24-相册删除遇设备繁忙整批中止.md`。
+  Flutter 待同步。
 - **2026-08-24**：「我的」页两张卡片的数字**统一回收到用户信息接口**（接口文档口径）：
   「我的上传」= `imgCount`、「我的设备」= `productCount`，两个字段由
   `GET /Client/User/getUserInfo` 下发。`pages/mine/mine.js` 的 `Promise.all`
@@ -189,7 +195,7 @@
 | 个人信息 | 忘记密码（未登录） | `POST /Client/User/resetPassword` | ⛔ | - | 邮箱账号找回密码 |
 | 个人信息 | 修改密码 | `POST /Client/User/changePassword` | ⛔ | - | 邮箱账号密码体系 |
 | 个人信息 | 用户注销 PC 版 | `POST /Client/User/userOffPC` | ⛔ | - | PC 版接口 |
-| 我的相册 | 相册列表/删除（支持多选）/再次投屏 | `GET /Client/UserProduct/getUserProductImgRecordList`、`POST /Client/UserProduct/delUserProductImgRecord` | ✅ | `getProjectionRecords`、`deleteProjectionRecords` | **2026-08-17 起接口面收成这两个**：页面数据只有设备列表（`getDevices`，铺下拉分类）与投屏成功记录（铺网格），**再次投屏与删除都只吃这份记录**，不再调任何「我的图库」接口。删除只取**该条投屏记录自己的** `imgIndex`（2026-08-10 下午修订，此前经 `uProductImgId` 关联图库照片、只认图库列表那份），转成固定 12 字节 `IMG_INDEX_MASK` 后发设备 `0x12`；不推算缺失索引。发 `0x12` 前读一次 `0x01` 的 `IMG_MASK`，设备上已经没有的槽位跳过（另一部手机删过图时本机列表还留着那条记录，一起下发会被固件回 `0x07` 打回整批），`0x05`/`0x07` 结果码也按「设备侧本来就没有」放行；设备侧无论跳过还是删成功，来源投屏记录一律删，端上到此为止。再次投屏直接用记录自己的 `img` 写 `pendingProjection` 进预览页 |
+| 我的相册 | 相册列表/删除（支持多选）/再次投屏 | `GET /Client/UserProduct/getUserProductImgRecordList`、`POST /Client/UserProduct/delUserProductImgRecord` | ✅ | `getProjectionRecords`、`deleteProjectionRecords` | **2026-08-17 起接口面收成这两个**：页面数据只有设备列表（`getDevices`，铺下拉分类）与投屏成功记录（铺网格），**再次投屏与删除都只吃这份记录**，不再调任何「我的图库」接口。删除只取**该条投屏记录自己的** `imgIndex`（2026-08-10 下午修订，此前经 `uProductImgId` 关联图库照片、只认图库列表那份），转成固定 12 字节 `IMG_INDEX_MASK` 后发设备 `0x12`；不推算缺失索引。发 `0x12` 前读一次 `0x01` 的 `IMG_MASK`，设备上已经没有的槽位跳过（另一部手机删过图时本机列表还留着那条记录，一起下发会被固件回 `0x07` 打回整批），`0x05`/`0x07` 结果码也按「设备侧本来就没有」放行；设备侧无论跳过还是删成功，来源投屏记录一律删，端上到此为止。**例外（2026-08-24）**：捕捉到设备繁忙 `0x0B`（`0x01` 回读或 `0x12` 应答任一处）时只提示「当前电子纸设备繁忙，请稍后重试」并整批中止，**本接口一次都不调**、任何数据都不删，选中态保留供重试。再次投屏直接用记录自己的 `img` 写 `pendingProjection` 进预览页 |
 | 我的相册 | 一键清空提醒（**保留**） | `GET /Client/UserProduct/getUserProductClearImg`、`POST /Client/UserProduct/editUserProduct` | ✅ | `getUserProductClearImg`、`editUserProduct` | 进入页面/切换设备时查该设备的一键清空状态，`retData=1` 弹「照片在此电子纸设备异常，请删除重新上传」，确认后把 `isClearImg` 复位为 0（避免每次进来都弹）。设备在别处被一键清空过时，这是用户唯一能感知到的入口，**2026-08-17 清理图库接口时有意保留**：它查的是 UserProduct 侧设备状态，与图库列表链路无关 |
 | 我的（首屏统计） | 「我的上传」「我的设备」两张卡片的数字 | `GET /Client/User/getUserInfo` | ✅ | `getUserProfile` | **2026-08-24 起**：「我的上传」= `imgCount`，「我的设备」= `productCount`，后端算什么就显示什么。页面进来只这一个请求，不再调设备列表与投屏记录接口。此前（2026-08-05～08-24）张数取投屏成功记录条数、设备数以 `productCount` 回退列表长度，本轮按接口文档统一回收到用户信息接口 |
 | 我的（首屏统计） | ~~投屏成功记录条数~~（保留备用，当前无调用方） | `GET /Client/UserProduct/getUserProductImgRecordList` | ➖ | `getProjectionSuccessCount` | 2026-08-05～08-24 曾是「我的相册」卡片的张数口径（`deviceUploadState=1`、不带 `userProductId`，整页均为成功记录时取分页元数据 `recordCount`，否则逐页翻并按状态计数、20 页封顶）。封装与 `tests/projection-success-count.test.js` 保留，页面已改取 `imgCount` |

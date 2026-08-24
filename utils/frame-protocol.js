@@ -310,6 +310,18 @@ function isBusyResult(code) {
   return (code & 0xff) === RESULT_BUSY
 }
 
+// 错误对象版：优先认 device-ble 挂在错误上的 `resultCode`（机器可读）；request() 集中拦 0x0B 时
+// 抛的是**只有文案**的错误（没挂 resultCode），所以还要按文案兜一层——BUSY_MESSAGE 原文、
+// RESULT_TEXT[0x0b] 的「电子纸设备忙(Busy)」、以及常见的英文写法。
+// 谁在用：删除照片(0x12)前后要「捕捉到繁忙就整批中止」的地方（见 subpackages/album/list/list.js）。
+function isBusyError(error) {
+  if (error && error.resultCode !== undefined && error.resultCode !== null) {
+    return isBusyResult(Number(error.resultCode))
+  }
+  const message = String((error && error.message) || error || '')
+  return /繁忙|设备忙|忙\(Busy\)|busy/i.test(message)
+}
+
 // 删除指令(0x12)的「可跳过」结果码：设备上本来就没有这张图，对「把它删掉」这个目标而言已经达成。
 //   0x05 图片不存在
 //   0x07 掩码不一致(该位置已有图/索引越界)
@@ -601,6 +613,7 @@ module.exports = {
   RESULT_BUSY,
   BUSY_MESSAGE,
   isBusyResult,
+  isBusyError,
   isSkippableDeleteResult,
   isSkippableDeleteError,
   indexesToMask,
