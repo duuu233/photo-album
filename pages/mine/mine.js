@@ -120,7 +120,7 @@ Page({
         nickName: displayName,
         userId: displayUserId,
         // 2026-08-24 按接口文档统一口径：两张卡的数字都取用户信息接口
-        // （登录 setWechatAppLogin / getUserInfo 同一份 UserInfoDetailApiOut）下发的字段——
+        // `GET /Client/User/getUserInfo`（即本页这次 getUserProfile()）下发的字段——
         // 「我的上传」= imgCount，「我的设备」= productCount，后端算什么就显示什么。
         // ⚠️ 这是对 2026-08-05「张数改用投屏成功记录条数」的有意回退：卡片文案已从
         //    「我的相册」改成「我的上传」，口径就是用户上传过的张数（含投屏失败/已从设备删掉的），

@@ -511,9 +511,9 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
       `onResize` 作废实测矩形缓存并**强制**重进编辑态（`enterEdit({ remeasure: true })`）。
 
 12. **「我的」页两张卡片的数字都取用户信息接口。**（2026-08-24 起，接口文档口径）
-    - 「我的上传」= `imgCount`，「我的设备」= `productCount`；两个字段同时出现在登录
-      `setWechatAppLogin` 与 `getUserInfo` 的出参（同一份 `UserInfoDetailApiOut`），
-      页面进来只打一次 `getUserProfile()`，**不再打设备列表与投屏记录接口**；
+    - 「我的上传」= `imgCount`，「我的设备」= `productCount`，两个字段由
+      `GET /Client/User/getUserInfo` 下发；页面进来只打一次 `getUserProfile()`（即该接口），
+      **不再打设备列表与投屏记录接口**；
     - 这是对 2026-08-05「张数改用投屏成功记录条数」的**有意回退**：卡片文案已由「我的相册」
       改成「我的上传」，口径就是用户上传过的张数（含投屏失败/已从设备删掉的），
       与点进去的成功记录列表本来就对不上——别再为了对齐列表把它改回去；
