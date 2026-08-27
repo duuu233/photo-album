@@ -140,10 +140,22 @@
   height: 44rpx;
 }
 
-/* 预留底部「立即绑定」按钮的空间，列表过长时内部滚动 */
+/* 预留底部「立即绑定」按钮的空间，列表过长时内部滚动。
+   960rpx = 上面几块（调试台横幅 ≈131 + 雷达 500+40 + 统计行 ≈92）+ 按钮那条（112 + 贴底 48 + 24 缝）。
+   ⚠️ 两处曾经漏算，设备一多列表下沿就落到「立即绑定」顶下方（iPhone 13 约 88px）：
+   ① 减的是 --status-bar（状态栏），要减的是整个导航 --nav-h，少减一个胶囊行 88rpx
+      （取不到实测值时按 状态栏 + 88rpx 兜底，与 .bind-content 同一套算式）；
+   ② 完全没减 --safe-bottom（全面屏手势条 ~34px）。
+   漏算时越出的那截仍在 .bind-content 之内、只是被绝对定位的按钮盖着，
+   scroll-view 自认为放得下全部卡片、连滚都不给滚——不是「滚到底了」。
+   上面几块的高度若有增删，这个 960rpx 要跟着改（tests/bind-device-list-layout.test.js 会算给你看）。 */
 .device-list {
-  max-height: calc(100vh - var(--status-bar) - 940rpx);
-  padding: 0 48rpx 8rpx;
+  box-sizing: border-box;
+  max-height: calc(
+    100vh - var(--nav-h, calc(var(--status-bar) + 88rpx)) - 960rpx - var(--safe-bottom)
+  );
+  /* 底部留白：滚到底时最后一张卡片不贴着按钮，也给卡片投影留出空间 */
+  padding: 0 48rpx 24rpx;
 }
 
 .nearby-device {

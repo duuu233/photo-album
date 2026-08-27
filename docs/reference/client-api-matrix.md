@@ -50,14 +50,17 @@
   繁忙 = 指令被设备主动拒绝、根本没执行（规格书 v1.5 §6.6.1），重试即可；其余真失败
   （`0x04`/`0x09`/断连超时）仍按 2026-08-20 的「两半互不阻断」照删记录。新增
   `protocol.isBusyError()` 收口判据。详见 `docs/changes/2026-08-24-相册删除遇设备繁忙整批中止.md`。
-  Flutter 待同步。
+  Flutter 已同步（`FrameBleException.isBusy` + `DevicePhotoDeleteOutcome.blockedMessage`，
+  见 `flutter/docs/history/2026-08/2026-08-24-我的页计数与相册删除繁忙中止同步.md`；⚠️ App 未编译未真机）。
 - **2026-08-24**：「我的」页两张卡片的数字**统一回收到用户信息接口**（接口文档口径）：
   「我的上传」= `imgCount`、「我的设备」= `productCount`，两个字段由
   `GET /Client/User/getUserInfo` 下发。`pages/mine/mine.js` 的 `Promise.all`
   收成单次 `getUserProfile()`，进页面少打两个请求（`getDevices`、`getProjectionSuccessCount`）。
   这是对下面 2026-08-05 那条的**有意回退**——卡片文案已改成「我的上传」，口径就是上传过的张数，
   不必再与「我的相册」列表对齐。`getProjectionSuccessCount` 及其用例保留备用。
-  详见 `docs/changes/2026-08-24-我的页两张卡片数字改取用户信息接口.md`。Flutter 待同步。
+  详见 `docs/changes/2026-08-24-我的页两张卡片数字改取用户信息接口.md`。
+  Flutter 已同步（`minePhotoCount`/`mineDeviceCount` 同口径、`MinePage._reload()` 收成单请求，
+  卡片标题也改成「我的上传」；⚠️ App 未编译未真机）。
 - **2026-08-08**：**支付体系（Token）由 mock 切到真实后端，微信支付走小程序虚拟支付**。
   新增章节「支付体系（Token）」，接入 `/Client/Order/getUserAccount`、`getGoodsList`、
   `getUserAccountTrade`、`addOrder` 与支付查单（2026-08-11 改为 `/Client/Pay/getPayQuery`）；
