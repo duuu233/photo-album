@@ -850,9 +850,16 @@ Page(fold.adapt({
         role: row.role,
         kind: row.role === 'user' ? (isImage ? 'image' : 'text') : 'rich',
         content: isImage ? '' : row.content,
-        // 用户图片消息：serverId 已在上一行记在消息本身上，images[0] 就别再记一遍，
-        // 否则删这条会对同一个 message_id 打两次 DELETE
-        images: isImage ? [{ url: row.content, serverId: '', pad: IMAGE_PAD_DEFAULT }] : [],
+        // 用户图片消息：**message 与 images[0] 都记上同一个 serverId**。
+        //
+        // ⚠️ 2026-08-28 修「用户自己发的照片删不掉」（两端同款 bug）：原来这里只把 id 记在
+        // 消息本身上、images[0] 留空串，理由是「免得删整条时对同一个 message_id 打两次 DELETE」。
+        // 但用户图片气泡下面那条常驻操作条走的是 deleteBubbleImage，它只认 image.serverId ——
+        // 拿到空串就**只删本地、不调接口**，重进会话照旧躺在那儿。
+        //（AI 回复的图 id 记在 image 上，所以那边一直是好的，正是用户观察到的差别。）
+        // 现在两处都记，重复由 deleteMessage 去重收口 —— 数据模型如实反映
+        // 「这条用户图片消息就是这一个 message_id」，比靠约定记在哪一处稳。
+        images: isImage ? [{ url: row.content, serverId: row.id, pad: IMAGE_PAD_DEFAULT }] : [],
         loading: false,
         typing: false,
         failed: false,
@@ -1086,7 +1093,12 @@ Page(fold.adapt({
     // 带图发送 = 图生图/融合图，出图比例跟用户原图走（后端只等比放大，不改宽高比），
     // 与 img_orientation 无关；多张时按第一张（融合结果的比例后端未约定，bindload 回来会校正）。
     const replyPad = picked.length ? clampPad(picked[0].pad) : 0
-    this._dispatchChat(message, styleKey, urls, replyPad)
+    // 图片气泡与文字气泡的本地 id 分开带下去：SSE init 事件会回来 image_msg_ids
+    //（与图片顺序一一对应）+ user_msg_id，要按各自的位置贴回去（见 applyUserMessageIds）。
+    this._dispatchChat(message, styleKey, urls, replyPad, {
+      imageBubbleIds: userMsgs.slice(0, picked.length).map(item => item.id),
+      textBubbleId: userMsgs[userMsgs.length - 1].id
+    })
     return true
   },
 
@@ -1098,7 +1110,9 @@ Page(fold.adapt({
   // 非流式 chat()（renderReply 那条老路原样保留）。
   // replyPad：回复图片的占位比例。图生图/融合图传用户原图的比例（见 sendChat），
   // 文生图传 0 → 回落到当前 img_orientation 那一档（orientationPad）。
-  async _dispatchChat(message, styleKey, urls, replyPad) {
+  // userBubbles: { imageBubbleIds, textBubbleId } —— 本轮用户气泡的本地 id，交给 beginStream
+  // 保管，等 init 事件把服务端 message_id 贴回去。重试路径不重建用户气泡，不传即可。
+  async _dispatchChat(message, styleKey, urls, replyPad, userBubbles) {
     this._replyPad = replyPad > 0 ? replyPad : 0 // 见 replyImagePad
     // 占位气泡就是最终那一个气泡：文字打进它的 content，图片挂进它的 images（需求 3：图文同一气泡）
     const holder = {
@@ -1137,7 +1151,7 @@ Page(fold.adapt({
     const streaming = aiApi.supportsStream()
     // 局部持有这次的流状态：this._stream 会被停止生成/切会话清空，catch 里靠它分辨
     // 「这条流是不是还归我管」，以及「断线前已经吐出内容了没有」。
-    const stream = streaming ? this.beginStream(holder.id) : null
+    const stream = streaming ? this.beginStream(holder.id, userBubbles) : null
     // 失败时一起打出来：前端超时（GENERATE_TIMEOUT）是 600s，如果 elapsed 稳定卡在明显更短的
     // 数字上（60s/180s 之类），那就是上游 FC/网关先掐的，调前端超时没用 —— 见 ai-api.js 文件头。
     const startedAt = Date.now()
@@ -1347,7 +1361,7 @@ Page(fold.adapt({
   //   target     —— 服务端最新推到的里程碑，只增不减（重复/乱序推也不会让进度倒退）；
   //   progress   —— 当前**上屏**的进度，由 pumpProgress 一步步爬向 target；
   //   stage/message —— target 那一级的 stage 与服务端文案，用来出文案（见 progressLabel）。
-  beginStream(holderId) {
+  beginStream(holderId, userBubbles) {
     this._stream = {
       holderId,
       chars: [],
@@ -1358,9 +1372,61 @@ Page(fold.adapt({
       target: 0,
       progress: 0,
       stage: '',
-      message: ''
+      message: '',
+      // 本轮用户气泡的**本地** id：图片按发送顺序一一对应 init 的 image_msg_ids，
+      // 文字那条对应 user_msg_id（见 applyUserMessageIds）。
+      imageBubbleIds: (userBubbles && userBubbles.imageBubbleIds) || [],
+      textBubbleId: (userBubbles && userBubbles.textBubbleId) || 0
     }
     return this._stream
+  },
+
+  // 把 SSE init 事件带回的服务端 message_id 贴到刚上屏的用户气泡上。
+  //
+  // 事件形状（后端 2026-08-28 新增）：
+  //   { "type": "init", "user_msg_id": "文字消息id", "image_msg_ids": ["图1id", "图2id"] }
+  // image_msg_ids 与请求里的 image_urls **顺序一一对应**（一张图 = 一条消息 = 一个 id）。
+  //
+  // ⚠️ 这一步解决的是「发一张照片 → 立刻删 → 退出重进又回来」：在此之前 /chat 全程不回消息 id，
+  // 本轮新发的气泡 serverId 是空串，删除只能删本地（deleteBubbleImage 里那个 if 过不去）。
+  // 贴上之后，刚发的照片点删除就会真的打 DELETE /chat/history，不必再等一次历史刷新。
+  //
+  // 图片气泡**两处都贴**（消息本身 + images[0]），与历史消息的模型保持一致：
+  // 删单图走 images[0].serverId、删整条走消息上的那个，重复由 deleteMessage 去重收口。
+  // 老部署不推这两个字段 → 取到空，行为与改动前完全一致。
+  applyUserMessageIds(stream, event) {
+    const patch = {}
+    const indexOfBubble = localId => {
+      if (!localId) {
+        return -1
+      }
+      return this.data.messages.findIndex(item => item.id === localId)
+    }
+
+    const textId = String((event && event.user_msg_id) || '')
+    if (textId) {
+      const index = indexOfBubble(stream.textBubbleId)
+      if (index >= 0) {
+        patch[`messages[${index}].serverId`] = textId
+      }
+    }
+
+    const imageIds = Array.isArray(event && event.image_msg_ids) ? event.image_msg_ids : []
+    // 按位取：后端给的条数理论上等于本轮发的图数，取两者的较小值，多/少都不越界。
+    const count = Math.min(imageIds.length, (stream.imageBubbleIds || []).length)
+    for (let i = 0; i < count; i++) {
+      const id = String(imageIds[i] || '')
+      const index = indexOfBubble(stream.imageBubbleIds[i])
+      if (!id || index < 0) {
+        continue // 气泡已被用户删掉：静默跳过
+      }
+      patch[`messages[${index}].serverId`] = id
+      patch[`messages[${index}].images[0].serverId`] = id
+    }
+
+    if (Object.keys(patch).length) {
+      this.setData(patch)
+    }
   },
 
   onStreamEvent(holderId, event) {
@@ -1374,9 +1440,14 @@ Page(fold.adapt({
     }
 
     switch (event.type) {
-      // 开流握手 / 心跳。两者都不带要渲染的内容：init 表示服务端已受理，heartbeat 是长等待期间
-      // 用来续命连接的空包。界面继续挂着三点动画即可，这里显式列出来，免得以后有人以为漏处理了。
+      // 开流握手。不带要渲染的内容（界面继续挂着三点动画），但 2026-08-28 起**带回本轮
+      // 用户消息的 message_id** —— 刚发出去的图/文能不能删得掉全靠它，见 applyUserMessageIds。
       case 'init':
+        this.applyUserMessageIds(stream, event)
+        break
+
+      // 心跳：长等待期间用来续命连接的空包，什么都不用做。
+      // 显式列出来，免得以后有人以为漏处理了。
       case 'heartbeat':
         break
 
@@ -2344,9 +2415,17 @@ Page(fold.adapt({
   async deleteMessage(message) {
     // 历史消息带服务端 id 走接口删除；本轮新产生的消息接口未回 id，仅本地移除
     //（重进会话会重新出现，待后端在 /chat 响应中带回 message_id 后可彻底删除）
-    const serverIds = [message.serverId]
-      .concat((message.images || []).map(img => img.serverId))
-      .filter(Boolean)
+    // ⚠️ **去重**（2026-08-28）：用户图片消息的 id 在 message 与 images[0] 上各记了一份
+    // （见 buildHistoryMessages 的说明），不去重就会对同一个 message_id 打两次 DELETE，
+    // 第二次多半回「消息不存在」，把一次成功的删除报成失败。
+    // Set 保持插入顺序，文字行仍排在图片行前面。
+    const serverIds = Array.from(
+      new Set(
+        [message.serverId]
+          .concat((message.images || []).map(img => img.serverId))
+          .filter(Boolean)
+      )
+    )
     try {
       for (const serverId of serverIds) {
         await aiApi.deleteMessage(this.data.sessionId, serverId)
