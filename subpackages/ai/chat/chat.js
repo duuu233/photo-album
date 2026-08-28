@@ -57,6 +57,10 @@ const SPEECH_LANG = {
 // 按住说话（仿微信）：手指相对起点上滑超过此距离(px)即进入「松开取消」态
 const VOICE_CANCEL_DY = 80
 // 单条语音最长时长(ms)，与文档 §5.1.2 建议一致
+// 一段语音的最长时长（与 App 的 _kVoiceMaxDuration 同值）。
+// 到点**不丢**：插件按 duration 自停并回 onStop，已识别的内容照常发出去，再提示一句
+//（见 beginVoice 里的 _voiceLimitTimer 与 finishVoice 的 hitLimit 分支）。
+// ⚠️ 改这个数要同时改 finishVoice 里那句提示的「1 分钟」字样。
 const VOICE_MAX_MS = 60000
 // 在输入框上按住多久算「长按唤起语音」(ms)。短于它的触摸仍是普通点击（聚焦输入框打字）。
 const INPUT_HOLD_MS = 350
@@ -674,6 +678,12 @@ Page(fold.adapt({
     this.stopGenerate(true)
     // 录音/长按计时器不清的话，回调会打在已销毁的页面上，麦克风也可能一直占着
     this.clearHoldTimer()
+    // 录满上限的闹钟单独清一次：正常路径由 finishVoice 收口，但页面被销毁时
+    // 插件的 onStop 未必还会回来，留着它就会在已销毁的页面上空放一枪。
+    if (this._voiceLimitTimer) {
+      clearTimeout(this._voiceLimitTimer)
+      this._voiceLimitTimer = null
+    }
     if (this.data.recording) {
       this.endVoice(true)
     }
@@ -2078,6 +2088,8 @@ Page(fold.adapt({
     this._speech = null
     this._recorder = null
     this._voiceCancelled = false
+    this._voiceHitLimit = false // 这一轮是不是录满上限自停的（见 beginVoice / finishVoice）
+    this._voiceLimitTimer = null
     this._holdTimer = null // 输入框长按计时器
     this._holdStart = null // 输入框长按起手点
     this._holdFired = false // 本次触摸已经把语音唤起来了
@@ -2143,6 +2155,19 @@ Page(fold.adapt({
     } else {
       this._recorder.start({ duration: VOICE_MAX_MS, format: 'mp3' })
     }
+    // 录满上限的标记。插件/录音管理器到点会自己停并回 onStop（内容照发），
+    // 这里只负责记住「这一次是录满了自停的」，好在 finishVoice 里补一句提示 ——
+    // 光看 onStop 分不清是用户松的手还是到点了。
+    this._voiceHitLimit = false
+    if (this._voiceLimitTimer) {
+      clearTimeout(this._voiceLimitTimer)
+    }
+    this._voiceLimitTimer = setTimeout(() => {
+      this._voiceLimitTimer = null
+      if (this.data.recording) {
+        this._voiceHitLimit = true
+      }
+    }, VOICE_MAX_MS - 200) // 早 200ms 置起：插件的 onStop 可能比闹钟先到
     return true
   },
 
@@ -2171,20 +2196,30 @@ Page(fold.adapt({
   // noSpeech=true 表示压根没有识别能力（降级录音），给一句明确提示而不是「没听清」。
   finishVoice(text, noSpeech) {
     const cancelled = this._voiceCancelled
+    const hitLimit = !!this._voiceHitLimit
     this._voiceCancelled = false
+    this._voiceHitLimit = false
+    if (this._voiceLimitTimer) {
+      clearTimeout(this._voiceLimitTimer)
+      this._voiceLimitTimer = null
+    }
     if (this.data.recording) {
       this.setData({ recording: false, voiceCancel: false })
     }
     if (cancelled) {
-      return // 上滑取消：安静丢弃
+      return // 上滑取消：安静丢弃（手指停在取消区时录满上限也按取消算）
     }
     if (noSpeech) {
       toast.warn({ title: '语音转文字未开通，请在小程序后台添加「微信同声传译」插件', icon: 'none' })
       return
     }
     if (!text) {
+      // 一个字都没识别到：这句比「已达上限」更该说，两条提示不叠着弹。
       toast.show({ title: '没听清，请再说一次', icon: 'none' })
       return
+    }
+    if (hitLimit) {
+      toast.show({ title: '已达最长 1 分钟，已自动发送', icon: 'none' })
     }
     this.sendVoiceText(text)
   },
