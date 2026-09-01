@@ -4,17 +4,31 @@
       分包之间不能互相引用，所以公共部分统一落在主包的 styles/。 */
 
 /* 大图不参与滚动，垫在 z-index:0；.fold-scroll 是透明的 z-index:1 层，
-   白卡随内容上滑时正好从大图上盖过去。 */
+   白卡随内容上滑时正好从大图上盖过去。
+
+   两个自定义属性给下面的大图与留白共用（2026-09-01「整张图要看得全」）：
+     --detail-card-min  底部文字区最少要留多高 = 内边距 32 + 标题/收藏行 72 + 简介 22+90（两行）
+                        + 让开贴底按钮的 196 ≈ 420rpx，另加底部安全区（rpx 按屏宽等比，小屏自己会缩）。
+     --hero-max         大图高度上限 = 一屏减掉上面那段。大图是 absolute、**不跟着滚**，
+                        越过这条线的部分谁也看不到 —— 与其让长图的下半截永远留在屏幕外，
+                        不如把整张图缩进这个框里（配 wxml 的 mode="aspectFit"）。
+   ⚠️ 用 max-height 而不是 `min()`：mini 的 iOS 端仍有老 WKWebView，min()/clamp() 不认时
+      整条声明会被丢掉、大图直接塌成默认尺寸；max-height 所有内核都认。 */
 .detail-shell {
+  --detail-card-min: 420rpx;
+  --hero-max: calc(100vh - var(--detail-card-min) - var(--safe-bottom, 0px));
   background: #f8f5ef;
 }
 
 /* 高度不再写死（2026-08-13 需求 4：不裁图）：由 wxml 的内联 `height: {{heroPad}}vw` 给出，
-   heroPad = 图片高/宽×100，于是盒子比例＝图片比例，aspectFill 裁不掉任何东西。
-   白卡那一侧（.detail-spacer）用同一个 heroPad 算，再减去导航高度与 3vh —— 大图从屏幕顶端起算、
-   滚动区从导航栏下沿起算，差着一个导航高度；3vh 是白卡圆角压在图上的量，设计稿如此。
-   ⚠️ 大图是 absolute、**不跟着滚**：比例极端的长图（高 > 一屏）下半截会一直在屏幕外，
-   这是这套「白卡盖大图」版式的固有取舍，不是裁剪。 */
+   heroPad = 图片高/宽×100，于是盒子比例＝图片比例，一个像素都裁不掉。
+   白卡那一侧（.detail-spacer）用同一个 heroPad 算，再减去导航高度 —— 大图从屏幕顶端起算、
+   滚动区从导航栏下沿起算，差着一个导航高度。
+
+   ⚠️ 2026-09-01（产品：文字不许挡图、整张图要看得全）本类只多了一条 max-height：
+   长图（heroPad 大）原来会有下半截落在屏幕外，那截**永远**看不到（大图 absolute 不跟着滚）。
+   现在高度封顶在 --hero-max，配 wxml 的 `mode="aspectFit"`，整张图缩进框里、两侧留下面这层底色。
+   盒子没被压到时（绝大多数图）与改前逐像素一致。 */
 .detail-hero {
   position: absolute;
   top: 0;
@@ -22,6 +36,7 @@
   left: 0;
   z-index: 0;
   width: 100%;
+  max-height: var(--hero-max);
   background: #dfe3e9;
 }
 
@@ -37,21 +52,30 @@
   min-height: 100%;
 }
 
-/* 让出大图的可见高度：具体值由 wxml 内联 `calc({{heroPad}}vw - {{navHeight}}px - 3vh)` 给。
-   三项各自的来历：
+/* 让出大图的可见高度：具体值由 wxml 内联 `calc({{heroPad}}vw - {{navHeight}}px)` 给。
+   两项各自的来历：
      heroPad vw   —— 大图高度（跟着图片真实比例走）；
      − navHeight  —— ⚠️ 起点差：大图是 absolute、从**屏幕顶端**起算，而本块在 .fold-scroll 里、
                      从**导航栏下沿**起算。不减这一段，白卡就会整体下沉，图片下沿与白卡之间
-                     空出 navHeight − 3vh（约 60~70px）的断层（2026-08-21 修的正是这个）；
-     − 3vh        —— 白卡圆角压在图上 3vh，设计稿如此。
-   这里只声明「不许被 flex 压缩」——它是 .detail-body(flex 列) 的第一个子元素，
+                     空出约 60~70px 的断层（2026-08-21 修的正是这个）。
+   原来还有第三项 `− 3vh`（白卡圆角压在图上的量），2026-09-01 按产品「下面的文字不要挡住图片」
+   去掉：压上去的那一条正好是图片下沿。现在白卡顶＝图片底。
+
+   max-height 与 .detail-hero **同源封顶**：长图被 --hero-max 压矮了，留白还按原 heroPad 让位的话，
+   多出来的那截就是一条新的空白断层。这里减的 --nav-h 由根容器内联给（`--nav-h: {{navHeight}}px`），
+   兜底 64px 与 page-nav 组件、detail.js 的 NAV_HEIGHT_DEFAULT 一致。
+
+   flex 那条只声明「不许被压缩」——它是 .detail-body(flex 列) 的第一个子元素，
    不写 flex-shrink:0 的话内容一多就会被压扁，白卡跟着上移把大图盖掉一块。 */
 .detail-spacer {
   flex: 0 0 auto;
+  max-height: calc(var(--hero-max) - var(--nav-h, 64px));
 }
 
 /* 白卡：去掉「适用设备尺寸」后内容只剩标题行 + 简介，上下留白一并收紧
    （padding-top 44 → 32rpx），整块比原来矮一大截，大图因此多露出约 12vh。
+   2026-09-01 又矮了 3vh（不再压在图上）；高度本身是「一屏 − 大图」自动吃剩余的，
+   不写死也不该写死 —— 写死就会在横图（图矮）时在屏幕下半截露出一条页面底色。
    ⚠️ padding-bottom 这段是从原来的 .detail-sizes 移过来的：贴底的「开始投屏」是
    absolute、留在滚动区外，不预留它的高度，简介长一点就会从按钮底下穿过去。 */
 .detail-card {

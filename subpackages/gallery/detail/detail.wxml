@@ -1,17 +1,24 @@
 <!-- 图片详情（设计稿：assets/ai/UI页面/图片详情-{未收藏,已收藏}.png）
      沉浸式：大图铺到状态栏，导航栏透明压在图上（page-nav 的 immersive 属性把标题改白字）。
      折叠屏：根容器锁一屏高，白卡随 .fold-scroll 上滑盖住大图，贴底按钮留在滚动区外并抬到 z-index:2。 -->
-<view class="gallery-shell detail-shell fold-viewport" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+<view class="gallery-shell detail-shell fold-viewport" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px; --nav-h: {{navHeight}}px;">
   <!-- 大图垫在最底层（z-index:0），滚动区透明、白卡滑上来时正好盖住它。
        2026-08-13 需求 4：**不再裁图**。此前是「宽 100% + 写死高 58vh + aspectFill」——
        两个比例对不上时 aspectFill 会按填满去放大再裁掉多出来的部分（横图裁上下、竖图裁左右）。
        现在宽度仍是满屏，高度按图片真实比例算（heroPad = 高/宽×100，单位 vw）：
-       盒子比例＝图片比例，aspectFill 就一个像素都裁不掉，也不会拉伸变形。
-       bindload 拿到真实宽高后校正 heroPad（首屏先按 3:4 占位，与图库列表同一套兜底）。 -->
+       盒子比例＝图片比例，一个像素都裁不掉，也不会拉伸变形。
+       bindload 拿到真实宽高后校正 heroPad（首屏先按 3:4 占位，与图库列表同一套兜底）。
+
+       ⚠️ 2026-09-01 产品要求「整张图要看得全」，为此多了两道闸（两端一致）：
+       ① 高度被 wxss 的 `max-height: var(--hero-max)` 压在「一屏 − 底部文字区」之内 ——
+          大图是 absolute、**不跟着滚**，越过这条线的部分谁也看不到（长图的下半截）；
+       ② mode 由 aspectFill 改 **aspectFit**：没被压到时两者表现完全一样（盒子比例＝图片比例），
+          一旦被 max-height 压扁，aspectFill 会开始裁左右两边，aspectFit 则把整张图缩进框里
+          （两侧露 #dfe3e9 底色，是这条要求下唯一不裁的画法）。 -->
   <image
     class="detail-hero"
     src="{{photo.url}}"
-    mode="aspectFill"
+    mode="aspectFit"
     style="height: {{heroPad}}vw"
     bindload="onHeroLoad"
   ></image>
@@ -23,15 +30,20 @@
   <scroll-view class="fold-scroll" scroll-y="{{true}}">
     <view class="detail-body">
       <!-- 留白让出大图的可见高度；用户上滑时白卡从这里往上盖。
-           高度跟着大图走（比它矮 3vh，白卡圆角正好压在图上，设计稿如此）：大图高度现在由
-           图片真实比例决定，这里写死就会在图矮时露出一条底色、图高时提前盖住图。
+           高度跟着大图走：大图高度由图片真实比例决定，这里写死就会在图矮时露出一条底色、
+           图高时提前盖住图。
 
-           ⚠️ 2026-08-21 修：必须再减掉一个 navHeight。大图是 `position:absolute; top:0`，
+           ⚠️ 2026-08-21 修：必须减掉一个 navHeight。大图是 `position:absolute; top:0`，
            从**屏幕顶端**起算；而本块在 .fold-scroll 里，滚动区是 .fold-viewport 的第二个
            flex 子项、从**导航栏下沿**起算。原来两边都写 `heroPad vw`，等于让白卡从
-           「导航高度 + 图高」处开始 —— 图片下沿与白卡之间凭空空出 navHeight − 3vh
-           （约 60~70px）的一条断层，正是产品看到的空白。 -->
-      <view class="detail-spacer" style="height: calc({{heroPad}}vw - {{navHeight}}px - 3vh)"></view>
+           「导航高度 + 图高」处开始 —— 图片下沿与白卡之间凭空空出一条约 60~70px 的断层。
+
+           ⚠️ 2026-09-01 去掉了原来的 `− 3vh`（白卡圆角压在图上那一层）：产品要「下面的文字
+           不许挡住图片」，而压上去的这 3vh 正好是图片的下沿。现在白卡顶＝图片底，
+           两者严丝合缝（既不压图，也不留断层）。
+           ⚠️ 封顶那条 `max-height` 必须与大图同源（见 detail.wxss）：长图被 --hero-max 压矮了，
+           留白还按未压的 heroPad 让位的话，断层立刻回来。 -->
+      <view class="detail-spacer" style="height: calc({{heroPad}}vw - {{navHeight}}px)"></view>
 
       <view class="detail-card">
         <view class="detail-head">

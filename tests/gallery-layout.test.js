@@ -160,30 +160,41 @@ const ruleBody = (file, selector) => {
   assert.ok(heroTag, '详情页应有 .detail-hero 大图')
   assert.ok(
     /style="height:\s*\{\{heroPad\}\}vw"/.test(heroTag[0]),
-    '大图高度由 heroPad（高/宽×100）给：盒子比例＝图片比例，aspectFill 才裁不掉东西'
+    '大图高度由 heroPad（高/宽×100）给：盒子比例＝图片比例，才裁不掉东西'
   )
   assert.ok(
     /bindload="onHeroLoad"/.test(heroTag[0]),
     '必须 bindload 校正比例——后端列表/详情都不下发图片宽高，只有这里拿得到真实尺寸'
   )
-
-  // 大图与留白仍必须同源：留白比图矮 3vh，白卡圆角才压在图上（设计稿如此）。
-  // ⚠️ 2026-08-21 起表达式里还要减一个 navHeight：大图是 absolute、从屏幕顶端起算，
-  // 而留白在滚动区里、从导航栏下沿起算，不减这一段白卡会整体下沉、露出一条断层。
-  // 几何本身（白卡顶 = 图片底 − 3vh）由 tests/gallery-detail-hero.test.js 按真实机型算数验证。
-  const spacerTag = /<view class="detail-spacer"[^>]*>/.exec(detailWxml)
-  assert.ok(spacerTag, '详情页应有 .detail-spacer')
-  const spacerCalc =
-    /calc\(\{\{heroPad\}\}vw\s*-\s*\{\{navHeight\}\}px\s*-\s*([0-9.]+)vh\)/.exec(
-      spacerTag[0]
-    )
+  // 2026-09-01「整张图要看得全」：高度封顶在 --hero-max（一屏 − 底部文字区），
+  // 盒子被压矮后比例不再等于图片比例，aspectFill 会开始裁两边，所以必须是 aspectFit。
   assert.ok(
-    spacerCalc,
-    '留白必须用与大图**同一个** heroPad 算，并减去实测 navHeight（两个盒子起点差一个导航高度）'
+    /mode="aspectFit"/.test(heroTag[0]),
+    '大图必须 mode="aspectFit"：被 --hero-max 压矮时 aspectFill 会裁掉左右两边'
   )
   assert.ok(
-    Number(spacerCalc[1]) > 0,
-    `留白要比大图再矮一点（当前差 ${spacerCalc[1]}vh），白卡的圆角才压在图上`
+    /max-height:\s*var\(--hero-max\)/.test(ruleBody(detailWxss, '.detail-hero')),
+    '.detail-hero 要封顶在 --hero-max，否则长图的下半截永远落在屏幕外（大图 absolute 不跟着滚）'
+  )
+
+  // 大图与留白必须同源。
+  // ⚠️ 2026-08-21 起表达式要减一个 navHeight：大图是 absolute、从屏幕顶端起算，
+  // 而留白在滚动区里、从导航栏下沿起算，不减这一段白卡会整体下沉、露出一条断层。
+  // ⚠️ 2026-09-01 起**只剩这两项**：原来的第三项 `− 3vh`（白卡圆角压在图上）按产品
+  // 「下面的文字不要挡住图片」去掉，白卡顶＝图片底。
+  // 几何本身由 tests/gallery-detail-hero.test.js 按真实机型算数验证。
+  const spacerTag = /<view class="detail-spacer"[^>]*>/.exec(detailWxml)
+  assert.ok(spacerTag, '详情页应有 .detail-spacer')
+  assert.ok(
+    /style="height: calc\(\{\{heroPad\}\}vw\s*-\s*\{\{navHeight\}\}px\)"/.test(spacerTag[0]),
+    '留白必须用与大图**同一个** heroPad 算，减去实测 navHeight（两个盒子起点差一个导航高度）后到此为止——'
+      + '再减任何一项都会重新压住图片下沿'
+  )
+  assert.ok(
+    /max-height:\s*calc\(var\(--hero-max\)\s*-\s*var\(--nav-h/.test(
+      ruleBody(detailWxss, '.detail-spacer')
+    ),
+    '留白要与大图同源封顶：长图被 --hero-max 压矮了、留白没跟着压，断层立刻回来'
   )
 
   const detailJs = readCode('subpackages/gallery/detail/detail.js')

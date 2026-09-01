@@ -23,7 +23,9 @@ const app = getApp()
 // 图片宽高，只能先占一个常见比例，等 bindload 报回真实尺寸再校正这一张。
 const HERO_PAD_DEFAULT = 133.33
 // 极端比例钳一下：太扁的图（<40）大图会缩成一条、白卡几乎顶到导航栏；太长的图（>240）
-// 下半截本来就在屏幕外（大图 absolute 不跟着滚），再长只是把白卡推得更远、什么也换不来。
+// 再长也没意义 —— 2026-09-01 起真正的上限是 wxss 的 `--hero-max`（一屏 − 底部文字区），
+// 高度封顶后配 `mode="aspectFit"` 把整张图缩进框里，长图不再有下半截落在屏幕外。
+// 这两个钳位因此只剩「别把盒子算成离谱值」的兜底作用，不再是能不能看全图的关键。
 const HERO_PAD_MIN = 40
 const HERO_PAD_MAX = 240
 // 导航栏高度的兜底值，与 page-nav 组件自己的默认值一致（含状态栏，px）。
@@ -42,12 +44,13 @@ Page(fold.adapt({
       favorited: false
     },
     // 顶部大图的高度占位（2026-08-13 需求 4）：值是「图片高/宽×100」，wxml 里当 vw 用，
-    // 于是盒子比例＝图片比例，aspectFill 一个像素都裁不掉。
+    // 于是盒子比例＝图片比例，一个像素都裁不掉（超出一屏的部分由 --hero-max 封顶，见 wxss）。
     // 首屏用 3:4 兜底（与图库列表 DEFAULT_RATIO 同源——后端列表/详情都还没给宽高，
     // 见 utils/gallery-api.js 文件头的后端缺口清单），bindload 拿到真实尺寸后校正。
     heroPad: HERO_PAD_DEFAULT,
     // 实测导航栏高度（含状态栏，px），由 page-nav 的 measure 事件回抛。
-    // 大图从屏幕顶端起算、滚动区从导航栏下沿起算，.detail-spacer 要拿它抹平这段差值。
+    // 大图从屏幕顶端起算、滚动区从导航栏下沿起算，.detail-spacer 要拿它抹平这段差值
+    //（同一个值还会以 `--nav-h` 写到根容器上，供 .detail-spacer 的 max-height 用）。
     // 默认值取 page-nav 自己的兜底 64，测量到之前也不会先闪一条断层。
     navHeight: NAV_HEIGHT_DEFAULT,
     projecting: false,
