@@ -1032,12 +1032,22 @@ Page(fold.adapt({
 
   // 共用离屏画布导出：把 src 载入后交给 draw(ctx, img) 绘制，导出为 outW×outH 的 jpg 临时文件。
   // 画布不可用/图片加载失败/导出失败都 reject，由调用方决定回退策略。串行使用（勿并发抢画布）。
+  //
+  // 📌 排查日志（2026-09-03 加，定位「AI 图投屏帧字节数对不上」）：本方法是「上传图必须是设备
+  //    物理分辨率」这条铁律的唯一落点，它一失败调用方就静默回退原图，帧字节数必然对不上。
+  //    三个失败出口各打一条 [预览][导出] warn，把「挂在哪一步」区分开：
+  //      · 画布不可用      → 页面/节点问题，与图片无关；
+  //      · createImage 解码 → **图片格式问题**（canvas 2d 的解码器与 <image> 组件、
+  //        wx.getImageInfo、wx.compressImage 都不是同一套，能显示 ≠ canvas 能解）；
+  //      · canvasToTempFilePath → 导出环节（尺寸过大/内存）。
   _exportCanvas(outW, outH, src, draw) {
     return new Promise((resolve, reject) => {
+      const startedAt = Date.now()
       const query = wx.createSelectorQuery()
       query.select('#cropCanvas').fields({ node: true }).exec((res) => {
         const node = res && res[0] && res[0].node
         if (!node) {
+          console.warn(`[预览][导出] 画布不可用（#cropCanvas 取不到节点）：目标 ${outW}x${outH} src=${src}`)
           reject(new Error('画布不可用'))
           return
         }
@@ -1046,6 +1056,11 @@ Page(fold.adapt({
         const ctx = node.getContext('2d')
         const img = node.createImage()
         img.onload = () => {
+          // 解码成功后 img 的真实像素：与 getImageInfo 报的宽高不一致时（EXIF 方向等）在这能看出来
+          console.log(
+            `[预览][导出] 解码成功：img=${img.width}x${img.height} 目标画布=${outW}x${outH} ` +
+              `耗时 ${Date.now() - startedAt}ms src=${src}`
+          )
           ctx.clearRect(0, 0, outW, outH)
           fillWhite(ctx, outW, outH)
           draw(ctx, img)
@@ -1053,11 +1068,31 @@ Page(fold.adapt({
             canvas: node,
             fileType: EXPORT_FILE_TYPE,
             quality: EXPORT_QUALITY,
-            success: (r) => resolve(r.tempFilePath),
-            fail: reject
+            success: (r) => {
+              console.log(
+                `[预览][导出] 出文件成功：${outW}x${outH} 总耗时 ${Date.now() - startedAt}ms file=${r.tempFilePath}`
+              )
+              resolve(r.tempFilePath)
+            },
+            fail: (err) => {
+              console.warn(
+                `[预览][导出] canvasToTempFilePath 失败：目标 ${outW}x${outH} src=${src}`,
+                err
+              )
+              reject(err)
+            }
           })
         }
-        img.onerror = () => reject(new Error('图片加载失败'))
+        img.onerror = (err) => {
+          // ⚠️ 走到这里 = canvas 2d 解不了这个文件。AI 生成图/第三方下载图最可能命中：
+          //    WebP、带 alpha 的特殊 PNG、无扩展名的临时文件在部分平台（尤其鸿蒙）会解码失败。
+          console.warn(
+            `[预览][导出] createImage 解码失败（canvas 2d 解不了该图，多半是图片格式问题）：` +
+              `目标 ${outW}x${outH} src=${src}`,
+            err
+          )
+          reject(new Error('图片加载失败'))
+        }
         img.src = src
       })
     })
@@ -1262,6 +1297,15 @@ Page(fold.adapt({
           const natW = info.width
           const natH = info.height
           const size = this.getDeviceCropSize()
+          // 📌 排查日志（2026-09-03）：这是「未编辑图」出图的必经之路，也是帧字节数对不上的头号嫌疑。
+          //    info.type 是微信解析出的**真实格式**（jpeg/png/webp/gif…），不看扩展名——AI 平台下载的图
+          //    扩展名常常骗人（无后缀或 .png 实为 webp）。orientation 是 EXIF 方向。
+          //    这条与下面 [预览][导出] 的解码日志配套：能拿到 type 却解码失败 = getImageInfo 能读、
+          //    canvas 2d 不能读，格式问题实锤。
+          console.log(
+            `[预览][coverCrop] 源图：${natW}x${natH} type=${info.type || '--'} ` +
+              `orientation=${info.orientation || '--'} 设备=${size.width}x${size.height} src=${src}`
+          )
           // 导出角是奇数直角(90/270)时，画面在画布上会**宽高对调**：中心裁切的目标比例
           // 与后面的目标矩形都要跟着换，否则转完内容被裁掉一截、边上留白。
           const rotateDegree = deviceRotation.exportDegreeFor(
@@ -1273,6 +1317,10 @@ Page(fold.adapt({
           const destH = quarterTurn ? size.width : size.height
           const targetRatio = destW / destH
           if (!(natW > 0) || !(natH > 0) || !(targetRatio > 0)) {
+            console.warn(
+              `[预览][coverCrop] 尺寸不可用，回退原图投屏（帧字节数必然对不上）：` +
+                `源图 ${natW}x${natH} 目标 ${destW}x${destH} src=${src}`
+            )
             resolve(image)
             return
           }
@@ -1332,10 +1380,28 @@ Page(fold.adapt({
               size.width,
               size.height
             )
+            console.log(
+              `[预览][coverCrop] 出图成功：${size.width}x${size.height}（= 设备物理分辨率）file=${tempFilePath}`
+            )
             resolve(updated)
-          }).catch(() => resolve(image))
+          }).catch((err) => {
+            // ⚠️ 这条一旦出现，本张必定投屏失败：回退的原图带着原比例进抖动接口，
+            //    帧字节数 = 原图宽×高÷2 ≠ 设备 宽×高÷2，结果页铁闸会拦下并报「图片转化出错」。
+            //    具体挂在哪一步看上一条 [预览][导出] warn。
+            console.warn(
+              `[预览][coverCrop] 导出失败，回退原图投屏（本张帧字节数必然对不上，投屏会失败）：src=${src}`,
+              err
+            )
+            resolve(image)
+          })
         },
-        fail: () => resolve(image)
+        fail: (err) => {
+          console.warn(
+            `[预览][coverCrop] getImageInfo 失败，回退原图投屏（本张帧字节数必然对不上）：src=${src}`,
+            err
+          )
+          resolve(image)
+        }
       })
     })
   },
@@ -1350,6 +1416,7 @@ Page(fold.adapt({
   // 任一张失败回退原图，不阻断投屏。
   async prepareProjectionImages() {
     const { images, activeIndex } = this.data
+    const dev = this.getDeviceCropSize()
     const result = []
     for (let i = 0; i < images.length; i++) {
       const image = images[i]
@@ -1357,17 +1424,41 @@ Page(fold.adapt({
       // 当前图优先取活的 _edit（最新手势）；切图瞬间 _edit 尚未建好时退回 _states 快照
       const state = (i === activeIndex && this._edit) ? this._edit : this._states[i]
       const edited = state && state.src === src && !isPristineEdit(state)
+      // 📌 排查日志（2026-09-03）：先记下本张走哪条分支——三条分支的出图保障完全不同，
+      //    出问题时不知道走了哪条就没法往下查。
+      let branch
       if (edited) {
         // 滑动切图时已按同一组几何烘焙过、且之后没再动过 → 直接复用那份缓存，不重复出图
         if (image.previewSrc && image._bakedKey === this._editSignature(state)) {
+          branch = '① 编辑-复用预烘焙缓存'
           result.push(this._applyBakedFile(image, state, image.previewSrc))
         } else {
+          branch = '① 编辑-bakeEditedImage'
           result.push(await this.bakeEditedImage(image, state))
         }
       } else if (image && image.cropW) {
+        // ⚠️ 这条不重新出图：cropW 是上一轮出图时记的尺寸，换过设备的话它就是**老设备**的尺寸
+        branch = `② 已出图原样保留(cropW=${image.cropW}x${image.cropH})`
         result.push(image)
       } else {
+        branch = '③ 未编辑-coverCropOne'
         result.push(await this.coverCropOne(image))
+      }
+      // 出图结果自检：cropW/cropH 必须 = 设备物理分辨率，否则该图进抖动接口后帧字节数必然对不上。
+      // 纯日志、不改流程（真正的拦截仍在结果页铁闸）。
+      const out = result[i] || {}
+      const ok = Number(out.cropW) === dev.width && Number(out.cropH) === dev.height
+      const line =
+        `[预览][出图] 第 ${i + 1}/${images.length} 张 分支=${branch} ` +
+        `结果=${out.cropW || 0}x${out.cropH || 0} 设备=${dev.width}x${dev.height} ` +
+        `预计帧=${Math.ceil(((out.cropW || 0) * (out.cropH || 0)) / 2)} 字节 ` +
+        `设备需=${Math.ceil((dev.width * dev.height) / 2)} 字节`
+      if (ok) {
+        console.log(line)
+      } else {
+        console.warn(
+          `${line} ←⚠️ 不是设备物理分辨率，本张投屏会在结果页被帧长度铁闸拦下（cropW=0 表示压根没出成图，已回退原图）`
+        )
       }
     }
     return result

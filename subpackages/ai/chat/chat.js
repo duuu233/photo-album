@@ -340,6 +340,78 @@ function describeDownloadFail(err) {
   return '图片下载失败，请检查网络后重试'
 }
 
+// ==================== 排查日志：AI 图的真实格式（2026-09-03） ====================
+// 背景：AI 图保存到手机再投屏时报「图片转化出错」，而微信里的普通图同一条链路正常。
+// 帧字节数完全由「喂给抖动接口的那张图的像素」决定，出图那一步靠 canvas 2d 的 createImage 解码，
+// 它比 <image> 组件 / getImageInfo / compressImage 都挑食——解不了就静默回退原图，帧必然对不上。
+// 所以要知道 AI 平台到底给了什么编码。⚠️ 扩展名不可信：downloadFile 的落地文件名跟着 URL 走，
+// OSS 上 .png 实为 webp、或干脆无后缀都很常见。这里读文件头魔数认真实格式。
+// 纯旁路日志：不参与任何判断、不改流程，失败只是少一条日志。
+
+// 文件头魔数 → 真实格式。认不出返回前 12 字节的 hex，便于人工比对。
+function sniffImageFormat(bytes) {
+  const b = bytes
+  const at = (i) => (i < b.length ? b[i] : -1)
+  if (at(0) === 0xff && at(1) === 0xd8 && at(2) === 0xff) return 'JPEG'
+  if (at(0) === 0x89 && at(1) === 0x50 && at(2) === 0x4e && at(3) === 0x47) return 'PNG'
+  if (at(0) === 0x47 && at(1) === 0x49 && at(2) === 0x46) return 'GIF'
+  if (at(0) === 0x42 && at(1) === 0x4d) return 'BMP'
+  // RIFF....WEBP
+  if (at(0) === 0x52 && at(1) === 0x49 && at(2) === 0x46 && at(3) === 0x46 &&
+      at(8) === 0x57 && at(9) === 0x45 && at(10) === 0x42 && at(11) === 0x50) {
+    return 'WEBP'
+  }
+  // ISO-BMFF: [size][ftyp][brand] —— HEIC/HEIF/AVIF 都是这个壳
+  if (at(4) === 0x66 && at(5) === 0x74 && at(6) === 0x79 && at(7) === 0x70) {
+    const brand = String.fromCharCode(at(8), at(9), at(10), at(11))
+    if (/^(heic|heix|hevc|mif1|msf1)$/i.test(brand)) return `HEIC(${brand})`
+    if (/^avi[fs]$/i.test(brand)) return `AVIF(${brand})`
+    return `ISO-BMFF(${brand})`
+  }
+  let hex = ''
+  for (let i = 0; i < Math.min(12, b.length); i++) {
+    hex += (b[i] < 16 ? '0' : '') + b[i].toString(16)
+  }
+  return `未知(头12字节=${hex})`
+}
+
+// 读文件头 + 问一次 getImageInfo，把「真实编码 / 微信认的格式 / 像素尺寸 / 扩展名」一并打出来。
+// 三者不一致时最能说明问题：比如魔数 WEBP、扩展名 .png、getImageInfo 能读出尺寸，
+// 但预览页 [预览][导出] 报 createImage 解码失败 —— 格式问题实锤。
+function probeFileFormat(filePath, sourceUrl) {
+  try {
+    wx.getFileSystemManager().readFile({
+      filePath,
+      position: 0,
+      length: 16,
+      success: (r) => {
+        const bytes = new Uint8Array(r.data)
+        const ext = (String(filePath).match(/\.[a-z0-9]+$/i) || ['(无扩展名)'])[0]
+        wx.getImageInfo({
+          src: filePath,
+          success: (info) =>
+            console.log(
+              `[AI][图片格式] 真实编码=${sniffImageFormat(bytes)} 扩展名=${ext} ` +
+                `微信认的type=${info.type || '--'} 像素=${info.width}x${info.height} ` +
+                `orientation=${info.orientation || '--'}\n  file=${filePath}\n  url=${sourceUrl}`
+            ),
+          fail: (err) =>
+            console.warn(
+              `[AI][图片格式] 真实编码=${sniffImageFormat(bytes)} 扩展名=${ext} ` +
+                `但 getImageInfo 读不出（微信自己都解不了这个文件）\n  file=${filePath}\n  url=${sourceUrl}`,
+              err
+            )
+        })
+      },
+      fail: () => {
+        // 读不到文件头就算了，不值得为一条日志打扰用户
+      }
+    })
+  } catch (error) {
+    // 纯日志旁路，任何异常都咽掉
+  }
+}
+
 // 会话标题经 URL 传参进来（会话列表页 encodeURIComponent），这里解回来。
 // 必须 try 住：标题里带 % 时（或基础库版本已经替我们解过一次）decodeURIComponent 会抛 URIError，
 // 抛在 onLoad 里就是整页白屏——解不开就原样显示，标题难看远好过打不开页面。
@@ -2551,7 +2623,14 @@ Page(fold.adapt({
         url: target,
         success: res => {
           if (res.statusCode === 200 && res.tempFilePath) {
+            // 📌 排查日志（2026-09-03，定位「AI 图投屏帧字节数对不上」）：
+            //    落地文件的**扩展名跟着 URL 走**，与文件真实编码无关（OSS 上常见 .png 实为 webp、
+            //    或干脆无后缀）。而投屏出图那一步靠 canvas 2d 的 createImage 解码，它比
+            //    <image> 组件、getImageInfo、compressImage 都挑食——解不了就静默回退原图，
+            //    最终表现为结果页「图片转化出错」。所以这里把真实格式(魔数)打出来。
+            //    ⚠️ 纯旁路：先 resolve 不等它，读文件头失败也只是少一条日志，流程一字不动。
             resolve(res.tempFilePath)
+            probeFileFormat(res.tempFilePath, target)
           } else if (res.statusCode === 403 || res.statusCode === 404) {
             reject(new Error('图片已过期（生成图 24 小时后失效）'))
           } else {

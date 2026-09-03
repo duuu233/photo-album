@@ -926,6 +926,25 @@ Page(fold.adapt({
     const sourceBytes = await this.readFileSize(filePath)
     const shrunk = await this.compressForUpload(filePath, info, sourceBytes)
     const ditherStartedAt = Date.now()
+    // 📌 排查日志（2026-09-03）：帧字节数 = **上传图像素** ÷ 2，第三方不按 type 补齐/缩放。
+    //    此前全链路没有一处打过「喂给抖动接口的这张图到底多少像素」——只有字节数，反推不出来，
+    //    出帧尺寸不符时只能靠帧长度倒算。这里补上，直接和设备尺寸对照。
+    const fedSize = await this.probeImagePixels(shrunk.filePath)
+    const fedExpect = fedSize ? Math.ceil((fedSize.width * fedSize.height) / 2) : 0
+    const devExpect = Math.ceil((info.width * info.height) / 2)
+    const fedLine =
+      `[投屏][出帧] 喂给抖动接口：${fedSize ? `${fedSize.width}x${fedSize.height}` : '尺寸读取失败'} ` +
+      `type=${(fedSize && fedSize.type) || '--'} ${(shrunk.bytes / 1024).toFixed(0)}KB ` +
+      `${shrunk.compressed ? '(已缩放)' : '(原样)'} 设备=${info.width}x${info.height} ` +
+      `预计出帧=${fedExpect} 字节 设备需=${devExpect} 字节 file=${shrunk.filePath}`
+    if (fedSize && fedExpect === devExpect) {
+      console.log(fedLine)
+    } else {
+      console.warn(
+        `${fedLine} ←⚠️ 上传图不是设备物理分辨率，这一张的帧必定对不上：根因在预览页出图` +
+          `（看 [预览][出图] / [预览][coverCrop] / [预览][导出]），不是抖动接口的问题`
+      )
+    }
     const frameData = await dithering.requestFrameBin({
       filePath: shrunk.filePath,
       type: dithering.typeForDevice(info)
@@ -989,6 +1008,24 @@ Page(fold.adapt({
       console.warn('[投屏] 上传前缩放失败，改用原图上传：', error)
       return Object.assign({}, original, { compressMs: Date.now() - startedAt })
     }
+  },
+
+  // 读图片的真实像素尺寸与格式，**纯排查日志用**（2026-09-03 加）：帧字节数完全由上传图像素决定，
+  // 而链路里此前没有一处记过它。info.type 是微信解析出的真实格式（jpeg/png/webp…），不看扩展名——
+  // AI 平台下载的图扩展名常常骗人。读不到就返回 null，绝不阻断投屏。
+  probeImagePixels(filePath) {
+    return new Promise(resolve => {
+      try {
+        wx.getImageInfo({
+          src: filePath,
+          success: res =>
+            resolve({ width: res.width, height: res.height, type: res.type, orientation: res.orientation }),
+          fail: () => resolve(null)
+        })
+      } catch (error) {
+        resolve(null)
+      }
+    })
   },
 
   // 读上传源文件的字节数，纯性能观测用（uploadRecordMs/ditherMs 是否被大文件拖慢，一眼可见）。
