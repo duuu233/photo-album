@@ -247,8 +247,10 @@ function handleBusinessError(error, options) {
   if (networkError) {
     // 网络失败(已静默重试仍不通)：统一友好提示，不加「接口-」前缀与 url —— 这是网络问题而非某个接口的问题。
     message = friendlyNetworkMessage(error)
-  } else if (!/^接口-/.test(message)) {
+  } else if (!/^接口(?:\([^)]*\))?-/.test(message)) {
     // 接口报错统一加「接口-」前缀，方便和「设备-」(蓝牙/设备返回) 错误区分；幂等避免重复加。
+    // 「接口-」专指本项目后端(config.baseURL)；AI 服务由 ai-i18n.js 加「接口(AI)-」、seekink 出帧由
+    // dithering.js 加「接口(第三方)-」，判定放行所有 接口(xx)- 变体，此处不覆盖它们。
     // 同时写回 error.message，让用 showError:false 自行 toast 的调用方也带上前缀。
     message = '接口-' + message
   }

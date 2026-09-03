@@ -1,6 +1,7 @@
-// 固件升级页版式的两条产品要求（2026-08-13）：
-//  ① 顶部导航**不给返回箭头**（升级不可逆，页面里不留「随手点一下就走」的入口）；
-//  ② 百分比进度条下面挂两条升级规则，且**只在进行中这一屏**出现。
+// 固件升级页版式的产品要求：
+//  ① 顶部导航**不给返回箭头**（升级不可逆，页面里不留「随手点一下就走」的入口）（2026-08-13）；
+//  ② 百分比进度条下面挂两条升级规则，且**只在进行中这一屏**出现（2026-08-13）；
+//  ③ 进度条下面那行协议说明（「传输中：xxx/xxx 字节（x/x 包）」）**屏蔽**，不再上屏（2026-09-02）。
 //
 // 这两条都只落在 wxml 上（没有 JS 状态可断言），所以本文件按结构读 wxml 文本来锁：
 // 断言点选的是「会真正改变用户所见」的那几处，不是格式细节 —— 缩进/换行怎么调都不该让它红。
@@ -53,6 +54,35 @@ RULES.forEach(text => {
     '规则必须写在「进行中」这一屏的 block 内，否则每一屏都会挂着它'
   )
 })
+
+// ── ③ 进度条下面那行说明已屏蔽（2026-09-02） ──────────────────────────────
+// 只认**活着的**节点：本次改动在 wxml/wxss 里留了说明用的注释（含 `progress-note`、
+// `progressText` 字样），先把注释剥掉再断言，否则注释一写用例就红。
+const liveWxml = wxml.replace(/<!--[\s\S]*?-->/g, '')
+assert.ok(
+  liveWxml.indexOf('progress-note') === -1 && liveWxml.indexOf('progressText') === -1,
+  '进度条下面不许再渲染那行协议说明（字节数/包序只进日志，不给用户看）'
+)
+// 百分比与进度条本体必须还在：屏蔽的只是下面那行说明，不是整个进度显示。
+assert.ok(
+  /class="progress-percent"/.test(liveWxml) && /class="progress-fill"/.test(liveWxml),
+  '百分比与进度条要保留：这一屏只剩它们和两条规则在说话'
+)
+
+// 页面 JS 也不该再往 data 里塞 progressText（留着就是没人渲染的死数据、白刷 setData），
+// 但**必须**继续把它打进阶段日志——真机排查卡在哪一段全靠这条。
+const otaJs = fs
+  .readFileSync(path.join(__dirname, '..', 'subpackages', 'device', 'ota', 'ota.js'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/^\s*\/\/.*$/gm, '')
+assert.ok(
+  !/progressText\s*:/.test(otaJs),
+  'ota.js 不该再有 progressText 这个 data 字段（没有渲染方）'
+)
+assert.ok(
+  /说明: progressText/.test(otaJs),
+  '协议层的说明文案要继续进阶段日志：界面不给看，排查时还得看'
+)
 
 // ── 反面：底部「返回」按钮还在，别把用户困在升级页 ──────────────────────────
 const actionsAt = wxml.indexOf('ota-actions')

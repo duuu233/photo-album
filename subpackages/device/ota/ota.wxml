@@ -23,7 +23,10 @@
           <view class="progress-fill" style="width: {{progressPercent}}%;"></view>
         </view>
       </view>
-      <view class="progress-note" wx:if="{{progressText}}">{{progressText}}</view>
+      <!-- 进度条下面原来还有一行协议层说明（`progressText`，形如「传输中：1234/56789 字节（12/345 包）」
+           「握手中（MTU 247）」）。2026-09-02 需求：**屏蔽这行文案** —— 字节数/包序只在排查时有用，
+           用户这一屏留「大标题 + 百分比 + 进度条 + 两条升级规则」就够了。
+           ⚠️ 底层回调一字未动，说明照旧打进阶段日志（见 ota.js onUpgradeProgress），只是不再上屏。 -->
 
       <!-- 升级规则（2026-08-13 需求 2）：只在进行中这一屏出现 —— 它要说的是「此刻别走开」和
            「万一失败怎么自救」，成功/失败画面上再挂着只会跟结论文案抢注意力。

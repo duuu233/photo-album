@@ -65,7 +65,7 @@ async function run() {
 
   aiI18n.handleAiError(caught)
   assert.equal(shownToasts.length, 1)
-  assert.equal(shownToasts[0].title, `接口-${expected}`)
+  assert.equal(shownToasts[0].title, `接口(AI)-${expected}`)
   assert.equal(shownToasts[0].duration, 5000)
 
   console.log('ai gateway error tests passed')

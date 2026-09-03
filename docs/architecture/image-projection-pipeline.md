@@ -97,14 +97,27 @@
 
 ## 常见故障判读
 
-| 报错 | 含义 | 判读 |
+> **用户侧看到的只有一句**（2026-09-03 起）：`接口(第三方)-网络超时，图片转化失败，请重新尝试`。
+> seekink 出帧接口的所有失败（网络 fail / 业务 JSON 报错 / 非 200）都归一成它，微信透传的英文原文
+> 改为只进 vConsole 日志与 `error.raw`。下表判读的是**日志里的原文**，不是失败页文案。
+
+| 日志原文（`error.raw` / `[抖动bin]`） | 含义 | 判读 |
 | --- | --- | --- |
-| `接口-抖动bin转换失败：request:fail errcode:-118 error_msg:net::ERR_CONNECTION_TIMED_OUT` | Chromium `ERR_CONNECTION_TIMED_OUT`，**建连阶段** SYN 无应答 | 请求没到服务器。首查非标准端口 `8443` 是否被本地网络（运营商/公司 WiFi/路由器策略）丢包——切 4G 能恢复即可确认；其次查 seekink 单 IP 线路是否异常。详见 [2026-08-03 记录](../changes/2026-08-03-结果页按钮间距与抖动接口连接超时.md) |
-| `request:fail timeout` | 命中 `dithering.js` 的 20s 超时 | 连上了但服务端迟迟不返回，属出帧服务处理慢/卡住 |
+| `request:fail errcode:-118 error_msg:net::ERR_CONNECTION_TIMED_OUT` | Chromium `ERR_CONNECTION_TIMED_OUT`，**建连阶段** SYN 无应答 | 请求没到服务器。首查非标准端口 `8443` 是否被本地网络（运营商/公司 WiFi/路由器策略）丢包——切 4G 能恢复即可确认；其次查 seekink 单 IP 线路是否异常。详见 [2026-08-03 记录](../changes/2026-08-03-结果页按钮间距与抖动接口连接超时.md) |
+| `request:fail timeout`（iOS）/ `request:fail fail:time out`（安卓） | 命中 `dithering.js` 的 20s 超时 | 请求已发出但 20s 内没拿到完整响应：出帧服务处理慢/卡住，或上行在 8443 上爬得太慢。与 `-118`（SYN 都没应答）不是一回事 |
 | `url not in domain list` | 域名白名单未配 | 管理后台 request 合法域名需含 `https://cloud.seekink.cn:8443` |
 | `-102 ERR_CONNECTION_REFUSED` / `-105` / `-107` | 拒绝连接 / DNS 解析失败 / 证书链问题 | 与 `-118` 是不同故障，勿混为一谈 |
 
-网络类失败（`timeout|connect|网络|ERR_`）由 `dithering.js` 退避重试 3 次；用户看到报错即表示三次都失败，不是瞬时抖动。
+网络类失败（`error.raw` 命中 `time\s*-?out|connect|网络|ERR_`）由 `dithering.js` 退避 800ms 重试，共 3 次。
+⚠️ 2026-09-03 前判定写的是 `/timeout/`，**不匹配安卓的 `fail:time out`（带空格）**——那之前这类超时是
+一次 20s 就报失败，从没重试过；看历史工单别再按「三次都失败」解读。
+
+判责小技巧：出帧与 `setUserProductUpload`（我方后端）是同一时刻 `Promise.all` 并行发的。日志里若
+`[投屏] 上传原图建记录` 成功、只有 `[抖动bin]` 超时，就能直接把责任锁在 seekink 侧或 8443 端口上。
+
+出帧接口的报错前缀是 **`接口(第三方)-`**（seekink），与我方后端的 `接口-`（request.js 统一加）分开，
+看截图即可判断该找谁；token 由我方后端 `/Client/Basic/getXTYUserToken` 代取，仍是 `接口-`，
+`图片读取失败` 是端上读文件失败，归 `小程序-`。前缀约定见 `utils/toast.js`。
 
 ## 历史来源
 

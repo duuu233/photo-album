@@ -162,7 +162,6 @@ Page(fold.adapt({
     firmware: null,
     state: 'checking',
     progressPercent: 0,
-    progressText: '',
     errorMessage: '',
     canUpgrade: false,
     actionText: '立即升级',
@@ -382,7 +381,6 @@ Page(fold.adapt({
       loading: true,
       state: 'checking',
       progressPercent: 0,
-      progressText: '',
       errorMessage: '',
       screenStatus: 'checking',
       statusTitle: '检测版本中',
@@ -436,7 +434,6 @@ Page(fold.adapt({
         statusDesc: '正在准备固件升级，请保持电子纸设备已开机并靠近手机…',
         artImage: artFor('progress'),
         progressPercent: 0,
-        progressText: '',
         showPrimary: false
       } : this.screenForLoaded(nextState, firmware, viewData)))
 
@@ -553,7 +550,6 @@ Page(fold.adapt({
       statusDesc: '正在连接电子纸设备，请保持设备已开机并靠近手机…',
       artImage: artFor('progress'),
       progressPercent: 0,
-      progressText: '',
       showPrimary: false
     })
 
@@ -613,6 +609,9 @@ Page(fold.adapt({
       done: '固件升级中'
     }
     const statusTitle = STAGE_TITLE[phase] || this.data.statusTitle
+    // 协议层给的说明文案（形如「传输中：1234/56789 字节（12/345 包）」「握手中（MTU 247）」）。
+    // 2026-09-02 需求把进度条下面这行**屏蔽**，所以它只往下面的阶段日志里走、不再进 data
+    // （wxml 里的 .progress-note 已同步摘掉）—— 字节数/包序只在排查时有用。
     const progressText = progress.message || ''
     // 阶段切换各打一条（不打每个百分比，否则窗口 ACK 驱动的高频回调会刷屏）：
     // 页面看到的阶段与 ota-ble 打的协议节点能对上，出问题时一眼看出卡在哪一段。
@@ -623,12 +622,13 @@ Page(fold.adapt({
         说明: progressText
       })
     }
-    // 去重：进度回调由 PRN 窗口 ACK 驱动、频率较高，三个展示值都没变就不 setData；
-    // 静态字段(标题/插画/screenStatus)只在标题切换时才重传（参照 result.js 的进度节流思路）
+    // 去重：进度回调由 PRN 窗口 ACK 驱动、频率较高，两个展示值都没变就不 setData；
+    // 静态字段(标题/插画/screenStatus)只在标题切换时才重传（参照 result.js 的进度节流思路）。
+    // ⚠️ 说明文案不再上屏后也就退出了去重条件：以前「百分比没动、只有字节数在变」的那些回调
+    // 会白刷一次 setData，现在直接被挡在这里。
     if (
       percent === this._lastProgressPercent &&
-      statusTitle === this._lastProgressTitle &&
-      progressText === this._lastProgressText
+      statusTitle === this._lastProgressTitle
     ) {
       return
     }
@@ -638,12 +638,8 @@ Page(fold.adapt({
       payload.statusTitle = statusTitle
       payload.artImage = artFor('progress')
     }
-    if (progressText !== this._lastProgressText) {
-      payload.progressText = progressText
-    }
     this._lastProgressPercent = percent
     this._lastProgressTitle = statusTitle
-    this._lastProgressText = progressText
     this.setData(payload)
   },
 
@@ -738,7 +734,6 @@ Page(fold.adapt({
     // 重置进度去重追踪器（onUpgradeProgress），避免「重新升级」时与上一轮的值误判为未变化
     this._lastProgressPercent = -1
     this._lastProgressTitle = ''
-    this._lastProgressText = ''
     wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: true })
     this.setData({
       state: 'upgrading',
@@ -747,7 +742,6 @@ Page(fold.adapt({
       canUpgrade: false,
       actionText: '升级中',
       progressPercent: 0,
-      progressText: '准备升级',
       errorMessage: '',
       // 简化界面：进入进行中画面
       screenStatus: 'progress',
@@ -800,7 +794,6 @@ Page(fold.adapt({
           canUpgrade: true,
           actionText: '重新升级',
           progressPercent: 100,
-          progressText: doneText,
           errorMessage: '数据已全部发送，但未收到电子纸设备 0xF3 确认——升级未确认成功，请重试。',
           screenStatus: 'fail',
           statusTitle: '升级失败',
@@ -851,7 +844,6 @@ Page(fold.adapt({
         firmware: updatedFirmware,
         state: 'success',
         progressPercent: 100,
-        progressText: doneText,
         statusText: doneText,
         statusClass: 'is-latest'
       }, this.deriveViewData(updatedDevice, updatedFirmware), {

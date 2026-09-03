@@ -133,12 +133,12 @@ function textValue(value) {
 }
 
 // 给「设备返回 / 蓝牙链路」类错误统一加「设备-」前缀（与 toast 来源前缀约定一致：
-// 设备-/小程序-/接口-）。幂等：已带任一来源前缀时原样返回，避免重复叠加。
+// 设备-/小程序-/接口-/接口(AI)-/接口(第三方)-）。幂等：已带任一来源前缀时原样返回，避免重复叠加。
 function prefixDeviceError(error) {
   const e =
     error instanceof Error ? error : new Error((error && error.message) || '电子纸设备操作失败')
   const msg = e.message || '电子纸设备操作失败'
-  if (!/^(?:接口-|设备-|电子纸设备-|小程序-)/.test(msg)) {
+  if (!/^(?:接口(?:\([^)]*\))?-|设备-|电子纸设备-|小程序-)/.test(msg)) {
     e.message = '电子纸设备-' + msg
   }
   return e

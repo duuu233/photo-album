@@ -1,6 +1,12 @@
 // seekink 抖动接口封装：把「设备分辨率的图片文件」multipart 上传，收回**二进制六色 4bpp 帧(.bin)**，
 // 直接喂给 device-ble.uploadImage 走 BLE 图传（2026-07-22 起替代后端 setUserProductUpload 的转码结果）。
 // 实现要点/注意：
+//   · 报错文案：对用户一律是 THIRD_PARTY_FAIL_TEXT 这一句中文（英文原文留在 error.raw + 日志）；
+//   · 报错文案前缀是「接口(第三方)-」而不是「接口-」：本接口是 seekink 的第三方服务，与我方后端接口
+//     （request.js 统一加的「接口-」）分开标识，失败页/客服截图一眼能看出该找谁。⚠️ 新增来源前缀时，
+//     toast.js / device-ble.js / ota-ble.js / ai-i18n.js / device/detail 里「已带前缀就不再叠加」的判断
+//     要一起放行，否则会被再叠一层「小程序-」「电子纸设备-」。
+//     例外：下面取 token 用的是我方后端 /Client/Basic/getXTYUserToken，仍走「接口-」。
 //   · 响应体即文件流 → 不能用 wx.uploadFile（它的 res.data 恒为字符串会把 bin 打烂）；
 //     只能手工拼 multipart 请求体 + wx.request(responseType:'arraybuffer')；
 //   · 请求头按对方要求带 AcceptLanguage=en（原话键名无中划线，另补标准 Accept-Language 兜底）；
@@ -51,6 +57,7 @@ function ensureAuthToken(forceNewLogin = false) {
         authTokenInFlight = null
         const token = normalizeAuthToken(data)
         if (!token) {
+          // 「接口-」不是「接口(第三方)-」：token 由我方后端 /Client/Basic/getXTYUserToken 代取，故障要找我方后端
           throw new Error('接口-抖动token获取失败：返回为空')
         }
         authTokenCache = token
@@ -69,6 +76,19 @@ function ensureAuthToken(forceNewLogin = false) {
 // 点「开始投屏」后出帧请求零等待。失败静默——真正投屏时 ensureAuthToken 会再取并正常报错。
 function prefetchAuthToken() {
   ensureAuthToken().catch(() => {})
+}
+
+// 第三方接口的失败，用户侧一律归一成这一句（2026-09-03）：微信透传的英文原文
+//（`request:fail fail:time out`、`errcode:-118 net::ERR_CONNECTION_TIMED_OUT` 之类）
+// 用户看不懂，也没法照着做任何事，还会把结果页失败态撑高。原文不丢——写进 error.raw 并打日志，
+// 排查照旧看 vConsole（判读表见 docs/architecture/image-projection-pipeline.md）。
+const THIRD_PARTY_FAIL_TEXT = '接口(第三方)-网络超时，图片转化失败，请重新尝试'
+
+// raw：给日志/重试判定用的原始报错（英文 errMsg、业务 JSON 原文、HTTP 码），只进日志不进 UI
+function thirdPartyError(raw) {
+  const error = new Error(THIRD_PARTY_FAIL_TEXT)
+  error.raw = String(raw || '')
+  return error
 }
 
 // 与 request.js 上传超时约定一致；网络类失败退避重试（接口是纯转换、无服务端记账副作用，重试安全）
@@ -160,7 +180,8 @@ function readFileBytes(filePath) {
     wx.getFileSystemManager().readFile({
       filePath,
       success: (r) => resolve(new Uint8Array(r.data)),
-      fail: () => reject(new Error('接口-抖动bin转换失败：图片读取失败'))
+      // 这条是本地读文件失败，不是第三方接口的锅，按来源前缀约定归「小程序-」
+      fail: () => reject(new Error('小程序-抖动bin转换失败：图片读取失败'))
     })
   })
 }
@@ -180,7 +201,7 @@ function requestOnce(body, boundary, token) {
       responseType: 'arraybuffer',
       timeout: REQUEST_TIMEOUT_MS,
       success: resolve,
-      fail: (err) => reject(new Error(`接口-抖动bin转换失败：${(err && err.errMsg) || '网络异常'}`))
+      fail: (err) => reject(thirdPartyError((err && err.errMsg) || '网络异常'))
     })
   })
 }
@@ -208,9 +229,12 @@ async function requestFrameBin({ filePath, type }) {
     try {
       res = await requestOnce(body, boundary, token)
     } catch (error) {
-      // wx.request fail = 没拿到响应（超时/断网/域名拦截），弱网下退避重试
-      if (left > 1 && /timeout|connect|网络|ERR_/i.test(error.message || '')) {
-        console.warn(`[抖动bin] 网络失败，将重试（剩余 ${left - 1} 次）：`, error.message)
+      // wx.request fail = 没拿到响应（超时/断网/域名拦截），弱网下退避重试。
+      // 判定必须看 error.raw（微信原文），message 已被归一成中文；`time\s*-?out` 是因为安卓
+      // 报的是 `request:fail fail:time out`（带空格），老的 /timeout/ 根本不命中 → 曾经一次都没重试过。
+      const raw = error.raw || error.message || ''
+      if (left > 1 && /time\s*-?out|connect|网络|ERR_/i.test(raw)) {
+        console.warn(`[抖动bin] 网络失败，将重试（剩余 ${left - 1} 次）：`, raw)
         await new Promise((r) => setTimeout(r, RETRY_DELAY_MS))
         return run(left - 1)
       }
@@ -241,10 +265,10 @@ async function requestFrameBin({ filePath, type }) {
     }
     if (looksText) {
       console.warn('[抖动bin] 返回文本(业务报错):', text)
-      throw new Error(`接口-抖动bin转换失败：${text.slice(0, 60) || `HTTP ${res.statusCode}`}`)
+      throw thirdPartyError(text.slice(0, 200) || `HTTP ${res.statusCode}`)
     }
     if (res.statusCode !== 200 || !bytes.length) {
-      throw new Error(`接口-抖动bin转换失败：HTTP ${res.statusCode}`)
+      throw thirdPartyError(`HTTP ${res.statusCode} 字节数=${bytes.length}`)
     }
     return bytes
   }

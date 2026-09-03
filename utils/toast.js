@@ -38,13 +38,15 @@ function show(options) {
 }
 
 // 报错/警告类提示：给「非接口、非设备」的本地错误统一加「小程序-」前缀，便于用户/客服一眼区分故障来源
-// （设备/蓝牙错误已在 device-ble/ota-ble 加「设备-」，后端接口错误已在 request.js 加「接口-」）。
-// 幂等：标题已带「接口-」「设备-」「小程序-」前缀时原样保留，避免二次拼接。
+// （设备/蓝牙错误已在 device-ble/ota-ble 加「设备-」；接口错误按来源分三种：我方后端「接口-」(request.js)、
+//   AI 服务「接口(AI)-」(ai-i18n.js)、第三方「接口(第三方)-」(dithering.js 的 seekink 出帧)）。
+// 幂等：标题已带来源前缀时原样保留，避免二次拼接；`接口(?:\([^)]*\))?-` 认所有 接口(xx)- 变体，
+// 以后再加新的接口来源前缀不用回来改这里。
 // ⚠️ 仅用于报错和警告；成功/中性提示（已保存、已连接等）请继续用 show()，不要加来源前缀。
 function warn(options) {
   const opts = typeof options === 'string' ? { title: options } : Object.assign({}, options || {})
   const title = opts.title == null ? '' : String(opts.title)
-  opts.title = title && !/^(接口-|设备-|电子纸设备-|小程序-)/.test(title) ? `小程序-${title}` : title
+  opts.title = title && !/^(接口(?:\([^)]*\))?-|设备-|电子纸设备-|小程序-)/.test(title) ? `小程序-${title}` : title
   if (!opts.icon) {
     opts.icon = 'none'
   }

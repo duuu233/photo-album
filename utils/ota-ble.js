@@ -1565,13 +1565,13 @@ async function prepareFirmware(pkg, options = {}) {
 //   校验读包/组帧/分包，从不碰蓝牙；留着会让「升级成功」有两种含义，真机联调时反而误导。）
 
 // 给「设备返回 / 蓝牙链路 / OTA」类错误统一加「设备-」前缀（与 device-ble.js 一致），
-// 便于和接口错误(「接口-」)、小程序本地错误(「小程序-」)区分来源。
-// 幂等：已带「接口-」「设备-」前缀，或为纯大写下划线的内部控制信号(如 OTA_ABORTED) 时原样返回。
+// 便于和接口错误(「接口-」/「接口(AI)-」/「接口(第三方)-」)、小程序本地错误(「小程序-」)区分来源。
+// 幂等：已带「接口-」类(含 接口(xx)-)、「设备-」前缀，或为纯大写下划线的内部控制信号(如 OTA_ABORTED) 时原样返回。
 function prefixDeviceError(error) {
   const e =
     error instanceof Error ? error : new Error((error && error.message) || 'OTA 升级失败')
   const msg = e.message || 'OTA 升级失败'
-  if (/^(?:接口-|设备-|电子纸设备-)/.test(msg) || /^[A-Z][A-Z0-9_]*$/.test(msg)) {
+  if (/^(?:接口(?:\([^)]*\))?-|设备-|电子纸设备-)/.test(msg) || /^[A-Z][A-Z0-9_]*$/.test(msg)) {
     return e
   }
   e.message = '电子纸设备-' + msg
