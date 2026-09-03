@@ -341,7 +341,7 @@ function describeDownloadFail(err) {
 }
 
 // ==================== 排查日志：AI 图的真实格式（2026-09-03） ====================
-// 背景：AI 图保存到手机再投屏时报「图片转化出错」，而微信里的普通图同一条链路正常。
+// 背景：AI 图保存到手机再投屏时报「图片文件错误」，而微信里的普通图同一条链路正常。
 // 帧字节数完全由「喂给抖动接口的那张图的像素」决定，出图那一步靠 canvas 2d 的 createImage 解码，
 // 它比 <image> 组件 / getImageInfo / compressImage 都挑食——解不了就静默回退原图，帧必然对不上。
 // 所以要知道 AI 平台到底给了什么编码。⚠️ 扩展名不可信：downloadFile 的落地文件名跟着 URL 走，
@@ -2627,7 +2627,7 @@ Page(fold.adapt({
             //    落地文件的**扩展名跟着 URL 走**，与文件真实编码无关（OSS 上常见 .png 实为 webp、
             //    或干脆无后缀）。而投屏出图那一步靠 canvas 2d 的 createImage 解码，它比
             //    <image> 组件、getImageInfo、compressImage 都挑食——解不了就静默回退原图，
-            //    最终表现为结果页「图片转化出错」。所以这里把真实格式(魔数)打出来。
+            //    最终表现为结果页「图片文件错误」。所以这里把真实格式(魔数)打出来。
             //    ⚠️ 纯旁路：先 resolve 不等它，读文件头失败也只是少一条日志，流程一字不动。
             resolve(res.tempFilePath)
             probeFileFormat(res.tempFilePath, target)

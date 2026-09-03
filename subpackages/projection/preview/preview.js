@@ -1084,11 +1084,10 @@ Page(fold.adapt({
           })
         }
         img.onerror = (err) => {
-          // ⚠️ 走到这里 = canvas 2d 解不了这个文件。AI 生成图/第三方下载图最可能命中：
-          //    WebP、带 alpha 的特殊 PNG、无扩展名的临时文件在部分平台（尤其鸿蒙）会解码失败。
+          // ⚠️ 走到这里 = canvas 2d 没能解码这个文件。canvas 2d 的解码器与 <image> 组件、
+          //    wx.getImageInfo、wx.compressImage 都不是同一套，能显示/能压缩 ≠ canvas 能解。
           console.warn(
-            `[预览][导出] createImage 解码失败（canvas 2d 解不了该图，多半是图片格式问题）：` +
-              `目标 ${outW}x${outH} src=${src}`,
+            `[预览][导出] createImage 解码失败：目标 ${outW}x${outH} src=${src}`,
             err
           )
           reject(new Error('图片加载失败'))
@@ -1386,7 +1385,7 @@ Page(fold.adapt({
             resolve(updated)
           }).catch((err) => {
             // ⚠️ 这条一旦出现，本张必定投屏失败：回退的原图带着原比例进抖动接口，
-            //    帧字节数 = 原图宽×高÷2 ≠ 设备 宽×高÷2，结果页铁闸会拦下并报「图片转化出错」。
+            //    帧字节数 = 原图宽×高÷2 ≠ 设备 宽×高÷2，结果页铁闸会拦下并报「图片文件错误」。
             //    具体挂在哪一步看上一条 [预览][导出] warn。
             console.warn(
               `[预览][coverCrop] 导出失败，回退原图投屏（本张帧字节数必然对不上，投屏会失败）：src=${src}`,
