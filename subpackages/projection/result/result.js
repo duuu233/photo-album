@@ -619,13 +619,20 @@ Page(fold.adapt({
         const head = protocol.bytesToHex(frameData.subarray(0, 16))
         const expected4bpp = Math.ceil((info.width * info.height) / 2)
         console.log(
-          `[投屏] 第 ${i + 1}/${total} 张 .bin=${frameData.length} 字节 头16=${head} 设备需六色4bpp=${expected4bpp} 字节`
+          `[投屏] 第 ${i + 1}/${total} 张 抖动帧=${frameData.length} 字节 头16=${head} 设备需六色4bpp=${expected4bpp} 字节`
         )
-        // 字节数必须 = 六色4bpp(宽×高÷2)；对不上直接报清晰错误（设备会回含糊的「参数错误」），便于核对后端返回格式
+        // 字节数必须 = 六色4bpp(宽×高÷2)；对不上一律不发（设备只会回含糊的「参数错误」）。
+        // ⚠️ 用户侧只给「图片转化出错，请重新投屏」这一句：帧早已不是我方后端出的
+        //（2026-07-22 起由 seekink 抖动接口生成，setUserProductUpload 返回的 .bin 不再下载使用），
+        // 旧文案「后端返回的不是…六色4bpp帧」会把用户/客服引到我方接口上去。
+        // 字节数/头16/期望值这些排查用的数照旧打进日志（上面这条 console.log + 下面这条 error）。
         if (frameData.length !== expected4bpp) {
-          throw new Error(
-            `后端返回的不是电子纸设备要的六色4bpp帧：收到 ${frameData.length} 字节(头16=${head})，电子纸设备 ${info.width}×${info.height} 需要 ${expected4bpp} 字节`
+          console.error(
+            `[投屏] 出帧尺寸不符：第三方抖动接口返回 ${frameData.length} 字节(头16=${head})，` +
+              `电子纸设备 ${info.width}×${info.height} 需要 ${expected4bpp} 字节（帧字节数跟着上传图像素走，` +
+              `先查上传给抖动接口的图是不是设备物理分辨率）`
           )
+          throw new Error('图片转化出错，请重新投屏')
         }
         this.setData({ title: '图片传输中', desc: `正在投第 ${i + 1}/${total} 张…` })
 
