@@ -74,12 +74,7 @@ Page(fold.adapt({
   },
 
   buildColumns(list) {
-    const sized = list.map((photo) =>
-      Object.assign({}, photo, {
-        imgHeight: galleryApi.photoHeight(photo.ratio, COLUMN_WIDTH)
-      })
-    )
-    return galleryApi.splitColumns(sized)
+    return galleryApi.splitColumns(list.map((photo) => this.sizePhoto(photo)))
   },
 
   appendColumns(list) {
@@ -88,15 +83,37 @@ Page(fold.adapt({
       column.reduce((sum, item) => sum + item.imgHeight + 0.22 * COLUMN_WIDTH, 0)
     )
     list.forEach((photo) => {
-      const imgHeight = galleryApi.photoHeight(photo.ratio, COLUMN_WIDTH)
+      const item = this.sizePhoto(photo)
       const target = heights[0] <= heights[1] ? 0 : 1
-      columns[target].push(Object.assign({}, photo, { imgHeight }))
-      heights[target] += imgHeight + 0.22 * COLUMN_WIDTH
+      columns[target].push(item)
+      heights[target] += item.imgHeight + 0.22 * COLUMN_WIDTH
     })
     return columns
   },
 
-  /** 图片加载完按真实宽高校正高度（后端列表项不给比例，见 gallery-api.js 文件头缺口①） */
+  /**
+   * 配比例与渲染高度：后端给的 →「端上已经量准的」→ DEFAULT_RATIO 兜底（与图库列表页同源）。
+   *
+   * ⚠️ 中间那档（`this._ratios`）在本页尤其要紧：本页 **onShow 每次都整页重拉**
+   * （取消收藏后那张要消失，见文件头），从详情页返回也走这一遭。重拉时屏上 image 的 src 没变、
+   * 不会再触发 bindload，比例要是被打回 DEFAULT_RATIO＝3:4 竖图，宽 > 高的横图就会被塞进
+   * 竖盒子里由 aspectFill 放大裁切 —— 看着就是「返回后图被拉长了」（2026-09-04 报障）。
+   */
+  sizePhoto(photo) {
+    const ratio =
+      Number(photo.ratio) > 0
+        ? Number(photo.ratio)
+        : (this._ratios && this._ratios[photo.id]) || 0
+    return Object.assign({}, photo, {
+      ratio,
+      imgHeight: galleryApi.photoHeight(ratio, COLUMN_WIDTH)
+    })
+  },
+
+  /**
+   * 图片加载完按真实宽高校正高度（后端列表项不给比例，见 gallery-api.js 文件头缺口①）。
+   * 量到的比例记进 `this._ratios`，供之后每一次重拉复用（见 sizePhoto）。
+   */
   onImageLoad(event) {
     const detail = event.detail || {}
     const width = Number(detail.width) || 0
@@ -110,11 +127,17 @@ Page(fold.adapt({
     if (!photo) {
       return
     }
-    const imgHeight = galleryApi.photoHeight(width / height, COLUMN_WIDTH)
+    const ratio = width / height
+    this._ratios = this._ratios || {}
+    this._ratios[photo.id] = ratio
+    const imgHeight = galleryApi.photoHeight(ratio, COLUMN_WIDTH)
     if (imgHeight === photo.imgHeight) {
       return
     }
-    this.setData({ [`columns[${col}][${index}].imgHeight`]: imgHeight })
+    this.setData({
+      [`columns[${col}][${index}].ratio`]: ratio,
+      [`columns[${col}][${index}].imgHeight`]: imgHeight
+    })
   },
 
   async onToggleFavorite(event) {

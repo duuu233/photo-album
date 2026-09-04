@@ -41,6 +41,10 @@ Page(fold.adapt({
     //
     // silent：**返回本页不清屏**。这一次重拉是为了同步收藏态，用户眼里是「回到刚才那一屏」，
     // 把已经看着的列表清成「加载中…」再长回来，比不刷新还难受（切分类才要清屏，见 loadPhotos）。
+    //
+    // ⚠️ 这次重拉**不许把已经量准的图片比例打回 3:4 占位**（比例记在 this._ratios，见 sizePhoto）：
+    // 返回时屏上 image 的 src 没变、不会再触发 bindload，打回去就再也校正不回来，
+    // 横图会被拉长（2026-09-04 报障）。
     if (this.data.categories.length) {
       this.loadPhotos(this.data.activeCategory, { silent: true })
     }
@@ -174,12 +178,7 @@ Page(fold.adapt({
    * ⚠️ 当前后端不给比例，这里落到 DEFAULT_RATIO，真实高度由 onImageLoad 校正。
    */
   buildColumns(list) {
-    const sized = list.map((photo) =>
-      Object.assign({}, photo, {
-        imgHeight: galleryApi.photoHeight(photo.ratio, COLUMN_WIDTH)
-      })
-    )
-    return galleryApi.splitColumns(sized)
+    return galleryApi.splitColumns(list.map((photo) => this.sizePhoto(photo)))
   },
 
   /** 续页：把新一批接着排进现有两列（短的那列先拿），不动已经在屏上的卡片 */
@@ -189,17 +188,39 @@ Page(fold.adapt({
       column.reduce((sum, item) => sum + item.imgHeight + 0.22 * COLUMN_WIDTH, 0)
     )
     list.forEach((photo) => {
-      const imgHeight = galleryApi.photoHeight(photo.ratio, COLUMN_WIDTH)
+      const item = this.sizePhoto(photo)
       const target = heights[0] <= heights[1] ? 0 : 1
-      columns[target].push(Object.assign({}, photo, { imgHeight }))
-      heights[target] += imgHeight + 0.22 * COLUMN_WIDTH
+      columns[target].push(item)
+      heights[target] += item.imgHeight + 0.22 * COLUMN_WIDTH
     })
     return columns
   },
 
   /**
+   * 给一条列表项配上比例与渲染高度。比例三选一：后端给的 →「端上已经量准的」→ DEFAULT_RATIO 兜底。
+   *
+   * ⚠️ 中间那档（`this._ratios`，2026-09-04 补）不能删：
+   * 后端列表项不给比例（见 gallery-api.js 缺口①），首屏一律按 DEFAULT_RATIO＝3:4 **竖图**占位，
+   * 图片 bindload 之后才校正成真实比例。而「从详情页/收藏页返回」那次静默重拉会把每张卡重算一遍，
+   * 此时屏上这批 image 的 src 没变、**不会再触发 bindload**，量准的比例就再也回不来 ——
+   * 宽 > 高的横图被塞回 423rpx 的竖盒子里，aspectFill 放大裁切，看着就是「返回后图被拉长了」。
+   * 比例是端上量到的既有事实，跟着页面实例活着，不该被任何一次重拉抹掉。
+   */
+  sizePhoto(photo) {
+    const ratio =
+      Number(photo.ratio) > 0
+        ? Number(photo.ratio)
+        : (this._ratios && this._ratios[photo.id]) || 0
+    return Object.assign({}, photo, {
+      ratio,
+      imgHeight: galleryApi.photoHeight(ratio, COLUMN_WIDTH)
+    })
+  },
+
+  /**
    * 图片加载完成后按真实宽高校正这一张的高度（后端列表项没有比例，见文件头缺口①）。
    * 只改高度、**不重新分列**：重排会让用户正在看的卡片整块跳走。
+   * 量到的比例同时记进 `this._ratios`，供之后任何一次重拉复用（见 sizePhoto）。
    * 高度没变化（后端补了比例、或两次算出来一样）就不 setData，免得每张图都白跑一次渲染。
    */
   onImageLoad(event) {
@@ -215,11 +236,17 @@ Page(fold.adapt({
     if (!photo) {
       return
     }
-    const imgHeight = galleryApi.photoHeight(width / height, COLUMN_WIDTH)
+    const ratio = width / height
+    this._ratios = this._ratios || {}
+    this._ratios[photo.id] = ratio
+    const imgHeight = galleryApi.photoHeight(ratio, COLUMN_WIDTH)
     if (imgHeight === photo.imgHeight) {
       return
     }
-    this.setData({ [`columns[${col}][${index}].imgHeight`]: imgHeight })
+    this.setData({
+      [`columns[${col}][${index}].ratio`]: ratio,
+      [`columns[${col}][${index}].imgHeight`]: imgHeight
+    })
   },
 
   /**
