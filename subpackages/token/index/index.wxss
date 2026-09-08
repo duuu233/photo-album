@@ -165,17 +165,19 @@
 
 .package-card {
   position: relative;
-  flex: 0 0 248rpx;
+  flex: 0 0 208rpx;
   display: flex;
   flex-direction: column;
   justify-content: center;
   box-sizing: border-box;
-  /* 2026-09-08 当日两次收窄：300 → 276 → 248rpx，内边距 22 → 20 → 16rpx。
-     原宽度是为六位金额留的余量，右侧空得明显。
-     ⚠️ 内宽 248 − 16×2 = 216rpx，而 ￥999999.99 在 40rpx 字号下约 200rpx —— 余量
-        只剩 ~16rpx，**这已是不动主价格字号能到的下限**，再窄必须先把
-        .package-price-num 降到 36rpx，否则六位金额会折行。 */
-  width: 248rpx;
+  /* 2026-09-08 当日三次收窄：300 → 276 → 248 → 208rpx，内边距 22 → 20 → 16rpx。
+     ⚠️ 300rpx 这个加宽本来就是多余的：当时把「价格支持六位数值」读成了六位**整数**
+        （￥999999.99），产品口径其实是**连小数点后两位一共六位**，即整数部分四位、
+        最大 ￥9999.99。设计稿原值是 200rpx。
+     内宽 208 − 16×2 = 176rpx；￥9999.99 在 40rpx 字号下约 157rpx，留了约 19rpx 余量。
+     ⚠️ 主价格字号仍是 40rpx（第一轮为六位整数从 48rpx 降下来的）。想把它调回设计稿的
+        48rpx，￥9999.99 要约 183rpx，卡片得回到 216rpx 以上 —— 字号与窄卡二选一。 */
+  width: 208rpx;
   height: 248rpx;
   padding: 0 16rpx;
   background: rgba(255, 255, 255, 0.72);
@@ -258,7 +260,8 @@
 }
 
 .package-price-num {
-  /* 加宽卡片并略缩字号，完整容纳六位整数及两位小数，不折行或省略。 */
+  /* 40rpx 是第一轮为「六位整数」从 48rpx 降下来的；口径更正为「含两位小数共六位」
+     后其实不必再缩，但卡片已按 40rpx 收到 208rpx，两者要一起改才动。 */
   flex-shrink: 0;
   white-space: nowrap;
   margin-left: 6rpx;
