@@ -29,6 +29,7 @@
 //   端上**不得**自己扣数——AI 侧只负责「展示真实余额 + 用完后重取」，见 utils/ai-token.js。
 
 const http = require('./request')
+const language = require('./language')
 const wxVirtualPay = require('./wx-virtual-pay')
 
 // addOrder 的支付方式（swagger ClientOrderAddApiIn.payType）
@@ -94,7 +95,19 @@ function normalizeAccount(data) {
  * `id` 保持字符串：页面用它做选中比对，还要经 URL 传给确认页，数字进出 URL 容易变类型；
  * 真正提交给 addOrder 的是数字 `goodsId`。
  */
-function normalizePackage(item) {
+// 同时兼容按语种返回 marketAmount，以及一次返回四语种原价的响应。
+// 指定语种字段存在但为空时不回退其他币种；缺失/非法值不伪造原价，0 保留。
+function marketAmountOf(source, languageCode) {
+  const field = ({ 0: 'marketAmountEnglish', 1: 'marketAmountEnglish',
+    2: 'marketAmount', 3: 'marketAmountFan', 4: 'marketAmountJapanese' })[languageCode] || 'marketAmount'
+  const value = Object.prototype.hasOwnProperty.call(source, field)
+    ? source[field] : source.marketAmount
+  if ((typeof value !== 'number' && typeof value !== 'string') || String(value).trim() === '') return null
+  const amount = Number(value)
+  return Number.isFinite(amount) && amount >= 0 ? amount : null
+}
+
+function normalizePackage(item, languageCode = 2) {
   const source = item || {}
   const goodsId = toNumber(source.goodsId, 0)
   return {
@@ -104,6 +117,8 @@ function normalizePackage(item) {
     tokens: toNumber(source.num, 0),
     gift: toNumber(source.giveNum, 0),
     price: toNumber(source.amount, 0),
+    marketAmount: marketAmountOf(source, languageCode),
+    currencySymbol: String(source.currencySymbol || '').trim() || '¥',
     // 微信/苹果两侧的商品渠道 id。端上不直接拿它去调支付（productId 是被服务端签进
     // signData 的，见 wx-virtual-pay.js），只用来判断「这档在本端买不买得了」并打日志。
     wxProductId: source.wxProductId || '',
@@ -323,9 +338,10 @@ function formatConfigNum(value) {
 }
 
 function getPackages() {
+  const languageCode = language.getLanguageCode()
   return http
     .get('/Client/Order/getGoodsList', {}, { mock: false })
-    .then(data => pageRows(data).map(normalizePackage))
+    .then(data => pageRows(data).map(item => normalizePackage(item, languageCode)))
 }
 
 /**

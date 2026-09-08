@@ -97,6 +97,26 @@ const FAST_DELAYS = [1, 1, 1]
     assert.equal(tokenApi.unitPriceOf(pkg), '0.38')
   }
 
+  // 原价契约：不影响售价，数值字符串/零值保留，缺失或非法值不伪造。
+  {
+    const prices = { marketAmount: '12.30', marketAmountEnglish: '4.50',
+      marketAmountFan: 6, marketAmountJapanese: '800' }
+    for (const [code, expected] of [[2, 12.3], [1, 4.5], [0, 4.5], [3, 6], [4, 800]]) {
+      const pkg = tokenApi.normalizePackage(Object.assign({ amount: 2, currencySymbol: '$' }, prices), code)
+      assert.equal(pkg.marketAmount, expected)
+      assert.equal(pkg.price, 2)
+      assert.equal(pkg.currencySymbol, '$')
+    }
+    assert.equal(tokenApi.normalizePackage({ marketAmount: '999999.99' }).marketAmount, 999999.99)
+    assert.equal(tokenApi.normalizePackage({ marketAmount: 0 }).marketAmount, 0)
+    assert.equal(tokenApi.normalizePackage({ marketAmount: '0' }).marketAmount, 0)
+    assert.equal(tokenApi.normalizePackage({ marketAmount: 25 }, 1).marketAmount, 25)
+    assert.equal(tokenApi.normalizePackage({ marketAmount: 25, marketAmountEnglish: null }, 1).marketAmount, null)
+    for (const value of [undefined, null, '', ' ', 'invalid', -1, Infinity, 'NaN', true, [], {}]) {
+      assert.equal(tokenApi.normalizePackage({ marketAmount: value }).marketAmount, null)
+    }
+  }
+
   // ── ③ 记录分页：pageCount 优先，缺失时才看条数 ───────────────────────────
   {
     // GET 的业务参数走 wx.request 的 data（url 上只有 request.js 补的公共参数）

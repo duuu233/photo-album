@@ -68,7 +68,7 @@
               <text class="package-tokens-unit">星币</text>
             </view>
             <view class="package-price">
-              <text class="package-price-symbol">¥</text>
+              <text class="package-price-symbol">{{item.currencySymbol}}</text>
               <text class="package-price-num">{{item.price}}</text>
             </view>
             <view class="package-unit">{{item.referencePriceText}}</view>

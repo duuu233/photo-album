@@ -52,9 +52,10 @@ Page(fold.adapt({
   async loadPackages() {
     try {
       const list = await tokenApi.getPackages()
-      // 划线金额暂用静态占位，后续按确认的接口字段替换；不参与实际购买金额计算。
+      // 原价仅展示，不参与实际购买金额；未下发时保留空行，不显示虚构金额。
       const packages = list.map((item) => Object.assign({}, item, {
-        referencePriceText: '￥0.01'
+        referencePriceText: item.marketAmount === null
+          ? '' : item.currencySymbol + item.marketAmount.toFixed(2)
       }))
       this.setData({
         packages,
