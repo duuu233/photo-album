@@ -202,28 +202,23 @@
   height: 32rpx;
 }
 
-/* 角标：选中与未选中**位置完全一致**（都贴卡片右上角，-3rpx 抵掉卡片那 3rpx
-   描边），两者只差背景色与字色 —— 原来未选中是卡片内的右对齐文字、选中才浮到
-   角上，切换选中时角标会跳一下位置。
-   ⚠️ 角标现在恒为 absolute、不占高，.package-gift-slot 那 32rpx 占位更不能删。 */
+/* 角标：**与选中状态完全无关**——位置、橙底、白字三样都固定，选中只影响卡片本身
+   的底色与描边。历史：最早未选中是卡内右对齐橙字、选中才浮成橙底白标签（切换时
+   角标会跳位置）；随后统一了位置、仍按选中切换配色；本轮按产品要求连配色也固定。
+   ⚠️ 角标恒为 absolute、不占高，.package-gift-slot 那 32rpx 占位不能删，
+      否则有赠送与无赠送的卡片内容会差半格。 */
 .package-gift {
   position: absolute;
   top: -3rpx;
   right: -3rpx;
   padding: 0 16rpx;
-  color: #f2621f;
+  color: #ffffff;
   font-size: 22rpx;
   line-height: 32rpx;
   text-align: right;
   white-space: nowrap;
-  background: transparent;
-  border-radius: 0 20rpx 0 20rpx;
-}
-
-/* 选中：同一个位置，改成实心橙底白字 */
-.package-card--active .package-gift {
-  color: #ffffff;
   background: #ff6a1e;
+  border-radius: 0 20rpx 0 20rpx;
 }
 
 .package-tokens {
