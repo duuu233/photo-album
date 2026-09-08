@@ -71,7 +71,7 @@
               <text class="package-price-symbol">¥</text>
               <text class="package-price-num">{{item.price}}</text>
             </view>
-            <view class="package-unit">≈ ¥{{item.unitPrice}}/星币</view>
+            <view class="package-unit">{{item.referencePriceText}}</view>
           </view>
         </view>
       </scroll-view>

@@ -165,12 +165,12 @@
 
 .package-card {
   position: relative;
-  flex: 0 0 200rpx;
+  flex: 0 0 300rpx;
   display: flex;
   flex-direction: column;
   justify-content: center;
   box-sizing: border-box;
-  width: 200rpx;
+  width: 300rpx;
   height: 248rpx;
   padding: 0 22rpx;
   background: rgba(255, 255, 255, 0.72);
@@ -249,9 +249,12 @@
 }
 
 .package-price-num {
+  /* 加宽卡片并略缩字号，完整容纳六位整数及两位小数，不折行或省略。 */
+  flex-shrink: 0;
+  white-space: nowrap;
   margin-left: 6rpx;
   color: #2a2d32;
-  font-size: 48rpx;
+  font-size: 40rpx;
   font-weight: 700;
   line-height: 1;
 }
@@ -262,6 +265,7 @@
 }
 
 .package-unit {
+  text-decoration: line-through;
   margin-top: 16rpx;
   color: #9aa0a8;
   font-size: 22rpx;
