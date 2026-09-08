@@ -39,6 +39,8 @@
 
 ## 变更记录
 
+- [2026-09-08 星币管理原价字段接入](changes/2026-09-08-星币管理原价字段接入.md)：套餐卡划线原价改取接口 `marketAmount`（按语种，缺失留空不伪造），主价格币种改取商品 `currencySymbol`；验证限制见记录。
+
 - [2026-09-08 星币管理套餐价格展示](changes/2026-09-08-星币管理套餐价格展示.md)：静态划线金额和六位价格展示；验证限制见记录。
 
 - [2026-09-04 图库列表：从详情页返回后横图被拉长](changes/2026-09-04-图库返回后横图被拉长.md) — **两端同时改**（小程序 `subpackages/gallery/{list,favorites}` + App `official_gallery_page.dart`/`official_gallery_favorites_page.dart`）；⚠️ 两端真机均未验，App 侧本机无 Flutter SDK、`dart analyze`/`flutter test` 未跑。现象：宽 > 高的横图点进详情再返回，卡片变高、图被放大裁切。根因是三条各自正确的既有设定叠出来的：① 后端列表项不给比例（gallery-api.js 缺口①），首屏一律按 `DEFAULT_RATIO = 0.75`＝3:4 **竖图**占位；② 真实比例靠图片加载完量一次补上（`bindload` / `imageBuilder`）；③ 从详情页/收藏页返回要重拉列表对账收藏态（收藏页更是每次 onShow 整页重拉）。③ 把高度按 ① 重算一遍，而重拉后小程序 `image` 的 `src` 没变、节点按 `wx:key` 复用不再触发 `bindload`，App 的 `_PhotoCard` State 按 `ValueKey(id)` 复用、`_measuring` 仍为 true 不再量第二次 —— 量准的比例**永久丢失**，317rpx 宽的列里 16:9 的图本该 178rpx 高却被打回 423rpx，`aspectFill`/`BoxFit.cover` 放大裁切，肉眼就是「被拉长」（竖图接近 3:4 故看不出来）。改法两端同一套：把量准的比例记在页面实例上（小程序 `this._ratios`、App `_ratios`），新增 `sizePhoto` / `_withKnownRatios`，比例三选一「后端给的 → 已量准的 → DEFAULT_RATIO 兜底」，`buildColumns`/`appendColumns` 与 `_loadPhotos`/`_load`/`_loadMore` 一律走它；`onImageLoad` 顺带把 `ratio` 也写回 data（分列与续页累加高度用真值）。**没动**返回重拉对账收藏态、校正后不重新分列、收藏页取消收藏仍整页重拉这三条既有决定。新增 `tests/gallery-return-ratio.test.js`（两页各走「占位 → 量准 → 重拉」，旧实现下实测 `423 !== 178` 会红），小程序 `node --test` 57 个用例全过
