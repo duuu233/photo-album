@@ -1,9 +1,9 @@
-// 隐私政策正文的回归用例（2026-08-13 换成法务给的 v3.0 全文）。
+// 隐私政策正文的回归用例（2026-09-10 换成法务 20260909 那份 docx）。
 //
-// 这一页此前是 2026-5-13 的旧短文（两节、几百字），而 AI 同意弹窗里已经写着
-// 「详情请见《BoltStar 隐私政策》第八节」——**指路指不到**就是合规缺口，不是排版问题。
-// 所以这里锁三件事：
-//   ① 正文确实是那份 v3.0 全文（14 章齐全，含跨境传输那一章）；
+// 这一页的正文是**法律文本**，端上只负责渲染：数据来自 privacy-content.js（由法务文档逐块
+// 转换而来）。AI 同意弹窗里写着「详情请见《BoltStar 隐私政策》第八节」——**指路指不到**
+// 就是合规缺口，不是排版问题。所以这里锁三件事：
+//   ① 正文确实是那份全文（14 章齐全，含跨境传输那一章，四张表列数对齐）；
 //   ② 弹窗里那句指路能落到实处（第八章确实讲跨境传输）；
 //   ③ 页面把每种区块都画出来了（少画一种，就有整块正文在真机上凭空消失）。
 const assert = require('assert')
@@ -16,11 +16,11 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8')
 const content = require('../subpackages/settings/privacy/privacy-content')
 const consent = require('../utils/ai-service-consent')
 
-// ── ① 正文是法务那份 v3.0 全文 ────────────────────────────────────────────
+// ── ① 正文是法务那份全文 ──────────────────────────────────────────────────
 const chapters = content.blocks.filter(item => item.type === 'h2')
-assert.equal(chapters.length, 14, '隐私政策应有 14 章（法务 v3.0 全文）')
-assert.match(content.meta, /2026 年 8 月 13 日/, '页首应写明 v3.0 的更新/生效日期')
-assert.match(content.meta, /v3\.0/, '页首应写明文档版本')
+assert.equal(chapters.length, 14, '隐私政策应有 14 章（法务全文）')
+assert.match(content.meta, /2026 年 8 月 28 日/, '页首应写明法务文档的更新日期')
+assert.match(content.meta, /版本：/, '页首应写明文档版本')
 
 const tables = content.blocks.filter(item => item.type === 'table')
 assert.equal(tables.length, 4, '权限 / 共享 / SDK / 收集清单四张表都要在')
@@ -67,10 +67,12 @@ assert.ok(
 )
 assert.ok(markup.includes('{{docMeta}}'), 'wxml 应画出页首的日期/版本行')
 
-// 旧短文的痕迹不该再留在页面上（它是 2026-5-13 那版，条款早已作废）
-assert.ok(
-  !markup.includes('2026-5-13'),
-  '页面不该再写死旧版日期：日期随正文数据一起来自法务文档'
-)
+// 旧版正文的痕迹不该再留在页面上（日期随正文数据一起来自法务文档）
+;['2026-5-13', '2026 年 8 月 13 日'].forEach(stale => {
+  assert.ok(
+    !markup.includes(stale),
+    `页面不该写死旧版日期 ${stale}：日期随正文数据一起来自法务文档`
+  )
+})
 
 console.log('privacy policy content tests passed')

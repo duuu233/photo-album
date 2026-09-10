@@ -35,17 +35,10 @@
           <view class="article-table-cell">违规次数</view>
           <view class="article-table-cell">处理措施</view>
         </view>
+        <!-- 2026-09-10 按产品口径改：前三次只提示违禁、不封禁，第四次起才封 24 小时 -->
         <view class="article-table-row">
-          <view class="article-table-cell">第1次</view>
-          <view class="article-table-cell">AI功能封禁24小时</view>
-        </view>
-        <view class="article-table-row">
-          <view class="article-table-cell">第2次</view>
-          <view class="article-table-cell">AI功能封禁24小时</view>
-        </view>
-        <view class="article-table-row">
-          <view class="article-table-cell">第3次</view>
-          <view class="article-table-cell">AI功能封禁24小时</view>
+          <view class="article-table-cell">第1-3次</view>
+          <view class="article-table-cell">AI功能提示违禁</view>
         </view>
         <view class="article-table-row">
           <view class="article-table-cell">累计3次后，每新增1次</view>

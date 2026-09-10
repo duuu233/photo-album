@@ -1,22 +1,48 @@
+<!-- 用户协议。正文**不写死在这里**：法务给的是整篇文档（15 章 + 60 条列表 + 1 张表），
+     写死进 wxml 下次换版还得重排一遍。现在正文来自 agreement-content.js（由那份 docx 逐块
+     转换而来），这里只有一套通用渲染——和隐私政策 privacy.wxml 是同一套模板。 -->
 <view class="settings-shell" style="--status-bar: {{statusBarHeight}}px;">
   <page-nav title="用户协议"></page-nav>
 
   <scroll-view class="article-scroll" scroll-y>
     <view class="glass-card article-card">
       <view class="article-title">《BoltStar 用户协议》</view>
-      <view class="date-row">
-        <text>更新日期：2026-5-13</text>
-        <text>生效日期：2026-5-13</text>
-      </view>
-      <view class="article-section-title">前言</view>
-      <view class="article-p">欢迎使用 BoltStar。在使用本应用前，请您仔细阅读《用户协议》以及《隐私政策》。您注册、登录或使用本应用的行为，即表示您已充分理解并同意接受本协议的全部条款约束。</view>
-      <view class="article-section-title">一、服务说明</view>
-      <view class="article-p">1. 本应用由 BoltStar 团队提供照片管理、电子纸设备连接、照片投屏等核心服务。</view>
-      <view class="article-p">2. 我们将尽最大努力保障服务稳定性，但因网络故障、电子纸设备问题、第三方服务影响等不可抗因素导致的服务中断或异常，我们不承担责任，但会尽力协助处理。</view>
-      <view class="article-p">3. 我们保留随时修改、升级或终止部分或全部服务的权利，修改或终止前会通过 App 内公告提前告知您。</view>
-      <view class="article-section-title">二、账号注册与使用规则</view>
-      <view class="article-p">1. 您需提供真实、有效的信息完成账号注册，并对您账号下的所有行为负责。</view>
-      <view class="article-p">2. 您应妥善保管账号、密码及验证码信息，因您自身原因导致的账号被盗、信息泄露或财产损失，由您自行承担责任。</view>
+      <!-- 日期与版本号照抄文档页首那一行（法务口径，端上不另拼） -->
+      <view class="article-meta">{{docMeta}}</view>
+
+      <block wx:for="{{blocks}}" wx:key="key">
+        <view wx:if="{{item.type === 'h2'}}" class="article-section-title">{{item.text}}</view>
+        <!-- 用户协议这份文档没有 h3 小节标题，分支保留：与隐私政策共用一套模板，
+             法务下次给的版本里出现小节标题时不用再改渲染层 -->
+        <view wx:elif="{{item.type === 'h3'}}" class="article-sub-title">{{item.text}}</view>
+        <view wx:elif="{{item.type === 'li'}}" class="article-list">• {{item.text}}</view>
+
+        <!-- 表格：flex 手搭，列宽均分。⚠️ 行高不能写死——违规处理那张表的措施列会折行 -->
+        <view wx:elif="{{item.type === 'table'}}" class="article-table">
+          <!-- 表头/单元格这两层是**静态**数据（进 data 后不再变），按官方口径可以不设 wx:key；
+               强行给 key 反而不对：单元格文本会重复（多行都是「AI 功能封禁 24 小时」），*this 会撞。 -->
+          <view class="article-table__row article-table__row--head">
+            <view
+              wx:for="{{item.head}}"
+              wx:for-item="cell"
+              class="article-table__cell article-table__cell--head"
+            >{{cell}}</view>
+          </view>
+          <view
+            wx:for="{{item.rows}}"
+            wx:for-item="row"
+            class="article-table__row"
+          >
+            <view
+              wx:for="{{row}}"
+              wx:for-item="cell"
+              class="article-table__cell"
+            >{{cell}}</view>
+          </view>
+        </view>
+
+        <view wx:else class="article-p">{{item.text}}</view>
+      </block>
     </view>
   </scroll-view>
 
