@@ -66,4 +66,20 @@ assert.ok(
   '旧短文的章节标题不该还写死在页面里'
 )
 
+// ── ④ 经产品确认的排版修正必须在（法务下次给新版时，这几条要重新过一遍） ──────
+assert.match(content.meta, /生效日期：2026 年 9 月 10 日/, '生效日期已按产品口径填实，不该再是占位符')
+assert.match(content.meta, /版本：V1\.0/, '版本号是 V1.0（原文的 VI.0 已确认是笔误）')
+;['待填写', 'VI.0'].forEach(stale => {
+  assert.ok(!content.meta.includes(stale), `页首不该再出现「${stale}」`)
+})
+const plain = content.blocks
+  .map(item => (item.type === 'table'
+    ? [...item.head, ...item.rows.flat()].join(' ')
+    : item.text))
+  .join('\n')
+;[/[一-鿿][,;]/, /[,;][一-鿿]/, /。。/].forEach(pattern => {
+  assert.ok(!pattern.test(plain), `中文句子里仍有半角标点或重复句号：${pattern}`)
+})
+assert.ok(!plain.includes('AppleAppStore'), 'Apple App Store 应已补上空格')
+
 console.log('user agreement content tests passed')
