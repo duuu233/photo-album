@@ -23,6 +23,28 @@ assert.match(content.meta, /版本：/, '页首应写明文档版本')
 
 const tables = content.blocks.filter(item => item.type === 'table')
 assert.equal(tables.length, 1, '第九章的违规处理阶梯表要在')
+
+// 第九章那张表必须与《BoltStar AI 服务协议》同口径。法务原文写的是「第 1/2/3 次各封 24 小时」
+// 并声称与 AI 协议一致，而 AI 协议 2026-09-10 已改成「前三次只提示违禁」——产品裁定用户协议
+// 按 AI 协议改。这条用例把两页钉在一起：AI 协议页改了口径而这里没跟，会当场红。
+const tiers = tables[0]
+assert.deepEqual(
+  tiers.rows,
+  [
+    ['第 1-3 次', 'AI 功能提示违禁'],
+    ['累计 3 次后，每新增 1 次', 'AI 功能封禁 24 小时'],
+    ['累计满 9 次', 'AI 功能永久封禁']
+  ],
+  '违规阶梯要与 AI 服务协议一致（前三次只提示违禁，第四次起封 24 小时，满 9 次永久）'
+)
+const aiMarkup = read('subpackages/settings/ai-agreement/ai-agreement.wxml')
+;['第1-3次', 'AI功能提示违禁', '累计3次后，每新增1次', '累计满9次'].forEach(cell => {
+  assert.ok(aiMarkup.includes(cell), `AI 服务协议页缺少阶梯表的「${cell}」一格`)
+})
+assert.ok(
+  !aiMarkup.includes('第1次') && !aiMarkup.includes('第2次') && !aiMarkup.includes('第3次'),
+  'AI 服务协议页不该再有「第1次/第2次/第3次」三行旧阶梯'
+)
 tables.forEach(table => {
   assert.ok(table.head.length >= 2, '违规处理表缺表头')
   assert.ok(table.rows.length > 0, '违规处理表没有数据行')
