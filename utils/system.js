@@ -16,6 +16,22 @@ function getSystemLanguageInfo() {
   }
 }
 
+// 当前是否「正式版」小程序。
+//
+// 口径与 utils/request.js 里那份一致：`envVersion === 'release'`，**取不到环境信息时按正式版
+// 处理**（最保守）——宁可在开发版上少一个入口，也不能把内部入口漏到线上。
+// 开发版(develop)/体验版(trial) 返回 false，所以硬件联调流程不受影响。
+//
+// 用途：屏蔽只给开发/联调用的入口，见 subpackages/device/bind（调试台入口）与
+// subpackages/device/debug（调试台本身的二次拦截）。
+function isReleaseEnv() {
+  try {
+    return wx.getAccountInfoSync().miniProgram.envVersion === 'release'
+  } catch (error) {
+    return true
+  }
+}
+
 function isDevTools() {
   try {
     // 新版基础库用 getDeviceInfo 读取 platform，降级到已废弃的 getSystemInfoSync
@@ -51,5 +67,6 @@ module.exports = {
   getSystemLanguageInfo,
   // 转发自 utils/language，保持旧调用方可用
   normalizeLanguage: language.normalizeLanguage,
-  isDevTools
+  isDevTools,
+  isReleaseEnv
 }

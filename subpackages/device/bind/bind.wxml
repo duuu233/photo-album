@@ -9,8 +9,10 @@
   <page-nav title="绑定设备" bind:measure="onNavMeasure"></page-nav>
 
   <view class="bind-content {{showHelp ? 'content-dimmed' : ''}}">
-    <!-- 调试台入口：开发对接/硬件联调用，需要屏蔽时注释掉本段即可（不要删除） -->
-    <view class="debug-entry" hover-class="none" bindtap="openDebug">
+    <!-- 调试台入口：开发对接/硬件联调用。正式版(release)由 showDebugEntry 关掉，
+         开发版/体验版照常显示；另一处隐藏入口是下面设备行上的 bindlongpress，
+         统一由 bind.js openDebug 里的 isReleaseEnv 兜底拦截。 -->
+    <view wx:if="{{showDebugEntry}}" class="debug-entry" hover-class="none" bindtap="openDebug">
       <view class="debug-entry__icon">🔧</view>
       <view class="debug-entry__copy">
         <text class="debug-entry__title">硬件联调调试台</text>
