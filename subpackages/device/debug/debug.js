@@ -174,6 +174,18 @@ Page(fold.adapt({
   },
 
   onLoad(options) {
+    // 非开发版直接退回去（体验版、正式版都拦）：本页能对设备发任意指令（含 0x12 删除
+    // 图片）、整页未接多语言，只给开发/硬件联调用。入口已在 bind 页按环境隐藏，这里是
+    // **第二道**——小程序的页面即使没有入口按钮，仍可能被分享卡片、扫码或历史路径打开。
+    // 见 utils/system.isDevEnv。
+    if (!system.isDevEnv()) {
+      wx.navigateBack({
+        fail() {
+          wx.switchTab({ url: '/pages/home/home' })
+        }
+      })
+      return
+    }
     this.setData(system.getLayoutMetrics())
     this._logId = 0
 
