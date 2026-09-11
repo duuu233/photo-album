@@ -16,19 +16,22 @@ function getSystemLanguageInfo() {
   }
 }
 
-// 当前是否「正式版」小程序。
+// 当前是否**开发版**小程序（`envVersion === 'develop'`，含微信开发者工具）。
 //
-// 口径与 utils/request.js 里那份一致：`envVersion === 'release'`，**取不到环境信息时按正式版
-// 处理**（最保守）——宁可在开发版上少一个入口，也不能把内部入口漏到线上。
-// 开发版(develop)/体验版(trial) 返回 false，所以硬件联调流程不受影响。
+// 读法与 utils/request.js 判 mock 的那份同源（`wx.getAccountInfoSync().miniProgram.envVersion`），
+// 但口径更严：那边只拦正式版，这里**只认开发版**——体验版(trial)和正式版(release) 一律返回
+// false。**取不到环境信息时返回 false**（按"不是开发版"处理，最保守）：宁可在某台设备上少
+// 一个入口，也不能把内部入口漏到体验版或线上。
 //
 // 用途：屏蔽只给开发/联调用的入口，见 subpackages/device/bind（调试台入口）与
 // subpackages/device/debug（调试台本身的二次拦截）。
-function isReleaseEnv() {
+//
+// 2026-09-11 产品口径：**只要开发版可以看到就行，体验版也屏蔽入口，包括正式版。**
+function isDevEnv() {
   try {
-    return wx.getAccountInfoSync().miniProgram.envVersion === 'release'
+    return wx.getAccountInfoSync().miniProgram.envVersion === 'develop'
   } catch (error) {
-    return true
+    return false
   }
 }
 
@@ -68,5 +71,5 @@ module.exports = {
   // 转发自 utils/language，保持旧调用方可用
   normalizeLanguage: language.normalizeLanguage,
   isDevTools,
-  isReleaseEnv
+  isDevEnv
 }

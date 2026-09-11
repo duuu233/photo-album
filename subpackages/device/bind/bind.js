@@ -36,15 +36,15 @@ Page(fold.adapt({
     renameVisible: false,
     renameValue: '',
     renameSaving: false,
-    // 调试台入口是否显示。正式版(release)恒为 false——调试台能对设备发任意指令
-    // （含删除图片类）且整页未接多语言，不能暴露给最终用户。开发版/体验版照常可见，
-    // 硬件联调流程不受影响。见 utils/system.isReleaseEnv。
+    // 调试台入口是否显示。**只有开发版(develop)为 true**，体验版(trial)与正式版(release)
+    // 一律 false——调试台能对设备发任意指令（含删除图片类）且整页未接多语言，不能暴露给
+    // 最终用户，体验版是要发给外部人试用的，同样不能留。见 utils/system.isDevEnv。
     showDebugEntry: false
   },
 
   onLoad() {
     this.setData(system.getLayoutMetrics())
-    this.setData({ showDebugEntry: !system.isReleaseEnv() })
+    this.setData({ showDebugEntry: system.isDevEnv() })
     this.scan()
   },
 
@@ -214,10 +214,10 @@ Page(fold.adapt({
   // 打开硬件联调调试台：开发对接阶段在这里逐个点按钮试每条 BLE 指令、看收发的 16 进制数据。
   // 可从某个已扫描到的设备直接带 deviceId 进去（免去再扫一次）；不带则在调试台里自行搜索连接。
   openDebug(e) {
-    // 正式版一律不放行。这里再拦一道而不是只靠 wxml 的 wx:if：设备行上还挂着
-    // `bindlongpress="openDebug"` 这个隐藏入口（长按某台设备直接带 deviceId 进调试台），
-    // 藏在列表里最容易漏掉——上线前只改 wxml 会把它留在线上。
-    if (system.isReleaseEnv()) {
+    // 非开发版一律不放行（体验版、正式版都拦）。这里再拦一道而不是只靠 wxml 的 wx:if：
+    // 设备行上还挂着 `bindlongpress="openDebug"` 这个隐藏入口（长按某台设备直接带
+    // deviceId 进调试台），藏在列表里最容易漏掉——上线前只改 wxml 会把它留在线上。
+    if (!system.isDevEnv()) {
       return
     }
     const id = e && e.currentTarget && e.currentTarget.dataset.id
