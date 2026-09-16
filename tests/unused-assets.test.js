@@ -62,7 +62,16 @@ const parked = [
   ['assets/images/mine-bg-placeholder.jpg', 'pages/mine/mine.wxml', '「我的」页换背景前那张占位图，产品要求留着以便换回去'],
   ['assets/images/set-icon01.png', 'subpackages/settings/index/index.wxml', '被注释掉的「语种设置」入口图标（页面本身还在，只是入口隐藏）'],
   ['assets/images/set-icon05.png', 'subpackages/settings/index/index.wxml', '被注释掉的「更新BoltStar」入口图标（页面本身还在）'],
-  ['assets/images/search-icon01.png', 'subpackages/settings/guide/guide.wxml', '被注释掉的帮助搜索框图标']
+  ['assets/images/search-icon01.png', 'subpackages/settings/guide/guide.wxml', '被注释掉的帮助搜索框图标'],
+  // 2026-09-16 产品要求首页六宫格「去掉副标题和右侧箭头」，这六张箭头徽标随之无人引用。
+  // 先留着：产品反悔只要把 HOME_ENTRIES 的 arrow 字段和模板里那个节点加回来即可（认领注释就在
+  // home.js 的 HOME_ENTRIES 上方）。真确认不再要了，请连同那段注释一起删，图也删掉（六张共 ~30 KB）。
+  ['assets/images/home-icon11.png', 'pages/home/home.js', '首页宫格「拍照投屏」的箭头徽标，2026-09-16 去箭头后留存备回滚'],
+  ['assets/images/home-icon12.png', 'pages/home/home.js', '首页宫格「相册投屏」的箭头徽标，同上'],
+  ['assets/images/home-icon13.png', 'pages/home/home.js', '首页宫格「我的上传」的箭头徽标，同上'],
+  ['assets/images/home-icon14.png', 'pages/home/home.js', '首页宫格「AI创作」的箭头徽标，同上'],
+  ['assets/images/home-icon15.png', 'pages/home/home.js', '首页宫格「官方图库」的箭头徽标，同上'],
+  ['assets/images/home-icon16.png', 'pages/home/home.js', '首页宫格「我的设备」的箭头徽标，同上']
 ]
 parked.forEach(([file, owner, why]) => {
   assert.ok(fs.existsSync(path.join(root, file)), `${file} 在白名单里却已不存在，请同步删掉白名单（${why}）`)

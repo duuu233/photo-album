@@ -63,16 +63,46 @@ entries.forEach((item, index) => {
     `/assets/images/home-icon0${n}.png`,
     '第 N 项的线稿图标固定叫 home-icon0N'
   )
-  assert.equal(
-    item.arrow,
-    `/assets/images/home-icon1${n}.png`,
-    '第 N 项的箭头徽标固定叫 home-icon1N（与图标同色成对）'
+  assert.ok(
+    fs.existsSync(path.join(root, item.icon.slice(1))),
+    `素材缺失：${item.icon}`
   )
-  ;[item.icon, item.arrow].forEach(src => {
-    assert.ok(fs.existsSync(path.join(root, src.slice(1))), `素材缺失：${src}`)
-  })
   assert.ok(/^#[0-9A-F]{6}$/i.test(item.color), '每项都要有标题主色')
+  // 2026-09-16 产品要求「去掉副标题和右侧箭头」：这两个字段连同模板节点一起删了。
+  // 钉住字段而不只是模板，是因为留着死数据最容易让下一个人以为「还在用」。
+  assert.equal(item.desc, undefined, '副标题已去掉，HOME_ENTRIES 不该再留 desc')
+  assert.equal(item.arrow, undefined, '箭头徽标已去掉，HOME_ENTRIES 不该再留 arrow')
 })
+
+// 模板侧：卡里只剩「图标 + 主标题」两件
+{
+  const wxml = fs
+    .readFileSync(path.join(root, 'pages/home/home.wxml'), 'utf8')
+    .replace(/<!--[\s\S]*?-->/g, '')
+  assert.ok(wxml.indexOf('class="entry-icon"') > -1, '图标还在')
+  assert.ok(wxml.indexOf('class="entry-name"') > -1, '主标题还在')
+  ;['entry-desc', 'entry-arrow', 'entry-copy', 'entry-text'].forEach(cls => {
+    assert.ok(
+      wxml.indexOf(`class="${cls}"`) === -1,
+      `${cls} 是副标题/箭头那套结构，2026-09-16 已按产品要求去掉`
+    )
+  })
+  // 图标要比改版前大一档（66rpx）：产品这轮的原话是「把图标拉大」
+  const wxss = fs
+    .readFileSync(path.join(root, 'pages/home/home.wxss'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+  const iconRule = /\.entry-icon\s*\{([^}]*)\}/.exec(wxss)
+  assert.ok(iconRule, 'home.wxss 里找不到 .entry-icon')
+  const iconSize = Number(/width:\s*([\d.]+)rpx/.exec(iconRule[1])[1])
+  assert.ok(iconSize > 66, `图标要拉大（当前 ${iconSize}rpx，改版前是 66rpx）`)
+  // 主标题字号「不变」也是产品明确说的
+  const nameRule = /\.entry-name\s*\{([^}]*)\}/.exec(wxss)
+  assert.equal(
+    Number(/font-size:\s*([\d.]+)rpx/.exec(nameRule[1])[1]),
+    28,
+    '主标题字号保持 28rpx（产品：主标题字号不变）'
+  )
+}
 
 // ── ② 点哪一项去哪里 ──────────────────────────────────────────
 const tap = key =>

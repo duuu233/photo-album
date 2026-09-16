@@ -186,16 +186,12 @@
           data-key="{{item.key}}"
           bindtap="tapHomeEntry"
         >
+          <!-- 2026-09-16 产品要求：**去掉副标题和右侧箭头徽标，把图标拉大**。
+               卡里于是只剩「图标 + 主标题」两件，整组仍垂直居中（卡高 220rpx 不变，
+               标题字号 28rpx 不变），空出来的高度全给图标（66 → 96rpx）。
+               去掉的那两件对应 home.js HOME_ENTRIES 里的 desc 字段与 home-icon1N 箭头素材。 -->
           <image class="entry-icon" src="{{item.icon}}" mode="aspectFit" />
-          <!-- 箭头徽标对齐的是**标题+副标题两行整体**（垂直居中），所以两行文案要包在
-               .entry-text 里与徽标同排；徽标单独对齐标题那一行会偏高。 -->
-          <view class="entry-copy">
-            <view class="entry-text">
-              <view class="entry-name" style="color: {{item.color}}">{{item.name}}</view>
-              <view class="entry-desc">{{item.desc}}</view>
-            </view>
-            <image class="entry-arrow" src="{{item.arrow}}" mode="aspectFit" />
-          </view>
+          <view class="entry-name" style="color: {{item.color}}">{{item.name}}</view>
         </view>
       </view>
     </view>

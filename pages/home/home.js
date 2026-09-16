@@ -93,56 +93,53 @@ const NEARBY_DEVICES = [
 //
 // 素材命名规律来自设计：home-icon0N 是第 N 项的线稿图标，home-icon1N 是同一项的箭头徽标
 //（颜色成对，1↔11、2↔12…6↔16）。color 取徽标箭头色，用作标题文字色。
+//
+// ⚠️ 2026-09-16 产品要求「去掉副标题和右侧箭头、把图标拉大」，于是每项只剩
+//    key / name / color / icon 四个字段：
+//    · desc（副标题文案）已删——模板里的 .entry-desc 一并去掉；
+//    · arrow（箭头徽标 home-icon11.png / home-icon12.png / home-icon13.png /
+//      home-icon14.png / home-icon15.png / home-icon16.png）已删，六张素材**留在仓库里**
+//      备产品反悔（tests/unused-assets.test.js 的 parked 白名单靠本段注释认领它们）。
+//    回滚办法：把 desc / arrow 两个字段与 home.wxml 里对应的两个节点、home.wxss 里
+//    .entry-copy/.entry-text/.entry-desc/.entry-arrow 四条规则一起加回来。
 // ⚠️ home-icon04（AI创作）第一版设计给错了图（与 05 官方图库是同一张），当天产品已换成正确的魔法棒，
 //    这里用的就是换过之后那张。以后再要换图，覆盖 assets/images/home-icon04.png（PNG、透明底）即可，代码不用动。
 const HOME_ENTRIES = [
   {
     key: 'camera',
     name: '拍照投屏',
-    desc: '拍摄照片并投屏',
     color: '#EE6242',
-    icon: '/assets/images/home-icon01.png',
-    arrow: '/assets/images/home-icon11.png'
+    icon: '/assets/images/home-icon01.png'
   },
   {
     key: 'album',
     name: '相册投屏',
-    desc: '选择照片并投屏',
     color: '#3E92E8',
-    icon: '/assets/images/home-icon02.png',
-    arrow: '/assets/images/home-icon12.png'
+    icon: '/assets/images/home-icon02.png'
   },
   {
     key: 'uploads',
     name: '我的上传',
-    desc: '管理我的照片',
     color: '#7B5FE8',
-    icon: '/assets/images/home-icon03.png',
-    arrow: '/assets/images/home-icon13.png'
+    icon: '/assets/images/home-icon03.png'
   },
   {
     key: 'ai',
     name: 'AI创作',
-    desc: 'AI生成精美图片',
     color: '#11AE7B',
-    icon: '/assets/images/home-icon04.png',
-    arrow: '/assets/images/home-icon14.png'
+    icon: '/assets/images/home-icon04.png'
   },
   {
     key: 'gallery',
     name: '官方图库',
-    desc: '海量精选美图',
     color: '#F0982B',
-    icon: '/assets/images/home-icon05.png',
-    arrow: '/assets/images/home-icon15.png'
+    icon: '/assets/images/home-icon05.png'
   },
   {
     key: 'devices',
     name: '我的设备',
-    desc: '管理我的设备',
     color: '#05A6B1',
-    icon: '/assets/images/home-icon06.png',
-    arrow: '/assets/images/home-icon16.png'
+    icon: '/assets/images/home-icon06.png'
   }
 ]
 

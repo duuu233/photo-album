@@ -1,20 +1,31 @@
-/* 占满导航栏以下的剩余高度。有了确定高度，底部绝对定位的「重新扫描」按钮与
-   「扫描不到怎么办」才会贴屏幕底部（本页设备列表自带 scroll-view，不靠页面滚动）。
+/* 占满导航栏以下的剩余高度，并按**竖向 flex** 排：雷达 / 统计行 / 设备列表是三个 flex 项，
+   空间不够时先压雷达、再压列表（见各自的 flex 声明），不再靠「上面几块大概多高」的经验值。
 
    折叠屏适配（2026-08-05）：高度改用 page-nav 回抛的**实测**导航高度 `--nav-h`
    （见 utils/fold-adapt 的 onNavMeasure，值里已含状态栏）。
    旧写法 `100vh - var(--status-bar) - 88rpx` 里的 88rpx 是 rpx，会随屏宽一起放大，
    折叠屏展开后误差可达几十 px，底部按钮就会往上飘。取不到实测值时按老算式兜底，
-   普通手机上两者本来就相等（状态栏 + 88rpx ≈ 状态栏 + 胶囊行高）。 */
+   普通手机上两者本来就相等（状态栏 + 88rpx ≈ 状态栏 + 胶囊行高）。
+
+   padding-bottom（2026-09-16 新增）：贴底的「立即绑定」是**绝对定位**、不占流，
+   这段 padding 就是替它在流里占的位——按钮 112 + 贴底 48 + 与列表之间的缝 24 = 184rpx，
+   再加全面屏手势条 `--safe-bottom`。有了它，列表的可用高度由 flex 自己算出来，
+   `.device-list` 不必再去猜「上面几块加按钮一共多高」（旧版那个 960rpx 经验值就此作废）。
+   ⚠️ 绝对定位的包含块是 padding box，所以加这段 padding **不会**挪动按钮和
+   「扫描不到怎么办」的贴底位置。 */
 .bind-content {
   position: relative;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
   height: calc(100vh - var(--nav-h, calc(var(--status-bar) + 88rpx)));
+  padding-bottom: calc(184rpx + var(--safe-bottom));
   box-sizing: border-box;
 }
 
-/* 硬件联调调试台入口横幅 */
+/* 硬件联调调试台入口横幅（flex 项：固定高度，不参与压缩） */
 .debug-entry {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   margin: 0 48rpx 8rpx;
@@ -62,14 +73,32 @@
   opacity: 0.42;
 }
 
+/* 雷达（flex 项）：`flex-shrink: 40` —— 一屏装不下时**先压它**。
+   数字取这么大是要的「雷达先压到 min-height，再动列表」：收缩量按
+   `flex-shrink × flex-basis` 摊，40×340 对 1×844 ≈ 94% 落在雷达上，
+   列表几乎拿得满（iPhone 13 上从 821rpx 变成满额 844rpx，正好差那半张的观感）。
+   里面的图是 aspectFit，容器被压扁只会让图跟着缩小居中，不会变形。 */
 .radar-wrap {
   position: relative;
+  flex: 0 40 auto;
   width: 500rpx;
   height: 500rpx;
+  min-height: 200rpx;
   margin: 40rpx auto 0;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* 已搜到设备（含「边搜边显示」）时雷达主动让位（2026-09-16）：这一屏的主角变成设备列表，
+   雷达退成一张「搜到了」的状态图。500 → 340rpx 让出 200rpx，正是列表从「2 张多」
+   长到「4.5 张」所需的那一截；空间再不够时还能被压到 180rpx。
+   ⚠️ 只在这一态缩：搜索中/未发现两态的雷达是页面主体，仍是 500rpx。 */
+.radar-wrap--found {
+  width: 340rpx;
+  height: 340rpx;
+  min-height: 180rpx;
+  margin-top: 24rpx;
 }
 
 .radar-art {
@@ -81,6 +110,7 @@
   height: 80%;
 }
 .scan-copy {
+  flex: 0 0 auto;
   margin-top: 12rpx;
   text-align: center;
 }
@@ -110,6 +140,7 @@
 }
 
 .nearby-head {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -140,20 +171,32 @@
   height: 44rpx;
 }
 
-/* 预留底部「立即绑定」按钮的空间，列表过长时内部滚动。
-   960rpx = 上面几块（调试台横幅 ≈131 + 雷达 500+40 + 统计行 ≈92）+ 按钮那条（112 + 贴底 48 + 24 缝）。
-   ⚠️ 两处曾经漏算，设备一多列表下沿就落到「立即绑定」顶下方（iPhone 13 约 88px）：
-   ① 减的是 --status-bar（状态栏），要减的是整个导航 --nav-h，少减一个胶囊行 88rpx
-      （取不到实测值时按 状态栏 + 88rpx 兜底，与 .bind-content 同一套算式）；
-   ② 完全没减 --safe-bottom（全面屏手势条 ~34px）。
-   漏算时越出的那截仍在 .bind-content 之内、只是被绝对定位的按钮盖着，
-   scroll-view 自认为放得下全部卡片、连滚都不给滚——不是「滚到底了」。
-   上面几块的高度若有增删，这个 960rpx 要跟着改（tests/bind-device-list-layout.test.js 会算给你看）。 */
+/* 设备列表（flex 项）：高度目标＝**4.5 张设备卡**，多出来的自己滚（2026-09-16 产品要求）。
+   露出最后那半张就是给用户看的「还能往下滑」，比一屏正好切在卡片缝上强。
+
+   844rpx 是这么来的（一张卡 ≈190rpx：卡本体 ≈168 = 上下 padding 48 + 描边 4 + 设备名 ≈43
+   + 两行 22rpx 副标题各带 8rpx 上间距 ≈73；卡间距 22）：
+     4 张完整 190×4 = 760  +  露出半张 168÷2 = 84  =  844rpx
+   ⚠️ 底部那 24rpx 留白**不额外加高**：滚动容器的裁剪边界是 padding box，卡片在滚动过程中
+   本来就会画进这段 padding 里，它只在滚到底时表现为留白。
+   ⚠️ 行高各端不同（iOS 苹方 ≈1.4、安卓 ≈1.2），卡本体实际在 159~175rpx 之间，
+   所以露出的那张在 0.3~0.8 张之间浮动，取中就是要的「半张」。
+   改卡片的 padding / 字号 / 行距，这个数要跟着改（tests/bind-device-list-layout.test.js
+   会用 wxss 里的实际声明按两种行高重算一遍，越出 4.2~4.9 张的区间就报错）。
+
+   ⚠️ 写的是 max-height 不是 height：只搜到一两台时列表按内容收到实际高度，
+   不在卡片下面留一大片空档；超过 4.5 张才封顶、内部滚动。
+   ⚠️ `flex-shrink: 1` + `min-height: 0`：矮屏（SE / 折叠屏展开）上 844rpx 装不下时，
+   雷达先压（它 shrink 是 8），压到底还不够才轮到列表——这时列表比 4.5 张矮，
+   但它是**页面装不下**的降级，而不是把卡片塞到按钮底下（旧版那种「看不见又滚不动」）。
+   ⚠️ 上一版这里是一条 `max-height: calc(100vh - --nav-h - 960rpx - --safe-bottom)`，
+   960rpx 是「上面几块加按钮一共多高」的经验值（见 docs/changes/2026-08-27…）。
+   现在高度由 .bind-content 的竖向 flex 自己算，经验值作废，那份文档的「待办」也就此了结。 */
 .device-list {
   box-sizing: border-box;
-  max-height: calc(
-    100vh - var(--nav-h, calc(var(--status-bar) + 88rpx)) - 960rpx - var(--safe-bottom)
-  );
+  flex: 0 1 auto;
+  max-height: 844rpx;
+  min-height: 0;
   /* 底部留白：滚到底时最后一张卡片不贴着按钮，也给卡片投影留出空间 */
   padding: 0 48rpx 24rpx;
 }
