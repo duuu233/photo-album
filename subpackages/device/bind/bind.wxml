@@ -22,7 +22,9 @@
     </view>
 
 
-    <view class="radar-wrap">
+    <!-- radar-wrap--found：已搜到设备（含边搜边显示）时雷达缩小，把高度让给下面的设备列表，
+         条件与列表的渲染条件 devices.length 完全一致，见 bind.wxss 那段注释。 -->
+    <view class="radar-wrap {{devices.length ? 'radar-wrap--found' : ''}}">
       <!-- 搜索期间雷达一直转（哪怕已经搜到设备）：下面的列表同步追加，两者并存才是「边搜边显示」 -->
       <image wx:if="{{scanning}}" class="radar-art radar-art-gif" src="https://oss.boltfox.cn/prodFile/202606161504054302273.gif" mode="aspectFit"></image>
       <image wx:elif="{{devices.length}}" class="radar-art" src="/assets/images/device_found_art.png" mode="aspectFit"></image>
