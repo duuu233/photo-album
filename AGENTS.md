@@ -102,38 +102,33 @@ codegraph sync
 
 ---
 
-# Testing
+# 测试
 
-The tests under `tests/` are plain Node scripts — no build step, no dependencies, no test
-runner config:
+`tests/` 下是**纯 node 脚本**：没有构建步骤、没有依赖、没有 runner 配置。
 
 ```bash
-node tests/<name>.test.js                                          # one file
-for f in tests/*.test.js; do node "$f" || echo "FAILED: $f"; done  # the whole suite
+node tests/<名字>.test.js                                            # 跑一个
+for f in tests/*.test.js; do node "$f" || echo "FAILED: $f"; done    # 跑全量
 ```
 
-The full suite finishes in seconds. Run all of it, not only the tests that look related to
-what you changed.
+全量几秒钟跑完。**跑全部，不要只跑「看起来和这次改动有关」的那几条。**
 
-## After touching any `.wxss` or `.wxml`, run the full suite
+## 动过任何 `.wxss` / `.wxml`，就跑一遍全量
 
-Several tests are layout regressions: they read the style and template files as text and assert
-on **selector names and declarations** (`tests/token-page-layout.test.js`,
-`tests/gallery-layout.test.js`, `tests/bind-device-list-layout.test.js`, and others). Deleting,
-renaming or merging a rule breaks them even when the page itself renders correctly — and nothing
-else will report it, because these tests exist precisely for the defects that only the eye can
-catch.
+有相当一批用例是**版式回归**：它们把样式和模板当文本读，断言的是**选择器名和声明本身**
+（`tests/token-page-layout.test.js`、`tests/gallery-layout.test.js`、
+`tests/bind-device-list-layout.test.js` 等）。删掉、改名或合并一条规则就会让它们变红——
+**哪怕页面本身渲染得完全正常**，而且别的地方一句都不会报，因为这类用例存在的理由正是
+「改坏了不报错、只有肉眼能看出来」的那种缺陷。
 
-This has already cost real time: a commit merged the selected-state badge rule into the base
-rule and ran only the one test that looked related. `tests/token-page-layout.test.js` stayed red
-for nine days (2026-09-08 → 2026-09-17), reported by nothing.
+这已经实打实花过时间：有一次提交把选中态角标的规则合并进了基础规则，只跑了看起来相关的
+那一条用例。`tests/token-page-layout.test.js` 因此**红了 9 天**（2026-09-08 → 2026-09-17），
+期间没有任何东西提示过。
 
-## When a layout test fails, decide which side is stale before editing either
+## 用例红了，先判断是哪一边过期，再动手
 
-- **The rule was intentionally removed, renamed or merged** → move the test's query to wherever
-  the declaration now lives, keep the invariant it was guarding, and record in the test why it
-  moved. Do not weaken or delete the assertion.
-- **The rule went missing by accident** → fix the style, leave the test alone.
+- **规则是有意删掉 / 改名 / 合并的** → 把用例的查询挪到那条声明**现在所在的位置**，
+  保住它原本守的判据，并在用例里写明为什么挪。**不要削弱、更不要删掉断言。**
+- **规则是误删的** → 修样式，用例别动。
 
-Never make a layout test pass by deleting the assertion: each one stands for a defect that
-shipped once already.
+**任何情况下都不许靠删断言让它变绿**：每一条断言都对应一个已经上线过一次的缺陷。
