@@ -509,6 +509,7 @@ button {
 .entry-card {
   display: flex;
   flex-direction: column;
+  align-items: center;
   justify-content: center;
   box-sizing: border-box;
   /* 三等分：减去两条 18rpx 列间距后再均分，calc 写在 flex-basis 上比写死 206rpx 更耐折叠屏 */
