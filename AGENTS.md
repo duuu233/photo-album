@@ -99,3 +99,41 @@ Run:
 ```bash
 codegraph sync
 ```
+
+---
+
+# Testing
+
+The tests under `tests/` are plain Node scripts — no build step, no dependencies, no test
+runner config:
+
+```bash
+node tests/<name>.test.js                                          # one file
+for f in tests/*.test.js; do node "$f" || echo "FAILED: $f"; done  # the whole suite
+```
+
+The full suite finishes in seconds. Run all of it, not only the tests that look related to
+what you changed.
+
+## After touching any `.wxss` or `.wxml`, run the full suite
+
+Several tests are layout regressions: they read the style and template files as text and assert
+on **selector names and declarations** (`tests/token-page-layout.test.js`,
+`tests/gallery-layout.test.js`, `tests/bind-device-list-layout.test.js`, and others). Deleting,
+renaming or merging a rule breaks them even when the page itself renders correctly — and nothing
+else will report it, because these tests exist precisely for the defects that only the eye can
+catch.
+
+This has already cost real time: a commit merged the selected-state badge rule into the base
+rule and ran only the one test that looked related. `tests/token-page-layout.test.js` stayed red
+for nine days (2026-09-08 → 2026-09-17), reported by nothing.
+
+## When a layout test fails, decide which side is stale before editing either
+
+- **The rule was intentionally removed, renamed or merged** → move the test's query to wherever
+  the declaration now lives, keep the invariant it was guarding, and record in the test why it
+  moved. Do not weaken or delete the assertion.
+- **The rule went missing by accident** → fix the style, leave the test alone.
+
+Never make a layout test pass by deleting the assertion: each one stands for a defect that
+shipped once already.
