@@ -100,12 +100,22 @@ const INDEX_WXML = 'subpackages/token/index/index.wxml'
 }
 
 // ── ③ 选中的套餐卡片内容不能比其他档位高半格 ────────────────────────────────
-// 选中态角标是 `position: absolute`（贴卡片右上角），脱离文档流就不再占高；
+// 角标是 `position: absolute`（贴卡片右上角），脱离文档流就不再占高；
 // 卡片又是 justify-content: center，剩下的内容会整体上移。
 // 所以角标外面必须常驻一个固定高度的占位行（不带 wx:if，四张卡都渲染）。
+//
+// ⚠️ 2026-09-08（`487869b`「赠送角标固定为橙底白字，不随选中状态变化」）起，
+//    `.package-card--active .package-gift` **整条规则被删掉了**，`position: absolute`
+//    现在写在 `.package-gift` 本身。这条用例原来查的正是那个已删除的选择器，从那天起
+//    一直是红的（那次只跑了 `tests/token-pay.test.js`）。**要守的判据一个字没变**
+//    —— 角标绝对定位 ⇒ 必须有等高占位行 —— 只是跟着挪到 `.package-gift` 上。
 {
-  const active = bodyOf(INDEX_WXSS, '.package-card--active .package-gift')
-  assert.ok(/position:\s*absolute/.test(active), '选中态角标不再绝对定位了？用例需要同步更新')
+  const badge = bodyOf(INDEX_WXSS, '.package-gift')
+  assert.ok(
+    /position:\s*absolute/.test(badge),
+    '角标不再绝对定位了？那它自己就占高了，.package-gift-slot 的等高占位可以去掉，' +
+      '本用例需要同步更新'
+  )
 
   const slot = bodyOf(INDEX_WXSS, '.package-gift-slot')
   const height = declaration(slot, 'height')
