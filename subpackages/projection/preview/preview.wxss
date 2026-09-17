@@ -118,6 +118,17 @@
   border-radius: 40rpx;
 }
 
+/* 圆屏产品（后台「形状类型 = 圆形」→ shapeType 1）：**只有预览裁成圆**。
+   设备屏幕是圆的，方框四角那一圈本来就显示不出来，预览裁圆才是所见即所得。
+   ⚠️ 导出**不跟着变**：`_bakeToFile` 照旧铺满整张 outW×outH 的方形画布（白底、四角留白），
+   设备收到的还是方形矩阵 —— 这是固件口径，别顺手把导出也裁圆。
+   ⚠️ 方形产品（shapeType 0，绝大多数）走不到这两条规则，40rpx 圆角原样不动。
+   框本身是不是正方形由设备分辨率决定（`getDeviceCropSize` 读后端 width/height，
+   500×500 就是 1:1）；这里只管把它裁成内切的圆/椭圆。 */
+.photo-wrap.is-round {
+  border-radius: 50%;
+}
+
 .photo-img {
   width: 100%;
   height: 100%;
@@ -157,6 +168,12 @@
 }
 
 /* 长按 0.5s 触发拖拽时的「拿起」反馈 */
+/* 圆屏产品的取景框同样裁成圆（同 .photo-wrap.is-round，口径见上面那段注释）。
+   放在 .edit-clip 后面：权重本来就更高，挨着写只是为了改这条时一眼看见本体。 */
+.edit-clip.is-round {
+  border-radius: 50%;
+}
+
 .edit-clip.is-pickup {
   animation: clipPickup 0.34s ease;
 }
