@@ -487,6 +487,9 @@ Page(fold.adapt({
     // 真实账户余额（见 utils/ai-token.js）。本页顶栏已不展示它（2026-08-10 让位给居中标题），
     // 留着是给「余额不足拦截」用；展示位在「历史会话」页顶部。
     tokenBalance: aiToken.UNKNOWN_BALANCE,
+    // 上面那个数字的现成文案（WXML 里调不了函数）。2026-09-18 起星币不足弹窗要显示它，
+    // 读不到时是 '--'。两个字段一起 setData，别只改其中一个。
+    tokenBalanceText: aiToken.displayBalance(aiToken.UNKNOWN_BALANCE),
     consentDialogVisible: false,
     consentDialogTitle: aiServiceConsent.CONSENT_TITLE,
     consentServiceDescription: aiServiceConsent.CONSENT_SERVICE_DESCRIPTION,
@@ -557,7 +560,16 @@ Page(fold.adapt({
   },
 
   onLoad(options) {
-    this.setData(Object.assign({ tokenBalance: aiToken.cachedBalance() }, getAiLayoutMetrics()))
+    const cachedBalance = aiToken.cachedBalance()
+    this.setData(
+      Object.assign(
+        {
+          tokenBalance: cachedBalance,
+          tokenBalanceText: aiToken.displayBalance(cachedBalance)
+        },
+        getAiLayoutMetrics()
+      )
+    )
     this.refreshTokenBalance()
     this._uid = 0 // 本地消息自增 id
     this._pid = 0 // 待发送图片自增 id
@@ -1869,11 +1881,19 @@ Page(fold.adapt({
   },
 
   // 从后端取权威余额（扣费在服务端发生，端上只能重取）。静默失败：读不到就保持当前值。
+  //
+  // ⚠️ **读不到时不要把数字抹掉**：refreshBalance 在接口失败时返回 UNKNOWN_BALANCE，
+  // 原来照写不误，等于把一次网络故障写成「余额 --」。2026-09-18 起星币不足弹窗要把这个
+  // 数字摆给用户看，抹掉的代价从「没人看见」变成「用户以为自己一分不剩」。
   async refreshTokenBalance() {
     const balance = await aiToken.refreshBalance()
-    if (balance !== this.data.tokenBalance) {
-      this.setData({ tokenBalance: balance })
+    if (balance === aiToken.UNKNOWN_BALANCE || balance === this.data.tokenBalance) {
+      return
     }
+    this.setData({
+      tokenBalance: balance,
+      tokenBalanceText: aiToken.displayBalance(balance)
+    })
   },
 
   // 星币权限控制（文档 §5.5）：发起对话前的**服务端**校验
@@ -1897,6 +1917,9 @@ Page(fold.adapt({
 
   // 星币不足的统一弹窗：只有「个人中心-星币管理」一条出路，直接把人送过去，
   // 别让用户自己在页面里找（原文案只说「请前往」，用户还得退三层）。
+  //
+  // 2026-09-18 需求：弹窗里先把**当前余额**摆出来（.confirm-balance 绑 tokenBalanceText），
+  // 右边那颗按钮文案统一成「去充值」（原来叫「去购买」，与 App 端对齐，去处没变）。
   //
   // 2026-08-12 需求 1：由 wx.showModal 改成页面自绘（chat.wxml 的 .confirm-mask/.confirm-dialog，
   // 与删除确认框、「我的相册」删除弹窗同一套版式）—— 原生弹框的圆角/字号/按钮排布与全站对不上。
@@ -1922,7 +1945,8 @@ Page(fold.adapt({
     }
   },
 
-  // 「去购买」：先收弹窗再跳，否则从星币管理页返回时它还盖在聊天上
+  // 「去充值」：先收弹窗再跳，否则从星币管理页返回时它还盖在聊天上。
+  // 去处是星币管理页（`/subpackages/token/index/index`），套餐购买就在那一页上。
   goBuyTokens() {
     this.setData({ 'tokenDialog.show': false })
     wx.navigateTo({ url: '/subpackages/token/index/index' })

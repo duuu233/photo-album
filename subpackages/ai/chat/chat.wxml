@@ -610,9 +610,16 @@
         <view class="confirm-title">星币不足</view>
         <view class="confirm-desc">{{tokenDialog.desc}}</view>
       </view>
+      <!-- 当前余额（2026-09-18 需求）：先让用户看见自己还剩多少，再决定去不去充。
+           通栏一条，跨两列摆在文案下面——数字绑 tokenBalanceText，
+           guardAiDialogue 那次刷新落地时它会自己更新，不用等下次开弹窗。 -->
+      <view class="confirm-balance">
+        <text class="confirm-balance__label">当前余额</text>
+        <text class="confirm-balance__value">{{tokenBalanceText}} 星币</text>
+      </view>
       <view class="confirm-actions">
         <view class="confirm-cancel" hover-class="none" bindtap="closeTokenDialog">知道了</view>
-        <view class="confirm-primary" hover-class="none" bindtap="goBuyTokens">去购买</view>
+        <view class="confirm-primary" hover-class="none" bindtap="goBuyTokens">去充值</view>
       </view>
     </view>
   </view>

@@ -12,6 +12,8 @@ const assert = require('node:assert/strict')
 const storage = { token: 'user-token', jwtToken: 'jwt-token', userInfo: { id: 'guard-user' } }
 
 let allowDialogue = true
+// 账户接口失不失败（2026-09-18：验「读不到余额时不要把数字抹掉」）
+let accountFails = false
 let chatRequests = []
 let sessionRequests = []
 let checkRequests = []
@@ -67,7 +69,12 @@ global.wx = {
     if (url.indexOf('/Client/Order/getUserAccount') > -1) {
       options.success({
         statusCode: 200,
-        data: { retCode: 200, retData: { availableToken: '0', totalToken: '0', consumeToken: '0' } }
+        data: accountFails
+          ? { retCode: 500, retMsg: '服务开小差', retData: null }
+          : {
+              retCode: 200,
+              retData: { availableToken: '0', totalToken: '0', consumeToken: '0' }
+            }
       })
       return { abort() {} }
     }
@@ -225,6 +232,40 @@ async function testPassesWhenAllowed() {
   page.stopGenerate(true)
 }
 
+// ①'' 弹窗里要显示当前余额（2026-09-18 需求 1）：数字来自账户接口，不是端上编的
+async function testBalanceShownInShortModal() {
+  allowDialogue = false
+  const page = createPage()
+  page.data.inputValue = '画一只猫'
+
+  assert.equal(page.data.tokenBalanceText, '--', '还没读到余额时是 --，不是 0')
+
+  await page.onSendTap()
+  // guardAiDialogue 里的刷新是并行发的，等它落地（桩是同步 success，一轮微任务就够）
+  await Promise.resolve()
+  await Promise.resolve()
+
+  assert.equal(page.data.tokenDialog.show, true)
+  assert.equal(
+    page.data.tokenBalanceText,
+    '0',
+    '余额条上的数字跟着账户接口走（本例桩给 0）'
+  )
+}
+
+// ①''' 读不到余额时**保持上一次的数字**：接口抖一下不该让用户以为自己一分不剩
+async function testBalanceKeptWhenRefreshFails() {
+  const page = createPage()
+  page.setData({ tokenBalance: 12, tokenBalanceText: '12' })
+
+  accountFails = true
+  await page.refreshTokenBalance()
+  accountFails = false
+
+  assert.equal(page.data.tokenBalance, 12, '读不到就保持上一次的余额，别写成 null')
+  assert.equal(page.data.tokenBalanceText, '12', '文案同理，不能变成 --')
+}
+
 // ③ 本地图片最多 5 张
 async function testImageLimitIsFive() {
   allowDialogue = true
@@ -248,6 +289,8 @@ async function testImageLimitIsFive() {
 
 ;(async () => {
   await testBlockedWhenNotAllowed()
+  await testBalanceShownInShortModal()
+  await testBalanceKeptWhenRefreshFails()
   await testNoSessionCreatedWhenBlocked()
   await testPassesWhenAllowed()
   await testImageLimitIsFive()

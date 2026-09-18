@@ -1209,6 +1209,30 @@
   line-height: 1.45;
 }
 
+/* 星币不足弹窗里的「当前余额」条（2026-09-18 需求）。
+   跨两列通栏，与 App 端弹窗里那条同样式（浅橙底 + 左标签右数字）。 */
+.confirm-balance {
+  grid-column: 1 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 28rpx;
+  padding: 20rpx 28rpx;
+  border-radius: 24rpx;
+  background: rgba(255, 106, 32, 0.06);
+}
+
+.confirm-balance__label {
+  color: #6f7782;
+  font-size: 24rpx;
+}
+
+.confirm-balance__value {
+  color: #ff6a20;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
 .confirm-actions {
   grid-column: 1 / 3;
   display: grid;
