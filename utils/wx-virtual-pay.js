@@ -42,7 +42,8 @@ const PAY_BUNDLE_KEYS = [
 // 联调期看得见真实码比看一句编出来的中文有用得多。
 const ERROR_MESSAGES = {
   1001: '支付参数有误，请联系客服（signData 字段不合法）',
-  '-15005': '支付签名校验失败，请联系客服（服务端 paySig/signature 与 signData 不匹配）'
+  '-15005': '支付签名校验失败，请联系客服（服务端 paySig/signature 与 signData 不匹配）',
+  '-15013': '商品价格有误，请联系客服（signData.goodsPrice 与微信后台该道具配置的价格不一致）'
 }
 
 // iOS 端（苹果 IAP 通道）的设备门槛，来自微信官方「小程序虚拟支付 / iOS 端接入」：
@@ -87,6 +88,8 @@ const ERROR_MSG_HINTS = [
   }
 ]
 
+// 2026-09-18 起这张表按**官方文档页**补全（wx.requestVirtualPayment 文档底部的错误码表），
+// 不再只收「有把握的那几个」——有官方出处就不算猜。
 const ERROR_CODE_HINTS = {
   '-15001': '参数不合法（**具体原因看 errMsg**：INVALID_PLATFORM=平台未开通、PRODUCT_ID_EMPTY=道具 id 为空…）。不是签名问题，签名是 -15005/-15006',
   '-15002': 'outTradeNo 重复：后端换个新单号重试',
@@ -96,7 +99,21 @@ const ERROR_CODE_HINTS = {
   '-15007': 'session_key 过期：需要用户重新 wx.login，后端刷新后再签',
   '-15008': '二级商户进件未完成：小程序后台侧配置，端上无解',
   '-15009': '代币未发布（coin 模式）',
-  '-15010': '道具 productId 未发布：在虚拟支付后台把这个道具发布掉；注意沙箱(env=1)与正式(env=0)是两套'
+  '-15010': '道具 productId 未发布：在虚拟支付后台把这个道具发布掉；注意沙箱(env=1)与正式(env=0)是两套',
+  '-15011': '现网版本的 env 只能是 0，不能填 1（沙箱）',
+  '-15012': '调用米大师失败导致关单：换个新单号重试',
+  '-15013':
+    'goodsPrice 道具价格错误：signData 里签的价格与微信后台该道具配置的价格对不上。' +
+    '**先看下面「金额自检」那行**——服务端把元转分时若用截断（如 (int)(79.99*100)），' +
+    'IEEE754 会得到 7998.999999999999 → 7998，比真实价少 1 分，就是这个码；正确做法是四舍五入或按整数分算。' +
+    '若自检显示金额一致，那就是后台道具本身的价格没配对/配成了别的档位',
+  '-15014': '道具或代币刚发布还没生效：等约 10 分钟再下单',
+  '-15016': 'signData 格式有问题',
+  '-15017': '商家涉嫌违规、收款功能被限制：去微信商户平台看原因',
+  '-15018': '代币或道具 productId 审核不通过',
+  '-15019': '商户受限：去微信商户平台看原因',
+  '-15020': '操作过快，稍候再试',
+  '-15021': '小程序被限频交易'
 }
 
 function hintOf(rawCode, errMsg) {
@@ -291,6 +308,24 @@ function logPayParams(params) {
     attach: parsed.attach
   })
 
+  // 金额自检（2026-09-18 加）：我们平台订单的 amount（元）与服务端签进 signData 的
+  // goodsPrice（分）必须是同一笔钱。对不上就是 -15013 的典型成因 —— 服务端把元转分时截断，
+  // 例如 (int)(79.99 * 100) 在 IEEE754 下得到 7998（因为 79.99*100 = 7998.999999999999），
+  // 比真实价少 1 分。这一行把两个数并排打出来，省得再去猜是端上还是服务端的问题。
+  if (Number.isFinite(params.amount) && params.amount > 0) {
+    const expectedCents = Math.round(params.amount * 100)
+    const signedCents = parsed.goodsPrice
+    if (signedCents !== expectedCents) {
+      console.warn(
+        `[虚拟支付] ⚠️ 金额自检不一致：订单 ${params.amount} 元 → 应为 ${expectedCents} 分，` +
+          `但 signData.goodsPrice 签的是 ${signedCents} 分（差 ${signedCents - expectedCents} 分）。` +
+          '这正是 -15013 goodsPrice 价格错误的典型成因，多半是服务端元转分用了截断而不是四舍五入'
+      )
+    } else {
+      console.log(`[虚拟支付] 金额自检通过：${params.amount} 元 = ${signedCents} 分`)
+    }
+  }
+
   SIGN_DATA_CHECKS.forEach(check => {
     if (check.bad(parsed[check.key])) {
       console.warn(`[虚拟支付] ⚠️ signData.${check.key} 可疑：${check.hint}`, {
@@ -392,7 +427,9 @@ function extractPayParams(source) {
       paySig,
       signature,
       offerId: item.offerId || '',
-      outTradeNo: item.outTradeNo || source.outTradeNo || source.orderNo || ''
+      outTradeNo: item.outTradeNo || source.outTradeNo || source.orderNo || '',
+      // 我们平台订单的金额（元）。只用来和 signData.goodsPrice（分）对一次账，不参与支付调用。
+      amount: Number(source.amount)
     }
   }
 
