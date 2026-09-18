@@ -1946,10 +1946,14 @@ Page(fold.adapt({
   },
 
   // 「去充值」：先收弹窗再跳，否则从星币管理页返回时它还盖在聊天上。
-  // 去处是星币管理页（`/subpackages/token/index/index`），套餐购买就在那一页上。
+  //
+  // 2026-09-18 产品口径：**直接到套餐确认**，别让用户在星币管理页再点一次「立即购买」。
+  // 带 `buy=1` 进星币管理页，那一页加载完套餐就自己把确认页推上来（见 token/index/index.js）。
+  // ⚠️ **不是直接 navigateTo 确认页**：确认页要一个具体的 `id`，拿不到就当场
+  //「套餐已失效」退回去；而且返回栈里留着星币管理页，用户想换一档退一步就能换。
   goBuyTokens() {
     this.setData({ 'tokenDialog.show': false })
-    wx.navigateTo({ url: '/subpackages/token/index/index' })
+    wx.navigateTo({ url: '/subpackages/token/index/index?buy=1' })
   },
 
   // 一次 AI 调用完成后对齐余额。

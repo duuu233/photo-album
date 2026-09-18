@@ -26,6 +26,14 @@ Page(fold.adapt({
     aiConfigs: []
   },
 
+  // 从 AI 聊天页「星币不足 → 去充值」过来时带 `buy=1`：套餐加载完直接把确认页推上来
+  //（2026-09-18 产品口径「跳到套餐确认」）。
+  // ⚠️ 只认**一次**：本页是 onShow 重拉的，不消费掉这个标记的话，用户从确认页退回来会被
+  // 又一次推进去，退不出这一页。
+  onLoad(query) {
+    this._autoConfirm = !!(query && query.buy === '1')
+  },
+
   onShow() {
     this.loadAccount()
     this.loadPackages()
@@ -66,8 +74,23 @@ Page(fold.adapt({
           || (packages[0] && packages[0].id)
           || ''
       })
+      this.autoConfirmIfRequested()
     } catch (error) {
       this.setData({ packages: [] })
+      // 拉不到套餐也要把标记消费掉：留着的话下一次 onShow（用户切回本页）会突然弹进确认页。
+      this._autoConfirm = false
+    }
+  },
+
+  // 「去充值」带进来的那次自动跳转（见 onLoad）。没套餐可选就停在本页，
+  // 用户至少看得到余额和规则表，比跳进一个「套餐已失效」的确认页强。
+  autoConfirmIfRequested() {
+    if (!this._autoConfirm) {
+      return
+    }
+    this._autoConfirm = false
+    if (this.data.selectedId) {
+      this.goConfirm()
     }
   },
 
