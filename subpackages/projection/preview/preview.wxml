@@ -43,13 +43,7 @@
         class="slide-cell {{item.offset === 0 && editing && editReady ? 'is-hidden' : ''}}"
         style="transform: translateX({{item.offset * 100}}%);"
       >
-        <!-- 圆屏产品（后台「形状类型 = 圆形」→ shapeType 1）只把**预览**裁成圆：
-             设备屏幕是圆的，方框里四角那一圈本来就显示不出来。导出仍是整张方形画布
-             （四角留白），不受这个 class 影响。⚠️ shapeType 不是 1 时一个字都不变。 -->
-        <view
-          class="photo-wrap {{device.shapeType === 1 ? 'is-round' : ''}}"
-          style="{{item.wrapStyle || deviceWrapStyle}}"
-        >
+        <view class="photo-wrap" style="{{item.wrapStyle || deviceWrapStyle}}">
           <image
             wx:if="{{item.src}}"
             class="photo-img"
@@ -71,7 +65,7 @@
         catchtouchend="onEditTouchEnd"
         catchtouchcancel="onEditTouchEnd"
       >
-        <view class="edit-clip {{device.shapeType === 1 ? 'is-round' : ''}} {{editPickup ? 'is-pickup' : ''}} {{dragging ? 'is-dragging' : ''}}" style="left:{{frame.left}}px; top:{{frame.top}}px; width:{{frame.width}}px; height:{{frame.height}}px;">
+        <view class="edit-clip {{editPickup ? 'is-pickup' : ''}} {{dragging ? 'is-dragging' : ''}}" style="left:{{frame.left}}px; top:{{frame.top}}px; width:{{frame.width}}px; height:{{frame.height}}px;">
           <image
             class="edit-image"
             src="{{editSrc}}"
