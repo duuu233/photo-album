@@ -18,6 +18,7 @@ const dithering = require('../../../utils/dithering')
 const protocol = require('../../../utils/frame-protocol')
 const toast = require('../../../utils/toast')
 const media = require('../../../utils/media')
+const downloadError = require('../../../utils/download-error')
 const activeDevice = require('../../../utils/active-device')
 const fold = require('../../../utils/fold-adapt')
 const smoothProgress = require('../../../utils/smooth-progress')
@@ -98,6 +99,14 @@ function classifyFailureMessage(rawMessage, deviceId) {
     /连接已断开|连接中断|连接失败|已断开|连接超时|链路|该型号暂不支持图传/.test(msg)
   if (connLost) {
     return '电子纸设备未连接，请检查手机或电子纸设备连接后继续'
+  }
+  // 兜底：微信 API 的英文原文（`uploadFile:fail timeout`、`request:fail …`）不上失败页
+  //（2026-09-21 产品：小程序尽量不要出现英文）。下载那条已在 downloadFileWithRetry 里转好中文，
+  // 这里接住其它漏网的；原文仍在 console 的「原始错误」里。
+  if (/(?:^|-)[A-Za-z]+:fail/.test(msg)) {
+    return downloadError.isTimeout(msg)
+      ? '网络超时，请检查网络后重试'
+      : '网络连接失败，请检查网络后重试'
   }
   return msg
 }
@@ -1068,17 +1077,27 @@ Page(fold.adapt({
               reject(new Error(`${label}(${res.statusCode})`))
             }
           },
-          fail: error => reject(new Error((error && error.errMsg) || label))
+          // 给用户看的是中文（2026-09-21：原来把「downloadFile:fail timeout」原样抛到失败页）；
+          // 微信原文挂在 rawErrMsg 上，下面判断要不要重试、以及日志都用它。
+          fail: error => {
+            const rawErrMsg = (error && error.errMsg) || ''
+            const wrapped = new Error(
+              downloadError.describeDownloadFail(error, label.replace(/下载失败$/, '') || '图片')
+            )
+            wrapped.rawErrMsg = rawErrMsg
+            reject(wrapped)
+          }
         })
       })
     const run = left =>
       once().catch(error => {
         // 仅超时/连接/网络类失败才重试；白名单、HTTP 状态码等确定性失败不重试
-        const retriable = /timeout|connect|网络|ERR_/i.test(error.message || '')
+        const raw = error.rawErrMsg || error.message || ''
+        const retriable = /timeout|connect|网络|ERR_/i.test(raw)
         if (left > 1 && retriable) {
           console.warn(
             `[投屏] ${label}，将重试（剩余 ${left - 1} 次）：`,
-            error.message
+            raw
           )
           return new Promise(r => setTimeout(r, 800)).then(() => run(left - 1))
         }

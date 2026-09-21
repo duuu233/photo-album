@@ -6,6 +6,7 @@ const lowBattery = require('../../../utils/low-battery')
 const deviceBle = require('../../../utils/device-ble')
 const deviceInfo = require('../../../utils/device-info')
 const protocol = require('../../../utils/frame-protocol')
+const clearWatch = require('../../../utils/clear-watch')
 const media = require('../../../utils/media')
 const activeDevice = require('../../../utils/active-device')
 const deviceName = require('../../../utils/device-name')
@@ -1115,10 +1116,30 @@ Page(fold.adapt({
           imgIndexMaskHex: protocol.bytesToHex(deleteMask)
         })
         try {
-          const deleteResult = await deviceBle.deleteImage(deviceId, indexes)
-          logClearDeviceData(traceId, '删除图片应答(0x12解析结果)', Object.assign({}, deleteResult, {
-            imgMaskHex: protocol.bytesToHex(deleteResult.imgMask)
-          }))
+          // 等 0x12 应答的同时回读 0x01：设备一张都不剩了就算清完，不再干等应答
+          //（2026-09-21 报障「设备都刷出默认图片了，小程序还在转圈圈」，见 utils/clear-watch.js）。
+          const deleteResult = await clearWatch.deleteAllWatching({
+            deleteAll: () => deviceBle.deleteImage(deviceId, indexes),
+            // 只发 0x01（readTransferInfo），不像 deviceInfo.read 那样再带一条 0x03：设备正忙着擦，少打扰一次
+            readState: async () => {
+              const state = await deviceBle.readTransferInfo(deviceId)
+              return {
+                remaining: protocol.maskToIndexes(state.imgMask).length,
+                imgMask: state.imgMask
+              }
+            },
+            cancelDelete: () => deviceBle.cancelPending(deviceId, protocol.CMD.DELETE_IMG),
+            log: (label, data) => logClearDeviceData(traceId, label, data)
+          })
+          logClearDeviceData(
+            traceId,
+            deleteResult.confirmedByPoll
+              ? '删除全部(0x12)：回读 0x01 已确认清空，未等应答'
+              : '删除图片应答(0x12解析结果)',
+            Object.assign({}, deleteResult, {
+              imgMaskHex: protocol.bytesToHex(deleteResult.imgMask)
+            })
+          )
         } catch (deleteError) {
           // 「槽位越界 / 图片不存在 / 掩码不一致」这类结果码：要删的图设备上本来就没有，
           // 对「清空」这个目标而言等价于已完成，不该中断流程（2026-08-01 产品要求：

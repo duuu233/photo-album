@@ -182,6 +182,8 @@ Page(fold.adapt({
     // 预热连接：必须按设备记录的完整身份查找/连接，不能直接复用 Storage 里的 BLE 句柄。
     // 旧缓存若曾把 B 的句柄写进 A，直接 ensureConnection(handle) 会在预览页悄悄连到 B。
     // 失败静默忽略，结果页还会走同一套身份校验后重连。
+    // 这次预热留个把手（_warmup）：点「开始投屏」时设备还没有 BLE 句柄，就先等它跑完，
+    // 别并行再起一轮扫描（见 confirmProjection）。
     if (
       device &&
       (device.deviceId ||
@@ -189,7 +191,7 @@ Page(fold.adapt({
         device.deviceNo ||
         device.productDeviceId)
     ) {
-      activeDevice
+      this._warmup = activeDevice
         .ensureDeviceConnected(device, { showLoading: false })
         .then(deviceId => {
           if (this._unloaded) {
@@ -1497,13 +1499,20 @@ Page(fold.adapt({
       return
     }
 
-    // 必须有真实蓝牙 deviceId 才能连接图传（绑定时由蓝牙读取写入）
-    if (!this.data.device.deviceId) {
-      toast.warn({ title: '电子纸设备未连接，请重新绑定后再投屏', icon: 'none' })
-      return
-    }
-
     this.setData({ projecting: true }) // 按钮切「投屏中」并锁定，跳转失败时在下方复位
+
+    // 结果页图传要用本机的 BLE 句柄（deviceId）。后端设备记录**不带**它——连过这台设备才有。
+    // 2026-09-21 之前这里没有句柄就直接报「电子纸设备未连接，请重新绑定后再投屏」：官方图库 /
+    // AI 对话选完设备点「连接并投屏」进来时，预热连接往往还没跑完（或静默失败），用户看到的就是
+    // 「连接并投屏了，还是未连接」，而且「重新绑定」根本不是解法。现在先等预热，还没有就当场连一次
+    //（带 loading、连不上如实提示原因），连上了照常往下走。
+    if (!this.data.device.deviceId) {
+      const connected = await this.ensureDeviceHandle()
+      if (!connected) {
+        this.setData({ projecting: false })
+        return
+      }
+    }
     wx.showLoading({ title: '处理中', mask: true })
     const prepareStartedAt = Date.now()
     let images
@@ -1536,6 +1545,33 @@ Page(fold.adapt({
         this.setData({ projecting: false })
       }
     })
+  },
+
+  // 给当前设备拿到本机 BLE 句柄：先等进页面时那次预热，仍没有就走「主动操作」的连接
+  //（ensureConnectedForAction：带「连接电子纸设备中」loading、失败如实提示、低电量提醒）。
+  // 拿到返回 true 并把带句柄的设备写回 data.device；拿不到返回 false（提示已弹出）。
+  async ensureDeviceHandle() {
+    if (this._warmup) {
+      wx.showLoading({ title: '连接电子纸设备中', mask: true })
+      try {
+        await this._warmup.catch(() => {})
+      } finally {
+        wx.hideLoading()
+      }
+      if (this._unloaded) {
+        return false
+      }
+      if (this.data.device && this.data.device.deviceId) {
+        return true
+      }
+    }
+    const device = this.data.device
+    const deviceId = await activeDevice.ensureConnectedForAction(device)
+    if (!deviceId || this._unloaded) {
+      return false
+    }
+    this.setData({ device: activeDevice.applyConnectedIdentity(device, deviceId) })
+    return true
   },
 
   // 离开页面：清掉所有计时器，避免回调在已销毁页面上 setData

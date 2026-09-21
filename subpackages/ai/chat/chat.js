@@ -27,6 +27,7 @@ const api = require('../../../utils/api')
 const media = require('../../../utils/media')
 const system = require('../../../utils/system')
 const toast = require('../../../utils/toast')
+const downloadError = require('../../../utils/download-error')
 const activeDevice = require('../../../utils/active-device')
 const lowBattery = require('../../../utils/low-battery')
 const language = require('../../../utils/language')
@@ -328,16 +329,10 @@ function toHttpsUrl(url) {
 }
 
 // 把 downloadFile 的失败归类成人话。原先两处都硬写「图片过期」，把「域名没配」这类配置问题
-// 也误报成过期，排查时会被带偏。
+// 也误报成过期，排查时会被带偏。2026-09-21 起与官方图库、结果页、固件包下载共用
+// utils/download-error.js（那几处原来直接把英文 errMsg 抛给用户）。
 function describeDownloadFail(err) {
-  const msg = (err && err.errMsg) || ''
-  if (/domain list|not in domain|域名/i.test(msg)) {
-    return '图片域名未配置（小程序后台 downloadFile 合法域名）'
-  }
-  if (/timeout|超时/i.test(msg)) {
-    return '图片下载超时，请重试'
-  }
-  return '图片下载失败，请检查网络后重试'
+  return downloadError.describeDownloadFail(err, '图片')
 }
 
 // ==================== 排查日志：AI 图的真实格式（2026-09-03） ====================
@@ -2706,9 +2701,9 @@ Page(fold.adapt({
 
   // ==================== 投屏（复用现有投屏链路） ====================
   // 需求：已连接→直接进投屏流程；未连接→弹已绑定设备列表，选择后自动连接进投屏。
-  // 做法：AI 生成图（OSS URL）先下载成本地临时文件，包装成与首页手选照片同形态的
-  // pendingProjection 写 Storage，跳投屏预览页 —— 预览页会预热连接、结果页 ensureConnection
-  // 真正自动连接，链路与手选照片完全一致。
+  // 做法：选定设备后**先连上**（2026-09-21，见 startProjection），再把 AI 生成图（OSS URL）下载成
+  // 本地临时文件，包装成与首页手选照片同形态的 pendingProjection 写 Storage，跳投屏预览页；
+  // 结果页照旧 ensureConnection 再确认一次身份，链路与手选照片完全一致。
   async projectImage(url) {
     const device = activeDevice.getActiveDevice()
     if (device && activeDevice.isDeviceConnected(device)) {
@@ -2771,9 +2766,21 @@ Page(fold.adapt({
   },
 
   async startProjection(device, url) {
-    // 主动点「投屏 / 连接并投屏」：这台设备此刻已连接（电量读得到）且 ≤10% 就先提醒一次（2026-08-21）。
-    // 未连接那一支读不到电量、真正的连接又发生在预览/结果页（自动连接不弹），所以这里天然只对已连接的情形生效。
-    await lowBattery.warnIfLow(activeDevice.findConnectedDeviceId(device), { device })
+    // 「连接并投屏」要**真的先连上**再进预览（2026-09-21，与官方图库同一处报障）：弹层里的设备来自
+    // 后端列表，记录里没有本机 BLE 句柄，原来原样塞进 pendingProjection、指望预览页后台预热去连，
+    // 预热没连完或静默失败时，预览页一点「开始投屏」就报「未连接」。
+    // 已有活动会话就直接认领并照旧做低电量提醒（主动操作，2026-08-21）；没有就
+    // ensureConnectedForAction 扫描连接（它自己带 loading、失败提示与低电量提醒）。
+    let deviceId = activeDevice.findConnectedDeviceId(device)
+    if (deviceId) {
+      await lowBattery.warnIfLow(deviceId, { device })
+    } else {
+      deviceId = await activeDevice.ensureConnectedForAction(device)
+      if (!deviceId) {
+        return
+      }
+    }
+    const target = activeDevice.applyConnectedIdentity(device, deviceId)
     wx.showLoading({ title: '准备投屏', mask: true })
     let tempFilePath
     try {
@@ -2785,7 +2792,7 @@ Page(fold.adapt({
     }
     wx.hideLoading()
     wx.setStorageSync('pendingProjection', {
-      device,
+      device: target,
       images: [
         {
           tempFilePath,

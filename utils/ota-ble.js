@@ -31,6 +31,7 @@
 //      对齐、也是设备 APP2 写入区大小）；若固件期望为「整包文件大小(含 128 头)」，改 computeFwSize 一处即可。
 
 const imageCodec = require('./image-codec')
+const downloadError = require('./download-error')
 
 // ── 协议常量 ──────────────────────────────────────────────
 const OTA_SERVICE_UUID = 'FF10'
@@ -1486,7 +1487,11 @@ function downloadFirmware(url) {
         }
         resolve(res.tempFilePath)
       },
-      fail: error => reject(new Error((error && error.errMsg) || '固件包下载失败'))
+      // 中文提示（2026-09-21：原来把「downloadFile:fail timeout」原样抛到升级页）；原文进日志
+      fail: error => {
+        otaLog('固件包下载失败（微信原文）', (error && error.errMsg) || '')
+        reject(new Error(downloadError.describeDownloadFail(error, '固件包')))
+      }
     })
   })
 }

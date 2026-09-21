@@ -223,6 +223,9 @@
   - 设备详情的「一键清空」不归本模块，但会清掉本页数据源：端上保持调 `clearUserProductImg`
     （后端文档口径为「一键删除我的图库」），**后端在同一次调用里同步删该设备的投屏记录**
     （2026-08-10 确认）。名字说的是图库、实际影响的是相册的数据源，故清空后相册随之为空。
+    一键清空的设备侧（`detail.js confirmClearCopies`）：0x12 删除全部要设备**全删完才回一次**应答，等待预算按张数给
+    （每张 2s、6s～180s）；2026-09-21 起**等应答的同时回读 0x01**（5 秒后起、3 秒一拍，`utils/clear-watch.js`），
+    掩码清空即按成功收尾并 `deviceBle.cancelPending` 收回那条 0x12——治「设备已刷出默认图、小程序还在转圈」。
     **进入本页/切换设备时查 `getUserProductClearImg` 弹「照片在此电子纸设备异常，请删除重新上传」
     的提醒必须保留**（`list.js checkDeviceClearStatus`）——那是用户能感知到「设备被别处清空过」的
     唯一入口，它查的是 UserProduct 侧状态，不属于图库列表链路；
@@ -343,6 +346,16 @@ App.onShow
 ```
 
 多张投屏会让下一张网络出帧、CRC 和预组包与当前张 BLE 传输重叠。预取只用于性能优化，使用前仍要重新校验设备尺寸、帧长度和 chunk 参数。
+
+**进预览前要先连上（2026-09-21）**：后端设备记录**不带本机 BLE 句柄**（`normalizeDevice` 的 `deviceId` 只取
+`bleDeviceId/wxDeviceId/…`，后端不下发），连过才有。官方图库、AI 对话选完设备按「连接并投屏」时先
+`ensureConnectedForAction`，带着 `applyConnectedIdentity` 后的设备进预览（与「我的相册」「投屏管理」的再次投屏同口径；
+原来直接塞后端记录、靠预览页后台预热，预热没连完就报「未连接」）。预览页「开始投屏」若仍无句柄，先等进页面时那次预热
+（`_warmup`），还没有就当场连一次（`ensureDeviceHandle`），不再报「请重新绑定后再投屏」。
+
+**下载失败一律中文（2026-09-21）**：`wx.downloadFile` 的 errMsg 统一经 `utils/download-error.js` 转成「XX 下载超时/失败，
+请检查网络后重试」（官方图库、AI 对话、结果页取原图、固件包下载）；结果页 `classifyFailureMessage` 另兜住其它
+`xxx:fail …` 英文原文。
 
 ### 我的相册删除与再次投屏
 

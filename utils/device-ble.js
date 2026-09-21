@@ -717,6 +717,26 @@ async function request(deviceId, cmd, payload, timeout = 6000) {
   return ack
 }
 
+// 不再等某条指令的应答：收回 pending、停掉它的超时计时器，等待方收到 code=CANCELLED 的错误。
+// 没有这条在等时什么都不做。
+//
+// 用在「已经从别处确认结果、不必再干等应答」的场合（2026-09-21 一键清空：0x12 删除全部要等设备
+// 全删完才回一次，预算按张数给到几十秒到 3 分钟；回读 0x01 已确认清空时就不再等它）。
+// 不收回的话，这条 pending 会一直占着这个指令号直到超时，期间同指令的新请求都被拒成「正在等待应答」。
+function cancelPending(deviceId, cmd) {
+  const session = sessions[deviceId]
+  const pending = session && session.pending[cmd]
+  if (!pending) {
+    return false
+  }
+  clearTimeout(pending.timer)
+  delete session.pending[cmd]
+  const error = new Error(`指令 0x${cmd.toString(16)} 已不再等待应答`)
+  error.code = 'CANCELLED'
+  pending.reject(error)
+  return true
+}
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
@@ -2205,6 +2225,7 @@ module.exports = {
   TRANSFER_WINDOW_MAX,
   setTime,
   deleteImage,
+  cancelPending,
   refreshScreen,
   prepareImageTransfer,
   uploadImage,

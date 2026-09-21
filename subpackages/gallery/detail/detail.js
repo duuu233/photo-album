@@ -1,10 +1,10 @@
 // 图片详情（设计稿：assets/ai/UI页面/图片详情-{未收藏,已收藏}.png）
 //
 // 投屏走**统一投屏链路**，与 AI 对话页完全一致（需求原文「投屏交互与 AI 对话模块一致」）：
-//   已连接 → 直接进投屏流程；未连接 → 弹已绑定设备列表，选完自动连接。
-//   做法都是把图片下载成本地临时文件、包装成与手选照片同形态的 `pendingProjection` 写 Storage，
-//   再进 preview 页；预热连接与 ensureConnection 由 preview/result 负责，这里不碰 BLE。
-//   见 docs/architecture/image-projection-pipeline.md。
+//   已连接 → 直接进投屏流程；未连接 → 弹已绑定设备列表，选完按「连接并投屏」**先连上**再往下走
+//   （2026-09-21 起；原来这里不碰 BLE、交给预览页后台预热，预热没连完就会报「未连接」）。
+//   之后把图片下载成本地临时文件、包装成与手选照片同形态的 `pendingProjection` 写 Storage，
+//   再进 preview 页；result 页照旧重新确认设备身份。见 docs/architecture/image-projection-pipeline.md。
 //
 // 2026-08-12：图片数据与收藏关系由 mock 切到真实后端
 // （`GET /Client/Product/getProductImgDetail`、`POST /Client/Product/setImgCollected`，
@@ -16,6 +16,7 @@ const activeDevice = require('../../../utils/active-device')
 const lowBattery = require('../../../utils/low-battery')
 const api = require('../../../utils/api')
 const toast = require('../../../utils/toast')
+const downloadError = require('../../../utils/download-error')
 
 const app = getApp()
 
@@ -197,9 +198,19 @@ Page(fold.adapt({
     // 先占住重入闸再弹提醒：低电量弹窗期间这一按钮保持「投屏中」态，点不出第二次投屏。
     this._projecting = true
     this.setData({ projecting: true })
-    // 主动点「投屏 / 连接并投屏」：这台设备此刻已连接（电量读得到）且 ≤10% 就先提醒一次（2026-08-21）。
-    // 口径同 AI 对话页——未连接那一支的连接发生在预览/结果页，属自动连接，不弹。
-    await lowBattery.warnIfLow(activeDevice.findConnectedDeviceId(device), { device })
+    // 「连接并投屏」要**真的先连上**再进预览（2026-09-21 报障：选完设备点「连接并投屏」，进了
+    // 预览页一点「开始投屏」还是提示未连接）。弹层里的设备来自后端列表，记录里**没有本机的
+    // BLE 句柄**（deviceId），原来只把它原样塞进 pendingProjection、指望预览页后台预热去连；
+    // 预热没连完、或静默失败，预览页就拿着一台 deviceId 为空的设备报「未连接」。
+    // 现在与「我的相册」「投屏管理」的再次投屏同一口径：先 ensureConnectedForAction（带「连接电子纸
+    // 设备中」loading、连不上如实提示、连上后顺带做低电量提醒），带着连上后的身份进预览。App 端
+    // 官方图库本来就是先连再进预览。
+    const target = await this.connectForProjection(device)
+    if (!target) {
+      this._projecting = false
+      this.setData({ projecting: false })
+      return
+    }
     wx.showLoading({ title: '准备投屏', mask: true })
 
     let tempFilePath
@@ -219,7 +230,7 @@ Page(fold.adapt({
 
     // 与手选照片同形态：preview 页按设备比例做非破坏性构图，result 页重新确认设备身份再出帧
     wx.setStorageSync('pendingProjection', {
-      device,
+      device: target,
       images: [
         {
           tempFilePath,
@@ -229,6 +240,22 @@ Page(fold.adapt({
       ]
     })
     wx.navigateTo({ url: '/subpackages/projection/preview/preview' })
+  },
+
+  // 投屏前把设备连上，返回带本机 BLE 句柄的设备；连不上返回 null（提示已由 ensureConnectedForAction 弹出）。
+  //   · 已有活动会话：直接认领（后端记录不带 deviceId 也能按完整设备 ID 交叉匹配到），低电量照旧提醒一次；
+  //   · 没有：ensureConnectedForAction 扫描连接（它自己会做低电量提醒，这里不再重复弹）。
+  async connectForProjection(device) {
+    let deviceId = activeDevice.findConnectedDeviceId(device)
+    if (deviceId) {
+      await lowBattery.warnIfLow(deviceId, { device })
+    } else {
+      deviceId = await activeDevice.ensureConnectedForAction(device)
+      if (!deviceId) {
+        return null
+      }
+    }
+    return activeDevice.applyConnectedIdentity(device, deviceId)
   },
 
   downloadPhoto(url) {
@@ -248,7 +275,11 @@ Page(fold.adapt({
             reject(new Error(`图片下载失败（HTTP ${res.statusCode}）`))
           }
         },
-        fail: (err) => reject(new Error((err && err.errMsg) || '图片下载失败'))
+        // 原来直接抛 errMsg，超时时用户看到的是「downloadFile:fail timeout」（2026-09-21 改中文）
+        fail: (err) => {
+          console.warn('[官方图库] 图片下载失败：', err)
+          reject(new Error(downloadError.describeDownloadFail(err, '图片')))
+        }
       })
     })
   },
