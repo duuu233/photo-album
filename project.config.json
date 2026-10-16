@@ -49,7 +49,24 @@
     "swc": false,
     "disableSWC": true
   },
-  "condition": {},
+  "condition": {
+    "miniprogram": {
+      "list": [
+        {
+          "id": 0,
+          "name": "圆形照片预览 Demo",
+          "pathName": "subpackages/projection/preview-demo/preview-demo",
+          "query": "shape=round"
+        },
+        {
+          "id": 1,
+          "name": "方形照片预览 Demo",
+          "pathName": "subpackages/projection/preview-demo/preview-demo",
+          "query": "shape=rectangle"
+        }
+      ]
+    }
+  },
   "editorSetting": {
     "tabIndent": "auto",
     "tabSize": 2

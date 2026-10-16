@@ -280,6 +280,16 @@
   color: #ff5f1f;
 }
 
+.segmented-item.is-disabled {
+  color: #a8adb5;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.segmented-item.is-disabled .segmented-icon {
+  filter: grayscale(1);
+}
+
 /* 按下反馈：滑块是跟着选中态走的（原图这档永远没有滑块），所以按压态单独给一层淡底，
    保证三档手感一致——尤其是「原图」，它点了只弹确认框、滑块不动，没有这层就像没响应。 */
 .segmented-item--hover {

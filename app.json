@@ -30,7 +30,7 @@
     },
     {
       "root": "subpackages/projection",
-      "pages": ["preview/preview", "records/records", "result/result"]
+      "pages": ["preview/preview", "preview-demo/preview-demo", "records/records", "result/result"]
     },
     {
       "root": "subpackages/settings",

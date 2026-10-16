@@ -7,7 +7,7 @@ const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
 const readCode = file => read(file).replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
 const wxml = readCode('subpackages/projection/preview/preview.wxml')
 const wxss = readCode('subpackages/projection/preview/preview.wxss')
-const preview = readCode('subpackages/projection/preview/preview.js')
+const preview = readCode('subpackages/projection/preview/preview-page.js')
 
 function ruleBody(selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -33,7 +33,10 @@ for (const match of wxss.matchAll(/([^{}]+)\{([^{}]*border-radius:\s*50%[^{}]*)\
 assert.match(preview, /getDeviceCropSize\(device\)\s*\{[\s\S]*?Number\(d\.width\)[\s\S]*?Number\(d\.height\)/)
 assert.match(preview, /const outW = dev\.width/)
 assert.match(preview, /const outH = dev\.height/)
-assert.doesNotMatch(preview, /shapeType|ctx\.clip\(|ctx\.arc\(/)
+const exportCode = preview.slice(preview.indexOf('  _exportCanvas('), preview.indexOf('  persistPending('))
+assert.ok(exportCode.includes('_bakeToFile(') && exportCode.includes('prepareProjectionImages('))
+assert.doesNotMatch(exportCode, /shapeType|ctx\.clip\(|ctx\.arc\(/)
+assert.doesNotMatch(preview, /ctx\.clip\(|ctx\.arc\(/)
 
 const home = read('pages/home/home.js')
 const normalizeSource = home.slice(home.indexOf('function normalizeDevice(device)'), home.indexOf('function sceneState(scene)'))

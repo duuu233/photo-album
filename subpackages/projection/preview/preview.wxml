@@ -101,11 +101,12 @@
   <!-- 操作栏（2026-07-27 恢复仿 el-segmented 交互）：灰色轨道内放一块白色选中滑块， orientation 改变时滑块在竖向/横向之间平滑移动，选中项同步切换橙色图标和文字。 ⚠️ 「原图」是动作而非第三个状态：点击后弹二次确认，滑块保持当前方向； 确认还原后 orientation 重置为竖向，滑块随状态回到第一档。 -->
   <!-- -->
   <view class="segmented" wx:if="{{imageCount}}">
-    <view class="segmented-thumb" style="transform: translateX({{orientation === 'landscape' ? 100 : 0}}%);">
+    <view wx:if="{{device.shapeType !== 1}}" class="segmented-thumb" style="transform: translateX({{orientation === 'landscape' ? 100 : 0}}%);">
     </view>
     <view
-      class="segmented-item {{orientation === 'portrait' ? 'is-active' : ''}}"
-      hover-class="segmented-item--hover"
+      class="segmented-item {{device.shapeType === 1 ? 'is-disabled' : (orientation === 'portrait' ? 'is-active' : '')}}"
+      hover-class="{{device.shapeType === 1 ? 'none' : 'segmented-item--hover'}}"
+      aria-disabled="{{device.shapeType === 1}}"
       hover-stay-time="80"
       data-orient="portrait"
       bindtap="setOrientation"
@@ -117,8 +118,9 @@
       <text>竖向</text>
     </view>
     <view
-      class="segmented-item {{orientation === 'landscape' ? 'is-active' : ''}}"
-      hover-class="segmented-item--hover"
+      class="segmented-item {{device.shapeType === 1 ? 'is-disabled' : (orientation === 'landscape' ? 'is-active' : '')}}"
+      hover-class="{{device.shapeType === 1 ? 'none' : 'segmented-item--hover'}}"
+      aria-disabled="{{device.shapeType === 1}}"
       hover-stay-time="80"
       data-orient="landscape"
       bindtap="setOrientation"

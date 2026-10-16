@@ -3,7 +3,7 @@
 > 状态：current  
 > 最后核对：2026-09-03
 > 适用范围：微信小程序投屏、再次投屏、AI 图片投屏  
-> 当前实现：`subpackages/projection/preview/preview.js`、`subpackages/projection/result/result.js`、`utils/dithering.js`、`utils/device-ble.js`
+> 当前实现：`subpackages/projection/preview/preview-page.js`（正式注册入口 `preview.js`）、`subpackages/projection/result/result.js`、`utils/dithering.js`、`utils/device-ble.js`
 
 ## 当前主链路
 
@@ -142,9 +142,9 @@
 
 常见根因：预览页出图失败**静默回退原图**。`compressForUpload` 只把长边等比缩到设备长边、
 **不改比例也不补边**，补不出设备的另一条边，于是上传图带着原图比例进了抖动接口。
-修的是预览导出那一环（`preview.js` 恒导出设备物理分辨率），不是文案，也不是第三方。
+修的是预览导出那一环（现位于共享 `preview-page.js`，恒导出设备物理分辨率），不是文案，也不是第三方。
 
-⚠️ **出图有四个静默逃生口**（`preview.js`，Flutter 同构于 `_startCast` 的 `out ?? src`）：
+⚠️ **出图有四个静默逃生口**（共享 `preview-page.js`，Flutter 同构于 `_startCast` 的 `out ?? src`）：
 `coverCropOne` 的 `fail:` / `.catch()` / 「尺寸不可用」三处 + `bakeEditedImage` 的 `.catch()`，
 **除最后一个外原本都不打日志**——所以「设计上每张都导出设备物理分辨率」与「运行时这张悄悄没导出」
 的落差长期看不见。2026-09-03 起补了排查日志（两端）：

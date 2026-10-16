@@ -2,8 +2,8 @@
 
 > 状态：current  
 > 最后核对：2026-10-16
-> 适用范围：`subpackages/projection/preview/preview.*`  
-> 权威实现：`subpackages/projection/preview/preview.js`  
+> 适用范围：`subpackages/projection/preview/` 与开发版 `subpackages/projection/preview-demo/`
+> 权威实现：`subpackages/projection/preview/preview-page.js`；正式页注册入口为 `preview.js`
 > Flutter 对应实现：`flutter/lib/src/features/cast/presentation/cast_preview_page.dart`
 >（2026-07-31 已追平本文的交互模型：自由缩小 0.02、白底所见即所得、长按 0.5s 单指平移；
 > 2026-08-01 起两端切图过场同为 300ms Banner。2026-08-04 竖向导出角改为读设备字段
@@ -53,8 +53,9 @@
 
 - 仅设备字段 `shapeType === 1` 时，静态轮播底图 `.photo-wrap` 和编辑取景框 `.edit-clip` 追加 `is-round`，用 `border-radius: 50%` 裁出圆形预览。
 - `shapeType` 为 `0`、缺失或其它值时不启用，沿用原有 `40rpx` 圆角。首页设备归一化须原样透传此字段，确保切换轮播设备后仍能识别。
+- 仅 `shapeType === 1` 时，横竖向选项置灰，不显示选中滑块，不响应按压或 `setOrientation` 调用。原图还原、图片 90° 旋转和手势仍可用；不清空已有快照或强改导出角。
 - 圆形产品的后台物理分辨率 `width/height` 必须为正方形；预览仍沿用设备宽高计算，不强改比例或像素尺寸。
-- 此判断仅影响手机预览遮罩；手势、旋转角、白底烘焙、导出尺寸及投屏矩阵均保持原逻辑，不对导出画布裁圆。
+- 圆形遮罩与方向切换门禁只影响预览显示/操作；手势、旋转角、白底烘焙、导出尺寸及投屏矩阵均保持原实现，不对导出画布裁圆。
 - 本轮只恢复小程序端；不代表其它客户端已同步恢复。实施与验证见 [2026-10-16 恢复圆形设备预览](../changes/2026-10-16-恢复圆形设备预览.md)。
 
 ### 共用导出约束
@@ -65,6 +66,12 @@
 - 输出格式为 JPG，质量 `0.92`；导出前铺白底，避免透明像素转黑。
 - 输出尺寸必须等于目标设备物理分辨率。
 - 编辑预览缓存只用于切图和投屏复用，不覆盖原图来源。
+
+## 独立截图 Demo
+
+- 正式 `preview.js` 与开发版 `preview-demo.js` 通过 `preview-page.js` 工厂创建各自的页面；每次创建的数据独立，不导入带 `Page()` 注册副作用的页面文件。
+- Demo include 正式 WXML、import 正式 WXSS，复用同一编辑和出图内核；只替换输入、预热、持久化和最终投屏动作，避免改写业务 Storage 或真实连接/投屏。
+- 启动参数、网图/域名要求与验证边界见 [照片预览独立截图 Demo](../preview-demo.md)。
 
 ## 性能与状态
 

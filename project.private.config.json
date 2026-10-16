@@ -27,6 +27,18 @@
           "query": "",
           "scene": null,
           "launchMode": "default"
+        },
+        {
+          "name": "圆形照片预览 Demo",
+          "pathName": "subpackages/projection/preview-demo/preview-demo",
+          "query": "shape=round",
+          "launchMode": "default"
+        },
+        {
+          "name": "方形照片预览 Demo",
+          "pathName": "subpackages/projection/preview-demo/preview-demo",
+          "query": "shape=rectangle",
+          "launchMode": "default"
         }
       ]
     }

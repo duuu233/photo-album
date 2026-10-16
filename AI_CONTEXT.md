@@ -207,6 +207,8 @@
 - 关键文件：
   - `utils/media.js`
   - `subpackages/projection/preview/preview.js`
+  - `subpackages/projection/preview/preview-page.js`：正式页与独立截图 Demo 共用的编辑/出图内核。
+  - `subpackages/projection/preview-demo/preview-demo.js`：仅开发版开放，独立网图数据，不连接或投屏；使用见 `docs/preview-demo.md`。
   - `subpackages/projection/result/result.js`
   - `utils/dithering.js`
   - `utils/device-ble.js`
@@ -329,7 +331,7 @@ App.onShow
 ```text
 相机/相册/AI/历史记录
   → 写入 Storage: pendingProjection
-  → preview.js 按设备比例非破坏性构图
+  → preview.js 注册页面，preview-page.js 按设备比例非破坏性构图
   → 导出设备物理分辨率 JPG
   → result.js 重新确认目标设备身份并读取 0x01
   → 并行：
@@ -610,7 +612,7 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
 
 - `utils/device-ble.js`：连接生命周期、全局 Notify、同命令 pending、MTU、图传窗口和重传集中在一个大模块中。
 - `utils/active-device.js`：后端设备记录、完整 ID、广播候选、活动会话和直连缓存交汇处，任何宽松匹配都可能串台。
-- `subpackages/projection/preview/preview.js`：手势状态、按张快照、离屏导出和横向旋转耦合；尺寸“看起来相同”仍可能导致设备花屏。
+- `subpackages/projection/preview/preview-page.js`：手势状态、按张快照、离屏导出和横向旋转耦合；尺寸“看起来相同”仍可能导致设备花屏。圆形只禁用横竖向选择，不改出图矩阵或旋转角。
 - `subpackages/projection/result/result.js`：网络、图片处理、BLE、进度和异步记账并行，竞态和部分成功分支多。
 - `utils/ota-ble.js`：不可逆硬件操作，协议版本、尾包、ACK 时序和断连处理都需要真机确认。
 - `subpackages/ai/chat/chat.js`：会话栈、消息、图片、录音、打字机和中止逻辑集中，页面栈变化容易引入状态错乱。
