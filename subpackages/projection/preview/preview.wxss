@@ -118,6 +118,10 @@
   border-radius: 40rpx;
 }
 
+.photo-wrap.is-round {
+  border-radius: 50%;
+}
+
 .photo-img {
   width: 100%;
   height: 100%;
@@ -154,6 +158,10 @@
   overflow: hidden;
   background: #ffffff;
   border-radius: 40rpx;
+}
+
+.edit-clip.is-round {
+  border-radius: 50%;
 }
 
 /* 长按 0.5s 触发拖拽时的「拿起」反馈 */
