@@ -1,7 +1,7 @@
 # 照片预览与非破坏性编辑
 
 > 状态：current  
-> 最后核对：2026-10-16
+> 最后核对：2026-10-19
 > 适用范围：`subpackages/projection/preview/` 与开发版 `subpackages/projection/preview-demo/`
 > 权威实现：`subpackages/projection/preview/preview-page.js`；正式页注册入口为 `preview.js`
 > Flutter 对应实现：`flutter/lib/src/features/cast/presentation/cast_preview_page.dart`
@@ -54,7 +54,7 @@
 - 仅设备字段 `shapeType === 1` 时，静态轮播底图 `.photo-wrap` 和编辑取景框 `.edit-clip` 追加 `is-round`，用 `border-radius: 50%` 裁出圆形预览。
 - `shapeType` 为 `0`、缺失或其它值时不启用，沿用原有 `40rpx` 圆角。首页设备归一化须原样透传此字段，确保切换轮播设备后仍能识别。
 - 仅 `shapeType === 1` 时，横竖向选项置灰，不显示选中滑块，不响应按压或 `setOrientation` 调用。原图还原、图片 90° 旋转和手势仍可用；不清空已有快照或强改导出角。
-- 圆形产品的后台物理分辨率 `width/height` 必须为正方形；预览仍沿用设备宽高计算，不强改比例或像素尺寸。
+- 圆形产品的后台物理分辨率 `width/height` 必须为正方形；预览仍沿用设备宽高计算，不强改比例或像素尺寸。2026-10-19 起结果页同样优先使用设备列表尺寸，400×400不再被旧固件型号查表覆盖为0或其它尺寸，帧校验为80,000字节；横竖向旋转0保持有效。完整身份、固件型号与槽位应答仍由蓝牙协议核验，见[投屏流水线](image-projection-pipeline.md)。
 - 圆形遮罩与方向切换门禁只影响预览显示/操作；手势、旋转角、白底烘焙、导出尺寸及投屏矩阵均保持原实现，不对导出画布裁圆。
 - 本轮只恢复小程序端；不代表其它客户端已同步恢复。实施与验证见 [2026-10-16 恢复圆形设备预览](../changes/2026-10-16-恢复圆形设备预览.md)。
 

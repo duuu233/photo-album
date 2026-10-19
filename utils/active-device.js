@@ -15,6 +15,7 @@ const batteryUtil = require('./battery')
 const lowBattery = require('./low-battery')
 const deviceIdUtil = require('./device-id')
 const identityStore = require('./device-identity')
+const projectionDevice = require('./projection-device')
 
 // 连接前的信号闸（2026-07-20，治「信号正常档经常连不上」）：
 // 扫描命中目标时若 RSSI 弱于此值，不立刻发起连接，先等一个短窗口看有没有更强的一帧。
@@ -102,9 +103,8 @@ function sessionVerifiedSerials(conn) {
   if (!conn) {
     return []
   }
-  return conn.verifiedSerials && conn.verifiedSerials.length
-    ? conn.verifiedSerials
-    : conn.serials
+  // 显式空数组表示尚未读过 0x01，不能退回广播 ID；只有旧会话缺字段才保留兼容。
+  return Array.isArray(conn.verifiedSerials) ? conn.verifiedSerials : conn.serials
 }
 
 // 这条活动会话与设备记录是否指同一台：双方都必须带 0x01 的完整 6 字节 ID并精确相等。
@@ -475,8 +475,12 @@ async function readAndVerifyDeviceIdentity(device, deviceId) {
 // 屏幕型号(尺寸)一致性校验：设备记录的 width/height（后端按物理型号下发，用户改名也不变）
 // 与活动会话广播登记的 screenType 对应尺寸(SCREEN_TYPES)。两侧都拿得到且尺寸不一致 → 判为不同型号设备，
 // 交叉匹配一票否决，杜绝「序列号 4/6 字节偶合」把 3.7寸(480×720) 误连到 5.89寸(680×960)。
-// 任一侧信息缺失（老会话没登记 screenType / 设备记录没尺寸）→ 不阻断，回退到纯序列号匹配，保持兼容。
+// 旧表只约束已登记的旧尺寸；新设备的尺寸由列表接口提供，不拿旧型号表否决新分辨率。
+// 活动会话仍必须匹配 0x01 核验的完整 ID，扫描候选仍必须连接后校验完整 ID。
 function sameScreen(device, screenType) {
+  if (!projectionDevice.legacyScreenForSize(device || {})) {
+    return true
+  }
   if (!screenType) {
     return true
   }

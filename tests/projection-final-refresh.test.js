@@ -57,13 +57,16 @@ const stubModule = (request, exports) => {
 
 // 调用轨迹：按真实发生顺序记下 BLE 侧动作，用来断言「刷屏发生在整单收尾」而不是中途
 let trace = []
+let transferOptions = {}
+let sentImages = []
 let uploadPlan = [] // 每张的结果：true=图传成功，Error=图传失败
 let deviceMask = new Array(12).fill(0) // 设备 0x01 回的 IMG_MASK：槽位事实的唯一来源
 let storedSlots = [] // 设备上已存的槽位，随每张写入累加（喂 0x22 结束应答回的新掩码）
 const deviceBle = {
   isConnected: () => true,
   readTransferInfo: () =>
-    Promise.resolve({
+    Promise.resolve(Object.assign({
+      deviceId: 'AA:BB:CC:DD:EE:01',
       screenType: 0x01,
       width: 4, // 4×4÷2 = 8 字节六色 4bpp 帧，够跑完校验闸
       height: 4,
@@ -71,11 +74,12 @@ const deviceBle = {
       imgCount: 0,
       imgMask: deviceMask, // 设备为空时第一张落 0 号槽（0 是合法值）
       curImgIndex: 0xff
-    }),
+    }, transferOptions.info)),
   optimizeConnectionIntervalForTransfer: () => Promise.resolve({}),
   prepareImageTransfer: () => Promise.resolve(null),
   uploadImage: (deviceId, options) => {
     trace.push(`upload:${options.index}`)
+    sentImages.push(options)
     const planned = uploadPlan[options.imageIndex]
     if (planned instanceof Error) {
       return Promise.reject(planned)
@@ -121,7 +125,9 @@ global.Page = options => {
 require('../subpackages/projection/result/result.js')
 
 // ── 驱动一次真实投屏主流程 ─────────────────────────────────
-const runProjection = async (imageCount, plan, usedSlots = [], refreshEnabled = true) => {
+const runProjection = async (imageCount, plan, usedSlots = [], refreshEnabled = true, options = {}) => {
+  transferOptions = options
+  sentImages = []
   trace = []
   uploadPlan = plan
   deviceMask = protocol.indexesToMask(usedSlots)
@@ -129,7 +135,7 @@ const runProjection = async (imageCount, plan, usedSlots = [], refreshEnabled = 
   // 存储值优先于代码默认值：用例自己决定收尾刷屏开关的状态，不受默认值改动影响
   storage.finalRefreshEnabled = refreshEnabled
   storage.pendingProjection = {
-    device: { deviceId: 'BLE-1', id: 'D1', name: '相框', width: 4, height: 4 },
+    device: Object.assign({ deviceId: 'BLE-1', productDeviceId: 'AA:BB:CC:DD:EE:01', id: 'D1', name: '相框', width: 4, height: 4 }, options.device),
     images: Array.from({ length: imageCount }, (_, i) => ({
       tempFilePath: `local-${i}.jpg`
     }))
@@ -150,7 +156,7 @@ const runProjection = async (imageCount, plan, usedSlots = [], refreshEnabled = 
   // 网络出帧/建记录整段跳过：本用例只验 BLE 侧的刷屏时机与索引
   ctx.acquireFrame = () =>
     Promise.resolve({
-      frameData: new Uint8Array(8),
+      frameData: new Uint8Array(options.frameBytes === undefined ? 8 : options.frameBytes),
       taskId: 't1',
       upirId: 'u1',
       prepared: null,
@@ -163,7 +169,7 @@ const runProjection = async (imageCount, plan, usedSlots = [], refreshEnabled = 
   await ctx.runRealProjection()
   // 刷屏是 fire-and-forget：让已排上的微任务跑完再断言
   await new Promise(resolve => setImmediate(resolve))
-  return { trace, finished: finished[0] || {} }
+  return { trace, sentImages, finished: finished[0] || {} }
 }
 
 // 跑测试时静音页面日志，只留断言失败
@@ -237,7 +243,87 @@ const unmute = () => {
   assert.deepStrictEqual(r.trace, ['upload:0', 'upload:1', 'upload:2'])
   assert.strictEqual(r.finished.uploaded, 3)
 
-  console.log('projection-final-refresh: 6 组用例通过')
+  // 圆屏跑真实主循环：从后台尺寸到帧校验/槽位/蓝牙发送，型号不借用后台的方向枚举。
+  const round = { shapeType: 1, screenType: 0, width: 400, height: 400, rotationDegree: 0, verticalRotation: 0 }
+  for (const screenType of [0x00, 0x03, 0x04]) {
+    mute()
+    r = await runProjection(1, [true], [0, 1], true, {
+      device: round,
+      info: { screenType, width: 0, height: 0, capacity: 0 },
+      frameBytes: 80000
+    })
+    unmute()
+    assert.deepStrictEqual(r.trace, ['upload:2', 'refresh:2'])
+    assert.strictEqual(r.finished.uploaded, 1)
+    assert.strictEqual(r.sentImages[0].width, 400)
+    assert.strictEqual(r.sentImages[0].height, 400)
+    assert.strictEqual(r.sentImages[0].screenType, screenType)
+    assert.strictEqual(r.sentImages[0].data.length, 80000)
+  }
+
+  // 固件旧表尺寸不得盖掉接口 400×400；也不能把旧大屏帧误发给圆屏。
+  mute()
+  r = await runProjection(1, [true], [], true, {
+    device: round,
+    info: { screenType: 0x01, width: 480, height: 720, capacity: 95 },
+    frameBytes: 80000
+  })
+  unmute()
+  assert.strictEqual(r.finished.uploaded, 1)
+  assert.strictEqual(r.sentImages[0].width, 400)
+
+  mute()
+  r = await runProjection(1, [true], [], true, { device: round, frameBytes: 172800 })
+  unmute()
+  assert.deepStrictEqual(r.trace, [])
+  assert.match(r.finished.message, /图片文件错误/)
+
+  // 句柄仍活着也不能给另一台设备发送；配置缺失保留配置报错，不能再伪装成断连。
+  mute()
+  r = await runProjection(1, [true], [], true, {
+    device: round,
+    info: { deviceId: 'AA:BB:CC:DD:EE:02' },
+    frameBytes: 80000
+  })
+  unmute()
+  assert.deepStrictEqual(r.trace, [])
+  assert.match(r.finished.message, /设备ID不一致/)
+
+  mute()
+  r = await runProjection(1, [true], [], true, {
+    device: { width: undefined, height: undefined },
+    info: { screenType: 0x04, width: 0, height: 0, capacity: 0 }
+  })
+  unmute()
+  assert.deepStrictEqual(r.trace, [])
+  assert.match(r.finished.message, /分辨率未配置或无效/)
+  assert.doesNotMatch(r.finished.message, /未连接/)
+
+  // 未知容量只能挑掩码内的槽位，不能越过 96 位；旧设备继续按已有容量截断。
+  mute()
+  r = await runProjection(1, [true], Array.from({ length: 96 }, (_, i) => i), true, {
+    device: round,
+    info: { screenType: 0x04, width: 0, height: 0, capacity: 0 },
+    frameBytes: 80000
+  })
+  unmute()
+  assert.deepStrictEqual(r.trace, [])
+  assert.match(r.finished.message, /内存已满/)
+  mute()
+  r = await runProjection(1, [true], Array.from({ length: 8 }, (_, i) => i))
+  unmute()
+  assert.deepStrictEqual(r.trace, [])
+  assert.match(r.finished.message, /内存已满/)
+
+  // 设备仍在线时的固件拒绝不能再统一伪装成蓝牙断开。
+  mute()
+  r = await runProjection(1, [new Error('电子纸设备-不支持的命令')], [], true, { device: round, frameBytes: 80000 })
+  unmute()
+  assert.strictEqual(r.finished.uploaded, 0)
+  assert.match(r.finished.message, /不支持的命令/)
+  assert.doesNotMatch(r.finished.message, /未连接/)
+
+  console.log('projection-final-refresh: 6组既有刷屏回归及10组动态尺寸/身份/槽位/固件拒绝场景通过')
 })().catch(error => {
   unmute()
   console.error(error)

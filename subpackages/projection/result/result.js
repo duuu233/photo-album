@@ -16,6 +16,7 @@ const api = require('../../../utils/api')
 const deviceBle = require('../../../utils/device-ble')
 const dithering = require('../../../utils/dithering')
 const protocol = require('../../../utils/frame-protocol')
+const projectionDevice = require('../../../utils/projection-device')
 const toast = require('../../../utils/toast')
 const media = require('../../../utils/media')
 const downloadError = require('../../../utils/download-error')
@@ -79,7 +80,7 @@ const STATUS_ART = {
 
 // 把投屏过程中的底层错误归一成用户能看懂的结果页提示：
 //   · 设备内存已满 → 引导清理；
-//   · 设备连接 / 蓝牙链路问题（会话已断、或错误带「设备-」前缀、或命中断连关键词）→ 统一
+//   · 设备连接 / 蓝牙链路问题（会话已断、或命中断连关键词）→ 统一
 //     「设备未连接，请检查手机或设备连接后继续」，不把「应答超时 / 连接已断开」等底层码抛给用户
 //     （常见于投屏完成后设备正在刷新屏幕、蓝牙暂短断开时立刻再投）；
 //   · 其余（如后端转换 / 网络下载失败）保留原始文案，配合失败页固定提示排查。
@@ -95,11 +96,14 @@ function classifyFailureMessage(rawMessage, deviceId) {
   }
   const connLost =
     (deviceId && !deviceBle.isConnected(deviceId)) ||
-    /^(?:设备|电子纸设备)-/.test(msg) ||
-    /连接已断开|连接中断|连接失败|已断开|连接超时|链路|该型号暂不支持图传/.test(msg)
+    /连接已断开|连接中断|连接失败|已断开|连接超时|链路/.test(msg)
   if (connLost) {
     return '电子纸设备未连接，请检查手机或电子纸设备连接后继续'
   }
+  if (/应答超时/.test(msg)) {
+    return '电子纸设备应答超时，请稍后重试'
+  }
+  // 参数/型号/协议拒绝不是断连：保留具体原因，不仅凭「电子纸设备-」前缀吞掉它。
   // 兜底：微信 API 的英文原文（`uploadFile:fail timeout`、`request:fail …`）不上失败页
   //（2026-09-21 产品：小程序尽量不要出现英文）。下载那条已在 downloadFileWithRetry 里转好中文，
   // 这里接住其它漏网的；原文仍在 console 的「原始错误」里。
@@ -480,7 +484,7 @@ Page(fold.adapt({
       // F1 首张网络准备与「连接 → 0x01」并行（性能优化）：出帧目标尺寸/抖动 type 只依赖设备记录里
       // 后端按物理型号下发的 width/height，不必等 0x01。
       // 记录尺寸可用时立刻启动第一张的「抖动出帧+记录上传」，把冷连接 1~3s 的等待与网络准备重叠；
-      // 0x01 返回后校验尺寸，不一致（记录过期/异常）则作废预取按真实尺寸重取，
+      // 0x01 返回后核验完整设备身份，再使用同一设备列表记录的物理尺寸；缺失才回退旧表，
       // 主循环的「帧字节数 = 宽×高÷2」校验仍是最后闸门，错帧绝不会发往设备。
       const guessedSize =
         Number(device.width) > 0 && Number(device.height) > 0
@@ -511,13 +515,16 @@ Page(fold.adapt({
       performance.phases.connectMs = Date.now() - phaseStartedAt
       this.setData({ desc: '正在读取电子纸设备信息…' })
       phaseStartedAt = Date.now()
-      const info = await deviceBle.readTransferInfo(deviceId)
+      const firmwareInfo = await deviceBle.readTransferInfo(deviceId)
+      const info = projectionDevice.resolveTransferInfo(device, firmwareInfo)
       performance.phases.readTransferInfoMs = Date.now() - phaseStartedAt
       performance.device = {
         screenType: info.screenType,
         width: info.width,
         height: info.height,
         capacity: info.capacity,
+        slotLimit: info.slotLimit,
+        resolutionSource: info.resolutionSource,
         firmwareVersion: device.firmwareVersion || ''
       }
       // curImgIndex/imgMask 都在 0x01 这一帧里，顺手打出来（不额外发指令）：
@@ -528,33 +535,26 @@ Page(fold.adapt({
         width: info.width,
         height: info.height,
         capacity: info.capacity,
+        slotLimit: info.slotLimit,
+        resolutionSource: info.resolutionSource,
+        protocolSize: { width: firmwareInfo.width, height: firmwareInfo.height },
         imgCount: info.imgCount,
         curImgIndex: info.curImgIndex,
         imgMask: protocol.bytesToHex(info.imgMask),
         已存槽位: protocol.maskToIndexes(info.imgMask)
       })
 
-      if (info.screenType === 0x03) {
-        // 固件明确上报 screenType=0x03：该机型确实不支持图传
-        throw new Error('该型号暂不支持图传')
-      }
-      if (!info.width || !info.height) {
-        // 读到空的设备信息(宽/高为 0)：多为「投屏完成后设备正在刷新屏幕、蓝牙暂短断开」时立刻再投所致，
-        // 并非机型不支持——按连接问题提示，引导用户等刷新完成 / 检查连接后再试。
-        throw new Error('电子纸设备未连接，请检查手机或电子纸设备连接后继续')
-      }
-
       // 设备空间：剩余可存张数 = 容量 - 已存张数（掩码置位数）。不再整单预检「够不够放下全部」，
       // 改为逐张尝试、放满为止：设备放满时下方 firstFreeIndex 返回 -1 抛「设备内存已满」，
       // 此前已成功的张数照常算「部分成功」跳成功页（对齐产品：内存差 N 张时能把 N 张投进去）。
       let usedIndexes = protocol.maskToIndexes(info.imgMask)
-      const free = (info.capacity || 0) - usedIndexes.length
+      const free = info.slotLimit - usedIndexes.length
       console.log(
-        `[投屏] 设备空间：容量 ${info.capacity}，已存 ${usedIndexes.length}，剩余 ${free}，待投 ${total}`
+        `[投屏] 设备空间：容量 ${info.capacity || '未知'}，槽位上限 ${info.slotLimit}，已存 ${usedIndexes.length}，空闲槽位 ${free}，待投 ${total}`
       )
 
       // 2) 逐张：抖动接口出帧 + 原图上传建记录（并行）→ 选空闲槽位 → 图传 → 设备成功才写投屏记录 → 刷新显示。
-      // F1 校验：首张若已用设备记录尺寸早启动预取，此处对照 0x01 真实尺寸——不一致则作废重取
+      // F1 校验：预取与最终解析后的投屏尺寸保持一致，不一致则作废重取
       //（后台在跑的旧转码结果直接丢弃）。
       if (
         framePrefetch[0] &&
@@ -655,7 +655,7 @@ Page(fold.adapt({
 
         const index = protocol.firstFreeIndex(
           protocol.indexesToMask(usedIndexes),
-          info.capacity
+          info.slotLimit
         )
         if (index < 0) {
           throw new Error('电子纸设备内存已满，请清理后继续。')
