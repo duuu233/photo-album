@@ -114,6 +114,7 @@ Page(fold.adapt({
       // onUpdate：搜到一台就渲染一台（边搜边显示），不必等满超时；窗口见 SCAN_TIMEOUT_MS。
       const devices = await bluetooth.discoverDevices({
         timeout: SCAN_TIMEOUT_MS,
+        freshOnly: true, // 只收本次订阅后收到的广播，不展示共享扫描会话的存量结果
         onUpdate: list => this.applyScanResult(seq, list)
       })
 
@@ -172,9 +173,9 @@ Page(fold.adapt({
       if (order[key] === undefined) {
         order[key] = next++
       }
-      // deviceCode：列表里给用户看的「设备ID」，扫描阶段就能拿到（见 displayDeviceCode）
+      // 搜索阶段尚未通过本次0x01核实，广播ID和蓝牙句柄均不作为真实设备ID展示。
       return Object.assign({}, item, {
-        deviceCode: this.displayDeviceCode(item)
+        deviceCode: '--'
       })
     })
     this.scanOrderNext = next
@@ -259,33 +260,6 @@ Page(fold.adapt({
   // 设备硬件序列号归一化，仅用于本页比较。
   deviceSerial(value) {
     return String(value == null ? '' : value).replace(/[:\-\s]/g, '').toUpperCase()
-  },
-
-  // 列表里展示给用户看的「设备ID」：取广播厂商数据里的 Device_ID，带冒号展示，
-  // 与「我的设备」「设备详情」同一套格式。
-  //
-  // 长度随固件走，**不再做任何截断**（2026-08-04）：
-  //   · 新固件广播 6 字节 → 显示 AA:BB:CC:DD:EE:FF，与设备详情页完全一致；
-  //   · 老固件广播 4 字节 → 显示 AA:BB:CC:DD（包里就只有这些，两个平台都一样）。
-  // 原来无脑 `slice(-8)` 砍成 4 字节，新固件上会把完整 ID 白白截掉一半 —— 那正是用户
-  // 反馈的「和详情页不一致、看着像被裁剪」。
-  //
-  // 为什么扫描阶段就要展示：默认设备名 = 产品广播名（EF6-370/EF6-589），同型号设备必然重名，
-  // 绑定前这是用户唯一能把两台区分开的标识。展示放宽不等于身份放宽——判重、认领会话、
-  // 绑定入库一律仍只认连上后 0x01 读到的完整 ID（见 findBoundDevice / active-device）：
-  // 广播是明文、可被伪造重放，0x01 才是从设备真身上读的。
-  //
-  // 兜底（广播厂商数据没解出来时）：
-  //   · 安卓的 BLE deviceId 就是 MAC（12 hex）——设备方口径里它就是那个完整身份，整串显示；
-  //   · iOS 给的是与设备无关、换台手机就变的随机 UUID（32 hex），它根本不是设备ID，
-  //     以前截成 8 位显示只会让用户以为「设备ID 被裁了」，现在直接不显示（模板隐藏这一行）。
-  displayDeviceCode(device) {
-    const broadcast = this.deviceSerial(device && device.broadcastDeviceId)
-    if (broadcast) {
-      return deviceIdUtil.formatBytes(broadcast)
-    }
-    const handle = this.deviceSerial(device && device.deviceId)
-    return /^[0-9A-F]{12}$/.test(handle) ? deviceIdUtil.formatBytes(handle) : ''
   },
 
   // 查当前用户是否已绑定这台设备（按硬件 Device_ID 匹配），命中则返回那条已绑定记录。
@@ -389,8 +363,16 @@ Page(fold.adapt({
       return
     }
 
-    this.setData({ binding: true })
+    this.setData({
+      binding: true,
+      devices: this.data.devices.map(item =>
+        item.deviceId === scanDevice.deviceId
+          ? Object.assign({}, item, { deviceCode: '--' })
+          : item
+      )
+    })
 
+    const scanSeq = this.scanSeq
     let info = null
     // 绑定成功后是否保留这条 BLE 连接：保留则返回首页直接显示「已连接」，免去用户再手动点连接
     let bleConnected = false
@@ -404,6 +386,16 @@ Page(fold.adapt({
           info && info.deviceId,
           '电子纸设备-未读取到完整的6字节电子纸设备ID，请重新连接后再试'
         )
+        // 只展示刚刚从当前设备读回的完整ID；不从广播、后端记录或历史缓存补值。
+        if (scanSeq === this.scanSeq) {
+          this.setData({
+            devices: this.data.devices.map(item =>
+              item.deviceId === scanDevice.deviceId
+                ? Object.assign({}, item, { deviceCode: info.deviceId })
+                : item
+            )
+          })
+        }
         bleConnected = true // ensureConnection 已建立可复用会话，绑定成功后将沿用它
         try {
           const conn = await deviceBle.getConnectionInterval(
