@@ -260,11 +260,10 @@ async function whenScanStopped() {
 }
 
 // 订阅者视角的设备列表：按各自口径过滤（调试 allowAll 不过滤，正式入口按 broadcastId 白名单），
-// freshOnly订阅仅展示加入后收到过新广播的设备。按信号强度降序。白名单按「当前累计到的名称」判——设备名/localName 常在后续广播包才带全，
+// 按信号强度降序。白名单按「当前累计到的名称」判——设备名/localName 常在后续广播包才带全，
 // 旧实现首包没名字就永远进不了名单（名字包晚到被丢弃），这里后到的名字包一样能让设备入列。
 function subscriberList(scan, subscriber) {
   return Object.keys(scan.foundMap)
-    .filter(id => !subscriber.seenDeviceIds || subscriber.seenDeviceIds.has(id))
     .map(id => scan.foundMap[id])
     .filter(device => subscriber.allowAll || isAllowedFrame(device, subscriber.allowedIds))
     .sort((a, b) => b.RSSI - a.RSSI)
@@ -312,7 +311,7 @@ function notifySubscriber(scan, subscriber, changed) {
   }
 }
 
-// 把一位调用方挂到共享会话：默认立即回吐存量结果；freshOnly只等加入后收到的新广播，
+// 把一位调用方挂到共享会话：先立即回吐存量结果（后来的订阅者不必等下一个广播包），
 // 此后随广播增量更新；自己的 until 命中或 timeout 到点即各自 resolve，互不影响。
 function subscribeScan(scan, options) {
   return new Promise((resolve, reject) => {
@@ -321,8 +320,6 @@ function subscribeScan(scan, options) {
       allowedIds: options.allowedIds,
       onUpdate: options.onUpdate,
       until: options.until,
-      // 搜索页要求新鲜数据时，不复用订阅之前累计到的设备；只接受之后收到的广播。
-      seenDeviceIds: options.freshOnly ? new Set() : null,
       settled: false,
       timer: null,
       resolve,
@@ -447,8 +444,7 @@ function normalizeDevice(device) {
 }
 
 // 在 timeout 时间内持续收集附近的蓝牙相框，到点后返回去重 + 按 RSSI 降序的设备列表。
-// options.freshOnly：只返回订阅后收到过新广播的设备，不使用共享会话之前累计的结果。
-// options.onUpdate(devices)：可选。每发现一台新设备、或名称/电量/屏型/广播ID等信息变化时，
+// options.onUpdate(devices)：可选。每发现一台新设备、或已收录设备的展示信息(名称/电量/屏型)有变化时，
 //   立即回调一份「当前已搜到的列表」，供页面「搜出一个显示一个」增量渲染，不必等满 timeout。
 //   最终仍会在 timeout 到点后 resolve 完整列表（与不传 onUpdate 时行为一致，故对现有调用方零影响）。
 // options.until(devices)：可选。每次列表有更新时用「当前已搜到的列表」判断是否已达成目标（如已扫到要连的那台），
@@ -470,7 +466,7 @@ async function discoverDevices(options) {
     throw new Error('当前环境不支持蓝牙搜索')
   }
 
-  const subscriberOptions = { timeout, allowAll, allowedIds, onUpdate, until, freshOnly: !!(options && options.freshOnly) }
+  const subscriberOptions = { timeout, allowAll, allowedIds, onUpdate, until }
 
   // 已有在途扫描：直接订阅共享会话——绝不并行起第二路硬件扫描，也不会 stop 掉别人的那路
   if (activeScan && !activeScan.stopped) {
@@ -479,7 +475,7 @@ async function discoverDevices(options) {
 
   const scan = {
     foundMap: {}, // 以 deviceId 为键去重，同一设备多次广播只保留最新一条
-    signatures: {}, // 各设备上次的展示签名(名称|电量|屏型|广播ID|解析状态)：只在展示信息变化时才增量回调，避免 RSSI 抖动刷屏
+    signatures: {}, // 各设备上次的展示签名(名称|电量|屏型)：只在展示信息变化时才增量回调，避免 RSSI 抖动刷屏
     subscribers: [],
     handler: null,
     stopped: false
@@ -495,14 +491,8 @@ async function discoverDevices(options) {
         return
       }
       const normalized = normalizeDevice(device)
-      const sig = `${normalized.name}|${normalized.battery}|${normalized.screenType}|${normalized.broadcastDeviceId}|${normalized.broadcastLayoutFallback}`
-      scan.subscribers.forEach(subscriber => {
-        if (subscriber.seenDeviceIds && !subscriber.seenDeviceIds.has(device.deviceId)) {
-          subscriber.seenDeviceIds.add(device.deviceId)
-          changed = true
-        }
-      })
-      // 新设备，或名称/电量/屏型/广播ID变化才算「有变化」；纯 RSSI 波动不触发回调（否则会高频刷屏）
+      const sig = `${normalized.name}|${normalized.battery}|${normalized.screenType}`
+      // 新设备，或名称/电量/屏型变化才算「有变化」；纯 RSSI 波动不触发回调（否则会高频刷屏）
       if (!scan.foundMap[device.deviceId] || scan.signatures[device.deviceId] !== sig) {
         changed = true
       }
