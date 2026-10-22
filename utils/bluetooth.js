@@ -20,7 +20,7 @@ let stopDiscoveryPromise = null
 // 白名单不再写死，而是取自产品列表接口(/Client/Product/getProductList)里每个产品的 broadcastId 字段，
 // 后端新增/调整支持的机型时无需改前端。拉取失败（未登录/网络异常）时退回内置广播名兜底，保证仍能搜到设备。
 //   兜底：3.7 寸 EF6-370 / 5.89 寸 EF6-589
-// 屏幕类型/电量若广播包带了厂商数据就顺带解析出来（frame-protocol.parseAdvertising）。
+// 屏幕类型/电量/设备ID若广播包带了厂商数据就顺带解析出来（frame-protocol.parseAdvertising）。
 const FALLBACK_BROADCAST_IDS = ['EF6-370', 'EF6-589']
 
 // 停扫等待上限(ms)：个别机型 stopBluetoothDevicesDiscovery 不回调，超时即当已停，别把连接无限拖住。
@@ -57,14 +57,14 @@ async function loadAllowedBroadcastIds() {
 // 广播包(31 字节上限)更挤，设备名很容易被固件挪进 scan response 或干脆不播——
 // 此时只按名字过滤会把自家设备整台丢掉，正式入口表现为「搜不到 / 连不上」，
 // 而调试台(allowAll)却看得见，正是这次 OTA 后的现场观感。
-// 放行条件收得很紧：必须带 0xFFFF Company_ID 且屏型/电量都能解通（parseAdvertising 的 companyMatched），
-// 不会把附近的其它蓝牙设备放进列表。
+// 放行条件：厂商数据带 0xFFFF Company_ID 且长度符合本产品格式（parseAdvertising 的 companyMatched），
+// 不会把附近的其它蓝牙设备放进列表。不再要求屏型认识（2026-10-22）：新屏型（如 0x04）设备照样放行。
 function isAllowedFrame(device, allowedIds) {
   const name = `${device.name || ''} ${device.localName || ''}`.toUpperCase()
   if ((allowedIds || []).some(allowed => allowed && name.indexOf(allowed) > -1)) {
     return true
   }
-  return !!(device && device.broadcastCompanyMatched && device.screenType)
+  return !!(device && device.broadcastCompanyMatched)
 }
 
 // 检测当前微信运行环境是否具备完整的蓝牙搜索能力
@@ -260,10 +260,11 @@ async function whenScanStopped() {
 }
 
 // 订阅者视角的设备列表：按各自口径过滤（调试 allowAll 不过滤，正式入口按 broadcastId 白名单），
-// 按信号强度降序。白名单按「当前累计到的名称」判——设备名/localName 常在后续广播包才带全，
+// freshOnly 订阅只列出加入后收到过新广播的设备。按信号强度降序。白名单按「当前累计到的名称」判——设备名/localName 常在后续广播包才带全，
 // 旧实现首包没名字就永远进不了名单（名字包晚到被丢弃），这里后到的名字包一样能让设备入列。
 function subscriberList(scan, subscriber) {
   return Object.keys(scan.foundMap)
+    .filter(id => !subscriber.seenDeviceIds || subscriber.seenDeviceIds.has(id))
     .map(id => scan.foundMap[id])
     .filter(device => subscriber.allowAll || isAllowedFrame(device, subscriber.allowedIds))
     .sort((a, b) => b.RSSI - a.RSSI)
@@ -311,7 +312,8 @@ function notifySubscriber(scan, subscriber, changed) {
   }
 }
 
-// 把一位调用方挂到共享会话：先立即回吐存量结果（后来的订阅者不必等下一个广播包），
+// 把一位调用方挂到共享会话：默认立即回吐存量结果（后来的订阅者不必等下一个广播包）；
+// freshOnly 不回吐存量，只等加入后收到的新广播。
 // 此后随广播增量更新；自己的 until 命中或 timeout 到点即各自 resolve，互不影响。
 function subscribeScan(scan, options) {
   return new Promise((resolve, reject) => {
@@ -320,6 +322,8 @@ function subscribeScan(scan, options) {
       allowedIds: options.allowedIds,
       onUpdate: options.onUpdate,
       until: options.until,
+      // 搜索页展示设备ID要求本次新收到的广播，不复用订阅之前累计到的设备
+      seenDeviceIds: options.freshOnly ? new Set() : null,
       settled: false,
       timer: null,
       resolve,
@@ -416,20 +420,16 @@ function normalizeDevice(device) {
     name,
     // 设备编号优先用广播里的 Device_ID，兜底用蓝牙 deviceId
     deviceNo: ad.deviceId || device.deviceId,
-    // 广播厂商数据里的 Device_ID：老固件 4 字节（AA:BB:CC:DD）、
-    // **2026-08-04 起新固件为完整 6 字节**（AA:BB:CC:DD:EE:FF），解析不到为空串。
+    // 广播厂商数据里的 6 字节 Device_ID（AA:BB:CC:DD:EE:FF），解析不到为空串。
     // 与 deviceNo 的区别：deviceNo 会兜底成微信 BLE 句柄，不能用来判断「到底有没有拿到广播 ID」；
-    // 展示层要区分「真有广播ID」和「只有句柄」，故单独留一个不兜底的字段（见 bind.js displayDeviceCode）。
+    // 搜索列表展示的设备ID只取这个字段（见 bind.js displayDeviceCode）。
+    // ⚠️ 身份判定一律仍走连上后 0x01 的完整 ID，广播是明文、可伪造。
     broadcastDeviceId: ad.deviceId || '',
-    // 上面那个广播 ID 是否已是完整 6 字节（新固件）。⚠️ 仅供展示判断，
-    // 身份判定一律仍走连上后 0x01 的完整 ID，不因广播长度够了就放宽。
-    broadcastDeviceIdComplete: !!ad.deviceIdComplete,
-    // 厂商数据带 0xFFFF Company_ID 且解通：确认是本产品的广播。设备名被挤出广播包时，
+    // 厂商数据带 0xFFFF Company_ID 且长度符合：确认是本产品的广播。设备名被挤出广播包时，
     // 扫描白名单(isAllowedFrame)据此放行，别把自家设备漏掉。
     broadcastCompanyMatched: !!ad.companyMatched,
-    // 长度优选的布局没解通、换另一种才解出来（新固件字段顺序与假设不符时会这样）：
-    // ID/电量可能取自错误偏移，仅可用于筛候选与展示，不参与身份判定。
-    broadcastLayoutFallback: !!ad.deviceIdLayoutFallback,
+    // 原始厂商数据（十六进制），调试台展示用，便于与第三方蓝牙工具对照
+    advertisHex: protocol.bytesToHex(device.advertisData),
     model: ad.model || '',
     screen: ad.screen || '',
     screenType: ad.screenType || 0,
@@ -444,7 +444,8 @@ function normalizeDevice(device) {
 }
 
 // 在 timeout 时间内持续收集附近的蓝牙相框，到点后返回去重 + 按 RSSI 降序的设备列表。
-// options.onUpdate(devices)：可选。每发现一台新设备、或已收录设备的展示信息(名称/电量/屏型)有变化时，
+// options.freshOnly：只返回订阅后收到过新广播的设备，不使用共享会话之前累计的结果。
+// options.onUpdate(devices)：可选。每发现一台新设备、或已收录设备的展示信息(名称/电量/屏型/广播设备ID)有变化时，
 //   立即回调一份「当前已搜到的列表」，供页面「搜出一个显示一个」增量渲染，不必等满 timeout。
 //   最终仍会在 timeout 到点后 resolve 完整列表（与不传 onUpdate 时行为一致，故对现有调用方零影响）。
 // options.until(devices)：可选。每次列表有更新时用「当前已搜到的列表」判断是否已达成目标（如已扫到要连的那台），
@@ -466,7 +467,8 @@ async function discoverDevices(options) {
     throw new Error('当前环境不支持蓝牙搜索')
   }
 
-  const subscriberOptions = { timeout, allowAll, allowedIds, onUpdate, until }
+  const freshOnly = !!(options && options.freshOnly)
+  const subscriberOptions = { timeout, allowAll, allowedIds, onUpdate, until, freshOnly }
 
   // 已有在途扫描：直接订阅共享会话——绝不并行起第二路硬件扫描，也不会 stop 掉别人的那路
   if (activeScan && !activeScan.stopped) {
@@ -475,7 +477,7 @@ async function discoverDevices(options) {
 
   const scan = {
     foundMap: {}, // 以 deviceId 为键去重，同一设备多次广播只保留最新一条
-    signatures: {}, // 各设备上次的展示签名(名称|电量|屏型)：只在展示信息变化时才增量回调，避免 RSSI 抖动刷屏
+    signatures: {}, // 各设备上次的展示签名(名称|电量|屏型|广播设备ID)：只在展示信息变化时才增量回调，避免 RSSI 抖动刷屏
     subscribers: [],
     handler: null,
     stopped: false
@@ -491,8 +493,15 @@ async function discoverDevices(options) {
         return
       }
       const normalized = normalizeDevice(device)
-      const sig = `${normalized.name}|${normalized.battery}|${normalized.screenType}`
-      // 新设备，或名称/电量/屏型变化才算「有变化」；纯 RSSI 波动不触发回调（否则会高频刷屏）
+      const sig = `${normalized.name}|${normalized.battery}|${normalized.screenType}|${normalized.broadcastDeviceId}`
+      // freshOnly 订阅者第一次收到这台设备的新广播，对它而言就是新设备
+      scan.subscribers.forEach(subscriber => {
+        if (subscriber.seenDeviceIds && !subscriber.seenDeviceIds.has(device.deviceId)) {
+          subscriber.seenDeviceIds.add(device.deviceId)
+          changed = true
+        }
+      })
+      // 新设备，或名称/电量/屏型/广播设备ID变化才算「有变化」；纯 RSSI 波动不触发回调（否则会高频刷屏）
       if (!scan.foundMap[device.deviceId] || scan.signatures[device.deviceId] !== sig) {
         changed = true
       }

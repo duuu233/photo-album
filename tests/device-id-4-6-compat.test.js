@@ -3,7 +3,7 @@
 // 现场：设备 OTA 升级成功后「暴露出来的设备ID 从 4 位换成了 6 位」，正式入口从此连不上，
 // 而调试台看着还能连（调试台 allowAll 扫描 + 按 BLE 句柄直连，既不按名字过滤也不做身份匹配）。
 // 这组用例锁住三层兼容点，改回任何一处都会失败：
-//   ① 广播解析：长度优选的布局解不通时回退另一种，别让整台设备从扫描列表里消失；
+//   ① 广播解析：屏型/电量不认识时不整条丢弃，别让整台设备从扫描列表里消失（2026-10-22 起只认 6 字节布局）；
 //   ② 候选筛选：广播 6 字节与 0x01 的 6 字节写法不同（倒序/取别的段）时仍要筛得出候选；
 //   ③ 身份闸不放宽：广播值（哪怕已是 12 hex）不得认领活动会话，认领只认 0x01 读回的值。
 const assert = require('assert')
@@ -14,33 +14,33 @@ const deviceBle = require('../utils/device-ble')
 const SCREEN_370 = 0x01
 const SCREEN_589 = 0x02
 
-// ── ① 广播解析：布局与假设不符时回退，不再整条丢弃 ──────────────────────
+// ── ① 广播解析：屏型/电量不认识时不整条丢弃 ──────────────────────────
+// 2026-10-22 起广播只认 6 字节布局，原「6 字节解不通退回 4 字节」的回退已有意删除；
+// 本组仍守原判据「别让整台设备从扫描列表里消失」，挪到现在的实现：
+// 屏型、电量各自置空，设备ID 与 Company_ID 照常给出（见 frame-protocol.parseAdvertising）。
 {
-  // 10 字节厂商数据，但字段顺序不是「屏型1 + ID6 + 电量1」：按新布局取到的"电量"= 0xFF(255) 非法。
-  // 老代码在这里返回 null → 这台设备在正式入口既没有屏型也没有 ID，筛不出候选 = 搜不到 / 连不上。
-  const odd = [0xff, 0xff, SCREEN_589, 0x00, 0xc1, 0xb4, 0x59, 0x2e, 0xff, 0xff]
+  // 屏型 0x04 不在 SCREEN_TYPES、电量 0xFF 非法：老代码在这里返回 null → 筛不出候选 = 搜不到 / 连不上
+  const odd = [0xff, 0xff, 0x04, 0xe9, 0x48, 0xc2, 0x1e, 0xd4, 0x28, 0xff]
   const parsed = protocol.parseAdvertising(odd)
-  assert.ok(parsed, '新布局解不通时必须回退老布局，而不是整条丢弃')
-  assert.strictEqual(parsed.deviceId, '00:C1:B4:59')
-  assert.strictEqual(parsed.battery, 46)
-  assert.strictEqual(parsed.deviceIdComplete, false)
-  assert.strictEqual(parsed.deviceIdLayoutFallback, true, '回退解出来的必须打标记，供上层辨别')
+  assert.ok(parsed, '屏型/电量不认识时不能整条丢弃')
+  assert.strictEqual(parsed.deviceId, 'E9:48:C2:1E:D4:28')
+  assert.strictEqual(parsed.screenType, 0, '不认识的屏型按未知型号处理')
+  assert.strictEqual(parsed.battery, undefined)
   assert.strictEqual(parsed.companyMatched, true)
 }
 
 {
-  // 正常的新固件包：新布局解得通，就绝不回退（回退会把 ID 第 5 字节当电量，静默给错值）
+  // 正常的新固件包
   const fresh = [0xff, 0xff, SCREEN_589, 0xe9, 0x48, 0xc2, 0x1e, 0xd4, 0x28, 0x5a]
   const parsed = protocol.parseAdvertising(fresh)
   assert.strictEqual(parsed.deviceId, 'E9:48:C2:1E:D4:28')
   assert.strictEqual(parsed.battery, 0x5a)
-  assert.strictEqual(parsed.deviceIdComplete, true)
-  assert.strictEqual(parsed.deviceIdLayoutFallback, false)
+  assert.strictEqual(parsed.screenType, SCREEN_589)
 }
 
 {
   // 没有 0xFFFF Company_ID 前缀时不能声称"确认是本产品"——扫描白名单据此放行，宁紧勿松
-  const noCompany = [SCREEN_370, 0x00, 0xc1, 0xb4, 0x59, 0x2e]
+  const noCompany = [SCREEN_370, 0xe9, 0x48, 0xc2, 0x1e, 0xd4, 0x28, 0x2e]
   const parsed = protocol.parseAdvertising(noCompany)
   assert.ok(parsed)
   assert.strictEqual(parsed.companyMatched, false)

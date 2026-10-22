@@ -409,18 +409,20 @@ Page(fold.adapt({
       // 调试页放开白名单(allowAll)：收录附近所有蓝牙设备，便于核对相框真实广播名/排查搜不到的问题
       const devices = await bluetooth.discoverDevices({
         timeout: 8000,
-        allowAll: true
+        allowAll: true,
+        freshOnly: true // 只看本次搜索收到的广播，便于与第三方蓝牙工具对照原始数据
       })
       this.setData({ devices })
       this.appendLog({
         type: 'act',
         text: `扫描完成（已放开过滤），发现 ${devices.length} 个电子纸设备`
       })
-      // 逐个打印名字+信号，方便和白名单 EF6-370 / EF6-589 对照，确认设备到底叫什么
+      // 逐个打印名字+信号，方便和白名单 EF6-370 / EF6-589 对照，确认设备到底叫什么；
+      // 同时打印原始厂商数据与解析出的设备ID，与第三方蓝牙工具的 Manufacturer data 逐字节对照
       devices.forEach(device => {
         this.appendLog({
           type: 'act',
-          text: `· ${device.name}（信号 ${device.RSSI || '--'}，id 末段 ${String(device.deviceId || '').slice(-5)}）`
+          text: `· ${device.name}（信号 ${device.RSSI || '--'}，id 末段 ${String(device.deviceId || '').slice(-5)}）广播 ${device.advertisHex || '--'} → 设备ID ${device.broadcastDeviceId || '--'}`
         })
       })
       if (!devices.length) {

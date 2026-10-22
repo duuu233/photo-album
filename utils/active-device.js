@@ -822,7 +822,6 @@ async function scanForTarget(device, match, rejectedDeviceIds) {
     console.warn('[设备连接] 广播 Device_ID 与本记录对不上，改用「同型号本产品广播」兜底候选试连（连上后仍按 0x01 校验身份）', {
       expectedDeviceIds: deviceSerials(device),
       candidateBroadcastId: fallback.deviceNo,
-      broadcastLayoutFallback: !!fallback.broadcastLayoutFallback,
       screenType: fallback.screenType,
       RSSI: fallback.RSSI
     })

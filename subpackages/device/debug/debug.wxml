@@ -26,6 +26,8 @@
           <view class="scan-copy">
             <text class="scan-name">{{item.name}}</text>
             <text class="scan-sub">{{item.screen ? item.screen + ' · ' : ''}}信号 {{item.RSSI || '--'}}</text>
+            <text class="scan-sub">设备ID {{item.broadcastDeviceId || '--'}}</text>
+            <text class="scan-sub">广播 {{item.advertisHex || '--'}}</text>
           </view>
           <view class="scan-go">连接</view>
         </view>

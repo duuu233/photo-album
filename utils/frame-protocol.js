@@ -495,86 +495,46 @@ function parseImgEndResult(data) {
   }
 }
 
-// 广播厂商数据里 Device_ID 的两种长度（6.10.7）。
+// 广播厂商数据（6.10.7）：Company_ID(2=0xFFFF) + Screen_Type(1) + Device_ID(6) + Battery(1)。
 //
-// 老固件 4 字节（MAC 中的 4 个字节）；**2026-08-04 起新固件改播完整 6 字节 MAC**，
-// 使扫描阶段就能拿到与 0x01 GET_INFO 一致的完整设备 ID —— 这条路对 iOS 同样成立
-//（iOS 系统不给外设 MAC，但厂商广播数据两端都拿得到）。
-const AD_DEVICE_ID_LEN_V2 = 6
-const AD_DEVICE_ID_LEN_V1 = 4
+// Device_ID 只有 6 字节一种（现有设备均为 6 字节，4 字节老格式 2026-10-22 起不再兼容），
+// 按广播里的原顺序就是设备ID，与连上后 0x01 GET_INFO 的值一致。
+// 实测 EB-169：<FFFF> 04 37 0B 00 D0 44 5A 61 → 屏型 0x04、设备ID 37:0B:00:D0:44:5A、电量 97%；
+// 同一台设备手机系统给出的蓝牙地址是 5A:44:D0:00:0B:37（字节序相反），不能拿来当设备ID。
+const AD_DEVICE_ID_LEN = 6
+// Company_ID 之后的长度：屏型1 + Device_ID6 + 电量1
+const AD_PAYLOAD_LEN = 1 + AD_DEVICE_ID_LEN + 1
 
-// 解析广播包里的厂商自定义数据（6.10.7）：
-//   Company_ID(2=0xFFFF) + Screen_Type(1) + Device_ID(4 或 6) + Battery(1)
-// 微信的 advertisData 是否含 2 字节 Company_ID 各平台略有差异，这里两种偏移都试，命中合法值即采用。
+// 解析广播包里的厂商自定义数据。不是本产品格式返回 null。
 //
-// ⚠️ 新旧固件必须同时支持（灰度期两种设备并存）：靠「Company_ID 之后的剩余长度」区分，
-//    这是唯一可靠的判据 —— 老包恒为 6 字节(1+4+1)、新包恒为 8 字节(1+6+1)。
-//    长度够 8 时**优先按新版解**：若回退老版，会把 Device_ID 的第 5 个字节当成电量，
-//    校验碰巧通过时就会**静默显示错误的设备 ID 和错误的电量**（无报错，极难排查）。
+// 字段各自独立：设备ID只看固定位置，**不受屏型、电量是否认识影响**。
+// 此前屏型不在 SCREEN_TYPES 里就整条丢弃，新屏型（如 EB-169 的 0x04）连设备ID一起丢失，
+// 搜索列表只能退到手机蓝牙地址，安卓显示成倒序、iOS 不显示。
+// 不认识的屏型只是不给尺寸/型号（screenType 记 0，连接侧按「未知型号」处理），电量超出 0~100 只置空电量。
 //
-// 2026-08-11 补「优选布局解不通才回退另一种」（原为一律不回退）：
-//   固件把 ID 从 4 字节扩到 6 字节时，字段顺序未必与 2026-08-04 的假设一致（那份变更记录
-//   「待设备方确认」第 1、2 条列的就是顺序与字节序）。顺序一旦不同，按新版解出的电量落在
-//   ID 的字节上、多半 >100 → 整条广播返回 null → 这台设备在正式入口里**没有屏型、没有 ID**，
-//   既筛不出候选也排不进候选，用户看到的就是「OTA 完就搜不到/连不上了」。
-//   回退只在优选布局**解不通**时发生（否则本来就是整条丢弃），因此不会削弱「不给错值」那条：
-//   能解通的仍以长度优选为准；回退出来的结果打上 deviceIdLayoutFallback 标记，供上层辨别。
+// 微信的 advertisData 是否带 2 字节 Company_ID 各平台略有差异：
+//   带 0xFFFF 前缀 → 前缀之后至少 8 字节，companyMatched=true（扫描白名单据此在设备名缺席时放行）；
+//   不带前缀 → 只接受长度恰好为 8 字节的数据，companyMatched=false。
+// 以 0xFFFF 开头的一律按带前缀处理：老固件「前缀 + 4 字节ID」整包也是 8 字节，
+// 不能被当成不带前缀的 6 字节格式误读出一个错误的设备ID。
 function parseAdvertising(advertisData) {
   const b = toBytes(advertisData)
-
-  const attempt = (offset, idLength, companyMatched, layoutFallback) => {
-    const screenType = b[offset]
-    // 电量紧跟在 Device_ID 之后，位置随 ID 长度浮动
-    const battery = b[offset + 1 + idLength]
-    if (!SCREEN_TYPES[screenType] || battery === undefined || battery > 100) {
-      return null
-    }
-    const screen = SCREEN_TYPES[screenType]
-    return {
-      screenType,
-      screen: screen.label,
-      model: screen.model,
-      deviceId: bytesToId(b, offset + 1, idLength),
-      // 这段广播 ID 是否已是完整 6 字节。展示层据此决定是否整串显示；
-      // ⚠️ 身份判定（判重/认领会话/绑定入库）仍只认连上后 0x01 读到的值，广播明文可伪造，
-      //    不因为长度够了就放宽 —— 见 docs/architecture/device-identity-and-connection.md。
-      deviceIdComplete: idLength === AD_DEVICE_ID_LEN_V2,
-      // 长度优选的布局没解通、改用另一种才解出来：ID/电量有按错布局取值的可能，
-      // 只可用于「筛候选/展示」，上层如需严格身份仍走 0x01。
-      deviceIdLayoutFallback: !!layoutFallback,
-      // 厂商数据带 0xFFFF Company_ID：能确认是本产品的广播（扫描白名单据此在设备名缺席时放行）
-      companyMatched: !!companyMatched,
-      battery
-    }
-  }
-
-  const attemptAt = (offset, companyMatched) => {
-    const rest = b.length - offset
-    const canV2 = rest >= AD_DEVICE_ID_LEN_V2 + 2
-    const canV1 = rest >= AD_DEVICE_ID_LEN_V1 + 2
-    if (canV2) {
-      // 新固件：屏型1 + ID6 + 电量1
-      const fresh = attempt(offset, AD_DEVICE_ID_LEN_V2, companyMatched, false)
-      if (fresh || !canV1) {
-        return fresh
-      }
-      // 新版解不通才退老版：布局与假设不符时，宁可给一条标了 fallback 的结果，也好过整台设备消失
-      return attempt(offset, AD_DEVICE_ID_LEN_V1, companyMatched, true)
-    }
-    if (canV1) {
-      return attempt(offset, AD_DEVICE_ID_LEN_V1, companyMatched, false) // 老固件：屏型1 + ID4 + 电量1
-    }
+  const companyMatched = b[0] === 0xff && b[1] === 0xff
+  if (companyMatched ? b.length < 2 + AD_PAYLOAD_LEN : b.length !== AD_PAYLOAD_LEN) {
     return null
   }
-
-  // 含 Company_ID：前两字节为 0xFF 0xFF，则从第 2 字节起为 Screen_Type
-  if (b[0] === 0xff && b[1] === 0xff) {
-    const withId = attemptAt(2, true)
-    if (withId) {
-      return withId
-    }
+  const offset = companyMatched ? 2 : 0
+  const rawScreenType = b[offset]
+  const screen = SCREEN_TYPES[rawScreenType]
+  const battery = b[offset + 1 + AD_DEVICE_ID_LEN]
+  return {
+    screenType: screen ? rawScreenType : 0,
+    screen: screen ? screen.label : '',
+    model: screen ? screen.model : '',
+    deviceId: bytesToId(b, offset + 1, AD_DEVICE_ID_LEN),
+    companyMatched,
+    battery: battery <= 100 ? battery : undefined
   }
-  return attemptAt(0, false)
 }
 
 module.exports = {
@@ -591,8 +551,7 @@ module.exports = {
   OTA_CHAR_CONTROL_UUID,
   OTA_CHAR_DATA_UUID,
   SCREEN_TYPES,
-  AD_DEVICE_ID_LEN_V1,
-  AD_DEVICE_ID_LEN_V2,
+  AD_DEVICE_ID_LEN,
   playModeToString,
   playModeToByte,
   crc16Modbus,
