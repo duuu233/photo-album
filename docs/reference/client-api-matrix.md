@@ -203,7 +203,7 @@
 | 我的（首屏统计） | 「我的上传」「我的设备」两张卡片的数字 | `GET /Client/User/getUserInfo` | ✅ | `getUserProfile` | **2026-08-24 起**：「我的上传」= `imgCount`，「我的设备」= `productCount`，后端算什么就显示什么。页面进来只这一个请求，不再调设备列表与投屏记录接口。此前（2026-08-05～08-24）张数取投屏成功记录条数、设备数以 `productCount` 回退列表长度，本轮按接口文档统一回收到用户信息接口 |
 | 我的（首屏统计） | ~~投屏成功记录条数~~（保留备用，当前无调用方） | `GET /Client/UserProduct/getUserProductImgRecordList` | ➖ | `getProjectionSuccessCount` | 2026-08-05～08-24 曾是「我的相册」卡片的张数口径（`deviceUploadState=1`、不带 `userProductId`，整页均为成功记录时取分页元数据 `recordCount`，否则逐页翻并按状态计数、20 页封顶）。封装与 `tests/projection-success-count.test.js` 保留，页面已改取 `imgCount` |
 | 我的设备 | 设备连接流程 | ➖ | ✅ | - | 稳定设备身份一律为 `0x01` 返回的完整 6 字节 ID；广播 4 字节短 ID + 尺寸仅用于筛选候选。连接后必须用完整 ID 严格确认，校验通过后才认领会话并写直连缓存。身份不一致时断开、排除错误候选并重扫，同时清理被污染的缓存。设备自定义名称不作为物理身份依据（2026-07-27） |
-| 我的设备 | 设备列表（设备图、名称、设备 ID） | `GET /Client/UserProduct/getUserProductList` | ✅ | `getUserProductList` | 接口 `deviceId` 非空且为完整 6 字节时展示，空值不显示；页面字段为 `productDeviceId`，避免与微信 BLE 临时句柄混淆 |
+| 我的设备 | 设备列表（设备图、名称、设备 ID） | `GET /Client/UserProduct/getUserProductList` | ✅ | `getUserProductList` | 接口 `deviceId` 非空且为完整 6 字节时展示，空值不显示；页面字段为 `productDeviceId`，避免与微信 BLE 临时句柄混淆。出参含 `productId`、`broadcastId`（产品广播名，设备图按它区分机型，见 `utils/device-thumb.js`） |
 | 我的设备 | 设备详情 | `GET /Client/UserProduct/getUserProductDetail` | ✅ | `getUserProductDetail` | 出参含投屏导出旋转角：`rotationDegree`(横向构图，缺失回退 `270°`) 与 **`verticalRotation`(竖向构图，2026-08-04 新增，缺失即 `0°`=不旋转)**。两者各管一个取景方向、互不兜底；`0` 是合法值。列表接口同样透传（`normalizeDevice` 全量展开），首页展示模型需手动透传这两个字段 |
 | 我的设备 | 设备电量 | ➖ | ✅ | - | 缓存优先：最近一次有效值跨页/落盘保留，同一设备 15 秒内复用；超窗后台发送 BLE `0x04 GET_BATTERY`，旧值持续展示，成功后平滑替换，失败/非法值保留旧值，从未成功读取才显示 `--`（2026-07-27 最终口径） |
 | 我的设备 | 设备名称编辑 | `POST /Client/UserProduct/editUserProduct` | ✅ | `editUserProduct` | - |

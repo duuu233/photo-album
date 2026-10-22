@@ -299,7 +299,8 @@ function extractUploadUrl(result) {
   )
 }
 
-// 产品列表缓存：设备图按机型区分要用产品的 broadcastId，而设备记录本身不带它，只能按 productId 回查。
+// 产品列表缓存：设备图按机型区分要用产品的 broadcastId。设备列表接口已下发 productId 与 broadcastId，
+// 这里只给没带 broadcastId 的记录（如详情接口、旧缓存）按 productId 回查兜底。
 // 成功才缓存（整次会话复用），失败静默返回空数组、不弹错误提示——查不到只是设备图退回默认那张，
 // 不能因此挡住设备列表/详情。绑定时 bindDevice 会顺手用最新拉到的列表刷新它。
 let productCatalog = null
@@ -351,20 +352,16 @@ function productCatalogWithin(ms) {
   })
 }
 
-// 给设备记录补上所属产品的 broadcastId（记录自带就不动）：先按 productId 精确匹配；
-// 记录没带 productId 时再按 productImg 认——它是产品级配置图，只在恰好一个产品用这张图时才采信。
+// 给设备记录补上所属产品的 broadcastId：记录自带就不动，否则按 productId 精确匹配产品列表。
 function withProductBroadcastId(device, products) {
   if (!device || String(device.broadcastId || '').trim() || !products.length) {
     return device
   }
   const productId = device.productId
-  let matched = null
-  if (productId !== undefined && productId !== null && productId !== '') {
-    matched = products.find(item => item && String(item.productId) === String(productId))
-  } else if (device.productImg) {
-    const sameImg = products.filter(item => item && item.productImg === device.productImg)
-    matched = sameImg.length === 1 ? sameImg[0] : null
+  if (productId === undefined || productId === null || productId === '') {
+    return device
   }
+  const matched = products.find(item => item && String(item.productId) === String(productId))
   const broadcastId = String((matched && matched.broadcastId) || '').trim()
   return broadcastId ? Object.assign({}, device, { broadcastId }) : device
 }

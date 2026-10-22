@@ -4,7 +4,7 @@
 // 锁四件事：
 //   ① 机型判断口径：broadcastId 优先；搜索结果才看蓝牙广播名；已绑定记录的 name 是用户起的，不参与；
 //      都取不到时 shapeType === 1 按圆屏；
-//   ② 已绑定记录本身不带 broadcastId：api 按 productId 从产品列表回填，没有 productId 时按唯一的 productImg；
+//   ② 设备列表接口直接下发 broadcastId 就用它；没带的记录 api 按 productId 从产品列表回填，不按产品图等其它字段猜；
 //   ③ 产品列表拉不到不能挡住设备列表，也不弹错误，设备图退回默认；失败不缓存，下次还能拿到；
 //   ④ 三张图都真实存在（引用不存在的图小程序不报错，只会渲染成空白）。
 const assert = require('node:assert/strict')
@@ -69,8 +69,9 @@ assert.equal(deviceThumb.DEFAULT_THUMB, DEFAULT)
   const records = [
     { userProductId: 'r-by-id', productId: 12, productName: '客厅' },
     { userProductId: 'r-by-id-string', productId: '11', productName: '卧室' },
-    { userProductId: 'r-by-img', productImg: 'https://oss/round.png', productName: '书房' },
-    { userProductId: 'r-img-shared', productImg: 'https://oss/frame.png', productName: '老相框' },
+    // 设备列表接口的实际形态：productId 与 broadcastId 一起下发，不依赖产品列表
+    { userProductId: 'r-list', productId: 12, broadcastId: 'EC-370', productName: '书房' },
+    { userProductId: 'r-img-only', productImg: 'https://oss/round.png', productName: '老相框' },
     { userProductId: 'r-own', productId: 11, broadcastId: 'EC-370', productName: '自带广播ID' },
     { userProductId: 'r-unknown-round', productId: 99, shapeType: 1, productName: '圆的' },
     { userProductId: 'r-user-name', productName: 'EB-169' }
@@ -92,7 +93,7 @@ assert.equal(deviceThumb.DEFAULT_THUMB, DEFAULT)
     assert.equal(lastOptions.showError, false, '拉产品列表失败不能弹错误提示')
     assert.deepEqual(
       offline.map(item => item.thumb),
-      [DEFAULT, DEFAULT, DEFAULT, DEFAULT, RECTANGLE, CIRCLE, DEFAULT]
+      [DEFAULT, DEFAULT, RECTANGLE, DEFAULT, RECTANGLE, CIRCLE, DEFAULT]
     )
 
     // 失败没有缓存：下一次能拿到产品列表
@@ -106,8 +107,8 @@ assert.equal(deviceThumb.DEFAULT_THUMB, DEFAULT)
     assert.equal(byId('r-by-id').broadcastId, 'EC-370')
     assert.equal(byId('r-by-id').thumb, RECTANGLE)
     assert.equal(byId('r-by-id-string').thumb, CIRCLE, 'productId 数字/字符串都要认')
-    assert.equal(byId('r-by-img').thumb, CIRCLE, '没有 productId 时按唯一的产品图认')
-    assert.equal(byId('r-img-shared').thumb, DEFAULT, '两个产品共用一张图就不能据此认机型')
+    assert.equal(byId('r-list').thumb, RECTANGLE)
+    assert.equal(byId('r-img-only').thumb, DEFAULT, '没有 productId / broadcastId 不按产品图猜机型')
     assert.equal(byId('r-own').thumb, RECTANGLE, '记录自带 broadcastId 时不被产品列表覆盖')
     assert.equal(byId('r-unknown-round').thumb, CIRCLE)
     assert.equal(byId('r-user-name').thumb, DEFAULT)

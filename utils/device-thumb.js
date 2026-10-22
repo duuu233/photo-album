@@ -8,8 +8,8 @@
 //   其余机型（EF6-370 / EF6-589 等）与认不出的 → 原来那张 home-device-thumb
 //
 // 机型从哪来，按可靠程度依次取：
-//   ① 设备上的 broadcastId：已绑定记录由 api 按 productId 从产品列表回填（见 api.withProductBroadcastId），
-//      刚绑定的由 bindDevice 按匹配到的产品写入；
+//   ① 设备上的 broadcastId：设备列表接口直接下发；没带的记录由 api 按 productId 从产品列表回填
+//      （见 api.withProductBroadcastId），刚绑定的由 bindDevice 按匹配到的产品写入；
 //   ② 搜索结果（realBluetooth）的蓝牙广播名 name / localName——与扫描白名单同一口径：
 //      大小写不敏感的包含匹配。已绑定记录的 name 是用户起的名字，不参与判断，否则改个名图就变了；
 //   ③ 都取不到时，shapeType === 1（后台产品「形状类型」= 圆形）按 EB-169 圆屏处理。
