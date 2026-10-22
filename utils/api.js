@@ -380,9 +380,20 @@ function productScore(product, scan) {
     .filter(Boolean)
     .map(item => String(item).toLowerCase())
 
+  // 蓝牙广播名里含产品列表(/Client/Product/getProductList)的 broadcastId，是最直接的机型依据，
+  // 权重压过名称/型号的零散命中：与扫描白名单同口径（去首尾空白、大小写不敏感的包含匹配），
+  // 广播名带后缀（EC-370-XXXX）也认得出；也不再靠列表顺序打破平分（EC-370 的屏型若按 3.7 寸上报，
+  // 型号会同时命中 EF6-370）。
+  const broadcastId = String(product.broadcastId || '').trim().toLowerCase()
+  const broadcastHit =
+    !!broadcastId &&
+    [scan.name, scan.localName]
+      .filter(Boolean)
+      .some(name => String(name).toLowerCase().indexOf(broadcastId) > -1)
+
   return terms.reduce(
     (score, term) => score + (text.indexOf(term) > -1 ? 1 : 0),
-    0
+    broadcastHit ? 10 : 0
   )
 }
 
