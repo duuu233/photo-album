@@ -25,6 +25,11 @@ Component({
     confirmText: {
       type: String,
       value: '保存'
+    },
+    // 设备图（按机型区分，由调用方传设备的 thumb，见 utils/device-thumb.js）；不传用默认图
+    thumb: {
+      type: String,
+      value: ''
     }
   },
 

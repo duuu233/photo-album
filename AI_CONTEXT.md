@@ -66,6 +66,10 @@
 - AI 普通请求超时 15 秒，聊天和生图超时 600 秒（10 分钟）且不自动重试。
 - `app.json` 预加载 device、projection、AI 三个分包；设置和相册分包按需加载。
 
+## 设备图按机型区分（2026-10-22）
+
+首页设备卡、我的设备、设备详情、搜索设备、命名弹窗、投屏选设备六处设备图统一由 `utils/device-thumb.js` 按产品 `broadcastId` 决定：EB-169（圆屏）用 `home-device-circle-thumb`，EC-370 用 `home-device-rectangle-thumb`，其余用原 `home-device-thumb`。已绑定记录的 `broadcastId` 由 `api.getDevices/getDeviceDetail` 按 productId（无则唯一 productImg）回查产品列表补上，`bindDevice` 写入匹配到的产品；搜索结果按蓝牙广播名；用户起的设备名不参与；兜底 `shapeType === 1` 视为圆屏。新增机型只需在 `THUMB_BY_BROADCAST_ID` 加一行。详见 `docs/changes/2026-10-22-设备图按机型区分.md`。
+
 ## 投屏动态尺寸（2026-10-19）
 
 照片预览与结果页统一使用设备列表 `width/height` 作为物理像素；结果页由 `utils/projection-device.js` 在本次0x01完整身份校验后解析，缺失时才兼容旧型号表。400×400圆屏的帧长度为80,000字节。固件型号字节原样下发，不以后台横竖屏字段替代。未知容量只使用IMG_MASK槽位上限并服从固件拒绝；参数/尺寸错误不再统一报未连接。第三方仍沿用现有type策略和全帧校验，未真机确认圆屏色序/存储/画质。当前契约见 `docs/architecture/image-projection-pipeline.md`，实施见 `docs/changes/2026-10-19-投屏改用设备接口尺寸.md`。

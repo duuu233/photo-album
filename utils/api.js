@@ -2,6 +2,7 @@
 // 第三个参数为请求选项，常用：loading 显示加载、auth:false 免登录、showError:false 静默错误。
 const http = require('./request')
 const deviceIdUtil = require('./device-id')
+const deviceThumb = require('./device-thumb')
 const { md5 } = require('./md5')
 
 // setUserProductUpload 里请求后端把它存的那张图压到多大（KB）。后端默认约 300-400KB，
@@ -181,7 +182,7 @@ function normalizeDevice(device = {}) {
     device.url
   )
 
-  return Object.assign({}, device, {
+  const normalized = Object.assign({}, device, {
     id: String(firstValue(userProductId, productDeviceId, bleDeviceId)),
     userProductId,
     // deviceId 在页面里用于微信 BLE 连接；后端的设备唯一号保存在 deviceNo/productDeviceId。
@@ -224,6 +225,9 @@ function normalizeDevice(device = {}) {
     downloadPath,
     carouselEnabled: device.carouselEnabled !== false
   })
+  // 设备图按机型区分（2026-10-22），六处展示统一读这个字段，见 utils/device-thumb.js
+  normalized.thumb = deviceThumb.thumbOf(normalized)
+  return normalized
 }
 
 // 2026-08-17 删除：`normalizePhoto`（「我的图库」列表项归一化）。随 getAlbumPhotos 一起下线，
@@ -293,6 +297,76 @@ function extractUploadUrl(result) {
     item.img,
     item.data && item.data.url
   )
+}
+
+// 产品列表缓存：设备图按机型区分要用产品的 broadcastId，而设备记录本身不带它，只能按 productId 回查。
+// 成功才缓存（整次会话复用），失败静默返回空数组、不弹错误提示——查不到只是设备图退回默认那张，
+// 不能因此挡住设备列表/详情。绑定时 bindDevice 会顺手用最新拉到的列表刷新它。
+let productCatalog = null
+let productCatalogLoading = null
+
+// 设备列表/详情最多为产品列表多等这么久（请求层超时 + 静默重试能拖到半分钟）：
+// 超时就先按已有信息出图，请求本身照常跑完，成功了下次进页面就用上。
+const PRODUCT_CATALOG_WAIT_MS = 3000
+
+function loadProductCatalog() {
+  if (productCatalog) {
+    return Promise.resolve(productCatalog)
+  }
+  if (!productCatalogLoading) {
+    productCatalogLoading = Promise.resolve()
+      .then(() =>
+        http.get(
+          '/Client/Product/getProductList',
+          { pageIndex: 1, pageSize: 100 },
+          { mock: false, showError: false }
+        )
+      )
+      .then(data => {
+        const list = pageData(data)
+        if (list.length) {
+          productCatalog = list
+        }
+        return list
+      })
+      .catch(() => [])
+      .then(list => {
+        productCatalogLoading = null
+        return list
+      })
+  }
+  return productCatalogLoading
+}
+
+function productCatalogWithin(ms) {
+  let timer = null
+  return Promise.race([
+    loadProductCatalog(),
+    new Promise(resolve => {
+      timer = setTimeout(() => resolve([]), ms)
+    })
+  ]).then(list => {
+    clearTimeout(timer)
+    return list
+  })
+}
+
+// 给设备记录补上所属产品的 broadcastId（记录自带就不动）：先按 productId 精确匹配；
+// 记录没带 productId 时再按 productImg 认——它是产品级配置图，只在恰好一个产品用这张图时才采信。
+function withProductBroadcastId(device, products) {
+  if (!device || String(device.broadcastId || '').trim() || !products.length) {
+    return device
+  }
+  const productId = device.productId
+  let matched = null
+  if (productId !== undefined && productId !== null && productId !== '') {
+    matched = products.find(item => item && String(item.productId) === String(productId))
+  } else if (device.productImg) {
+    const sameImg = products.filter(item => item && item.productImg === device.productImg)
+    matched = sameImg.length === 1 ? sameImg[0] : null
+  }
+  const broadcastId = String((matched && matched.broadcastId) || '').trim()
+  return broadcastId ? Object.assign({}, device, { broadcastId }) : device
 }
 
 function productScore(product, scan) {
@@ -758,20 +832,29 @@ module.exports = {
   },
 
   getDevices() {
-    return module.exports
-      .getUserProductList({
+    return Promise.all([
+      module.exports.getUserProductList({
         pageIndex: 1,
         pageSize: 100
-      })
-      .then(data => pageData(data).map(normalizeDevice))
+      }),
+      productCatalogWithin(PRODUCT_CATALOG_WAIT_MS)
+    ]).then(([data, products]) =>
+      pageData(data).map(device => normalizeDevice(withProductBroadcastId(device, products)))
+    )
   },
 
   getDeviceDetail(deviceId) {
-    return module.exports.getUserProductDetail(deviceId).then(device =>
+    return Promise.all([
+      module.exports.getUserProductDetail(deviceId),
+      productCatalogWithin(PRODUCT_CATALOG_WAIT_MS)
+    ]).then(([device, products]) =>
       normalizeDevice(
-        Object.assign({}, device, {
-          userProductId: firstValue(device && device.userProductId, deviceId)
-        })
+        withProductBroadcastId(
+          Object.assign({}, device, {
+            userProductId: firstValue(device && device.userProductId, deviceId)
+          }),
+          products
+        )
       )
     )
   },
@@ -788,6 +871,9 @@ module.exports = {
         pageSize: 100
       })
       list = pageData(products)
+      if (list.length) {
+        productCatalog = list
+      }
     } catch (error) {
       throw new Error('获取产品列表失败，无法确定产品(productId)，请稍后重试')
     }
@@ -839,7 +925,9 @@ module.exports = {
       bleDeviceId: scan.deviceId,
       productDeviceId,
       deviceNo: productDeviceId,
-      productName: savedName || productName
+      productName: savedName || productName,
+      // 绑定到哪个产品就是哪个机型：设备图据此区分（见 utils/device-thumb.js）
+      broadcastId: String(matched.broadcastId || '').trim()
     })
     if (savedName) {
       merged.name = savedName

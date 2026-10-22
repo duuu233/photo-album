@@ -6,6 +6,7 @@ const deviceBle = require('../../../utils/device-ble')
 const activeDevice = require('../../../utils/active-device')
 const deviceIdUtil = require('../../../utils/device-id')
 const deviceName = require('../../../utils/device-name')
+const deviceThumb = require('../../../utils/device-thumb')
 const system = require('../../../utils/system')
 const fold = require('../../../utils/fold-adapt')
 
@@ -35,6 +36,7 @@ Page(fold.adapt({
     helpClosing: false, // 「扫描帮助」弹层是否正在播放退场动画
     renameVisible: false,
     renameValue: '',
+    renameThumb: '',
     renameSaving: false,
     // 调试台入口是否显示。**只有开发版(develop)为 true**，体验版(trial)与正式版(release)
     // 一律 false——调试台能对设备发任意指令（含删除图片类）且整页未接多语言，不能暴露给
@@ -175,7 +177,9 @@ Page(fold.adapt({
       }
       // deviceCode：列表里给用户看的「设备ID」，每次都从本次广播重新计算（见 displayDeviceCode）
       return Object.assign({}, item, {
-        deviceCode: this.displayDeviceCode(item)
+        deviceCode: this.displayDeviceCode(item),
+        // 设备图按蓝牙广播名区分机型（见 utils/device-thumb.js）
+        thumb: deviceThumb.thumbOf(item)
       })
     })
     this.scanOrderNext = next
@@ -504,6 +508,8 @@ Page(fold.adapt({
     this.setData({
       renameVisible: true,
       renameValue: device.name || scanDevice.name || '',
+      // 与之后「我的设备」里显示的同一张：刚绑定记录按所属产品算出的图（api.bindDevice 归一化时已算好）
+      renameThumb: device.thumb,
       renameSaving: false
     })
   },

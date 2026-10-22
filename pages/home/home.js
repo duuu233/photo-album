@@ -7,6 +7,7 @@ const deviceBle = require('../../utils/device-ble')
 const activeDevice = require('../../utils/active-device')
 const aiLastSession = require('../../utils/ai-last-session')
 const deviceIdentity = require('../../utils/device-identity')
+const deviceThumb = require('../../utils/device-thumb')
 
 const app = getApp()
 
@@ -215,6 +216,9 @@ function normalizeDevice(device) {
     width: device.width,
     height: device.height,
     shapeType: device.shapeType,
+    // 设备图按机型区分（见 utils/device-thumb.js）；broadcastId 一并透传，选中设备存下来再归一化时仍认得出机型
+    broadcastId: device.broadcastId,
+    thumb: deviceThumb.thumbOf(device),
     // 横向构图写入竖向物理画布时的顺时针旋转角。必须随首页选中设备透传到预览页；
     // 字段缺失时由预览页按历史行为回退 270°。
     rotationDegree: device.rotationDegree,

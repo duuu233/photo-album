@@ -38,6 +38,7 @@ Page(fold.adapt({
     renameVisible: false,
     renameDeviceId: '',
     renameValue: '',
+    renameThumb: '',
     renameSaving: false
   },
 
@@ -495,6 +496,7 @@ Page(fold.adapt({
       renameVisible: true,
       renameDeviceId: String(id),
       renameValue: device.name || '',
+      renameThumb: device.thumb || '',
       renameSaving: false
     })
   },

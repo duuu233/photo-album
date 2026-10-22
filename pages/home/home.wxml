@@ -104,7 +104,7 @@
                 mode="aspectFill" /> -->
               <image
                 class="device-orbit"
-                src="/assets/images/home-device-thumb.png"
+                src="{{item.thumb || '/assets/images/home-device-thumb.png'}}"
                 mode="aspectFill" />
               <view class="device-info">
                 <view class="device-title">{{item.name}}</view>

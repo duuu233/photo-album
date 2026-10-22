@@ -46,9 +46,10 @@
       <!-- 单选列表：点选某台设备高亮，底部「立即绑定」绑定选中项；长按某行可进入该设备的硬件联调 -->
       <scroll-view scroll-y class="device-list">
         <view class="nearby-device {{selectedId === (item.id || item.deviceId) ? 'selected' : ''}}" wx:for="{{devices}}" wx:key="deviceId" hover-class="none" data-id="{{item.id || item.deviceId}}" bindtap="selectDevice" bindlongpress="openDebug">
-          <!-- 设备图统一用首页设备卡那张 home-device-thumb（首页/列表/详情/搜索四处同图，2026-07-20 补齐本页）。
+          <!-- 设备图与首页设备卡同口径（首页/列表/详情/搜索等六处，2026-07-20 补齐本页）。
+               2026-10-22 起按机型区分：搜索结果按蓝牙广播名认 EB-169 / EC-370，其余默认 home-device-thumb（见 utils/device-thumb.js）。
                ⚠️ 2026-08-21 前它叫 home-icon02.png，首页改版的新素材占了这个名字，故文件更名、图没换。 -->
-          <view class="nearby-icon"><image class="nearby-icon__img" src="/assets/images/home-device-thumb.png" mode="aspectFit"></image></view>
+          <view class="nearby-icon"><image class="nearby-icon__img" src="{{item.thumb || '/assets/images/home-device-thumb.png'}}" mode="aspectFit"></image></view>
           <view class="nearby-copy">
             <text class="nearby-name">{{item.name}}</text>
             <text class="nearby-sub">{{item.screen ? item.screen + ' · ' : ''}}{{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.signalText || '--'}}</text>
@@ -107,6 +108,7 @@
   <device-name-dialog
     visible="{{renameVisible}}"
     value="{{renameValue}}"
+    thumb="{{renameThumb}}"
     saving="{{renameSaving}}"
     title="给设备取个名字"
     cancel-text="稍后"

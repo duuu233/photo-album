@@ -27,7 +27,9 @@ function loadBindPage() {
     'device-ble': {},
     'active-device': { friendlyConnectMessage: text => text },
     'device-id': deviceIdUtil,
-    'device-name': {}, system: {}, 'fold-adapt': { adapt: value => value }
+    'device-name': {}, system: {}, 'fold-adapt': { adapt: value => value },
+    // 2026-10-22 搜索结果按广播名算设备图，注入真实模块（纯函数，无副作用）
+    'device-thumb': require('../utils/device-thumb')
   }
   vm.runInNewContext(fs.readFileSync(path.join(root, 'subpackages/device/bind/bind.js'), 'utf8'), {
     require: target => dependencies[target.split('/').at(-1)],

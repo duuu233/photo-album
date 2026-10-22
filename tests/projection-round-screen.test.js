@@ -44,7 +44,9 @@ assert.ok(normalizeSource.startsWith('function normalizeDevice(device)'))
 const normalizeDevice = vm.runInNewContext(`${normalizeSource}\nnormalizeDevice`, {
   DEFAULT_DEVICE: { id: 'default' },
   activeDevice: { findConnectedDeviceId: () => 'BLE-HANDLE', stableDeviceId: device => device.deviceNo },
-  batteryUtil: { normalizeBattery: value => value, batteryText: () => '80%', batteryIconOf: () => 'battery-80.png' }
+  batteryUtil: { normalizeBattery: value => value, batteryText: () => '80%', batteryIconOf: () => 'battery-80.png' },
+  // 2026-10-22 首页归一化起按机型算设备图，注入真实模块（纯函数，无副作用）
+  deviceThumb: require('../utils/device-thumb')
 })
 for (const shapeType of [1, 0, undefined]) {
   const device = { id: 'round-device', deviceNo: 'AABBCCDDEE01', shapeType, width: 500, height: 500, rotationDegree: 270, verticalRotation: 0, battery: 80 }

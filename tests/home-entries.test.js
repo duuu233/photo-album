@@ -5,7 +5,8 @@
 //      素材命名规律是「home-icon0N = 第 N 项线稿图标，home-icon1N = 同一项的箭头徽标」，
 //      12 个文件必须真实存在——引用一张不存在的图，小程序不会报错，只会渲染成空白；
 //   ② 六项各自跳去哪：前两项走投屏三道闸（登录/绑定/连接），后四项各进各的页面；
-//   ③ 设备图（原 home-icon02，现 home-device-thumb）在六处引用点上不许被新素材顶掉；
+//   ③ 设备图（原 home-icon02，现 home-device-thumb）在六处引用点上不许被新素材顶掉
+//      （2026-10-22 起六处按机型取 thumb，默认图仍是 home-device-thumb，见 tests/device-thumb.test.js）；
 //   ④ 底栏只剩「首页 / 我的」两格、底色纯白不再用背景图，AI 与官方图库不再有 tab 入口。
 const assert = require('node:assert/strict')
 const fs = require('fs')
@@ -225,6 +226,10 @@ assert.ok(
 // 首页/设备列表/设备详情/搜索设备/命名弹窗/投屏选设备六处共用的那张橙色设备图 ——
 // 改名时漏改任何一处，那一处不会报错，只会安静地换成新的蓝色相册图标（当天就这么翻过车）。
 // 旧图已更名为 home-device-thumb.png，这里把「谁该用哪张」钉死。
+//
+// 2026-10-22 有意改动：六处不再写死这张图，改为按机型取设备的 thumb（EB-169 / EC-370 有各自的图），
+// 取不到才落回 home-device-thumb。断言随之挪到新写法上，守的判据不变：
+// 六处都必须落回同一张默认设备图，不许被首页宫格素材顶掉。
 {
   const deviceThumbUsers = [
     'pages/home/home.wxml',
@@ -237,8 +242,8 @@ assert.ok(
   deviceThumbUsers.forEach(file => {
     const text = fs.readFileSync(path.join(root, file), 'utf8')
     assert.ok(
-      text.indexOf('src="/assets/images/home-device-thumb.png"') > -1,
-      `${file} 的设备图必须是 home-device-thumb.png`
+      /src="\{\{(?:item\.|device\.)?thumb \|\| '\/assets\/images\/home-device-thumb\.png'\}\}"/.test(text),
+      `${file} 的设备图必须按机型取 thumb，且默认落回 home-device-thumb.png`
     )
   })
   assert.ok(
