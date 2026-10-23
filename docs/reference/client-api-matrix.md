@@ -15,6 +15,11 @@
 
 ## 操作日志（最新在上）
 
+- **2026-10-23（追加）**：绑定页搜索列表的屏幕文案改为按蓝牙广播名匹配 `/Client/Product/getProductList`
+  的 `broadcastId`，显示该产品的 `sizeModel`（`api.scanSizeModel` / `api.getProductCatalog`，产品列表会话缓存、
+  失败静默），匹配不到或没配不显示。`imageDitheringBinDownload` 的 `type` 数值确认不变（0=5.8寸大设备、
+  1=3.7寸小设备），后端按此对齐。关联：`utils/api.js`、`subpackages/device/bind/*`、`tests/scan-size-model.test.js`。
+
 - **2026-10-23**：抖动出帧由第三方 seekink 迁到我方后端 `POST /Client/Basic/imageDitheringBinDownload`
   （form-data：`color=BWRYGB` / `imageDitheringModes=2` / `type` / `file`，与原接口一致；公共参数
   device/terminal/language/userToken 同其它 `/Client/` 接口，userToken 为用户自己的登录令牌；响应体即二进制 .bin）。

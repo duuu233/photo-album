@@ -47,7 +47,25 @@ Page(fold.adapt({
   onLoad() {
     this.setData(system.getLayoutMetrics())
     this.setData({ showDebugEntry: system.isDevEnv() })
+    this.loadProductCatalog()
     this.scan()
+  },
+
+  // 搜索列表的屏幕尺寸按蓝牙广播名匹配产品，显示该产品后台配置的 sizeModel（2026-10-23，见
+  // api.scanSizeModel），不再用广播里的屏型字节推算。产品列表与扫描并行拉取，回来后补到已搜到的设备上；
+  // 拉不到或匹配不到就不显示尺寸。
+  loadProductCatalog() {
+    api.getProductCatalog().then(list => {
+      this.productCatalog = list
+      if (this.unloaded || !this.data.devices.length) {
+        return
+      }
+      this.setData({
+        devices: this.data.devices.map(item =>
+          Object.assign({}, item, { sizeModel: api.scanSizeModel(item, list) })
+        )
+      })
+    })
   },
 
   goBack() {
@@ -64,6 +82,7 @@ Page(fold.adapt({
   },
 
   onUnload() {
+    this.unloaded = true
     // 让在途扫描结果失效：stopDiscovery 只停硬件扫描，在途的 discoverDevices 仍会在自己的 timeout
     // 到点后 resolve 并回调 applyScanResult——窗口拉到 20s 后「人已退出页面、扫描才 resolve」很常见，
     // 不作废就是往已卸载的页面 setData（与 cancelScan 同一处理）。
@@ -179,7 +198,8 @@ Page(fold.adapt({
       return Object.assign({}, item, {
         deviceCode: this.displayDeviceCode(item),
         // 设备图按蓝牙广播名区分机型（见 utils/device-thumb.js）
-        thumb: deviceThumb.thumbOf(item)
+        thumb: deviceThumb.thumbOf(item),
+        sizeModel: api.scanSizeModel(item, this.productCatalog || [])
       })
     })
     this.scanOrderNext = next

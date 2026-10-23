@@ -52,7 +52,7 @@
           <view class="nearby-icon"><image class="nearby-icon__img" src="{{item.thumb || '/assets/images/home-device-thumb.png'}}" mode="aspectFit"></image></view>
           <view class="nearby-copy">
             <text class="nearby-name">{{item.name}}</text>
-            <text class="nearby-sub">{{item.screen ? item.screen + ' · ' : ''}}{{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.signalText || '--'}}</text>
+            <text class="nearby-sub">{{item.sizeModel ? item.sizeModel + ' · ' : ''}}{{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.signalText || '--'}}</text>
             <!-- 设备ID：本次广播里的 6 字节 Device_ID，用来区分同型号同名设备，安卓/iOS 同一来源；
                  取不到显示 --（见 bind.js displayDeviceCode）。
                  判重/身份匹配仍只认连上后 0x01 读到的完整 6 字节 ID，与这里的展示无关。 -->

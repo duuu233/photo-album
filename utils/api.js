@@ -417,6 +417,26 @@ function withDetailBroadcastId(device, products) {
     .catch(() => device)
 }
 
+// 搜索结果（绑定前、还没有设备记录）的屏幕尺寸：蓝牙广播名 name / localName 包含哪个产品的
+// broadcastId（去首尾空白、大小写不敏感，与扫描白名单/bindDevice 同口径），就取该产品后台配置的
+// sizeModel（2026-10-23）。多个命中取 broadcastId 最长的那个（更具体）；没命中或没配返回空串，不展示。
+function scanSizeModel(scan, products) {
+  const names = [scan && scan.name, scan && scan.localName]
+    .filter(Boolean)
+    .map(name => String(name).toLowerCase())
+  let best = null
+  ;(products || []).forEach(product => {
+    const broadcastId = String((product && product.broadcastId) || '').trim().toLowerCase()
+    if (!broadcastId || !names.some(name => name.indexOf(broadcastId) > -1)) {
+      return
+    }
+    if (!best || broadcastId.length > best.broadcastId.length) {
+      best = { broadcastId, sizeModel: product.sizeModel }
+    }
+  })
+  return best ? String(best.sizeModel || '').trim() : ''
+}
+
 function productScore(product, scan) {
   const text = [
     product.productName,
@@ -450,6 +470,11 @@ function productScore(product, scan) {
 
 module.exports = {
   resolveCarouselIntervalSeconds,
+  scanSizeModel,
+  // 产品列表（会话缓存、失败静默返回空数组，见 loadProductCatalog）
+  getProductCatalog() {
+    return loadProductCatalog()
+  },
   getProductList(params = {}) {
     return http.get('/Client/Product/getProductList', params, {
       mock: false

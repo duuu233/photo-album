@@ -147,7 +147,7 @@ function textForCode(code, params) {
 //   30000~30999 上游错误    → 传了 onRetry 则弹「重试」确认框，否则 toast
 //   其余(参数/违规/资源等)  → toast
 // toast 走「接口(AI)-」来源前缀（2026-09-03）：BoltStar 是独立域名的 AI 服务（阿里云 FC），
-// 与我方后端「接口-」、seekink 出帧「接口(第三方)-」三者分开，看截图即知该找谁；弹窗类不加前缀。
+// 与我方后端「接口-」、第三方「接口(第三方)-」分开，看截图即知该找谁；弹窗类不加前缀。
 // err 形态：ai-api.js reject 出来的 { code, params, detail, userMessage? }；
 // userMessage 只由 AI 请求层对明确白名单的网关错误生成，非标错误(网络失败等)按 30001 处理。
 function handleAiError(err, options = {}) {

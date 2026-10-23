@@ -250,8 +250,8 @@ function handleBusinessError(error, options) {
     message = friendlyNetworkMessage(error)
   } else if (!/^接口(?:\([^)]*\))?-/.test(message)) {
     // 接口报错统一加「接口-」前缀，方便和「设备-」(蓝牙/设备返回) 错误区分；幂等避免重复加。
-    // 「接口-」专指本项目后端(config.baseURL)；AI 服务由 ai-i18n.js 加「接口(AI)-」、seekink 出帧由
-    // dithering.js 加「接口(第三方)-」，判定放行所有 接口(xx)- 变体，此处不覆盖它们。
+    // 「接口-」专指本项目后端(config.baseURL)；AI 服务由 ai-i18n.js 加「接口(AI)-」；「接口(第三方)-」
+    // 留给第三方服务（抖动出帧 2026-10-23 已迁到我方后端，目前无调用方），判定放行所有 接口(xx)- 变体，此处不覆盖它们。
     // 同时写回 error.message，让用 showError:false 自行 toast 的调用方也带上前缀。
     message = '接口-' + message
   }
