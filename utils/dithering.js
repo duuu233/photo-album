@@ -1,97 +1,33 @@
-// seekink 抖动接口封装：把「设备分辨率的图片文件」multipart 上传，收回**二进制六色 4bpp 帧(.bin)**，
-// 直接喂给 device-ble.uploadImage 走 BLE 图传（2026-07-22 起替代后端 setUserProductUpload 的转码结果）。
+// 抖动出帧接口封装：把「设备分辨率的图片文件」multipart 上传，收回**二进制六色 4bpp 帧(.bin)**，
+// 直接喂给 device-ble.uploadImage 走 BLE 图传。
+// 2026-10-23 起改调我方后端 /Client/Basic/imageDitheringBinDownload（form-data，参数与原第三方
+// seekink 接口一致：color / imageDitheringModes / type / file），原第三方接口及其 token
+// （/Client/Basic/getXTYUserToken）不再使用。
 // 实现要点/注意：
-//   · 报错文案：对用户一律是 THIRD_PARTY_FAIL_TEXT 这一句中文（英文原文留在 error.raw + 日志）；
-//   · 报错文案前缀是「接口(第三方)-」而不是「接口-」：本接口是 seekink 的第三方服务，与我方后端接口
-//     （request.js 统一加的「接口-」）分开标识，失败页/客服截图一眼能看出该找谁。⚠️ 新增来源前缀时，
-//     toast.js / device-ble.js / ota-ble.js / ai-i18n.js / device/detail 里「已带前缀就不再叠加」的判断
-//     要一起放行，否则会被再叠一层「小程序-」「电子纸设备-」。
-//     例外：下面取 token 用的是我方后端 /Client/Basic/getXTYUserToken，仍走「接口-」。
+//   · 公共参数 device/terminal/language/userToken 与其它接口同口径注入（request.clientRequestParts），
+//     userToken 是本 App 用户自己的登录令牌；登录过期（401/406）走 request 统一登出引导；
+//   · 报错前缀为「接口-」（我方后端），不再是「接口(第三方)-」；
 //   · 响应体即文件流 → 不能用 wx.uploadFile（它的 res.data 恒为字符串会把 bin 打烂）；
 //     只能手工拼 multipart 请求体 + wx.request(responseType:'arraybuffer')；
-//   · 请求头按对方要求带 AcceptLanguage=en（原话键名无中划线，另补标准 Accept-Language 兜底）；
-//   · 域名已升 https（2026-07-24 由 http://cloud.seekink.cn:8091 迁到 https://cloud.seekink.cn:8443）：
-//     须在小程序管理后台把 https://cloud.seekink.cn:8443 加进 request 合法域名白名单；未加时
-//     开发者工具勾「不校验合法域名」/真机开调试模式；
-//   · Authorization = Bearer+空格+token，token 由 /Client/Basic/getXTYUserToken 动态获取
-//     （2026-07-23 替代写死的联调 token）：会话级内存缓存一次取用整程复用，预览页 onLoad 预热
-//     （prefetchAuthToken）；接口回 401/token 类报错时清缓存自动刷新重试一次，且刷新时给
-//     /getXTYUserToken 带 isNewLogin=1 强制后端重新登录取新 token（2026-07-24；否则后端可能把
-//     刚过期的同一会话原样返回，重试仍 401），常规首取/预热用 isNewLogin=0；
-//   · ⚠️ bin 的像素格式（六色索引映射/扫描顺序）是否与设备一致未真机验证——调用方必须继续用
-//     「字节数 = 宽×高÷2」铁闸校验；真机若花屏/串色，对照 v1.5 协议核对 seekink 的调色板顺序。
+//   · 调用方必须继续用「字节数 = 宽×高÷2」铁闸校验返回帧。
 const protocol = require('./frame-protocol')
-const api = require('./api')
+const http = require('./request')
 
-const DITHERING_API = 'https://cloud.seekink.cn:8443/prod-api/api/v1/label/imageDitheringBinDownload'
+const DITHERING_PATH = '/Client/Basic/imageDitheringBinDownload'
 
-// —— seekink token（/Client/Basic/getXTYUserToken）——
-// 会话级内存缓存：小程序本次启动内所有投屏复用同一个 token，不落 Storage（有效期未知，
-// 杀进程自然失效重取最稳）；过期由 requestFrameBin 的 401 刷新兜底，无需预判有效期。
-let authTokenCache = ''
-let authTokenInFlight = null // 取 token 的在途请求：预热与投屏并发要 token 时只发一次
-
-// 兼容后端可能的返回形态：data 直接是 token 串，或对象包字段（⚠️字段名为假设，待联调确认）；
-// 若返回已带 Bearer 前缀则剥掉，统一由本模块拼「Bearer+空格+token」
-function normalizeAuthToken(data) {
-  const raw =
-    typeof data === 'string'
-      ? data
-      : (data &&
-          (data.token || data.xtyToken || data.userToken || data.accessToken || data.access_token)) ||
-        ''
-  return String(raw).replace(/^Bearer\s+/i, '').trim()
-}
-
-// forceNewLogin：401 自愈刷新时传 true → 给后端带 isNewLogin=1 强制重新登录取新 token
-// （否则后端可能把刚过期的同一会话原样返回，重试仍 401）。常规首取/预热传默认 false。
-function ensureAuthToken(forceNewLogin = false) {
-  if (!forceNewLogin && authTokenCache) {
-    return Promise.resolve(authTokenCache)
-  }
-  // 强制刷新时不复用可能属于旧会话的在途请求，另起一发确保 isNewLogin=1 生效
-  if (!authTokenInFlight || forceNewLogin) {
-    authTokenInFlight = api
-      .getXTYUserToken(forceNewLogin ? 1 : 0)
-      .then((data) => {
-        authTokenInFlight = null
-        const token = normalizeAuthToken(data)
-        if (!token) {
-          // 「接口-」不是「接口(第三方)-」：token 由我方后端 /Client/Basic/getXTYUserToken 代取，故障要找我方后端
-          throw new Error('接口-抖动token获取失败：返回为空')
-        }
-        authTokenCache = token
-        console.log('[抖动bin] token 已就绪（会话级缓存）')
-        return token
-      })
-      .catch((error) => {
-        authTokenInFlight = null
-        throw error
-      })
-  }
-  return authTokenInFlight
-}
-
-// 预热：进投屏预览页时前置调用（与预热设备连接同理），用户构图期间先把 token 取回缓存，
-// 点「开始投屏」后出帧请求零等待。失败静默——真正投屏时 ensureAuthToken 会再取并正常报错。
-function prefetchAuthToken() {
-  ensureAuthToken().catch(() => {})
-}
-
-// 第三方接口的失败，用户侧一律归一成这一句（2026-09-03）：微信透传的英文原文
-//（`request:fail fail:time out`、`errcode:-118 net::ERR_CONNECTION_TIMED_OUT` 之类）
-// 用户看不懂，也没法照着做任何事，还会把结果页失败态撑高。原文不丢——写进 error.raw 并打日志，
-// 排查照旧看 vConsole（判读表见 docs/architecture/image-projection-pipeline.md）。
-const THIRD_PARTY_FAIL_TEXT = '接口(第三方)-网络超时，图片转化失败，请重新尝试'
+// 网络类失败的用户侧文案：微信透传的英文原文（`request:fail fail:time out` 之类）用户看不懂，
+// 原文写进 error.raw 并打日志，排查看 vConsole（判读表见 docs/architecture/image-projection-pipeline.md）。
+const NETWORK_FAIL_TEXT = '接口-网络超时，图片转化失败，请重新尝试'
+const BUSINESS_FAIL_TEXT = '接口-图片转化失败，请重新尝试'
 
 // raw：给日志/重试判定用的原始报错（英文 errMsg、业务 JSON 原文、HTTP 码），只进日志不进 UI
-function thirdPartyError(raw) {
-  const error = new Error(THIRD_PARTY_FAIL_TEXT)
+function ditheringError(message, raw) {
+  const error = new Error(message)
   error.raw = String(raw || '')
   return error
 }
 
-// 与 request.js 上传超时约定一致；网络类失败退避重试（接口是纯转换、无服务端记账副作用，重试安全）
+// 与 request.js 上传超时约定一致；网络类失败退避重试（接口是纯转换、无记账副作用，重试安全）
 const REQUEST_TIMEOUT_MS = 20000
 const RETRY_ATTEMPTS = 3
 const RETRY_DELAY_MS = 800
@@ -181,30 +117,39 @@ function readFileBytes(filePath) {
     wx.getFileSystemManager().readFile({
       filePath,
       success: (r) => resolve(new Uint8Array(r.data)),
-      // 这条是本地读文件失败，不是第三方接口的锅，按来源前缀约定归「小程序-」
+      // 这条是本地读文件失败，不是接口的锅，按来源前缀约定归「小程序-」
       fail: () => reject(new Error('小程序-抖动bin转换失败：图片读取失败'))
     })
   })
 }
 
-function requestOnce(body, boundary, token) {
+function requestOnce(body, boundary) {
+  // 每次发送现取公共参数：重试期间登录态若变化，以当前为准
+  const parts = http.clientRequestParts(DITHERING_PATH, {
+    'content-type': `multipart/form-data; boundary=${boundary}`
+  })
   return new Promise((resolve, reject) => {
     wx.request({
-      url: DITHERING_API,
+      url: parts.url,
       method: 'POST',
-      header: {
-        'content-type': `multipart/form-data; boundary=${boundary}`,
-        Authorization: `Bearer ${token}`,
-        AcceptLanguage: 'en', // 对方给的键名（无中划线），原样带上
-        'Accept-Language': 'en' // 标准头兜底：后端若走通用 i18n 解析读的是它
-      },
+      header: parts.header,
       data: body.buffer,
       responseType: 'arraybuffer',
       timeout: REQUEST_TIMEOUT_MS,
       success: resolve,
-      fail: (err) => reject(thirdPartyError((err && err.errMsg) || '网络异常'))
+      fail: (err) => reject(ditheringError(NETWORK_FAIL_TEXT, (err && err.errMsg) || '网络异常'))
     })
   })
+}
+
+// 业务报错的 JSON 体（{ retCode, retMsg }）；解析不了返回 null
+function parseJsonBody(text) {
+  try {
+    const body = JSON.parse(text)
+    return body && typeof body === 'object' ? body : null
+  } catch (error) {
+    return null
+  }
 }
 
 // 图片文件 → 设备帧 bin(Uint8Array)。{ filePath, type } 必传；接口回 JSON/文本（业务报错）时
@@ -223,16 +168,14 @@ async function requestFrameBin({ filePath, type }) {
     { name: 'file', filename: 'image.jpg', contentType: 'image/jpeg', data: fileBytes }
   )
 
-  let authRetried = false // 鉴权刷新只做一次：接口侧真拒绝（如账号无权限）时不能打转
-  const run = async (left, forceNewLogin = false) => {
-    const token = await ensureAuthToken(forceNewLogin)
+  const run = async (left) => {
     let res
     try {
-      res = await requestOnce(body, boundary, token)
+      res = await requestOnce(body, boundary)
     } catch (error) {
       // wx.request fail = 没拿到响应（超时/断网/域名拦截），弱网下退避重试。
       // 判定必须看 error.raw（微信原文），message 已被归一成中文；`time\s*-?out` 是因为安卓
-      // 报的是 `request:fail fail:time out`（带空格），老的 /timeout/ 根本不命中 → 曾经一次都没重试过。
+      // 报的是 `request:fail fail:time out`（带空格）。
       const raw = error.raw || error.message || ''
       if (left > 1 && /time\s*-?out|connect|网络|ERR_/i.test(raw)) {
         console.warn(`[抖动bin] 网络失败，将重试（剩余 ${left - 1} 次）：`, raw)
@@ -246,30 +189,27 @@ async function requestFrameBin({ filePath, type }) {
       `[抖动bin] 返回：statusCode=${res.statusCode} 字节数=${bytes.length} ` +
         `头16=${protocol.bytesToHex(bytes.subarray(0, 16))}`
     )
-    // 业务报错通常回小体积 JSON（content-type 标 json/text，或首字符 { / [）：解码打印并抛错，不重试
+    // 业务报错回小体积 JSON（content-type 标 json/text，或首字符 { / [）：解码打印并抛错，不重试
     const contentType = String((res.header && (res.header['Content-Type'] || res.header['content-type'])) || '')
     const looksText =
       /json|text/i.test(contentType) ||
       (bytes.length > 0 && bytes.length < 4096 && (bytes[0] === 0x7b || bytes[0] === 0x5b))
     const text = looksText ? utf8BytesToString(bytes) : ''
-    // 鉴权失败（HTTP 401，或业务 JSON 报 token/授权类错误）：会话缓存的 token 可能已过期，
-    // 清缓存重取一次再发本请求（不消耗网络重试次数）
-    if (
-      !authRetried &&
-      (res.statusCode === 401 ||
-        (looksText && /401|token|unauthorized|授权|过期|expired/i.test(text)))
-    ) {
-      authRetried = true
-      authTokenCache = ''
-      console.warn('[抖动bin] 鉴权失败，带 isNewLogin=1 强制重登刷新 token 重试一次：', text || `HTTP ${res.statusCode}`)
-      return run(left, true) // 强制重新登录取新 token（isNewLogin=1）后重发本请求，不消耗网络重试次数
+    const json = looksText ? parseJsonBody(text) : null
+    const retCode = json ? (json.retCode !== undefined ? json.retCode : json.code) : undefined
+    const retMsg = json ? String(json.retMsg || json.message || '').trim() : ''
+    // 登录过期：与其它接口同一判定（HTTP 401 / 业务码 401、406），清会话并引导重登
+    if (res.statusCode === 401 || retCode === 401 || retCode === 406) {
+      console.warn('[抖动bin] 登录已过期：', text || `HTTP ${res.statusCode}`)
+      http.expireSession()
+      throw ditheringError(`接口-${retMsg || '登录已过期'}`, text || `HTTP ${res.statusCode}`)
     }
     if (looksText) {
       console.warn('[抖动bin] 返回文本(业务报错):', text)
-      throw thirdPartyError(text.slice(0, 200) || `HTTP ${res.statusCode}`)
+      throw ditheringError(retMsg ? `接口-${retMsg}` : BUSINESS_FAIL_TEXT, text.slice(0, 200) || `HTTP ${res.statusCode}`)
     }
     if (res.statusCode !== 200 || !bytes.length) {
-      throw thirdPartyError(`HTTP ${res.statusCode} 字节数=${bytes.length}`)
+      throw ditheringError(BUSINESS_FAIL_TEXT, `HTTP ${res.statusCode} 字节数=${bytes.length}`)
     }
     return bytes
   }
@@ -278,6 +218,5 @@ async function requestFrameBin({ filePath, type }) {
 
 module.exports = {
   typeForDevice,
-  requestFrameBin,
-  prefetchAuthToken
+  requestFrameBin
 }

@@ -1,7 +1,6 @@
 const system = require('../../../utils/system')
 const toast = require('../../../utils/toast')
 const activeDevice = require('../../../utils/active-device')
-const dithering = require('../../../utils/dithering')
 const deviceRotation = require('../../../utils/device-rotation')
 const fold = require('../../../utils/fold-adapt')
 
@@ -19,7 +18,7 @@ const STAGE_MIN_H_RPX = 680
 
 // 画布导出格式（性能优化，2026-07-13）。canvasToTempFilePath 的 fileType 默认是 png——
 // 照片存 png 是同画质 jpg 的 5~10 倍（长边 2000 的照片常到 5MB+）。而本页导出的这个临时文件
-// 正是投屏要上传给转换方（2026-07-22 起为 seekink 抖动接口）出设备帧的源图：真机 trace 里
+// 正是投屏要上传给转换方（2026-10-23 起为后端抖动接口）出设备帧的源图：真机 trace 里
 // 上传耗时曾高达 5.7s，几乎全耗在传大 png 上。统一导出 jpg：转换方在设备分辨率上量化成六色，
 // q=0.92 对最终成像完全无损，体积却只有 1/10。jpg 不支持透明，导出前先铺白底，
 // 避免透明区域变黑（照片无 alpha，纯属兜底）。
@@ -214,10 +213,6 @@ const createPreviewPage = (overrides = {}) => fold.adapt(Object.assign({
         })
         .catch(() => {})
     }
-
-    // 同理预热 seekink 抖动接口 token（getXTYUserToken，会话级缓存整程复用）：
-    // 已有缓存时是空操作；失败静默，投屏出帧时会自动重取
-    dithering.prefetchAuthToken()
   },
 
   onReady() {
@@ -1111,7 +1106,7 @@ const createPreviewPage = (overrides = {}) => fold.adapt(Object.assign({
   },
 
   // 把一组编辑状态（取景框内所见：方向+平移+旋转+缩放）一次画布合成，烘焙为设备物理分辨率的新图。
-  // canvas 尺寸=设备物理分辨率（竖向）：转换方（seekink 抖动接口）按上传图像素量化六色帧
+  // canvas 尺寸=设备物理分辨率（竖向）：转换方（抖动出帧接口）按上传图像素量化六色帧
   //（帧字节数=宽×高÷2），上传图必须正好是设备尺寸，这是硬约束。
   //   · 竖向：整幅构图按设备 verticalRotation 旋转（缺失即 0=不转）；
   //   · 横向：整幅构图按设备 rotationDegree 旋转（缺失回退 270°）。

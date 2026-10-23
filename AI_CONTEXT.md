@@ -19,7 +19,7 @@
 - 检查并执行设备固件 OTA/DFU；
 - 使用“星宝”AI 进行文字、图片和生图对话；小程序正式入口已开放。
 
-本仓库只包含微信小程序客户端，不包含 BoltFox 后端、BoltStar AI 服务、seekink 抖动服务、设备固件或 Flutter 客户端源码。涉及这些系统的行为只能依据接口文档、协议文档和客户端观察结果，不能假设其内部实现。
+本仓库只包含微信小程序客户端，不包含 BoltFox 后端、BoltStar AI 服务、设备固件或 Flutter 客户端源码。涉及这些系统的行为只能依据接口文档、协议文档和客户端观察结果，不能假设其内部实现。
 
 ## Tech Stack
 
@@ -46,7 +46,7 @@
   - 小程序管理后台是否已批准并启用该插件：**待确认**。
 - 网络服务：
   - BoltFox API：`https://api.boltfox.cn`；
-  - seekink 图片抖动：`https://cloud.seekink.cn:8443/.../imageDitheringBinDownload`；
+  - 图片抖动出帧：2026-10-23 起走 BoltFox `POST /Client/Basic/imageDitheringBinDownload`（原第三方 seekink 接口与 `getXTYUserToken` 停用）；
   - BoltStar AI 服务：阿里云 FC 独立域名，定义在 `utils/ai-api.js`；2026-08-06 起切到流式版部署 `boltstagent-web-...`；
   - `/chat` 走 SSE：`wx.request` 开 `enableChunked`、`onChunkReceived` 收流，事件为 `pre_text`/`progress`/`image`/`text`/`done`；
   - 基础库拿不到 `onChunkReceived` 时降级回旧的非流式部署（完整 JSON + 客户端打字机）。
@@ -70,9 +70,13 @@
 
 首页设备卡、我的设备、设备详情、搜索设备、命名弹窗、投屏选设备六处设备图统一由 `utils/device-thumb.js` 按产品 `broadcastId` 决定：EB-169（圆屏）用 `home-device-circle-thumb`，EC-370 用 `home-device-rectangle-thumb`，其余用原 `home-device-thumb`。已绑定记录用设备列表接口下发的 `broadcastId`，缺失或不是产品列表里的广播名时（2026-10-23）由 `api.getDevices/getDeviceDetail` 按 productId 回查产品列表补上，`getDevices` 仍认不出的记录再按 userProductId 静默调详情接口补（会话内复用，2026-10-23），`bindDevice` 按广播名命中产品 broadcastId 加权匹配产品并写入；搜索结果按蓝牙广播名；用户起的设备名不参与；兜底 `shapeType === 1` 视为圆屏。新增机型只需在 `THUMB_BY_BROADCAST_ID` 加一行。详见 `docs/changes/2026-10-22-设备图按机型区分.md`。
 
+## 设备详情屏幕尺寸（2026-10-23）
+
+设备详情「屏幕尺寸」行直接展示后台产品配置的尺寸型号 `sizeModel`（如“3.6寸”，设备列表/详情接口下发），不再按屏型表或宽高推算分辨率；未配置时整行连同分隔线不展示。搜索设备列表的屏幕文案仍来自蓝牙广播屏型字节（绑定前无产品记录），未改。详见 `docs/changes/2026-10-23-屏幕尺寸读sizeModel与抖动出帧迁后端.md`。
+
 ## 投屏动态尺寸（2026-10-19）
 
-照片预览与结果页统一使用设备列表 `width/height` 作为物理像素；结果页由 `utils/projection-device.js` 在本次0x01完整身份校验后解析，缺失时才兼容旧型号表。400×400圆屏的帧长度为80,000字节。固件型号字节原样下发，不以后台横竖屏字段替代。容量按 `frame-protocol.capacityOf` 先认机型（broadcastId，规格书 v1.6 §5.2：EF6-370 95、EF6-589 51、EB-169 25、EC-370 11；EC-370 与 EF6-370 屏型同为0x01，只能靠机型分）、再认屏型（0x04→25），设备详情与投屏选槽同口径；仍未知时只使用IMG_MASK槽位上限并服从固件拒绝；参数/尺寸错误不再统一报未连接。第三方仍沿用现有type策略和全帧校验，未真机确认圆屏色序/存储/画质。当前契约见 `docs/architecture/image-projection-pipeline.md`，实施见 `docs/changes/2026-10-19-投屏改用设备接口尺寸.md`。
+照片预览与结果页统一使用设备列表 `width/height` 作为物理像素；结果页由 `utils/projection-device.js` 在本次0x01完整身份校验后解析，缺失时才兼容旧型号表。400×400圆屏的帧长度为80,000字节。固件型号字节原样下发，不以后台横竖屏字段替代。容量按 `frame-protocol.capacityOf` 先认机型（broadcastId，规格书 v1.6 §5.2：EF6-370 95、EF6-589 51、EB-169 25、EC-370 11；EC-370 与 EF6-370 屏型同为0x01，只能靠机型分）、再认屏型（0x04→25），设备详情与投屏选槽同口径；仍未知时只使用IMG_MASK槽位上限并服从固件拒绝；参数/尺寸错误不再统一报未连接。抖动出帧接口仍沿用现有type策略和全帧校验，未真机确认圆屏色序/存储/画质。当前契约见 `docs/architecture/image-projection-pipeline.md`，实施见 `docs/changes/2026-10-19-投屏改用设备接口尺寸.md`。
 
 ## Architecture Overview
 
@@ -113,7 +117,7 @@
 
 1. BoltFox 业务 API 经 `utils/api.js` 和 `utils/request.js`；
 2. BoltStar AI 经 `utils/ai-api.js`，不继承 BoltFox 公共参数/错误码，但共用登录下发的 `jwtToken` 自拼 `Authentication: Bearer` 头（2026-07-29 起网关强制）；
-3. seekink 抖动经 `utils/dithering.js`，其认证 token 由 BoltFox `getXTYUserToken` 提供。
+3. 抖动出帧经 `utils/dithering.js` 调 BoltFox `/Client/Basic/imageDitheringBinDownload`：响应是二进制帧，故自发 `wx.request`(arraybuffer)，公共参数与鉴权由 `request.clientRequestParts` 同口径注入（userToken 即用户自己的登录令牌），401/406 走 `request.expireSession`。
 
 设备协议也分为两个独立会话层：
 
@@ -209,7 +213,7 @@
   - 选择原图；
   - 按设备比例进行平移、缩放、旋转和横竖构图；
   - 导出设备物理分辨率 JPG；
-  - 调 seekink 生成六色 4bpp frame；
+  - 调后端抖动接口生成六色 4bpp frame；
   - 建立 BoltFox 投屏记录；
   - 通过 BLE 传输并同步 `imgIndex`。
 - 关键文件：
@@ -343,7 +347,7 @@ App.onShow
   → 导出设备物理分辨率 JPG
   → result.js 重新确认目标设备身份并读取 0x01
   → 并行：
-      ├─ dithering.js → seekink → 六色 4bpp frame
+      ├─ dithering.js → /Client/Basic/imageDitheringBinDownload → 六色 4bpp frame
       └─ setUserProductUpload → BoltFox 投屏记录 taskId/upirId
   → 校验 frame.length == width × height ÷ 2
   → CRC32 + 按 BLE chunk 预组 0x21 帧
@@ -378,7 +382,7 @@ App.onShow
           → 无论设备成功 / 跳过 / 回 0x05·0x07 / 真失败，都继续删来源投屏记录（端上到此为止）
   → 再次投屏：直接用记录自己的 img → 连接该记录所属设备
           → 写 pendingProjection → 走正常预览/投屏链路建**新记录**（多选即批量传输）
-          → 结果页：seekink 抖动接口出帧 → 读 0x01 取 firstFreeIndex → BLE 发帧 → 记账 imgIndex
+          → 结果页：抖动接口出帧 → 读 0x01 取 firstFreeIndex → BLE 发帧 → 记账 imgIndex
 ```
 
 2026-08-17 起端上不再调 `getUserProductImgList` / `delUserProductImg`（连同 `api.getAlbumPhotos` /
@@ -472,13 +476,14 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
    - 建连中 Promise 去重，避免预热连接和正式连接竞态；
    - 建连后服务发现失败必须主动断开，防止设备被无主连接占住且停止广播。
 
-4. **BoltFox、BoltStar AI、seekink 三个客户端边界分离。**
-   - 三者 Base URL、鉴权、响应结构、错误码和重试语义不同；
-   - 不应为了“统一”而把 AI 或 seekink 强塞进 `utils/request.js`。
+4. **BoltFox 与 BoltStar AI 两个客户端边界分离。**
+   - 两者 Base URL、鉴权、响应结构、错误码和重试语义不同；
+   - 不应为了“统一”而把 AI 强塞进 `utils/request.js`。
+   - 抖动出帧虽已是 BoltFox 接口，但响应为二进制，仍由 `utils/dithering.js` 自发请求，只复用 request 的公共参数与登出逻辑。
 
-5. **当前投屏 frame 来自 seekink，不来自 BoltFox 的历史 `.bin`。**
+5. **当前投屏 frame 来自抖动出帧接口，不来自 `setUserProductUpload` 的历史 `.bin`。**
    - `setUserProductUpload` 只负责建立和保存投屏记录；
-   - 再次投屏和失败重投都重新走预览、seekink 出帧和正常建记录链路；
+   - 再次投屏和失败重投都重新走预览、抖动出帧和正常建记录链路；
    - 不恢复 `imgBle` 直传或 `addUserProductImgRecord` 的历史补记分支。
 
 6. **预览是非破坏性编辑。**
@@ -652,7 +657,7 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
 - AI 生成图片 URL 有有效期，历史图片能否长期下载或再次投屏不能保证。
 - AI 小程序入口已开放；支付/Token 后端接口与官方图库仍未接入。
 - `WechatSI` 插件是否已在小程序后台获批：**待确认**。
-- seekink token 接口实际返回字段形态仍有兼容解析，最终稳定契约：**待确认**。
+- 抖动出帧后端接口（2026-10-23 迁入）的 `type` 在 Swagger 中描述为屏幕旋转（1=顺时针90°、2=逆时针90°），端上按用户口径沿用原第三方取值（480×720 传 1、其余 0），实际语义与真机出帧：**待确认**。
 - 微信后台 request/upload/download 合法域名、插件权限和隐私配置是否与当前代码一致：**待确认**。
 - OTA 是否需要显式最低电量门槛：当前页面会读取并展示电量，但未发现阻断升级的阈值判断，产品/固件要求：**待确认**。
 - OTA 最终结果帧布局、重复尾包容忍、不同手机 MTU/Notify/断连行为：仍需真机确认。
@@ -663,7 +668,7 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
 
 - HTTP 响应归一化、登录过期和网络重试；
 - 图片预览手势与横向导出；
-- seekink 出帧和 frame 长度；
+- 抖动出帧和 frame 长度；
 - BLE 图传 ACK/重传；
 - 图库设备/云端部分成功；
 - OTA 组帧和状态机；
@@ -717,8 +722,8 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
 9. BLE/OTA 错误应保留具体来源：
    - 我方后端接口错误通常带“接口-”（request.js 统一加）；
    - AI（BoltStar，独立域名）错误带“接口(AI)-”（`utils/ai-i18n.js`）；
-   - 第三方接口错误带“接口(第三方)-”（目前仅 seekink 出帧，见 `utils/dithering.js`）；
-   - seekink 出帧的失败对用户统一显示“接口(第三方)-网络超时，图片转化失败，请重新尝试”，
+   - “接口(第三方)-”前缀目前无调用方（抖动出帧 2026-10-23 已迁到我方后端，改带“接口-”），各处放行判断保留；
+   - 抖动出帧网络失败对用户显示“接口-网络超时，图片转化失败，请重新尝试”，业务报错显示后端 retMsg，
      微信原文只进日志与 `error.raw`，不要再把英文 errMsg 丢到失败页；
    - 设备/BLE 错误通常带“设备-”；
    - 新增来源前缀时，`toast.js` / `device-ble.js` / `ota-ble.js` / `ai-i18n.js` / `device/detail`

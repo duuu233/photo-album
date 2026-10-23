@@ -1,7 +1,7 @@
 # 客户端接口矩阵
 
 > 状态：current  
-> 最后核对：2026-08-17  
+> 最后核对：2026-10-23\
 > 适用范围：微信小程序；App/PC 差异仅作接口边界参考  
 > 上游权威来源：BoltFox Swagger
 
@@ -9,11 +9,21 @@
 
 - `utils/config.js` 当前 `useMock:false`；正式版在 `utils/request.js` 中强制禁用 Mock。
 - 小程序邮箱入口、个人信息邮箱行和相关页面路由当前均不可达；接口封装和页面源码仅作备用。
-- 再次/重新投屏走正常 seekink 出帧与 `setUserProductUpload` 建记录链路，不再使用历史 `imgBle` 直传。
+- 再次/重新投屏走正常抖动出帧（2026-10-23 起为 `/Client/Basic/imageDitheringBinDownload`）与 `setUserProductUpload` 建记录链路，不再使用历史 `imgBle` 直传。
 
 > 🛠 **维护约定**：每次修改本表涉及的接口/字段，务必在下方「操作日志」补一条（日期 + 改了什么 + 关联文件/commit），**最新在上**——别让文档与代码脱节。
 
 ## 操作日志（最新在上）
+
+- **2026-10-23**：抖动出帧由第三方 seekink 迁到我方后端 `POST /Client/Basic/imageDitheringBinDownload`
+  （form-data：`color=BWRYGB` / `imageDitheringModes=2` / `type` / `file`，与原接口一致；公共参数
+  device/terminal/language/userToken 同其它 `/Client/` 接口，userToken 为用户自己的登录令牌；响应体即二进制 .bin）。
+  `GET /Client/Basic/getXTYUserToken` 不再调用（api.js 封装、预览页预热、调试台「第三方 Token」卡片一并删除）。
+  同日 `getUserProductList` / `getUserProductDetail` 下发产品尺寸型号 `sizeModel`（如“3.6寸”），设备详情
+  「屏幕尺寸」行直接展示，未配置不展示。关联：`utils/dithering.js`、`utils/request.js`（`clientRequestParts` /
+  `expireSession`）、`utils/api.js`、`subpackages/projection/preview/preview-page.js`、
+  `subpackages/device/debug/*`、`subpackages/device/detail/*`、`tests/projection-preview-demo.test.js`、
+  `tests/dithering-backend.test.js`。
 - **2026-08-17**：**「我的图库」两个接口从端上整体删除**：`GET /Client/UserProduct/getUserProductImgList`
   与 `POST /Client/UserProduct/delUserProductImg`，连同 `api.getAlbumPhotos` / `deleteAlbumPhotos` /
   `normalizePhoto`、`request.js` 的两条中文名、`mock.js` 的 `/album/photos` 两条路由一并清掉。
@@ -171,6 +181,7 @@
 | 获取基础数据 | 配置/字典等（看实际情况） | `GET /Client/Basic/getBasicData` | ✅ | `getBasicData` | 按需取用 |
 | 文件上传 | 基础上传（无关业务） | `POST /Client/Basic/setFileUpload` | ✅ | `setFileUpload` | form-data，字段名 `fileParam`，如头像等通用文件 |
 | 文件上传 | BLE 图片转换上传 | `POST /Client/Basic/setUserProductUpload` | ✅ | `setUserProductUpload` | form-data 上传原图，带 `targetWidth/targetHeight`，后端转换帧并存 OSS，返回 `url/taskId/upirId`。**2026-07-22 起客户端只用它建投屏记录（传「进预览页前的原图」，拿 `taskId/upirId`）**，返回的 `url`(.bin) 不再下载——设备帧改由 seekink 抖动接口生成（`utils/dithering.js`）。（2026-07-23 定夺：后端不再生成/返回 .bin，`imgBle` 直传链路已在端上删除，再次投屏改走正常链路，见 07-23 操作日志。）旧实况注(2026-07-17，后端按上传图像素出帧)仍适用于它自己的转码 |
+| 文件上传 | 图片上传且抖动出帧（2026-10-23） | `POST /Client/Basic/imageDitheringBinDownload` | ✅ | `utils/dithering.js` `requestFrameBin` | form-data：`color` / `imageDitheringModes` / `type` / `file`，参数与原第三方 seekink 接口一致；公共参数（含用户自己的 userToken）同口径注入；响应体为二进制六色 4bpp 帧（.bin），业务报错回 JSON。替代第三方接口与 `getXTYUserToken` |
 | 投屏记录 | 编辑投屏记录 | `POST /Client/UserProduct/editUserProductImgRecord` | ✅ | `editUserProductImgRecord` | 设备图传成功后置 `deviceUploadState:1`，body 传 `upirId/taskId/deviceUploadState/imgIndex`。`imgIndex`(String，**0 合法**)=这张图写入设备的物理槽位，供图库删除/刷屏定位，见 `docs/decisions/image-slot-index.md` |
 
 ## 首页

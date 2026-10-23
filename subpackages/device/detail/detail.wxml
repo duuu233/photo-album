@@ -115,19 +115,21 @@
         </view>
         <view class="thin-divider">
         </view>
-        <!-- 屏幕物理尺寸（像素，如 680*960）：产品静态属性，不随连接状态置 -- -->
-        <view class="detail-row">
-          <view class="row-left">
-            <image
-              class="row-icon"
-              src="/assets/images/device-detail-screen-size.svg"
-              mode="aspectFit" />
-            <text>屏幕尺寸</text>
+        <!-- 屏幕尺寸：后台产品配置的尺寸型号 sizeModel（如 3.6寸），没配整行（连同分隔线）不展示 -->
+        <block wx:if="{{sizeModelText}}">
+          <view class="detail-row">
+            <view class="row-left">
+              <image
+                class="row-icon"
+                src="/assets/images/device-detail-screen-size.svg"
+                mode="aspectFit" />
+              <text>屏幕尺寸</text>
+            </view>
+            <view class="row-value">{{sizeModelText}}</view>
           </view>
-          <view class="row-value">{{resolutionText}}</view>
-        </view>
-        <view class="thin-divider">
-        </view>
+          <view class="thin-divider">
+          </view>
+        </block>
         <view class="detail-row">
           <view class="row-left">
             <image

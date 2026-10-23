@@ -146,6 +146,7 @@ const API_NAME_MAP = {
   sendEmail: '发送邮件',
   sendEmailToken: '发送邮箱验证码',
   setUserProductUpload: '投屏图片上传',
+  imageDitheringBinDownload: '图片抖动出帧',
   getBasicData: '基础数据',
   setFileUpload: '文件上传',
   setWechatAppLogin: '微信登录',
@@ -303,6 +304,25 @@ function handleSessionExpired() {
   lastSessionExpiredJumpAt = now
   // 与 requireLogin/ensureLogin 一致用 navigateTo（保留滑动过渡），失败(如页面栈满)不再补救
   wx.navigateTo({ url: '/pages/login/login', fail: () => {} })
+}
+
+// 给必须自己发 wx.request 的调用方（抖动出帧要 arraybuffer 响应 + 手拼 multipart，见 dithering.js）：
+// 与 request() 同口径带上公共参数 device/terminal/language/userToken（header + /Client/ query）与鉴权头。
+function clientRequestParts(url, extraHeader) {
+  const token = getToken()
+  const jwtToken = getJwtToken()
+  const header = appendClientHeaders(extraHeader, token)
+  if (token) {
+    header.Authorization = `Bearer ${token}`
+  }
+  if (jwtToken) {
+    header.Authentication = `Bearer ${jwtToken}`
+  }
+  const clientQuery = isClientApi(url) ? getClientQuery(token, header) : {}
+  return {
+    url: buildUrl(appendQuery(url, clientQuery)),
+    header
+  }
 }
 
 // 全局请求入口：处理鉴权头、loading、mock 分流与统一的成功/失败解析
@@ -602,6 +622,9 @@ function upload(rawOptions) {
 module.exports = {
   request,
   upload,
+  clientRequestParts,
+  // 自己发请求的调用方遇到 401/406 时走同一套登出引导（见 handleSessionExpired）
+  expireSession: handleSessionExpired,
   get(url, data, options) {
     return request(
       Object.assign({}, options, {

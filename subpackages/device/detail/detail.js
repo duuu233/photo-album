@@ -20,18 +20,11 @@ const app = getApp()
 // 页面内一律按秒传递，只有这里才允许出现「小时」。
 const DEFAULT_INTERVAL_SECONDS = 2 * 3600
 
-// 屏幕物理分辨率文案（展示在「设备ID」下方），如 `680*960`。
-// 取值优先级：0x01 读到的 screenType 查表 → 后端记录的 width/height → '--'。
-// 与设备ID/内存不同，分辨率是**产品静态属性**而非实时数据，所以**不跟随连接状态置 --**：
-// 未连接时后端记录里的宽高一样准，硬要置 -- 只会让常态未连接的设备永远看不到分辨率。
-function resolutionText(device) {
-  if (!device) {
-    return '--'
-  }
-  const screen = protocol.SCREEN_TYPES[device.screenType] || {}
-  const width = Number(screen.width || device.width) || 0
-  const height = Number(screen.height || device.height) || 0
-  return width && height ? `${width}*${height}` : '--'
+// 「屏幕尺寸」行的值（展示在「设备ID」下方），2026-10-23 起直接读后台产品配置的尺寸型号
+// `sizeModel`（如「3.6寸」，设备列表/详情接口下发），端上不再按屏型或宽高去推算。
+// 没配就返回空串，整行不展示。产品静态属性，不随连接状态变化。
+function sizeModelText(device) {
+  return String((device && device.sizeModel) || '').trim()
 }
 
 // 「最大照片数量」行的展示值（2026-08-01 起显示已用，2026-08-02 产品改为 `已用/上限` 分数式）。
@@ -275,7 +268,7 @@ Page(fold.adapt({
     // 首帧未知电量：传 null 取未知档图标（旧写法取 DEFAULT_BATTERY=100 会先闪一下满电）
     batteryIcon: batteryUtil.getBatteryIcon(null),
     deviceCode: '',
-    resolutionText: '--',
+    sizeModelText: '',
     memoryText: '',
     macAddress: '',
     // 「固件升级」行右侧：设备当前固件版本号（0x03 读回），未连接/读不到为 '--'
@@ -489,7 +482,7 @@ Page(fold.adapt({
       batteryIcon: batteryUtil.batteryIconOf(device),
       batteryText: batteryUtil.batteryText(device),
       deviceCode,
-      resolutionText: resolutionText(device),
+      sizeModelText: sizeModelText(device),
       memoryText: memoryText(device),
       macAddress: device && device.macAddress ? device.macAddress : '--',
       // 固件升级行右侧展示设备当前固件版本；有无新版本由箭头旁的红点表达
@@ -762,11 +755,11 @@ Page(fold.adapt({
       app.setSelectedDevice(updated)
     }
     // 断开后轮播设置/固件版本/设备ID/内存都不再可信，与未连接态一致回落到 --（内存进度条一并归零）。
-    // 分辨率是产品静态属性、断开后依然成立，故照常刷新而不置 --（见 resolutionText 注释）
+    // 尺寸型号是产品静态属性、断开后依然成立，故照常刷新而不置 --（见 sizeModelText 注释）
     this.setData({
       device: updated,
       deviceCode: '--',
-      resolutionText: resolutionText(updated),
+      sizeModelText: sizeModelText(updated),
       memoryText: '--',
       memoryPercent: 0,
       playbackLabel: '--',
@@ -878,8 +871,7 @@ Page(fold.adapt({
       batteryIcon: batteryUtil.batteryIconOf(updated),
       batteryText: batteryUtil.batteryText(updated),
       memoryText: memoryText(updated),
-      // 连上后 0x01 的 screenType 才到手，分辨率这时才可能从「后端宽高/--」升级为权威值
-      resolutionText: resolutionText(updated),
+      sizeModelText: sizeModelText(updated),
       playbackLabel: getPlaybackLabel(updated),
       firmwareVersionText: firmwareVersionText(updated),
       firmwareHasUpdate: hasFirmwareUpdate(updated),
@@ -1298,7 +1290,7 @@ Page(fold.adapt({
       device,
       memoryPercent: memoryPercent(device),
       memoryText: memoryText(device),
-      resolutionText: resolutionText(device),
+      sizeModelText: sizeModelText(device),
       batteryIcon: batteryUtil.batteryIconOf(device),
       batteryText: batteryUtil.batteryText(device)
     })

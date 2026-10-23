@@ -57,7 +57,9 @@ async function main() {
   await normal._warmup
   assert.ok(effects.some(item => item[0] === 'read' && item[1] === 'pendingProjection'))
   assert.ok(effects.some(item => item[0] === 'connect'))
-  assert.ok(effects.some(item => item[0] === 'dithering'))
+  // 2026-10-23 有意改动：抖动出帧改走后端接口、用自己的 userToken，不再有第三方 token 需要预热。
+  // 判据挪成「预览页不得再碰抖动模块」，演示页那条不调抖动的断言照旧。
+  assert.ok(!effects.some(item => item[0] === 'dithering'))
   assert.strictEqual(normal.data.device.deviceId, 'verified-BLE')
   assert.strictEqual(normal.data.device.id, pending.device.id)
   normal.persistPending(normal.data.images)

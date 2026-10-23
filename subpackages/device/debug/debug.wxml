@@ -7,7 +7,7 @@
       <view class="tip-title">📡 怎么用</view>
       <view class="tip-line">1. 先「连接设备」，再点「获取设备信息」拿到屏幕/容量/电量。</view>
       <view class="tip-line">2. 逐个点下面的按钮试每个功能，底部控制台会显示收发的 16 进制原始数据。</view>
-      <view class="tip-line">3. 图传先用「彩条测试图」验通链路；「上传相册图片」走的是真实投屏的竖向链路（第三方出帧），但不写任何真实投屏记录。</view>
+      <view class="tip-line">3. 图传先用「彩条测试图」验通链路；「上传相册图片」走的是真实投屏的竖向链路（后端抖动接口出帧），但不写任何真实投屏记录。</view>
     </view>
 
     <!-- 连接卡片 -->
@@ -164,7 +164,7 @@
       </view>
       <view class="row-tip">默认 500：489 + 8 = 497，正好等于 MTU 500 的单次可写上限(MTU-3)。连接后会自动按此值协商一次，改完点「重新协商」即时生效，无需断开重连——<text class="row-tip-strong">只作用于当前这条连接</text>。iOS 不支持手动设置 MTU（由系统协商），点了只会把实际值读回来。当前会话实际 MTU {{sessionMtu || '--'}} 字节。</view>
       <view class="row-tip">以上四项（发送速度 / 发包窗口 / 每包字节 / MTU）<text class="row-tip-strong">改完立即生效</text>，下一次图传就按新值走，且<text class="row-tip-strong">只作用于调试台当次调试</text>；真实投屏的默认值 2026-08-14 起已同步成同一组「窗口 50 / 每包 489 / MTU 500 / 每包间隔 3ms」，本页把它们调开只是为了做对照，不会写回去——只有点上面那个绿色按钮才会把连接间隔 / 发送速度 / 发包窗口覆盖给它（每包字节与 MTU 永远不会写给真实投屏）。</view>
-      <view class="row-tip">「上传相册图片」走的就是<text class="row-tip-strong">真实投屏的竖向链路</text>：选原图 → 按设备物理分辨率（按广播ID区分大/小尺寸）竖向中心裁切 → 统一压缩 → 调第三方 seekink 抖动接口出六色 4bpp 帧 → 字节数校验 → BLE 图传。客户端不再做任何量化/调色，第三方给什么二进制就发什么。唯一与正式投屏不同的是<text class="row-tip-strong">不调设备管理/投屏记录接口</text>，联调不会在真实环境留下投屏记录和图库图片。</view>
+      <view class="row-tip">「上传相册图片」走的就是<text class="row-tip-strong">真实投屏的竖向链路</text>：选原图 → 按设备物理分辨率（按广播ID区分大/小尺寸）竖向中心裁切 → 统一压缩 → 调后端抖动接口（/Client/Basic/imageDitheringBinDownload）出六色 4bpp 帧 → 字节数校验 → BLE 图传。客户端不再做任何量化/调色，接口给什么二进制就发什么。唯一与正式投屏不同的是<text class="row-tip-strong">不调设备管理/投屏记录接口</text>，联调不会在真实环境留下投屏记录和图库图片。</view>
       <view class="btn-grid">
         <button class="btn btn-primary" disabled="{{busy || uploading}}" bindtap="cmdUploadTest">上传彩条测试图</button>
         <button class="btn btn-primary" disabled="{{busy || uploading}}" bindtap="cmdUploadAlbum">上传相册图片</button>
@@ -193,27 +193,6 @@
       <view class="row-tip">这两项<text class="row-tip-strong">直接改设备本体</text>：删除会真的抹掉相框里那张图（不可撤销，且不会同步到后端图库记录），切换会当场刷新相框正在显示的画面。不影响真实投屏的任何参数设置。</view>
     </view>
 
-    <!-- 第三方 Token（seekink 抖动出帧接口鉴权）：调用 /Client/Basic/getXTYUserToken 取 token 并展示，可复制。
-         与正式投屏出帧同源，纯网络请求，不依赖蓝牙连接。 -->
-    <view class="card">
-      <view class="card-title sec-title">第三方 Token</view>
-      <view class="row-tip">调用 <text class="row-tip-strong">/Client/Basic/getXTYUserToken</text> 取 seekink 抖动出帧接口的鉴权 token（正式出帧时拼「Bearer 空格 token」）。不依赖蓝牙连接。「强制重新登录」会带 isNewLogin=1 让后端重新登录取新 token（对应线上 401 自愈刷新路径）。</view>
-      <view class="btn-grid">
-        <button class="btn btn-primary" loading="{{fetchingToken}}" disabled="{{fetchingToken}}" data-force="0" bindtap="cmdFetchAuthToken">获取 Token</button>
-        <button class="btn btn-soft" disabled="{{fetchingToken}}" data-force="1" bindtap="cmdFetchAuthToken">强制重新登录取 Token</button>
-      </view>
-      <view wx:if="{{authToken}}" class="token-box">
-        <view class="token-head">
-          <text class="token-label">当前 Token（{{authToken.length}} 字符）</text>
-          <view class="ghost-btn" bindtap="copyAuthToken">复制</view>
-        </view>
-        <text class="token-value" user-select selectable>{{authToken}}</text>
-      </view>
-      <view wx:if="{{authTokenError}}" class="upload-status upload-status--err">
-        <text class="upload-status__text" user-select selectable>{{authTokenError}}</text>
-      </view>
-    </view>
-
     <!-- 收发日志控制台 -->
     <view class="card">
       <view class="card-head">
@@ -232,7 +211,7 @@
   </view>
 
   <!-- 离屏导出用画布（定位到屏幕外不可见）：与投屏预览页 #cropCanvas 同源，
-       「上传相册图片」把竖向中心裁切后的画面绘到这里，再导出成设备物理分辨率的 jpg 交给第三方出帧。 -->
+       「上传相册图片」把竖向中心裁切后的画面绘到这里，再导出成设备物理分辨率的 jpg 交给抖动接口出帧。 -->
   <canvas type="2d" id="cropCanvas" class="crop-canvas" />
 
   <global-toast id="globalToast"></global-toast>

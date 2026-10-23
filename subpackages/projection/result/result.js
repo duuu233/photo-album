@@ -1,6 +1,7 @@
 // 投屏结果页：进入时（status=progress）真实连接设备并走 BLE 图传，进度条与张数为真实进度；
-// 传完按真实结果切到「成功 / 失败」。正常投屏链路（2026-07-22 起设备帧改由 seekink 抖动接口生成，
-// 不再下载后端转码的 .bin，见 utils/dithering.js 与 docs/architecture/image-projection-pipeline.md）：
+// 传完按真实结果切到「成功 / 失败」。正常投屏链路（2026-07-22 起设备帧改由抖动接口生成，
+// 2026-10-23 起该接口由第三方迁到我方后端 /Client/Basic/imageDitheringBinDownload；
+// 不再下载 setUserProductUpload 转码的 .bin，见 utils/dithering.js 与 docs/architecture/image-projection-pipeline.md）：
 //   连接 → 读真实设备信息(0x01) → 逐张（两路网络并行，见 acquireFrame）：
 //     ① 设备帧：预览处理后的设备分辨率图 → 统一压缩(compressForUpload) → 抖动接口 → 六色4bpp帧
 //     ② 投屏记录：原图（进预览页前未操作过的图，_origSrc）→ 同一套统一压缩 →
@@ -645,7 +646,7 @@ Page(fold.adapt({
         // 字节数/头16/期望值这些排查用的数照旧打进日志（上面这条 console.log + 下面这条 error）。
         if (frameData.length !== expected4bpp) {
           console.error(
-            `[投屏] 出帧尺寸不符：第三方抖动接口返回 ${frameData.length} 字节(头16=${head})，` +
+            `[投屏] 出帧尺寸不符：抖动接口返回 ${frameData.length} 字节(头16=${head})，` +
               `电子纸设备 ${info.width}×${info.height} 需要 ${expected4bpp} 字节（帧字节数跟着上传图像素走，` +
               `先查上传给抖动接口的图是不是设备物理分辨率）`
           )
@@ -943,7 +944,7 @@ Page(fold.adapt({
     const sourceBytes = await this.readFileSize(filePath)
     const shrunk = await this.compressForUpload(filePath, info, sourceBytes)
     const ditherStartedAt = Date.now()
-    // 📌 排查日志（2026-09-03）：帧字节数 = **上传图像素** ÷ 2，第三方不按 type 补齐/缩放。
+    // 📌 排查日志（2026-09-03）：帧字节数 = **上传图像素** ÷ 2，抖动接口不按 type 补齐/缩放。
     //    此前全链路没有一处打过「喂给抖动接口的这张图到底多少像素」——只有字节数，反推不出来，
     //    出帧尺寸不符时只能靠帧长度倒算。这里补上，直接和设备尺寸对照。
     const fedSize = await this.probeImagePixels(shrunk.filePath)

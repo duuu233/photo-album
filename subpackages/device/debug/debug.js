@@ -9,10 +9,10 @@
 //   1) 连接设备   2) 读设备信息(0x01，拿到屏幕类型/容量/图片掩码/电量)   3) 逐个点其它按钮试。
 //
 // 「上传相册图片」＝真实投屏的竖向链路（2026-08-07 起）：
-//   选图(原图) → 按设备物理分辨率竖向中心裁切导出 → 统一压缩 → 第三方 seekink 抖动接口出
+//   选图(原图) → 按设备物理分辨率竖向中心裁切导出 → 统一压缩 → 后端抖动接口出
 //   六色 4bpp 帧 → 字节数铁闸校验 → BLE 图传。与「我的相框」正式投屏逐步同源，唯一的差别是
 //   **不碰设备管理/投屏记录接口**（不调 setUserProductUpload / editUserProductImgRecord），
-//   联调不会在真实环境留下投屏记录与图库图片。客户端不再做任何量化/调色，帧由第三方算好。
+//   联调不会在真实环境留下投屏记录与图库图片。客户端不再做任何量化/调色，帧由抖动接口算好。
 
 const permission = require('../../../utils/permission')
 const toast = require('../../../utils/toast')
@@ -24,29 +24,10 @@ const dithering = require('../../../utils/dithering')
 const deviceRotation = require('../../../utils/device-rotation')
 const media = require('../../../utils/media')
 const system = require('../../../utils/system')
-const api = require('../../../utils/api')
 const fold = require('../../../utils/fold-adapt')
 
-// 第三方（seekink 抖动出帧接口）鉴权 token 的返回归一化：与 dithering.js normalizeAuthToken 保持一致
-// （那份未导出，调试台单独复制一份）。接口返回形态未定——可能直接是 token 串，也可能包在
-// token/xtyToken/userToken/accessToken/access_token 字段里；若带 Bearer 前缀则剥掉，只留纯 token 串
-// （正式出帧时由 dithering.js 统一拼「Bearer 空格 token」）。
-function normalizeAuthToken(data) {
-  const raw =
-    typeof data === 'string'
-      ? data
-      : (data &&
-          (data.token ||
-            data.xtyToken ||
-            data.userToken ||
-            data.accessToken ||
-            data.access_token)) ||
-        ''
-  return String(raw).replace(/^Bearer\s+/i, '').trim()
-}
-
 // ── 真实投屏竖向链路用到的常量（与投屏预览页 / 结果页同源，改这里前先核对那两处）────────
-// 画布导出格式：与预览页 _exportCanvas 一致。第三方抖动接口在设备物理分辨率上量化成六色，
+// 画布导出格式：与预览页 _exportCanvas 一致。抖动接口在设备物理分辨率上量化成六色，
 // q=0.92 对最终成像无损，体积却只有 png 的 1/10（png 会让上传慢好几秒）。
 const EXPORT_FILE_TYPE = 'jpg'
 const EXPORT_QUALITY = 0.92
@@ -158,11 +139,6 @@ Page(fold.adapt({
     sessionMtu: 0, // 当前会话**实际**协商到的 MTU（连接/重协商后回填）
     effectiveChunk: DEBUG_IMG_DATA_BYTES, // 按实际 MTU 夹取后、本次图传真正会用的每包数据字节数
 
-    // 第三方 Token（seekink 抖动出帧接口鉴权，/Client/Basic/getXTYUserToken）
-    authToken: '', // 获取到的 token 串，展示并可复制
-    authTokenError: '', // 获取失败原因，常驻显示便于排查
-    fetchingToken: false, // 正在请求 token，避免并发点击
-
     // 状态
     busy: false, // 有指令正在等应答，避免并发
     uploading: false,
@@ -263,63 +239,6 @@ Page(fold.adapt({
 
   clearLogs() {
     this.setData({ logs: [] })
-  },
-
-  // ── 第三方 Token ────────────────────────────────────────
-  // 调用 /Client/Basic/getXTYUserToken 取 seekink 抖动出帧接口的鉴权 token 并展示（可复制）。
-  // 与正式投屏出帧（dithering.js requestFrameBin → ensureAuthToken）用的是同一接口、同一归一化逻辑，
-  // 方便在这里单独验证「token 能不能取到、长什么样」。纯网络请求，不依赖蓝牙连接。
-  // data-force="1" 时带 isNewLogin=1，强制后端重新登录取新 token（对应线上 401 自愈刷新那条路径）。
-  async cmdFetchAuthToken(e) {
-    if (this.data.fetchingToken) {
-      return
-    }
-    const forceNewLogin =
-      e && e.currentTarget && e.currentTarget.dataset.force === '1'
-    this.setData({ fetchingToken: true, authTokenError: '' })
-    this.appendLog({
-      type: 'act',
-      text: `点击：获取第三方Token（isNewLogin=${forceNewLogin ? 1 : 0}）`
-    })
-    try {
-      const data = await api.getXTYUserToken(forceNewLogin ? 1 : 0)
-      const token = normalizeAuthToken(data)
-      if (!token) {
-        throw new Error('接口返回为空（未解析到 token 字段）')
-      }
-      this.setData({ authToken: token })
-      this.appendLog({
-        type: 'ok',
-        text: `已获取第三方Token（${token.length} 字符）：${token}`
-      })
-      toast.show({ title: '已获取 Token', icon: 'none' })
-    } catch (error) {
-      const msg = (error && error.message) || '获取失败'
-      this.setData({ authTokenError: `获取第三方Token失败：${msg}` })
-      this.appendLog({ type: 'err', text: `获取第三方Token失败：${msg}` })
-      toast.warn({ title: msg, icon: 'none' })
-    } finally {
-      this.setData({ fetchingToken: false })
-    }
-  },
-
-  // 复制当前展示的第三方 token 到剪贴板。wx.setClipboardData 成功后系统自带「已复制」提示，
-  // 这里不再叠加 toast，只补一条控制台日志便于对照。
-  copyAuthToken() {
-    const token = this.data.authToken
-    if (!token) {
-      toast.warn({ title: '暂无可复制的 Token', icon: 'none' })
-      return
-    }
-    wx.setClipboardData({
-      data: token,
-      success: () => {
-        this.appendLog({ type: 'act', text: '已复制第三方Token到剪贴板' })
-      },
-      fail: () => {
-        toast.warn({ title: '复制失败', icon: 'none' })
-      }
-    })
   },
 
   // device-ble 上报的每一帧原始字节。图传数据包(0x21)与其应答(0x23)数量巨大，不逐条刷屏，用进度条体现。
@@ -974,7 +893,7 @@ Page(fold.adapt({
   //      （几何与预览页 coverCropOne 一致；调试台没有后端设备记录，verticalRotation 取缺省 0=不旋转）；
   //   ③ 统一压缩：长边缩到设备长边（②的产物恰为设备分辨率 → 原样通过，不二次降质），
   //      与 result.js compressForUpload 同口径；
-  //   ④ 第三方 seekink 抖动接口出六色 4bpp 帧：type 按大/小尺寸取（dithering.typeForDevice）；
+  //   ④ 后端抖动接口出六色 4bpp 帧：type 按大/小尺寸取（dithering.typeForDevice）；
   //   ⑤ 铁闸校验字节数 = 宽×高÷2，然后走 0x20→0x21→0x22 图传。
   // 与正式投屏唯一的差别：**不调设备管理/投屏记录接口**（setUserProductUpload、
   // editUserProductImgRecord 一概不发），联调不会在真实环境留下投屏记录和图库图片。
@@ -1017,11 +936,11 @@ Page(fold.adapt({
         type: 'act',
         text: `已按设备物理分辨率出图：${spec.width}×${spec.height}（${EXPORT_FILE_TYPE} q${EXPORT_QUALITY}），上传 ${(shrunk.bytes / 1024).toFixed(0)}KB${shrunk.compressed ? `（统一压缩 ${shrunk.compressMs}ms）` : '（已不大于设备尺寸，未二次压缩）'}`
       })
-      // ④ 第三方抖动接口出帧：客户端不做任何量化/调色，拿到什么就发什么
+      // ④ 抖动接口出帧：客户端不做任何量化/调色，拿到什么就发什么
       const type = dithering.typeForDevice(spec)
       this.appendLog({
         type: 'act',
-        text: `调用第三方抖动接口出帧：color=BWRYGB imageDitheringModes=2 type=${type}（${type === '1' ? '小尺寸' : '大尺寸'}）`
+        text: `调用抖动接口出帧：color=BWRYGB imageDitheringModes=2 type=${type}（${type === '1' ? '小尺寸' : '大尺寸'}）`
       })
       const ditherStartedAt = Date.now()
       frameData = await dithering.requestFrameBin({
@@ -1033,11 +952,11 @@ Page(fold.adapt({
       const head = protocol.bytesToHex(frameData.subarray(0, 16))
       this.appendLog({
         type: frameData.length === expected ? 'ok' : 'err',
-        text: `第三方出帧完成 ${Date.now() - ditherStartedAt}ms：${frameData.length} 字节（设备需六色4bpp ${expected} 字节）头16=${head}`
+        text: `抖动接口出帧完成 ${Date.now() - ditherStartedAt}ms：${frameData.length} 字节（设备需六色4bpp ${expected} 字节）头16=${head}`
       })
       if (frameData.length !== expected) {
         throw new Error(
-          `第三方返回的不是电子纸设备要的六色4bpp帧：收到 ${frameData.length} 字节，${spec.width}×${spec.height} 需要 ${expected} 字节`
+          `抖动接口返回的不是电子纸设备要的六色4bpp帧：收到 ${frameData.length} 字节，${spec.width}×${spec.height} 需要 ${expected} 字节`
         )
       }
     } catch (error) {
@@ -1062,7 +981,7 @@ Page(fold.adapt({
 
   // 竖向构图：按设备物理分辨率做 aspectFill 中心裁切 + 按竖向导出角旋转，导出 jpg 临时文件。
   // 几何与预览页 coverCropOne 逐行对齐（含「奇数直角要对调目标矩形宽高」那条），改前先核对那边。
-  // 导出画布恒为设备物理分辨率：第三方按上传图的像素量化成六色帧(字节数=宽×高÷2)，
+  // 导出画布恒为设备物理分辨率：抖动接口按上传图的像素量化成六色帧(字节数=宽×高÷2)，
   // 上传图必须正好是设备尺寸，否则帧大小对不上设备、图传必失败。
   coverCropPortrait(src, spec, rotateDegree) {
     return new Promise((resolve, reject) => {
