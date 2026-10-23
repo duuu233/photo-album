@@ -339,17 +339,31 @@ function loadProductCatalog() {
   return productCatalogLoading
 }
 
-function productCatalogWithin(ms) {
+// 最多等 ms：超时按 fallback 先返回，请求本身照常跑完
+function settleWithin(promise, ms, fallback) {
   let timer = null
   return Promise.race([
-    loadProductCatalog(),
+    promise,
     new Promise(resolve => {
-      timer = setTimeout(() => resolve([]), ms)
+      timer = setTimeout(() => resolve(fallback), ms)
     })
-  ]).then(list => {
+  ]).then(value => {
     clearTimeout(timer)
-    return list
+    return value
   })
+}
+
+function productCatalogWithin(ms) {
+  return settleWithin(loadProductCatalog(), ms, [])
+}
+
+// broadcastId 是否为产品列表里某个产品的广播名（去首尾空白、不区分大小写）
+function isProductBroadcastId(broadcastId, products) {
+  const own = String(broadcastId || '').trim().toUpperCase()
+  return (
+    !!own &&
+    products.some(item => item && String(item.broadcastId || '').trim().toUpperCase() === own)
+  )
 }
 
 // 给设备记录补上所属产品的 broadcastId：记录自带、且是产品列表里认得的广播名就不动；
@@ -358,11 +372,7 @@ function withProductBroadcastId(device, products) {
   if (!device || !products.length) {
     return device
   }
-  const own = String(device.broadcastId || '').trim().toUpperCase()
-  if (
-    own &&
-    products.some(item => item && String(item.broadcastId || '').trim().toUpperCase() === own)
-  ) {
+  if (isProductBroadcastId(device.broadcastId, products)) {
     return device
   }
   const productId = device.productId
@@ -372,6 +382,39 @@ function withProductBroadcastId(device, products) {
   const matched = products.find(item => item && String(item.productId) === String(productId))
   const broadcastId = String((matched && matched.broadcastId) || '').trim()
   return broadcastId ? Object.assign({}, device, { broadcastId }) : device
+}
+
+// 设备列表记录按上面仍认不出机型时，按 userProductId 调一次详情接口补（2026-10-23）。
+// 反馈：EC-370 详情页设备图/容量都对，首页与我的设备不对——同一条绑定记录，详情接口认得出机型、
+// 列表接口那条没有可用的 productId / broadcastId。只给认不出的记录调；详情正常返回的结果
+// （认不出记为空串）整次会话复用，绑定记录的机型不会变；请求失败静默、不缓存，下次再试。
+const detailBroadcastIds = {}
+
+function withDetailBroadcastId(device, products) {
+  const userProductId = String(firstValue(device && device.userProductId, ''))
+  if (!userProductId || !products.length || isProductBroadcastId(device.broadcastId, products)) {
+    return Promise.resolve(device)
+  }
+  const apply = broadcastId =>
+    broadcastId ? Object.assign({}, device, { broadcastId }) : device
+  if (Object.prototype.hasOwnProperty.call(detailBroadcastIds, userProductId)) {
+    return Promise.resolve(apply(detailBroadcastIds[userProductId]))
+  }
+  return http
+    .get(
+      '/Client/UserProduct/getUserProductDetail',
+      { userProductId },
+      { mock: false, showError: false }
+    )
+    .then(detail => {
+      const resolved = withProductBroadcastId(detail || {}, products)
+      const broadcastId = isProductBroadcastId(resolved.broadcastId, products)
+        ? String(resolved.broadcastId).trim()
+        : ''
+      detailBroadcastIds[userProductId] = broadcastId
+      return apply(broadcastId)
+    })
+    .catch(() => device)
 }
 
 function productScore(product, scan) {
@@ -854,9 +897,15 @@ module.exports = {
         pageSize: 100
       }),
       productCatalogWithin(PRODUCT_CATALOG_WAIT_MS)
-    ]).then(([data, products]) =>
-      pageData(data).map(device => normalizeDevice(withProductBroadcastId(device, products)))
-    )
+    ]).then(([data, products]) => {
+      const rows = pageData(data).map(device => withProductBroadcastId(device, products))
+      // 详情补机型最多再等 PRODUCT_CATALOG_WAIT_MS，超时先按已有信息出图，成功了下次进页面就用上
+      return settleWithin(
+        Promise.all(rows.map(device => withDetailBroadcastId(device, products))),
+        PRODUCT_CATALOG_WAIT_MS,
+        rows
+      ).then(list => list.map(normalizeDevice))
+    })
   },
 
   getDeviceDetail(deviceId) {

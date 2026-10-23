@@ -6,6 +6,8 @@
 //      都取不到时 shapeType === 1 按圆屏；
 //   ② 设备列表接口直接下发 broadcastId 就用它；没带的记录 api 按 productId 从产品列表回填，不按产品图等其它字段猜；
 //   ③ 产品列表拉不到不能挡住设备列表，也不弹错误，设备图退回默认；失败不缓存，下次还能拿到；
+//   ③' 列表记录仍认不出机型时按 userProductId 调详情接口补（2026-10-23：EC-370 详情对、首页/我的设备错）：
+//      只给认不出的记录调、不弹错误、会话内复用；产品列表拉不到时不调；
 //   ④ 三张图都真实存在（引用不存在的图小程序不报错，只会渲染成空白）。
 const assert = require('node:assert/strict')
 const fs = require('fs')
@@ -76,8 +78,18 @@ assert.equal(deviceThumb.DEFAULT_THUMB, DEFAULT)
     { userProductId: 'r-unknown-round', productId: 99, shapeType: 1, productName: '圆的' },
     { userProductId: 'r-user-name', productName: 'EB-169' },
     // 记录带的 broadcastId 不是任何产品的广播名（字段口径对不上，如带成了设备ID）：按 productId 回查
-    { userProductId: 'r-foreign', productId: 12, broadcastId: '37:0B:00:D0:44:5A', productName: '挂件' }
+    { userProductId: 'r-foreign', productId: 12, broadcastId: '37:0B:00:D0:44:5A', productName: '挂件' },
+    // 列表这条既没有可用的 productId 也没有 broadcastId，详情接口带着 productId：按详情补
+    { userProductId: 'r-detail', productName: '挂件2' }
   ]
+  // 详情接口返回（只有 r-detail 认得出机型，其余与列表一样认不出）
+  const details = {
+    'r-detail': { userProductId: 'r-detail', productId: 12 },
+    'r-img-only': { userProductId: 'r-img-only', productImg: 'https://oss/round.png' },
+    'r-unknown-round': { userProductId: 'r-unknown-round', productId: 99, shapeType: 1 },
+    'r-user-name': { userProductId: 'r-user-name' }
+  }
+  const detailCalls = []
   let productCalls = 0
   let lastOptions = null
   try {
@@ -85,6 +97,9 @@ assert.equal(deviceThumb.DEFAULT_THUMB, DEFAULT)
 
     // ③ 产品列表失败：设备列表照常返回，一律默认图（圆屏兜底除外），且不弹错误提示
     http.get = (url, data, options) => {
+      if (url === '/Client/UserProduct/getUserProductDetail') {
+        detailCalls.push(data.userProductId)
+      }
       assert.equal(url, '/Client/Product/getProductList')
       productCalls += 1
       lastOptions = options
@@ -93,13 +108,20 @@ assert.equal(deviceThumb.DEFAULT_THUMB, DEFAULT)
     const offline = await api.getDevices()
     assert.equal(offline.length, records.length)
     assert.equal(lastOptions.showError, false, '拉产品列表失败不能弹错误提示')
+    assert.equal(detailCalls.length, 0, '产品列表拉不到时不调详情补机型')
     assert.deepEqual(
       offline.map(item => item.thumb),
-      [DEFAULT, DEFAULT, RECTANGLE, DEFAULT, RECTANGLE, CIRCLE, DEFAULT, DEFAULT]
+      [DEFAULT, DEFAULT, RECTANGLE, DEFAULT, RECTANGLE, CIRCLE, DEFAULT, DEFAULT, DEFAULT]
     )
 
-    // 失败没有缓存：下一次能拿到产品列表
-    http.get = () => {
+    // 失败没有缓存：下一次能拿到产品列表。详情补机型直接走 http.get（静默），这里按地址分开计数
+    http.get = (url, data, options) => {
+      if (url === '/Client/UserProduct/getUserProductDetail') {
+        detailCalls.push(data.userProductId)
+        assert.equal(options.showError, false, '详情补机型失败不能弹错误提示')
+        return Promise.resolve(details[data.userProductId] || {})
+      }
+      assert.equal(url, '/Client/Product/getProductList')
       productCalls += 1
       return Promise.resolve({ pageData: catalog })
     }
@@ -116,6 +138,18 @@ assert.equal(deviceThumb.DEFAULT_THUMB, DEFAULT)
     assert.equal(byId('r-user-name').thumb, DEFAULT)
     assert.equal(byId('r-foreign').broadcastId, 'EC-370', '认不出的 broadcastId 按 productId 回查覆盖')
     assert.equal(byId('r-foreign').thumb, RECTANGLE)
+    assert.equal(byId('r-detail').broadcastId, 'EC-370', '列表认不出、详情认得出：按详情补')
+    assert.equal(byId('r-detail').thumb, RECTANGLE)
+    assert.deepEqual(
+      detailCalls.slice().sort(),
+      ['r-detail', 'r-img-only', 'r-unknown-round', 'r-user-name'],
+      '只给认不出机型的记录调详情'
+    )
+
+    // 详情结果整次会话复用（认不出的也记住），不再重复调
+    const again = await api.getDevices()
+    assert.equal(detailCalls.length, 4)
+    assert.equal(again.find(item => item.userProductId === 'r-detail').thumb, RECTANGLE)
 
     // 成功后整次会话复用，不再重复拉
     api.getUserProductDetail = () => Promise.resolve({ userProductId: 'd-1', productId: 11, productName: '圆屏' })
