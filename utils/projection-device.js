@@ -56,9 +56,13 @@ function resolveTransferInfo(device, info) {
     throw configurationError('电子纸设备图片槽位信息无效，请重新读取设备信息')
   }
   const legacy = legacyScreenForSize({ width, height })
-  const capacity = sameSize(info, { width, height }) && Number.isInteger(info.capacity) && info.capacity > 0
-    ? Math.min(info.capacity, maskSlotLimit)
-    : Math.min(legacy && legacy.capacity || 0, maskSlotLimit)
+  // 机型认得出就按机型（v1.6：EC-370 与 EF6-370 同尺寸同屏型，容量 11 对 95，只能靠机型分）。
+  const byModel = protocol.capacityOf(device.broadcastId)
+  const capacity = byModel
+    ? Math.min(byModel, maskSlotLimit)
+    : sameSize(info, { width, height }) && Number.isInteger(info.capacity) && info.capacity > 0
+      ? Math.min(info.capacity, maskSlotLimit)
+      : Math.min(legacy && legacy.capacity || 0, maskSlotLimit)
   return Object.assign({}, info, {
     width,
     height,

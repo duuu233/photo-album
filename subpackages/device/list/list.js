@@ -4,6 +4,7 @@ const system = require('../../../utils/system')
 const batteryUtil = require('../../../utils/battery')
 const lowBattery = require('../../../utils/low-battery')
 const deviceBle = require('../../../utils/device-ble')
+const protocol = require('../../../utils/frame-protocol')
 const media = require('../../../utils/media')
 const activeDevice = require('../../../utils/active-device')
 const deviceName = require('../../../utils/device-name')
@@ -429,7 +430,9 @@ Page(fold.adapt({
               usedMemory:
                 info.imgCount === undefined ? device.usedMemory : info.imgCount,
               totalMemory:
-                info.capacity === undefined ? device.totalMemory : info.capacity,
+                info.capacity === undefined
+                  ? device.totalMemory
+                  : protocol.capacityOf(device.broadcastId, info.screenType),
               playbackMode:
                 info.playMode === undefined ? device.playbackMode : info.playMode,
               intervalSeconds:

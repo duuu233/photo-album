@@ -442,7 +442,7 @@ Page(fold.adapt({
           device,
           {
             usedMemory: info.imgCount,
-            totalMemory: info.capacity,
+            totalMemory: protocol.capacityOf(device.broadcastId, info.screenType),
             playbackMode: info.playMode,
             intervalSeconds: info.intervalSeconds,
             // 真机回的是秒，换算不取整：300s(5 分钟) 取整会变成 1 小时，保存时再写回就把设备改了。
@@ -842,7 +842,9 @@ Page(fold.adapt({
               usedMemory:
                 info.imgCount === undefined ? device.usedMemory : info.imgCount,
               totalMemory:
-                info.capacity === undefined ? device.totalMemory : info.capacity,
+                info.capacity === undefined
+                  ? device.totalMemory
+                  : protocol.capacityOf(device.broadcastId, info.screenType),
               playbackMode:
                 info.playMode === undefined ? device.playbackMode : info.playMode,
               intervalSeconds:
@@ -1284,7 +1286,7 @@ Page(fold.adapt({
       prev,
       {
         usedMemory: info.imgCount,
-        totalMemory: info.capacity
+        totalMemory: protocol.capacityOf(prev.broadcastId, info.screenType)
       },
       batteryState
     )

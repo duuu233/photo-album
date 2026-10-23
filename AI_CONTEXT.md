@@ -72,7 +72,7 @@
 
 ## 投屏动态尺寸（2026-10-19）
 
-照片预览与结果页统一使用设备列表 `width/height` 作为物理像素；结果页由 `utils/projection-device.js` 在本次0x01完整身份校验后解析，缺失时才兼容旧型号表。400×400圆屏的帧长度为80,000字节。固件型号字节原样下发，不以后台横竖屏字段替代。未知容量只使用IMG_MASK槽位上限并服从固件拒绝；参数/尺寸错误不再统一报未连接。第三方仍沿用现有type策略和全帧校验，未真机确认圆屏色序/存储/画质。当前契约见 `docs/architecture/image-projection-pipeline.md`，实施见 `docs/changes/2026-10-19-投屏改用设备接口尺寸.md`。
+照片预览与结果页统一使用设备列表 `width/height` 作为物理像素；结果页由 `utils/projection-device.js` 在本次0x01完整身份校验后解析，缺失时才兼容旧型号表。400×400圆屏的帧长度为80,000字节。固件型号字节原样下发，不以后台横竖屏字段替代。容量按 `frame-protocol.capacityOf` 先认机型（broadcastId，规格书 v1.6 §5.2：EF6-370 95、EF6-589 51、EB-169 25、EC-370 11；EC-370 与 EF6-370 屏型同为0x01，只能靠机型分）、再认屏型（0x04→25），设备详情与投屏选槽同口径；仍未知时只使用IMG_MASK槽位上限并服从固件拒绝；参数/尺寸错误不再统一报未连接。第三方仍沿用现有type策略和全帧校验，未真机确认圆屏色序/存储/画质。当前契约见 `docs/architecture/image-projection-pipeline.md`，实施见 `docs/changes/2026-10-19-投屏改用设备接口尺寸.md`。
 
 ## Architecture Overview
 

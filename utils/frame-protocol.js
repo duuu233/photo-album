@@ -47,6 +47,29 @@ const SCREEN_TYPES = {
   0x03: { label: '7.3寸', model: 'EF6-730', width: 0, height: 0, capacity: 0 }
 }
 
+// 各机型最多可存图片张数（规格书 v1.6 §5.2）。EC-370（挂牌）与 EF6-370 同为 3.7 寸、屏型都报 0x01，
+// 屏型分不出两者，只能按机型（产品 broadcastId，即蓝牙广播名）区分；匹配口径同设备图：大小写不敏感的包含匹配。
+const MODEL_CAPACITY = [
+  { model: 'EC-370', capacity: 11 },
+  { model: 'EB-169', capacity: 25 },
+  { model: 'EF6-370', capacity: 95 },
+  { model: 'EF6-589', capacity: 51 }
+]
+
+// 不在 SCREEN_TYPES 里的新屏型容量（v1.6：0x04 1.69寸 只有 EB-169）。只给张数，不给尺寸——尺寸以设备列表为准。
+const NEW_SCREEN_CAPACITY = { 0x04: 25 }
+
+// 设备最多可存张数：先按机型，认不出机型再按屏型；都认不出返回 0（未知，不猜）。
+function capacityOf(model, screenType) {
+  const upper = String(model || '').toUpperCase()
+  const hit = upper && MODEL_CAPACITY.find(item => upper.indexOf(item.model) > -1)
+  if (hit) {
+    return hit.capacity
+  }
+  const screen = SCREEN_TYPES[screenType]
+  return (screen && screen.capacity) || NEW_SCREEN_CAPACITY[screenType] || 0
+}
+
 // 播放模式（6.7.3）：0x00 顺序 / 0x01 随机 / 0x02 手动。
 const PLAY_MODES = { 0x00: 'order', 0x01: 'random', 0x02: 'manual' }
 const PLAY_MODE_BYTES = { order: 0x00, random: 0x01, manual: 0x02 }
@@ -209,7 +232,7 @@ function parseDeviceInfo(data) {
     screenType,
     screen: screen.label || '',
     model: screen.model || '',
-    capacity: screen.capacity || 0,
+    capacity: capacityOf('', screenType),
     width: screen.width || 0,
     height: screen.height || 0,
     curImgIndex: b[27]
@@ -551,7 +574,9 @@ module.exports = {
   OTA_CHAR_CONTROL_UUID,
   OTA_CHAR_DATA_UUID,
   SCREEN_TYPES,
+  MODEL_CAPACITY,
   AD_DEVICE_ID_LEN,
+  capacityOf,
   playModeToString,
   playModeToByte,
   crc16Modbus,
