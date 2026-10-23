@@ -68,7 +68,7 @@
 
 ## 设备图按机型区分（2026-10-22）
 
-首页设备卡、我的设备、设备详情、搜索设备、命名弹窗、投屏选设备六处设备图统一由 `utils/device-thumb.js` 按产品 `broadcastId` 决定：EB-169（圆屏）用 `home-device-circle-thumb`，EC-370 用 `home-device-rectangle-thumb`，其余用原 `home-device-thumb`。已绑定记录用设备列表接口下发的 `broadcastId`，缺失时由 `api.getDevices/getDeviceDetail` 按 productId 回查产品列表补上，`bindDevice` 按广播名命中产品 broadcastId 加权匹配产品并写入；搜索结果按蓝牙广播名；用户起的设备名不参与；兜底 `shapeType === 1` 视为圆屏。新增机型只需在 `THUMB_BY_BROADCAST_ID` 加一行。详见 `docs/changes/2026-10-22-设备图按机型区分.md`。
+首页设备卡、我的设备、设备详情、搜索设备、命名弹窗、投屏选设备六处设备图统一由 `utils/device-thumb.js` 按产品 `broadcastId` 决定：EB-169（圆屏）用 `home-device-circle-thumb`，EC-370 用 `home-device-rectangle-thumb`，其余用原 `home-device-thumb`。已绑定记录用设备列表接口下发的 `broadcastId`，缺失或不是产品列表里的广播名时（2026-10-23）由 `api.getDevices/getDeviceDetail` 按 productId 回查产品列表补上，`bindDevice` 按广播名命中产品 broadcastId 加权匹配产品并写入；搜索结果按蓝牙广播名；用户起的设备名不参与；兜底 `shapeType === 1` 视为圆屏。新增机型只需在 `THUMB_BY_BROADCAST_ID` 加一行。详见 `docs/changes/2026-10-22-设备图按机型区分.md`。
 
 ## 投屏动态尺寸（2026-10-19）
 

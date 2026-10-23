@@ -74,7 +74,9 @@ assert.equal(deviceThumb.DEFAULT_THUMB, DEFAULT)
     { userProductId: 'r-img-only', productImg: 'https://oss/round.png', productName: '老相框' },
     { userProductId: 'r-own', productId: 11, broadcastId: 'EC-370', productName: '自带广播ID' },
     { userProductId: 'r-unknown-round', productId: 99, shapeType: 1, productName: '圆的' },
-    { userProductId: 'r-user-name', productName: 'EB-169' }
+    { userProductId: 'r-user-name', productName: 'EB-169' },
+    // 记录带的 broadcastId 不是任何产品的广播名（字段口径对不上，如带成了设备ID）：按 productId 回查
+    { userProductId: 'r-foreign', productId: 12, broadcastId: '37:0B:00:D0:44:5A', productName: '挂件' }
   ]
   let productCalls = 0
   let lastOptions = null
@@ -93,7 +95,7 @@ assert.equal(deviceThumb.DEFAULT_THUMB, DEFAULT)
     assert.equal(lastOptions.showError, false, '拉产品列表失败不能弹错误提示')
     assert.deepEqual(
       offline.map(item => item.thumb),
-      [DEFAULT, DEFAULT, RECTANGLE, DEFAULT, RECTANGLE, CIRCLE, DEFAULT]
+      [DEFAULT, DEFAULT, RECTANGLE, DEFAULT, RECTANGLE, CIRCLE, DEFAULT, DEFAULT]
     )
 
     // 失败没有缓存：下一次能拿到产品列表
@@ -112,6 +114,8 @@ assert.equal(deviceThumb.DEFAULT_THUMB, DEFAULT)
     assert.equal(byId('r-own').thumb, RECTANGLE, '记录自带 broadcastId 时不被产品列表覆盖')
     assert.equal(byId('r-unknown-round').thumb, CIRCLE)
     assert.equal(byId('r-user-name').thumb, DEFAULT)
+    assert.equal(byId('r-foreign').broadcastId, 'EC-370', '认不出的 broadcastId 按 productId 回查覆盖')
+    assert.equal(byId('r-foreign').thumb, RECTANGLE)
 
     // 成功后整次会话复用，不再重复拉
     api.getUserProductDetail = () => Promise.resolve({ userProductId: 'd-1', productId: 11, productName: '圆屏' })

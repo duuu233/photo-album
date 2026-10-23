@@ -352,9 +352,17 @@ function productCatalogWithin(ms) {
   })
 }
 
-// 给设备记录补上所属产品的 broadcastId：记录自带就不动，否则按 productId 精确匹配产品列表。
+// 给设备记录补上所属产品的 broadcastId：记录自带、且是产品列表里认得的广播名就不动；
+// 没带，或带的不是任何产品的广播名（字段口径对不上时）才按 productId 精确匹配产品列表覆盖。
 function withProductBroadcastId(device, products) {
-  if (!device || String(device.broadcastId || '').trim() || !products.length) {
+  if (!device || !products.length) {
+    return device
+  }
+  const own = String(device.broadcastId || '').trim().toUpperCase()
+  if (
+    own &&
+    products.some(item => item && String(item.broadcastId || '').trim().toUpperCase() === own)
+  ) {
     return device
   }
   const productId = device.productId
