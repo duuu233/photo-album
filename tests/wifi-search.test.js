@@ -4,7 +4,7 @@
 //   ② 扫描层：只有 includeWifi 的订阅者（搜索设备页）收录 WiFi 设备并标 commType，其它扫描入口照旧只认蓝牙版；
 //   ③ 搜索页：WiFi 行按 deviceNo 查产品规格（每台只查一次），查到直接显示 sizeModel、没配显示「--寸」，
 //      查不到/返回空壳记录/失败显示「未知设备」；未知设备点行或点底部按钮都直接弹「未知设备，请联系客服开通」、
-//      不进配网；查到的点行即进 WiFi 配置页；重新搜索时查不到的允许再查一次；
+//      不进配网；查到的点行即进 WiFi 配置页；不缓存，重新搜索时全部重查；
 //   ④ WiFi 配置页「下一步」不把密码带进页面路由；两张新页面已在 app.json 注册。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -215,14 +215,18 @@ async function main() {
   await page.scan()
   assert.equal(state.scanOptions.includeWifi, true, '搜索设备页同时搜蓝牙版与 WiFi 版')
   page.applyScanResult(page.scanSeq, [wifiRow('w1', 'E348C21ED428'), wifiRow('w2', 'D0CF13F02FF8')])
-  assert.deepEqual(queried.slice(5), ['D0CF13F02FF8'], '重新搜索：查不到的再查一次，查到的不重复查')
-  checked('重新搜索时未知设备可再查一次')
+  // 2026-10-26 改为不缓存：原断言「查到的不重复查」随之改为「全部重查」，判据仍是「重新搜索时查询结果不沿用上一轮」
+  assert.deepEqual(queried.slice(5), ['E348C21ED428', 'D0CF13F02FF8'], '重新搜索：不缓存，查到的和查不到的都重查')
+  checked('重新搜索时全部重查（不缓存）')
 
   // ── 规格接口返回归一：只认产品身份 ──
   {
     const api = require('../utils/api')
     assert.equal(api.normalizeWifiProduct({ productId: 21, productName: 'WiFi相框', sizeModel: '13.3寸' }).sizeModel, '13.3寸')
     assert.equal(api.normalizeWifiProduct([{ productId: '21', sizeModel: null }]).sizeModel, '', '列表形状取第一条；没配尺寸为空串')
+    assert.equal(api.normalizeWifiProduct({ list: [{ productId: 21, sizeModel: '13.3寸' }], total: 1 }).sizeModel, '13.3寸', '分页形状取第一条')
+    assert.equal(api.normalizeWifiProduct({ product: { productId: 21, sizeModel: '13.3寸' } }).sizeModel, '13.3寸', '包在 product 字段里')
+    assert.equal(api.normalizeWifiProduct({ list: [], total: 0 }), null, '空分页算查不到')
     for (const empty of [null, undefined, '', [], {}, { productId: 0, productName: null, sizeModel: null }, { productId: '0' }, { sizeModel: '13.3寸' }]) {
       assert.equal(api.normalizeWifiProduct(empty), null, `${JSON.stringify(empty)} 应算查不到`)
     }

@@ -437,19 +437,39 @@ function scanSizeModel(scan, products) {
   return best ? String(best.sizeModel || '').trim() : ''
 }
 
-// WiFi 版设备产品规格查询结果缓存（2026-10-26）：按 12 位 deviceNo，只缓存**查到**的结果，5 分钟有效。
-// 查不到 / 接口失败不缓存——口径是「失败按未知设备处理，用户重新进入搜索页时可再查一次」；
-// 同一次搜索里不重复查由搜索页自己按 deviceNo 记账（见 bind.js lookupWifiProduct）。
-const WIFI_PRODUCT_CACHE_MS = 5 * 60 * 1000
-const wifiProductCache = {}
-
 // getProductByDevice 的返回归一成产品对象；查不到返回 null。兼容直接回对象或回列表（取第一条）两种形状。
 // 「查到」只认产品身份：有效的 productId（非空、非 0）或非空的产品名。空数据、空对象、字段全是
 // null / 0 的空壳记录一律算查不到（2026-10-26 收紧：原先只要 sizeModel 有值、或 productId 为 0 也算查到，
 // 后端对未开通设备回一条默认值记录时会被当成已开通，「未知设备」就拦不住）。
+// 还没拿到真实返回样例，外面再包一层的常见形状一并兼容：分页（list / records / rows）、
+// 或包在 product / productInfo / data 字段里。
+function unwrapWifiProduct(data) {
+  let raw = data
+  for (let depth = 0; depth < 3 && raw && typeof raw === 'object'; depth++) {
+    if (Array.isArray(raw)) {
+      raw = raw[0]
+      continue
+    }
+    const list = [raw.list, raw.records, raw.rows].find(Array.isArray)
+    if (list) {
+      raw = list[0]
+      continue
+    }
+    const inner = [raw.product, raw.productInfo, raw.data].find(
+      value => value && typeof value === 'object'
+    )
+    if (inner && raw.productId === undefined && raw.sizeModel === undefined) {
+      raw = inner
+      continue
+    }
+    break
+  }
+  return raw
+}
+
 function normalizeWifiProduct(data) {
-  const raw = Array.isArray(data) ? data[0] : data
-  if (!raw || typeof raw !== 'object') {
+  const raw = unwrapWifiProduct(data)
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return null
   }
   const productName = String(firstValue(raw.productName, raw.name, raw.model, '')).trim()
@@ -510,14 +530,12 @@ module.exports = {
   // WiFi 版设备按 12 位 deviceId 查产品规格（尺寸、旋转、方向等，老服务接口，2026-10-26）。
   // 查到返回产品对象，查不到 / 返回空返回 null；网络或接口失败 reject。
   // 静默（不弹错误）、不做网络重试：失败 / 超时由调用方直接按「未知设备」处理。
+  // 不做结果缓存，每次都实时查（2026-10-26 产品口径，与老接口一致）；同一次搜索里每台只查一次由
+  // 搜索页自己按 deviceNo 记账（见 bind.js lookupWifiProduct），重新搜索全部重查。
   async getProductByDevice(deviceNo) {
     const key = String(deviceNo || '').trim().toUpperCase()
     if (!key) {
       return null
-    }
-    const cached = wifiProductCache[key]
-    if (cached && Date.now() - cached.at < WIFI_PRODUCT_CACHE_MS) {
-      return cached.product
     }
     const data = await http.get(
       '/Client/Product/getProductByDevice',
@@ -525,9 +543,8 @@ module.exports = {
       { mock: false, showError: false, retry: false }
     )
     const product = normalizeWifiProduct(data)
-    if (product) {
-      wifiProductCache[key] = { at: Date.now(), product }
-    }
+    // 联调期保留：原始返回与归一结果一起打出来，规格显示不对时直接对照（真机 vConsole / 开发者工具可见）
+    console.log('[WiFi规格查询]', key, JSON.stringify(data), product ? `→ 查到 sizeModel=${product.sizeModel || '(空)'}` : '→ 未知设备')
     return product
   },
 

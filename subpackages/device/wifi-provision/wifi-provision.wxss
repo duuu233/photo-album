@@ -61,9 +61,17 @@
   border-radius: 50%;
 }
 
-/* 未开始：灰色空心圆 */
+/* 未开始：白底灰边圆圈，圈里是序号 1~4 */
 .is-pending .step-icon {
+  background: #ffffff;
   border: 3rpx solid #c8cdd5;
+}
+
+.step-icon__no {
+  color: #8b9098;
+  font-size: 24rpx;
+  font-weight: 700;
+  line-height: 1;
 }
 
 /* 执行中：橙色转圈 */
@@ -93,22 +101,12 @@
   line-height: 1;
 }
 
-.step-no {
-  min-width: 36rpx;
-  margin-right: 8rpx;
-  color: #8b9098;
-  font-size: 28rpx;
-  font-weight: 700;
-}
-
 .step-text {
   color: #8b9098;
   font-size: 28rpx;
 }
 
-.is-loading .step-no,
 .is-loading .step-text,
-.is-done .step-no,
 .is-done .step-text {
   color: #2a2d32;
 }
@@ -117,7 +115,6 @@
   font-weight: 700;
 }
 
-.is-fail .step-no,
 .is-fail .step-text {
   color: #e5533d;
 }

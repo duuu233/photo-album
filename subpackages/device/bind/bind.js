@@ -117,13 +117,9 @@ Page(fold.adapt({
     this.scanOrder = {}
     this.scanOrderNext = 0
 
-    // WiFi 规格查询：上一轮查不到 / 失败的，重新搜索时允许再查一次；查到的接口层另有 5 分钟缓存
-    const lookups = this.wifiLookups || {}
-    Object.keys(lookups).forEach(deviceNo => {
-      if (lookups[deviceNo].status === 'unknown') {
-        delete lookups[deviceNo]
-      }
-    })
+    // WiFi 规格查询不做缓存（2026-10-26）：每次重新搜索都换一本新账，全部重查。
+    // 换新对象而不是清空旧对象：上一轮在途的查询回来时写的是旧账本，不会污染本轮
+    this.wifiLookups = {}
 
     this.setData({
       scanning: true,
@@ -277,8 +273,9 @@ Page(fold.adapt({
     }
   },
 
-  // 按 12 位 deviceNo 查 WiFi 产品规格（api.getProductByDevice）。本页每台只查一次；
-  // 查不到 / 失败 / 超时一律按「未知设备」，不重试（重新搜索或重进本页时可再查）。
+  // 按 12 位 deviceNo 查 WiFi 产品规格（api.getProductByDevice）。同一次搜索每台只查一次（边搜边显示会
+  // 反复回调同一台，不能每次都打接口）；不跨搜索缓存，重新搜索全部重查。
+  // 查不到 / 失败 / 超时一律按「未知设备」，不重试。
   lookupWifiProduct(deviceNo) {
     const lookups = this.wifiLookups || (this.wifiLookups = {})
     if (!deviceNo || lookups[deviceNo]) {
@@ -294,8 +291,8 @@ Page(fold.adapt({
       })
       .then(result => {
         lookups[deviceNo] = result
-        if (this.unloaded) {
-          return
+        if (this.unloaded || lookups !== this.wifiLookups) {
+          return // 页面已卸载，或已重新搜索（本条属于上一轮）
         }
         const fields = this.wifiSpecFields(result)
         this.setData({

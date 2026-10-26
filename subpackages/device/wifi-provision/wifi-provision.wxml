@@ -14,13 +14,13 @@
 
     <view class="provision-steps glass-panel">
       <view wx:for="{{steps}}" wx:key="key" class="provision-step is-{{item.status}}">
+        <!-- 状态圈：未开始的白圈里默认显示序号 1~4；执行中转圈，通过打勾，失败打叉 -->
         <view class="step-icon">
           <view wx:if="{{item.status === 'loading'}}" class="step-icon__spinner"></view>
           <text wx:elif="{{item.status === 'done'}}" class="step-icon__mark">✓</text>
           <text wx:elif="{{item.status === 'fail'}}" class="step-icon__mark">×</text>
+          <text wx:else class="step-icon__no">{{index + 1}}</text>
         </view>
-        <!-- 步骤序号 1~4，排在状态图标之后、文字之前 -->
-        <text class="step-no">{{index + 1}}.</text>
         <text class="step-text">{{item.text}}</text>
       </view>
     </view>
