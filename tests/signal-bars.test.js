@@ -32,6 +32,7 @@ const host = /:host\s*\{([^}]*)\}/.exec(css)
 assert.ok(host, '组件要声明 :host 样式')
 assert.ok(/display:\s*inline-flex/.test(host[1]) && /align-items:\s*center/.test(host[1]) && /line-height:\s*0/.test(host[1]), ':host 为 inline-flex、垂直居中、行高 0')
 assert.ok(!/vertical-align/.test(css), '不再靠 vertical-align 对齐（行内基线对齐正是错位的来源）')
+assert.ok(/\.signal-bars__bar\.is-on\s*\{[^}]*background:\s*#0e9f87/i.test(css), '点亮的格为绿色（与 WiFi 图标同色）')
 for (const [file, rowSelector] of [['subpackages/device/bind/bind.wxss', '.nearby-sub--row'], ['subpackages/device/wifi-list/wifi-list.wxss', '.wifi-item']]) {
   const text = fs.readFileSync(path.join(root, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
   const rule = new RegExp(`(^|\\})\\s*${rowSelector.replace('.', '\\.')}\\s*\\{([^}]*)\\}`).exec(text)
