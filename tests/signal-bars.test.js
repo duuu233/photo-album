@@ -25,4 +25,17 @@ for (const page of ['subpackages/device/bind/bind.json', 'subpackages/device/wif
 const tpl = fs.readFileSync(path.join(root, 'components/signal-bars/signal-bars.wxml'), 'utf8')
 assert.equal((tpl.match(/signal-bars__bar/g) || []).length, 4, '4 根竖条')
 
+// 与左边文字上下对齐（2026-10-26 反馈）：外层节点要是不占行高、内容居中的 inline-flex，
+// 否则默认行内节点会撑出一行行高、把竖条落在基线上，和「信号」二字错开
+const css = fs.readFileSync(path.join(root, 'components/signal-bars/signal-bars.wxss'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+const host = /:host\s*\{([^}]*)\}/.exec(css)
+assert.ok(host, '组件要声明 :host 样式')
+assert.ok(/display:\s*inline-flex/.test(host[1]) && /align-items:\s*center/.test(host[1]) && /line-height:\s*0/.test(host[1]), ':host 为 inline-flex、垂直居中、行高 0')
+assert.ok(!/vertical-align/.test(css), '不再靠 vertical-align 对齐（行内基线对齐正是错位的来源）')
+for (const [file, rowSelector] of [['subpackages/device/bind/bind.wxss', '.nearby-sub--row'], ['subpackages/device/wifi-list/wifi-list.wxss', '.wifi-item']]) {
+  const text = fs.readFileSync(path.join(root, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const rule = new RegExp(`(^|\\})\\s*${rowSelector.replace('.', '\\.')}\\s*\\{([^}]*)\\}`).exec(text)
+  assert.ok(rule && /align-items:\s*center/.test(rule[2]), `${file} ${rowSelector} 要垂直居中，信号格才和文字对齐`)
+}
+
 console.log('signal-bars: ok')
