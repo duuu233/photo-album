@@ -109,7 +109,11 @@ async function main() {
       '接口【在线状态】GET',
       '/api/device/online（IoT 前端对接文档 2.1',
       '参数 {"deviceNo":"E348C21ED428","since":1000000}',
-      '返回 {"online":true}'
+      '返回 {"online":true}',
+      // 按后端配网全流程 ①~⑯ 打的标签与参数（只是日志）
+      '【流程①②】', '蓝牙广播 IJ_E348C21ED428', 'XT_ESP_D428', '【流程③】', '【流程④】',
+      '【流程⑤】', '"host":"mqtt.boltfox.cn","port":11883,"usr":"xt-boltstar-device"', '【流程⑥】', '【流程⑦】',
+      '【流程⑧~⑬】', '【流程⑭】', '【流程⑮】App 调老服务完成绑定（userNo ↔ deviceNo=E348C21ED428）', '【流程⑯】'
     ]) {
       assert.ok(all.indexOf(marker) > -1, `日志里要有「${marker}」`)
     }
