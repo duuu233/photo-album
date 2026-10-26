@@ -14,6 +14,10 @@
 // WiFi 密码以明文经蓝牙下发。固件若强制加密，需在这里补 DH 协商。
 //
 // 自定义数据（数据帧子类型 0x13）承载协议文档 2.2 的 JSON 消息（如 mqtt_config / mqtt_config_ack）。
+//
+// 设备扫描附近 WiFi（2026-10-26）：手机发控制帧 0x09，设备扫描后回数据帧 0x11（WiFi 列表），
+// 每项为 len(1) | rssi(1，有符号 dBm) | ssid(len-1)。配网 WiFi 列表页用它代替手机自己扫（iOS 拿不到列表、
+// 手机扫的也不一定是设备那边收得到的网络）；ESP32 只支持 2.4G，设备扫出来的天然就是 2.4G。
 const notifyHub = require('./ble-notify-hub')
 
 const SERVICE_UUID = 'FFFF'
@@ -28,7 +32,8 @@ const CTRL = {
   SET_OPMODE: 0x02,
   CONNECT_WIFI: 0x03,
   GET_WIFI_STATUS: 0x05,
-  DISCONNECT_BLE: 0x08
+  DISCONNECT_BLE: 0x08,
+  GET_WIFI_LIST: 0x09
 }
 
 const DATA = {
@@ -38,7 +43,8 @@ const DATA = {
   ERROR: 0x12,
   CUSTOM: 0x13,
   STA_END_REASON: 0x15,
-  STA_RSSI: 0x16
+  STA_RSSI: 0x16,
+  WIFI_LIST: 0x11
 }
 
 const FC = {
@@ -213,6 +219,23 @@ function parseWifiState(data) {
   return state
 }
 
+// 设备回的 WiFi 列表：len | rssi | ssid(len-1) 依次排列。长度不合法的残尾丢弃。
+function parseWifiList(data) {
+  const bytes = Array.from(data || [])
+  const list = []
+  let i = 0
+  while (i < bytes.length) {
+    const len = bytes[i]
+    if (!len || i + 1 + len > bytes.length) {
+      break
+    }
+    const rssi = bytes[i + 1] > 127 ? bytes[i + 1] - 256 : bytes[i + 1]
+    list.push({ ssid: utf8Decode(bytes.slice(i + 2, i + 1 + len)), rssi })
+    i += 1 + len
+  }
+  return list
+}
+
 // 自定义数据里的 JSON 消息。协议文档表格写的是 date / ack_msg id，示例写的是 data / ack_msgid，两种都认。
 function parseCustom(data) {
   const text = utf8Decode(data)
@@ -281,7 +304,11 @@ function handleMessage(session, message) {
   if (!message.isData) {
     return // 控制帧（ACK 等）本期不需要处理
   }
-  if (message.subtype === DATA.WIFI_STATE) {
+  if (message.subtype === DATA.WIFI_LIST) {
+    const list = parseWifiList(message.data)
+    console.log('[BluFi] 设备扫描到 WiFi', list.length, '个')
+    emit(session, 'wifiList', list)
+  } else if (message.subtype === DATA.WIFI_STATE) {
     const state = parseWifiState(message.data)
     console.log('[BluFi] WiFi 状态', JSON.stringify(state))
     emit(session, 'wifiState', state)
@@ -491,6 +518,13 @@ function createApi(session) {
       return writeFrames(session, false, CTRL.CONNECT_WIFI, [])
     },
 
+    // 让设备扫描附近 WiFi：发 0x09，等设备回 0x11 列表。超时 resolve(null)（固件不支持 / 扫描失败）
+    async scanWifi(timeout) {
+      const wait = waitFor(session, 'wifiList', null, timeout || 12000)
+      await writeFrames(session, false, CTRL.GET_WIFI_LIST, [])
+      return wait
+    },
+
     requestWifiStatus() {
       return writeFrames(session, false, CTRL.GET_WIFI_STATUS, [])
     },
@@ -537,5 +571,6 @@ module.exports = {
   createDecoder,
   parseWifiState,
   parseCustom,
+  parseWifiList,
   connect
 }

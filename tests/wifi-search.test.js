@@ -6,7 +6,8 @@
 //      查不到/返回空壳记录/失败显示「未知设备」；未知设备点行或点底部按钮都直接弹「未知设备，请联系客服开通」
 //      （本页底部提示弹层，与首页提示同一套样式）、
 //      不进配网；查到的点行即进 WiFi 列表页；不缓存，重新搜索时全部重查；
-//   ④ 配网前两页（2026-10-26 产品调整流程）：搜索页 → WiFi 列表页（只列 2.4G、同名去重、信号强在前；底部可手动输入）
+//   ④ 配网前两页（2026-10-26 产品定的流程）：搜索页 → WiFi 列表页（蓝牙连设备、由设备扫描附近 WiFi，同名去重、
+//      信号强在前、4 格信号；可重新搜索、手动输入）
 //      → 选中即进 WiFi 账号密码页并带上名称 → 「下一步」把名称 / 密码交给配网流程，密码不进页面路由；
 //      账号密码页的切换图标回到列表页；三张配网页已在 app.json 注册。
 const assert = require('node:assert/strict')
@@ -243,63 +244,71 @@ async function main() {
   }
 
   // ── ④ WiFi 列表页 → 账号密码页 ──
-  const loadList = (connected, platform = 'android', listFail) => {
-    const world = { listHandler: null }
+  const loadList = options => {
+    const world = { closed: 0, scans: 0, connects: [] }
+    const session = {
+      async scanWifi() { world.scans++; return options.list === undefined ? [] : options.list },
+      close() { world.closed++ }
+    }
     const loaded = loadPage('subpackages/device/wifi-list/wifi-list.js', () => ({
       system: { getLayoutMetrics: () => ({ statusBarHeight: 20, safeBottom: 0 }) },
-      'fold-adapt': { adapt: value => value }
-    }), {
-      getDeviceInfo: () => ({ platform }),
-      startWifi: ({ success }) => success({}),
-      getConnectedWifi: ({ success, fail }) => (connected ? success({ wifi: connected }) : fail({ errCode: 12005 })),
-      onGetWifiList: handler => { world.listHandler = handler },
-      getWifiList: ({ success, fail }) => (listFail ? fail(listFail) : success({}))
-    })
+      'fold-adapt': { adapt: value => value },
+      bluetooth: { async openAdapter() {}, async whenScanStopped() {} },
+      blufi: { async connect(id) { world.connects.push(id); if (options.connectError) throw new Error('fail'); return session } },
+      'wifi-provision': { getTarget: () => (options.noTarget ? null : { bleDeviceId: 'ble-w1', deviceNo: 'E348C21ED428' }) }
+    }))
     return Object.assign(loaded, { world })
   }
   {
-    const { page: list, state: listState, world } = loadList({ SSID: 'Home5G', frequency: 5180 })
-    list.onLoad({ deviceNo: 'E348C21ED428', name: 'IJ_E348C21ED428', spec: encodeURIComponent('13.3寸') })
-    await flush()
-    assert.equal(list.data.loading, true, '进页面就去取附近 WiFi')
-    world.listHandler({ wifiList: [
-      { SSID: 'Home-2.4', frequency: 2437, signalStrength: 60 },
-      { SSID: 'Home5G', frequency: 5180, signalStrength: 99 },
-      { SSID: 'Home-2.4', frequency: 2412, signalStrength: 80 },
-      { SSID: 'Cafe', frequency: 2462, signalStrength: 90 },
-      { SSID: 'Odd', frequency: 5, signalStrength: 95 },
-      { SSID: '', frequency: 2412, signalStrength: 70 }
+    const { page: list, state: listState, world } = loadList({ list: [
+      { ssid: 'Home', rssi: -70 },
+      { ssid: 'Cafe', rssi: -50 },
+      { ssid: 'Home', rssi: -60 },
+      { ssid: '', rssi: -40 },
+      { ssid: 'Far', rssi: -85 }
     ] })
-    assert.equal(list.data.loading, false)
-    assert.deepEqual(list.data.wifiList.map(item => item.ssid), ['Cafe', 'Home-2.4'], '只留 2.4G（5G、按 GHz 给的 5G 都不列）、同名去重、信号强在前')
-    list.pickWifi({ currentTarget: { dataset: { ssid: 'Home-2.4' } } })
+    list.onLoad({ deviceNo: 'E348C21ED428', name: 'IJ_E348C21ED428', spec: encodeURIComponent('13.3寸') })
+    assert.equal(list.data.scanning, true, '进页面先显示「正在搜索网络...」')
+    await flush()
+    await flush()
+    assert.deepEqual(world.connects, ['ble-w1'], '用搜索时拿到的蓝牙句柄连设备')
+    assert.equal(world.scans, 1, '让设备扫描附近 WiFi，不用手机扫')
+    assert.equal(list.data.scanning, false)
+    assert.deepEqual(list.data.wifiList.map(item => item.ssid), ['Cafe', 'Home', 'Far'], '同名取信号强的、隐藏网络不列、信号强在前')
+    assert.deepEqual(list.data.wifiList.map(item => item.level), [4, 3, 1], '信号强度分 4 格')
+    list.pickWifi({ currentTarget: { dataset: { ssid: 'Home' } } })
     const url = listState.navs.at(-1).url
     assert.ok(url.indexOf('/subpackages/device/wifi-config/wifi-config?') === 0, '选中即进账号密码页')
-    assert.ok(url.indexOf('ssid=Home-2.4') > -1, '名称带过去')
-    assert.ok(url.indexOf('deviceNo=E348C21ED428') > -1)
+    assert.ok(url.indexOf('ssid=Home') > -1, '名称带过去')
+    assert.equal(world.closed, 0, '去账号密码页时蓝牙连接保留，给配网复用')
     list.manualInput()
     assert.ok(/ssid=($|&)/.test(listState.navs.at(-1).url), '手动输入：名称留空进账号密码页')
-    checked('WiFi 列表页：只列 2.4G，选中进账号密码页，可手动输入')
+    list.onUnload()
+    assert.equal(world.closed, 1, '离开列表页（返回搜索页）断开蓝牙')
+    checked('WiFi 列表页：蓝牙连设备 → 设备扫描 → 列表（名称 + 信号），选中进账号密码页')
   }
   {
-    const gps = loadList(null, 'android', { errCode: 12006, errMsg: 'getWifiList:fail:need location' })
-    gps.page.onLoad({})
+    const failed = loadList({ connectError: true })
+    failed.page.onLoad({})
     await flush()
     await flush()
-    assert.equal(gps.page.data.loading, false)
-    assert.ok(/定位/.test(gps.page.data.tip), '定位没开：提示打开定位或手动输入')
-    const ios = loadList({ SSID: 'HomeWiFi' }, 'ios')
-    ios.page.onLoad({})
+    assert.equal(failed.page.data.scanning, false)
+    assert.ok(/连接设备失败/.test(failed.page.data.tip))
+    const silent = loadList({ list: null })
+    silent.page.onLoad({})
     await flush()
     await flush()
-    assert.deepEqual(ios.page.data.wifiList.map(item => item.ssid), ['HomeWiFi'], 'iOS 拿不到附近列表，只列当前连接的网络')
-    assert.equal(ios.page.data.wifiList[0].band, '', 'iOS 判不了频段，不标 2.4G')
-    const ios5g = loadList({ SSID: 'Home5G', frequency: 5180 }, 'ios')
-    ios5g.page.onLoad({})
+    assert.ok(/设备未返回WiFi列表/.test(silent.page.data.tip), '设备没回列表（固件不支持 / 扫描失败）给提示')
+    silent.page.rescan()
     await flush()
     await flush()
-    assert.equal(ios5g.page.data.wifiList.length, 0, '明确是 5G 的不列')
-    checked('定位没开给提示；iOS 只列当前网络')
+    assert.equal(silent.world.scans, 2, '可重新搜索')
+    const lost = loadList({ noTarget: true })
+    lost.page.onLoad({})
+    await flush()
+    assert.ok(/设备信息已失效/.test(lost.page.data.tip))
+    assert.equal(lost.world.connects.length, 0)
+    checked('连不上设备 / 设备没回列表 / 交接信息丢失都给提示，可重新搜索或手动输入')
   }
   {
     const world = { credentials: null, back: 0, redirect: null }

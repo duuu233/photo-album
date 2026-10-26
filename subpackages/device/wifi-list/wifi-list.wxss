@@ -42,9 +42,35 @@
   font-weight: 700;
 }
 
-.wifi-list-head__refresh {
-  width: 40rpx;
-  height: 40rpx;
+.wifi-list-head__rescan {
+  color: #ff6421;
+  font-size: 26rpx;
+}
+
+.wifi-list-scanning {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48rpx 0;
+  color: #8b9098;
+  font-size: 26rpx;
+}
+
+.wifi-list-spinner {
+  width: 32rpx;
+  height: 32rpx;
+  margin-right: 14rpx;
+  box-sizing: border-box;
+  border: 4rpx solid rgba(255, 98, 31, 0.18);
+  border-top-color: #ff621f;
+  border-radius: 50%;
+  animation: wifiListSpin 0.8s linear infinite;
+}
+
+@keyframes wifiListSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .wifi-list-sub {
@@ -81,13 +107,39 @@
   white-space: nowrap;
 }
 
-.wifi-item__band {
+/* 信号强度 4 格：由低到高递增，点亮为青绿（与 WiFi 图标同色） */
+.wifi-signal {
+  display: flex;
+  align-items: flex-end;
+  height: 26rpx;
   margin-left: 16rpx;
-  padding: 4rpx 12rpx;
-  color: #0e9f87;
-  background: rgba(18, 184, 150, 0.12);
-  border-radius: 999rpx;
-  font-size: 20rpx;
+}
+
+.wifi-signal__bar {
+  width: 6rpx;
+  margin-left: 4rpx;
+  background: #dfe3e8;
+  border-radius: 2rpx;
+}
+
+.wifi-signal__bar:nth-child(1) {
+  height: 8rpx;
+}
+
+.wifi-signal__bar:nth-child(2) {
+  height: 14rpx;
+}
+
+.wifi-signal__bar:nth-child(3) {
+  height: 20rpx;
+}
+
+.wifi-signal__bar:nth-child(4) {
+  height: 26rpx;
+}
+
+.wifi-signal__bar.is-on {
+  background: #0e9f87;
 }
 
 .wifi-item__arrow {

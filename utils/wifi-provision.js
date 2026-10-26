@@ -2,7 +2,8 @@
 //
 // 页面上的四个状态与完成方（接口文档 2.4）：
 //   1 手机网络正常           —— wx.getNetworkType，不是 none 即可
-//   2 设备网络配置已完成     —— BluFi 连上设备，下发 STA 模式 + WiFi 名称 + 密码；配了 MQTT 配置时再发 mqtt_config
+//   2 设备网络配置已完成     —— BluFi 连上设备（WiFi 列表页扫描时已连上的会话直接复用），下发 STA 模式 + WiFi 名称 + 密码；
+//                              配了 MQTT 配置时再发 mqtt_config
 //                              并等 mqtt_config_ack.result=0（来源未定，当前为 null 则跳过，见 getMqttConfig）
 //   3 设备正在连接Wi-Fi      —— 发「连接 WiFi」，等设备的 WiFi 状态报告：连上即通过、明确失败即失败；
 //                              接口文档口径这一步没有可靠上报，等不到报告也放行，交给第 4 步裁决

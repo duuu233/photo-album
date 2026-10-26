@@ -77,4 +77,21 @@ const arr = frame => Array.from(frame)
   checked('中文 / emoji WiFi 名称 UTF-8 编解码')
 }
 
+{
+  // 设备扫描附近 WiFi：手机发控制帧 0x09，设备回数据帧 0x11（len | rssi | ssid）
+  const [scan] = blufi.encodeFrames(false, blufi.CTRL.GET_WIFI_LIST, [], 3, 20)
+  assert.deepEqual(arr(scan), [0x24, 0x00, 0x03, 0x00], '获取 WiFi 列表：type=0x09<<2|0、无数据')
+  const entry = (ssid, rssi) => {
+    const name = blufi.utf8Encode(ssid)
+    return [name.length + 1, rssi & 0xff].concat(name)
+  }
+  const payload = entry('Home', -45).concat(entry('我家', -80), [9, 0xc0])
+  const list = blufi.parseWifiList(payload)
+  assert.deepEqual(JSON.parse(JSON.stringify(list)), [{ ssid: 'Home', rssi: -45 }, { ssid: '我家', rssi: -80 }], 'RSSI 按有符号解析，长度不足的残尾丢弃')
+  const decode = blufi.createDecoder()
+  const message = decode(Uint8Array.from([(0x11 << 2) | 1, 0x04, 0, payload.length].concat(payload)))
+  assert.equal(message.subtype, blufi.DATA.WIFI_LIST)
+  checked('设备扫描 WiFi：0x09 指令与 0x11 列表解析')
+}
+
 console.log(`blufi: ${checks} groups passed`)

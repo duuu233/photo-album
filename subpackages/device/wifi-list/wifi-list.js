@@ -1,43 +1,45 @@
 const system = require('../../../utils/system')
 const fold = require('../../../utils/fold-adapt')
+const bluetooth = require('../../../utils/bluetooth')
+const blufi = require('../../../utils/blufi')
+const wifiProvision = require('../../../utils/wifi-provision')
 
-// WiFi 版设备配网第一步：选择 WiFi（2026-10-26 产品调整流程：先进 WiFi 列表，选中后再进 WiFi 账号密码页）。
-// 入口：搜索设备页点了规格已查到的 WiFi 设备（未知设备在那一页就被拦下，进不来）。
+// WiFi 版设备配网第一步：选择 WiFi（2026-10-26 产品定的流程）：
+//   App 蓝牙连接设备 → 设备扫描附近 WiFi（3~5 秒，页面显示「正在搜索网络...」）→ 显示列表（名称 + 信号强度）
+//   → 用户选中进 WiFi 账号密码页 → 配网状态页下发 WiFi 参数（+ MQTT 参数，来源未定前不发）。
 //
-//   · 列表只列 2.4G：安卓 wx.getWifiList 拿附近列表（需要手机定位开着），按 frequency 落在 2400~2500MHz 筛选，
-//     同名取信号强的、信号强的在前；点一下即进入账号密码页并带上名称，无确认按钮；
-//   · 列表底部「手动输入WiFi名称」：搜不到 / 隐藏网络 / 列表拿不到时用，进账号密码页自己填；
-//   · iOS：微信拿不到附近 WiFi 列表（getWifiList 会跳系统设置，且不带频段），只列当前连接的网络（频段判不了，不标 2.4G），
-//     其余手动输入。
-// 设备信息（deviceNo / name / spec）原样透传给账号密码页，配网用的 BLE 句柄与产品已由搜索页交给 utils/wifi-provision。
+//   · 列表来自**设备扫描**（BluFi 0x09 / 0x11，见 utils/blufi.js），不用手机扫：iOS 微信拿不到附近列表、
+//     手机扫到的也不一定是设备那边收得到的；ESP32 只支持 2.4G，设备扫出来的天然就是 2.4G，不再按频段筛；
+//   · 同名去重取信号强的，信号强的在前；隐藏网络（名称为空）不列；
+//   · 这条蓝牙连接一直留着给配网状态页复用（同一会话、序号连续），离开本页（返回搜索页）才断开；
+//   · 连不上设备 / 设备没回列表：提示原因，给「重新搜索」，也可「手动输入WiFi名称」。
+// BLE 句柄从搜索页经 utils/wifi-provision 内存交接（getTarget），url 只带展示用的设备信息。
+const SCAN_TIMEOUT_MS = 12000
 
-// 2.4G 信道 2412~2484MHz。只认这个区间：5G（5xxx）、6G 都不算；个别机型若按 GHz 给（2.4 / 5），按 GHz 判一次
-function is24G(frequency) {
-  const value = Number(frequency)
-  if (!Number.isFinite(value) || value <= 0) {
-    return false
-  }
-  const mhz = value < 10 ? value * 1000 : value
-  return mhz >= 2400 && mhz < 2500
+// 信号强度分 4 格（dBm）：≥-55 4 格、≥-67 3 格、≥-78 2 格、其余 1 格
+function signalLevel(rssi) {
+  const value = Number(rssi)
+  if (value >= -55) return 4
+  if (value >= -67) return 3
+  if (value >= -78) return 2
+  return 1
 }
 
-function isIOS() {
-  try {
-    const info = (wx.getDeviceInfo ? wx.getDeviceInfo() : wx.getSystemInfoSync()) || {}
-    return String(info.platform || info.system || '').toLowerCase().indexOf('ios') > -1
-  } catch (error) {
-    return false
-  }
-}
-
-function wxp(fn, options) {
-  return new Promise((resolve, reject) => {
-    if (typeof fn !== 'function') {
-      reject(new Error('当前微信版本不支持 WiFi 能力'))
+// 设备回的列表整理成页面数据：去掉空名称、同名取信号强的、按信号排序
+function toWifiList(list) {
+  const best = {}
+  ;(list || []).forEach(item => {
+    const ssid = String((item && item.ssid) || '').trim()
+    if (!ssid) {
       return
     }
-    fn(Object.assign({}, options, { success: resolve, fail: reject }))
+    if (!best[ssid] || Number(item.rssi) > Number(best[ssid].rssi)) {
+      best[ssid] = item
+    }
   })
+  return Object.keys(best)
+    .map(ssid => ({ ssid, rssi: Number(best[ssid].rssi) || 0, level: signalLevel(best[ssid].rssi) }))
+    .sort((a, b) => b.rssi - a.rssi)
 }
 
 Page(fold.adapt({
@@ -48,7 +50,7 @@ Page(fold.adapt({
     deviceName: '',
     spec: '',
     wifiList: [],
-    loading: true,
+    scanning: true,
     tip: ''
   },
 
@@ -66,105 +68,62 @@ Page(fold.adapt({
       deviceName: decode(options && options.name),
       spec: decode(options && options.spec)
     })
-    this.isIOS = isIOS()
-    this.loadWifi()
+    this.scan()
   },
 
+  // 返回搜索页（或整个配网流程结束）时断开蓝牙；往后跳到账号密码页时本页不卸载，连接保留给配网复用
   onUnload() {
     this.unloaded = true
-    if (this.wifiListHandler && wx.offGetWifiList) {
-      wx.offGetWifiList(this.wifiListHandler)
+    if (this.session) {
+      this.session.close()
+      this.session = null
     }
   },
 
-  // 重新获取（页面上的刷新入口）
-  refresh() {
-    if (!this.data.loading) {
-      this.loadWifi()
-    }
-  },
-
-  loadWifi() {
-    this.setData({ loading: true, tip: '' })
-    if (this.isIOS) {
-      this.loadCurrentOnly()
+  async scan() {
+    const target = wifiProvision.getTarget()
+    if (!target || !target.bleDeviceId) {
+      this.setData({ scanning: false, wifiList: [], tip: '设备信息已失效，请返回重新搜索设备' })
       return
     }
-    this.loadNearby()
-  },
-
-  async loadCurrentOnly() {
-    let current = null
+    this.setData({ scanning: true, tip: '' })
     try {
-      await wxp(wx.startWifi, {})
-      const res = await wxp(wx.getConnectedWifi, {})
-      current = (res && res.wifi) || null
+      await bluetooth.openAdapter()
+      await bluetooth.whenScanStopped()
+      this.session = await blufi.connect(target.bleDeviceId)
     } catch (error) {
-      current = null
+      console.warn('[WiFi列表] 蓝牙连接设备失败', error && error.message)
+      if (!this.unloaded) {
+        this.setData({ scanning: false, tip: '连接设备失败，请将手机靠近设备后重新搜索' })
+      }
+      return
+    }
+    let list = null
+    try {
+      list = await this.session.scanWifi(SCAN_TIMEOUT_MS)
+    } catch (error) {
+      console.warn('[WiFi列表] 发送扫描指令失败', error && error.message)
+      list = null
     }
     if (this.unloaded) {
       return
     }
-    const ssid = String((current && current.SSID) || '').trim()
-    // iOS 不回频段：判不了的原样列出；明确是 5G 的不列
-    const usable = ssid && (is24G(current.frequency) || !Number(current.frequency))
-    this.setData({
-      loading: false,
-      wifiList: usable ? [{ ssid, band: is24G(current.frequency) ? '2.4G' : '' }] : [],
-      tip: 'iOS 无法获取附近WiFi列表，请选择2.4G网络或手动输入WiFi名称'
-    })
-  },
-
-  async loadNearby() {
-    try {
-      await wxp(wx.startWifi, {})
-      if (!this.wifiListHandler && wx.onGetWifiList) {
-        this.wifiListHandler = res => this.applyWifiList((res && res.wifiList) || [])
-        wx.onGetWifiList(this.wifiListHandler)
-      }
-      await wxp(wx.getWifiList, {})
-      // 个别机型 getWifiList 成功却迟迟不回调 onGetWifiList：等一会儿还没列表就收起转圈，让用户手动输入
-      setTimeout(() => {
-        if (!this.unloaded && this.data.loading) {
-          this.setData({ loading: false, tip: '没有获取到WiFi列表，请手动输入WiFi名称' })
-        }
-      }, 8000)
-    } catch (error) {
-      if (this.unloaded) {
-        return
-      }
-      // 12006：手机定位没开；其余按通用失败提示
-      const gpsOff = error && (error.errCode === 12006 || /12006|location/i.test(error.errMsg || ''))
-      this.setData({
-        loading: false,
-        tip: gpsOff ? '请打开手机定位后重试，或手动输入WiFi名称' : '获取WiFi列表失败，请手动输入WiFi名称'
-      })
-    }
-  },
-
-  // 只留 2.4G、按 SSID 去重（同名取信号强的）、信号强的在前；没有频段信息的不列（判断不了是不是 2.4G）
-  applyWifiList(list) {
-    if (this.unloaded) {
+    if (!list) {
+      this.setData({ scanning: false, tip: '设备未返回WiFi列表，请重新搜索或手动输入WiFi名称' })
       return
     }
-    const best = {}
-    list.forEach(item => {
-      const ssid = String((item && item.SSID) || '').trim()
-      if (!ssid || !is24G(item.frequency)) {
-        return
-      }
-      if (!best[ssid] || Number(item.signalStrength) > Number(best[ssid].signalStrength)) {
-        best[ssid] = item
-      }
-    })
-    const wifiList = Object.keys(best)
-      .map(ssid => ({ ssid, band: '2.4G', signal: Number(best[ssid].signalStrength) || 0 }))
-      .sort((a, b) => b.signal - a.signal)
+    const wifiList = toWifiList(list)
     this.setData({
+      scanning: false,
       wifiList,
-      loading: false,
-      tip: wifiList.length ? '' : '附近没有搜到2.4G WiFi，可手动输入WiFi名称'
+      tip: wifiList.length ? '' : '设备附近没有搜到WiFi，请重新搜索或手动输入WiFi名称'
     })
+  },
+
+  rescan() {
+    if (!this.data.scanning) {
+      this.scan()
+    }
   },
 
   // 选中即进入账号密码页，名称带过去
