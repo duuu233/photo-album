@@ -1078,6 +1078,67 @@ module.exports = {
     return normalizeDevice(merged)
   },
 
+  // 绑定 WiFi 版设备（2026-10-26，配网 STEP 2）：走老服务同一个 addUserProduct。
+  //   · deviceId 用 12 位 deviceNo 转成的 AA:BB:CC:DD:EE:FF（产品确认与蓝牙版同口径）；
+  //   · productId / 产品名取搜索时 getProductByDevice 查到的产品，不再按广播名打分匹配；
+  //   · 先查已绑定列表：同一台已绑定过（重配网 / 上次绑定成功但联网失败）就复用那条，不重复绑定；
+  //   · 新绑定后回查列表补真实 userProductId（addUserProduct 的返回不含可靠主键，同蓝牙版 bind.js 的处理）。
+  // 不弹 loading / 错误提示：配网状态页自己展示进度和错误。返回归一化后的设备记录（带 commType: 'WIFI'）。
+  async bindWifiDevice(options = {}) {
+    const productDeviceId = deviceIdUtil.requireComplete(
+      options.deviceNo,
+      '设备ID格式不正确，无法绑定'
+    )
+    const serial = productDeviceId.replace(/:/g, '')
+    const sameDevice = item =>
+      [item && item.deviceNo, item && item.productDeviceId].some(
+        value => String(value || '').replace(/[:\-\s]/g, '').toUpperCase() === serial
+      )
+    const findBound = async () => {
+      try {
+        return (await module.exports.getDevices()).find(sameDevice) || null
+      } catch (error) {
+        return null
+      }
+    }
+    const wifiFields = {
+      commType: 'WIFI',
+      wifiDeviceNo: serial,
+      broadcastName: options.broadcastName || ''
+    }
+
+    const existed = await findBound()
+    if (existed) {
+      return Object.assign({}, existed, wifiFields)
+    }
+
+    const productName = String(options.productName || options.broadcastName || '智能相框').trim()
+    const saved = await http.post(
+      '/Client/UserProduct/addUserProduct',
+      { productId: options.productId, productName, deviceId: productDeviceId },
+      { mock: false, showError: false }
+    )
+    const savedName = String((saved && saved.productName) || '').trim()
+    let device = normalizeDevice(
+      Object.assign({}, saved, {
+        productId: options.productId,
+        productDeviceId,
+        deviceNo: productDeviceId,
+        productName: savedName || productName,
+        name: savedName || productName,
+        sizeModel: options.sizeModel || (saved && saved.sizeModel) || ''
+      })
+    )
+    const persisted = await findBound()
+    if (persisted && persisted.id) {
+      device = Object.assign({}, device, {
+        id: String(persisted.id),
+        userProductId: persisted.userProductId || persisted.id
+      })
+    }
+    return Object.assign(device, wifiFields)
+  },
+
   // 重命名设备（纯后端存储：名称以用户为维度，不写设备固件、不影响蓝牙连接/广播，连不连接都可改）。
   // 注意：editUserProduct 返回精简对象，这里不再拼装成 device 返回——之前拼出的对象缺
   // bleDeviceId/productDeviceId，调用方拿去整体替换现有 device 会造成假断联。

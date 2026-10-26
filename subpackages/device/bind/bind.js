@@ -9,6 +9,7 @@ const deviceName = require('../../../utils/device-name')
 const deviceThumb = require('../../../utils/device-thumb')
 const system = require('../../../utils/system')
 const fold = require('../../../utils/fold-adapt')
+const wifiProvision = require('../../../utils/wifi-provision')
 
 const app = getApp()
 const RECENTLY_BOUND_DEVICE_KEY = 'recentlyBoundDeviceId'
@@ -269,7 +270,9 @@ Page(fold.adapt({
       wifiStatus: 'found',
       specText: size || '--寸',
       sizeModel: size,
-      productName: product.productName || ''
+      productName: product.productName || '',
+      // 配网第 4 步绑定要用查到的产品（productId），随行带着交给配网流程
+      wifiProduct: { productId: product.productId, productName: product.productName || '', sizeModel: size }
     }
   },
 
@@ -322,6 +325,13 @@ Page(fold.adapt({
     }
     // 离开前停扫：配网页后续要用 BLE 给设备下发配置，不能和本页的扫描抢射频
     this.stopScanForBind()
+    // 配网要用的设备信息走内存交接（BLE 句柄、deviceNo、查到的产品），url 只带展示用的字段
+    wifiProvision.setTarget({
+      bleDeviceId: device.deviceId,
+      deviceNo: device.deviceCode,
+      name: device.name || '',
+      product: device.wifiProduct || null
+    })
     const query = [
       `deviceNo=${encodeURIComponent(device.deviceCode)}`,
       `name=${encodeURIComponent(device.name || '')}`,

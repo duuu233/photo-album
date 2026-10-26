@@ -9,5 +9,9 @@ module.exports = {
   // WiFi 版设备的 IoT 服务（2026-10-26 起对接）：与 baseURL 是两套服务，鉴权沿用同一个登录 token（Header userToken）。
   // 客户端见 utils/iot-request.js、utils/iot-ws.js；小程序后台需把 iotBaseURL 加入 request 合法域名、iotWsURL 加入 socket 合法域名。
   iotBaseURL: 'https://iot.boltfox.cn',
-  iotWsURL: 'wss://iot.boltfox.cn/ws/push'
+  iotWsURL: 'wss://iot.boltfox.cn/ws/push',
+  // 配网时经蓝牙下发给设备的 MQTT 配置（协议 2.2.3 mqtt_config：{ host, port, usr, pwd }）。
+  // 来源待后端 / 固件确认（2026-10-26 产品确认先留接口位、不下发）：为 null 时配网跳过 mqtt_config，
+  // 设备沿用出厂配置。拿到后优先改成由接口下发（见 utils/wifi-provision.js getMqttConfig），不要在这里写真实凭证。
+  iotMqttConfig: null
 }

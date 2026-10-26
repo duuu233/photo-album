@@ -1,4 +1,4 @@
-<!-- WiFi 版设备配网 · 配网状态（STEP 1 静态页，状态流转说明见 wifi-provision.js 文件头） -->
+<!-- WiFi 版设备配网 · 配网状态（流程见 utils/wifi-provision.js，页面交互见 wifi-provision.js 文件头） -->
 <view class="mock-root provision-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px; --nav-h: {{navHeight}}px;">
   <view class="mock-bg">
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>

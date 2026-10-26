@@ -1,4 +1,4 @@
-<!-- WiFi 版设备配网 · 填写 WiFi（STEP 1 静态页，交互骨架见 wifi-config.js 文件头） -->
+<!-- WiFi 版设备配网 · 填写 WiFi（交互说明见 wifi-config.js 文件头） -->
 <view class="mock-root wifi-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px; --nav-h: {{navHeight}}px;">
   <view class="mock-bg">
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
@@ -47,12 +47,13 @@
     <view class="wifi-sheet" catchtap="noop">
       <view class="wifi-sheet__close" hover-class="none" bindtap="closeWifiList">×</view>
       <view class="wifi-sheet__title">选择 2.4G WiFi</view>
-      <view wx:if="{{wifiListIsDemo}}" class="wifi-sheet__sub">静态示例数据，下一步接入手机附近的 WiFi 列表</view>
+      <view wx:if="{{wifiListLoading}}" class="wifi-sheet__sub">正在获取附近WiFi…</view>
+      <view wx:elif="{{wifiListTip}}" class="wifi-sheet__sub">{{wifiListTip}}</view>
       <scroll-view scroll-y class="wifi-sheet__list">
         <view wx:for="{{wifiList}}" wx:key="ssid" class="wifi-item {{item.ssid === ssid ? 'is-active' : ''}}" hover-class="none" data-ssid="{{item.ssid}}" bindtap="pickWifi">
           <image class="wifi-item__icon" src="/assets/images/badge-wifi.svg" mode="aspectFit"></image>
           <text class="wifi-item__name">{{item.ssid}}</text>
-          <text class="wifi-item__band">2.4G</text>
+          <text wx:if="{{item.band}}" class="wifi-item__band">{{item.band}}</text>
         </view>
       </scroll-view>
     </view>
