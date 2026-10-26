@@ -115,6 +115,17 @@
     </view>
   </view>
 
+  <!-- 未知 WiFi 设备提示：复用首页「设备连接失败」那套底部弹层（× 关闭 + 居中标题 / 说明 + 橙色主按钮），
+       遮罩、弹层底板、关闭钮沿用本页「扫描不到怎么办」的样式 -->
+  <view wx:if="{{showUnknownTip}}" class="bind-mask" catchtouchmove="noop" bindtap="closeUnknownTip">
+    <view class="scan-help-sheet prompt-sheet {{unknownTipClosing ? 'pop-closing-sheet' : ''}}" catchtap="noop">
+      <view class="sheet-close" hover-class="none" bindtap="closeUnknownTip">×</view>
+      <view class="prompt-title">无法连接该设备</view>
+      <view class="prompt-desc">{{unknownTipText}}</view>
+      <view class="primary-action prompt-action" hover-class="none" bindtap="closeUnknownTip">我知道了</view>
+    </view>
+  </view>
+
   <device-name-dialog
     visible="{{renameVisible}}"
     value="{{renameValue}}"

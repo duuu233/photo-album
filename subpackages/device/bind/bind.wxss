@@ -429,3 +429,31 @@
   font-size: 24rpx;
   line-height: 1.24;
 }
+
+/* 未知 WiFi 设备提示（2026-10-26）：版式取首页「设备连接失败」提示弹层（pages/home/home.wxss
+   .prompt-sheet / .prompt-title / .prompt-desc）——上留白给右上角 ×，标题、说明居中，底部橙色主按钮。
+   底板、遮罩、关闭钮直接复用本页 .scan-help-sheet / .bind-mask / .sheet-close。 */
+.prompt-sheet {
+  padding-top: 104rpx;
+}
+
+.prompt-title {
+  color: #2a2d32;
+  font-size: 36rpx;
+  font-weight: 500;
+  line-height: 1;
+  text-align: center;
+}
+
+.prompt-desc {
+  margin-top: 24rpx;
+  color: #747b85;
+  font-size: 24rpx;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.prompt-action {
+  width: auto;
+  margin-top: 88rpx;
+}

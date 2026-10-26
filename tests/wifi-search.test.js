@@ -3,7 +3,8 @@
 //      广播名合内置 `IJ_*` 的一律是 WiFi 版，后台把广播 ID 写成 `IJ_`（不带 *）也不会被当成蓝牙版；
 //   ② 扫描层：只有 includeWifi 的订阅者（搜索设备页）收录 WiFi 设备并标 commType，其它扫描入口照旧只认蓝牙版；
 //   ③ 搜索页：WiFi 行按 deviceNo 查产品规格（每台只查一次），查到直接显示 sizeModel、没配显示「--寸」，
-//      查不到/返回空壳记录/失败显示「未知设备」；未知设备点行或点底部按钮都直接弹「未知设备，请联系客服开通」、
+//      查不到/返回空壳记录/失败显示「未知设备」；未知设备点行或点底部按钮都直接弹「未知设备，请联系客服开通」
+//      （本页底部提示弹层，与首页提示同一套样式）、
 //      不进配网；查到的点行即进 WiFi 配置页；不缓存，重新搜索时全部重查；
 //   ④ WiFi 配置页（STEP 2）：当前连的是 2.4G 直接回填；没连 / 5G 直接弹列表，列表只留 2.4G、同名去重、信号强在前，
 //      点选即回填；「下一步」把名称 / 密码交给配网流程，密码不进页面路由；两张新页面已在 app.json 注册。
@@ -178,12 +179,14 @@ async function main() {
   checked('WiFi 行按 deviceNo 查规格：尺寸读 sizeModel（没配 --寸），查不到/失败为未知设备')
 
   page.selectDevice({ currentTarget: { dataset: { id: 'w2' } } })
-  assert.equal(state.modals.length, 1, '点未知设备那一行就直接弹窗')
-  assert.equal(state.modals[0].content, '未知设备，请联系客服开通')
+  assert.equal(page.data.showUnknownTip, true, '点未知设备那一行就直接弹窗')
+  assert.equal(page.data.unknownTipText, '未知设备，请联系客服开通')
+  assert.equal(state.modals.length, 0, '用本页提示弹层，不再用系统 showModal')
   assert.equal(page.data.selectedId, 'w1', '未知设备不被选中')
+  page.data.showUnknownTip = false
   page.data.selectedId = 'w3'
   await page.confirmBind()
-  assert.equal(state.modals.length, 2, '未知设备被默认选中时，点底部按钮同样弹窗')
+  assert.equal(page.data.showUnknownTip, true, '未知设备被默认选中时，点底部按钮同样弹窗')
   assert.equal(state.navs.length, 0, '未知设备不进入配网')
   assert.equal(page.data.binding, false, '未知设备不进入蓝牙绑定流程')
   checked('未知设备点行 / 点按钮都直接弹窗拦下')

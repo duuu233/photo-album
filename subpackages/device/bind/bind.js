@@ -42,6 +42,10 @@ Page(fold.adapt({
     location: null,
     showHelp: false,
     helpClosing: false, // 「扫描帮助」弹层是否正在播放退场动画
+    // 未知 WiFi 设备提示弹层（与首页「设备连接失败」提示同一套底部弹层样式）
+    showUnknownTip: false,
+    unknownTipClosing: false,
+    unknownTipText: UNKNOWN_WIFI_DEVICE_MESSAGE,
     renameVisible: false,
     renameValue: '',
     renameThumb: '',
@@ -315,12 +319,7 @@ Page(fold.adapt({
       return
     }
     if (device.wifiStatus !== 'found') {
-      wx.showModal({
-        title: '提示',
-        content: UNKNOWN_WIFI_DEVICE_MESSAGE,
-        showCancel: false,
-        confirmText: '我知道了'
-      })
+      this.setData({ showUnknownTip: true, unknownTipClosing: false })
       return
     }
     // 离开前停扫：配网页后续要用 BLE 给设备下发配置，不能和本页的扫描抢射频
@@ -389,6 +388,17 @@ Page(fold.adapt({
     this.setData({
       showHelp: true
     })
+  },
+
+  // 未知设备提示：与「扫描帮助」同样先播退场动画再卸载
+  closeUnknownTip() {
+    if (this.data.unknownTipClosing) {
+      return
+    }
+    this.setData({ unknownTipClosing: true })
+    setTimeout(() => {
+      this.setData({ showUnknownTip: false, unknownTipClosing: false })
+    }, 240)
   },
 
   // 先播放退场动画再卸载，避免弹层瞬间消失
