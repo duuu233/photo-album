@@ -110,12 +110,15 @@ async function main() {
       '/api/device/online（IoT 前端对接文档 2.1',
       '参数 {"deviceNo":"E348C21ED428","since":1000000}',
       '返回 {"online":true}',
-      // 按后端配网全流程 ①~⑯ 打的标签与参数（只是日志）
-      '【流程①②】', '蓝牙广播 IJ_E348C21ED428', 'XT_ESP_D428', '【流程③】', '【流程④】',
-      '【流程⑤】', '"host":"mqtt.boltfox.cn","port":11883,"usr":"xt-boltstar-device"', '【流程⑥】', '【流程⑦】',
-      '【流程⑧~⑬】', '【流程⑭】', '【流程⑮】App 调老服务完成绑定（userNo ↔ deviceNo=E348C21ED428）', '【流程⑯】'
+      // 按后端配网流程编号打的标签（只标 App 实际执行的步骤，参数都是运行时拿到的）
+      '【流程③】', '【流程④】', '【流程⑤】', '参数 无（config.iotMqttConfig 为空）', '【流程⑦】',
+      '【流程⑭】轮询在线：deviceNo=E348C21ED428', '【流程⑮】老服务绑定：deviceNo=E348C21ED428，productId=21'
     ]) {
       assert.ok(all.indexOf(marker) > -1, `日志里要有「${marker}」`)
+    }
+    // 流程文档里的示例数据 App 拿不到，不写进日志（2026-10-26 产品：模拟数据不要，只打能拿到的参数）
+    for (const fake of ['XT_ESP_', '1234567890', 'mqtt.boltfox.cn', 'xt-boltstar-device', '蓝灯', 'EMQX', '【流程⑥】', '【流程⑯】']) {
+      assert.equal(all.indexOf(fake), -1, `日志不该有流程示例数据「${fake}」`)
     }
     assert.ok(/WiFi「我家WiFi」，密码 8 位/.test(all), '记 WiFi 名称与密码位数')
     assert.equal(all.indexOf('pa55word'), -1, '密码原文不进日志')

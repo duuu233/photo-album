@@ -119,9 +119,10 @@ function hookSessionLog(session, log) {
 //   · 「蓝牙发 → / 蓝牙收 ← <十六进制>」：每一帧原始字节；「设备WiFi状态 / 设备自定义数据 / 设备报错 / 设备断开了蓝牙连接」：设备主动上报；
 //   · ①~④ 开头的行是步骤分隔，「配网失败（第 N 步）：原因」「设备已上云并绑定，配网成功」是结论。
 // WiFi 密码不进日志：参数里只记位数，密码帧显示「密码帧（N 字节，内容已隐藏）」；mqtt_config 的 pwd 同样打码。
-//   · 【流程N】标签对应后端给的配网全流程 ①~⑯（2026-10-26）：①~② 设备上电进配网模式、③ 蓝牙连接、④ 下发 WiFi、
-//     ⑤ 下发 MQTT、⑥ 国家码（可选）、⑦ 设备连 WiFi、⑧~⑬ 设备连 EMQX / login / 心跳（服务端，App 不参与，只记预期）、
-//     ⑭ 轮询在线、⑮ 老服务绑定、⑯ 查设备信息（本版未调用，只记说明）。日志只是记录，不改变流程本身。
+//   · 【流程N】标签对应后端给的配网全流程编号（2026-10-26），只标 App 实际执行、且参数能拿到的步骤：
+//     ③ 蓝牙连接、④ 下发 WiFi、⑤ 下发 MQTT、⑦ 设备 WiFi 状态报告、⑭ 轮询在线、⑮ 老服务绑定。
+//     **只打运行时真实拿到的参数**（广播名、deviceNo、蓝牙服务 / 单帧上限、SSID、密码位数、实际下发的 opmode / MQTT 配置、
+//     设备回报、接口返回）；流程文档里的示例数据（热点、灯效、MQTT 示例值、服务端 login / 心跳等）App 拿不到，不写进日志。
 async function run(job, hooks) {
   const onStep = (hooks && hooks.onStep) || function () {}
   const isCancelled = (hooks && hooks.isCancelled) || (() => false)
@@ -149,11 +150,6 @@ async function run(job, hooks) {
       `产品 ${product.productId || '-'} ${product.productName || ''}，WiFi「${job.ssid}」，密码 ${String(job.password || '').length} 位，since=${since}`
   )
   const mac = String(job.deviceNo || '').replace(/[:\-\s]/g, '').toUpperCase()
-  log(
-    `【流程①②】设备应已开机 / 首次上电 / 按 RESET 进入配网模式：蓝牙广播 IJ_${mac || '{MAC}'}（本次广播名 ${job.name || '-'}），` +
-      `WiFi 热点 XT_ESP_${mac ? mac.slice(-4) : '{MAC后4位}'}（密码 1234567890，App 不用热点），蓝灯闪烁（亮 3 秒灭 3 秒）`
-  )
-  log(`设备编号 deviceNo=${mac || '-'}：即设备 MQTT clientid / login 里的 clientid、stamac，后续在线查询与绑定都用它`)
 
   try {
     // ① 手机网络
@@ -190,7 +186,6 @@ async function run(job, hooks) {
     log('【流程④】App 下发 WiFi 信息（标准 BluFi：SSID + 密码）')
     log('蓝牙指令【下发WiFi参数】乐鑫 BluFi 标准帧：控制帧 0x02【Set Opmode 设置工作模式】→ 数据帧 0x02【STA SSID】→ 数据帧 0x03【STA Password】（设备通讯协议 2.2：BluFi 以乐鑫官方为基线）')
     log(`参数 ${JSON.stringify({ opmode: 1, ssid: job.ssid, password: `${String(job.password || '').length} 位（已隐藏）` })}`)
-    log('说明：流程文档写「标准 BluFi opmode=0x00」，当前实际下发 opmode=0x01（STA）；0x00 在乐鑫 BluFi 里是 NULL 模式，以固件确认为准')
     try {
       await session.configureSta(job.ssid, job.password)
     } catch (error) {
@@ -199,10 +194,7 @@ async function run(job, hooks) {
     }
     log('返回 三帧已写入（BluFi 这三条设备不单独应答）')
     const mqttConfig = await getMqttConfig(job)
-    log(
-      '【流程⑤】App 下发 MQTT 参数（自定义消息 mqtt_config，设备回 mqtt_config_ack，result=0 表示成功）；' +
-        '流程文档约定参数 {"host":"mqtt.boltfox.cn","port":11883,"usr":"xt-boltstar-device","pwd":"***"}'
-    )
+    log('【流程⑤】App 下发 MQTT 参数（自定义消息 mqtt_config，设备回 mqtt_config_ack，result=0 表示成功）')
     if (mqttConfig) {
       log('蓝牙指令【设置 MQTT 配置信息】action=mqtt_config（设备通讯协议 2.2.3；走 BluFi 自定义数据 0x13，等 mqtt_config_ack）')
       log(`参数 ${JSON.stringify(Object.assign({}, mqttConfig, { pwd: mqttConfig.pwd ? '（已隐藏）' : '' }))}`)
@@ -218,16 +210,16 @@ async function run(job, hooks) {
         throw provisionError(1, `设备网络配置失败（错误码 ${ack && ack.result}）`)
       }
     } else {
-      log('MQTT 配置来源未定（config.iotMqttConfig 为空，pwd 未提供），本次不下发 mqtt_config')
+      log('参数 无（config.iotMqttConfig 为空）')
+      log('返回 未下发 mqtt_config')
     }
-    log('【流程⑥】App 下发国家码（可选，wifi_set_country_code，如 {"action":"wifi_set_country_code","data":{"country":"CN"}}）：本版未下发')
     onStep(1, 'done')
     checkCancel(2)
 
     // ③ 设备连接 WiFi
     onStep(2, 'loading')
     log('③ 设备连接 WiFi')
-    log('【流程⑦】设备退出配网模式、连 WiFi：蓝灯常亮 30 秒为成功，快闪为网络异常（可对照设备灯）')
+    log('【流程⑦】设备连 WiFi：以设备回报的 WiFi 状态为准')
     log(`蓝牙指令【Connect to AP 连接WiFi】乐鑫 BluFi 控制帧 0x03，之后最多等 ${WIFI_STATE_TIMEOUT_MS / 1000} 秒设备的【Wi-Fi Connection State Report】（数据帧 0x0F）；配网第 3 步「设备正在连接Wi-Fi」，接口文档 2.4`)
     log('参数 无')
     const settled = session.waitFor(
@@ -256,12 +248,6 @@ async function run(job, hooks) {
     session.close()
     session = null
     log('已释放蓝牙连接')
-    log(
-      `【流程⑧~⑬】以下由设备与服务端自动完成，App 不参与：⑧ 设备连 EMQX（TCP 11883，设备账号认证）→ ` +
-        `⑨ EMQX client.connected → Webhook POST /internal/emqx/event → 服务端写 Redis online key、iot_device upsert、推 device.status → ` +
-        `⑩ 设备上行 login {"action":"login","clientid":"${mac || '{MAC}'}","stamac":"${mac || '{MAC}'}","data":{"ver":…,"statype":…}} → ` +
-        `⑪ 服务端记 firmware_version、写影子、回 login_ack → ⑫ 设备发心跳 heart（电量 / wifi_rssi / 版本 / TF 等）→ ⑬ 服务端续期 online key（90 秒）`
-    )
     checkCancel(3)
 
     // ④ 绑定 + 轮询上云
@@ -270,7 +256,7 @@ async function run(job, hooks) {
     // ⚠️ 接口文档 2.4 写的是「先绑定再轮询」——在线接口会调老服务 checkPermission，设备还没绑到当前账号时返回 403；
     //    按现在的顺序，若后端仍是这个口径，轮询会一直 403 直到超时。403 / 503 / 网络失败都继续轮询，日志里看得到。
     log('④ 设备连接云端：先轮询 IoT 在线，上线后再老服务绑定')
-    log(`【流程⑭】App 轮询 GET /api/device/online?deviceNo=${mac || '{MAC}'} → { "online": true } 即配网成功`)
+    log(`【流程⑭】轮询在线：deviceNo=${mac || '-'}，online=true 即设备已上云`)
     log(`轮询在线：每 ${ONLINE_POLL_INTERVAL_MS / 1000} 秒查一次，最多 ${ONLINE_TIMEOUT_MS / 1000} 秒`)
     const deadline = Date.now() + ONLINE_TIMEOUT_MS
     let attempt = 0
@@ -304,7 +290,7 @@ async function run(job, hooks) {
       throw provisionError(3, '设备联网超时，请检查WiFi密码或信号后重试')
     }
     log('设备已上云，开始老服务绑定')
-    log(`【流程⑮】App 调老服务完成绑定（userNo ↔ deviceNo=${mac || '-'}）`)
+    log(`【流程⑮】老服务绑定：deviceNo=${mac || '-'}，productId=${product.productId || '-'}`)
     checkCancel(3)
 
     let device = null
@@ -325,7 +311,6 @@ async function run(job, hooks) {
     log(`绑定成功：userProductId ${(device && (device.userProductId || device.id)) || '-'}`)
     onStep(3, 'done')
     log('设备已上云并绑定，配网成功')
-    log(`【流程⑯】可轮询 GET /api/device/info?deviceNo=${mac || '-'} 拿电量 / 信号 / 版本 / 型号（本版配网流程未调用）`)
     return { device }
   } catch (error) {
     log(`配网失败（第 ${(error && typeof error.step === 'number' ? error.step : 0) + 1} 步）：${(error && error.message) || error}`)
