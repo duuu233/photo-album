@@ -37,6 +37,8 @@
 | [客户端接口矩阵](reference/client-api-matrix.md) | BoltFox 客户端接口、平台适用性和当前接入状态 |
 | [BoltStar AI 参考文档](reference/ai/README.md) | 当前/历史 API 版本与错误码草案入口 |
 | [照片预览独立截图 Demo](preview-demo.md) | 微信开发者工具启动条件、圆/方形参数、同源编辑逻辑与演示隔离 |
+| [WiFi 版前端对接文档（草稿）](前端对接文档_草稿.md) | XT IoT 服务（`iot.boltfox.cn`）接口草稿 v0.27：投屏、设备查询与控制、WebSocket、消息通知；draft，以后端最新版为准 |
+| [WiFi 版对接文档评审建议](前端对接文档_评审建议.md) | 小程序端对草稿 v0.27 的评审意见（P0/P1/P2）、待后端答复清单与小程序端自身调整项；draft |
 
 ## 变更记录
 
