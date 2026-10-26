@@ -391,6 +391,12 @@ async function main() {
     config.onLoad({ deviceNo: 'E348C21ED428', name: 'IJ_E348C21ED428', ssid: encodeURIComponent('我家WiFi') })
     assert.equal(config.data.ssid, '我家WiFi', '名称由列表页带过来')
     config.onPasswordInput({ detail: { value: 'secret-123' } })
+    assert.equal(config.data.showPassword, true, '密码默认明文')
+    config.togglePassword()
+    assert.equal(config.data.showPassword, false, '点小眼睛切成 ****')
+    assert.equal(config.data.password, 'secret-123', '切换只改显示，不动已输入的密码')
+    config.togglePassword()
+    assert.equal(config.data.showPassword, true)
     config.goNext()
     const url = configState.navs.at(-1).url
     assert.ok(url.indexOf('/subpackages/device/wifi-provision/wifi-provision?') === 0)

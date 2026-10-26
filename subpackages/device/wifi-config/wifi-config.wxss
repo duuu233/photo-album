@@ -106,6 +106,12 @@
   height: 44rpx;
 }
 
+/* 密码显示 / 隐藏的小眼睛：与名称后的切换图标同一个点击区 */
+.wifi-field__eye-icon {
+  width: 40rpx;
+  height: 40rpx;
+}
+
 /* 主按钮：与全站主按钮同一套橙色渐变 + 外发光（见 tests/primary-button-style.test.js 的口径） */
 .wifi-primary {
   display: flex;
