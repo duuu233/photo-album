@@ -578,7 +578,7 @@ function createApi(session) {
           reject(error)
         })
       })
-      const wait = waitFor(session, 'wifiList', null, timeout || 12000)
+      const wait = waitFor(session, 'wifiList', null, timeout || 60000)
       try {
         await writeFrames(session, false, CTRL.SET_OPMODE, [OPMODE_STA])
         await writeFrames(session, false, CTRL.GET_WIFI_LIST, [])
