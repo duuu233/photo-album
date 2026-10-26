@@ -17,7 +17,10 @@
     <view class="wifi-list-panel glass-panel">
       <view class="wifi-list-head">
         <text class="wifi-list-head__title">设备附近的2.4G WiFi</text>
-        <text wx:if="{{!scanning}}" class="wifi-list-head__rescan" hover-class="none" bindtap="rescan">重新搜索</text>
+        <view wx:if="{{!scanning}}" class="wifi-list-head__rescan" hover-class="none" aria-role="button" bindtap="rescan">
+          <image class="wifi-list-head__rescan-icon" src="/assets/images/refresh-icon.png" mode="aspectFit"></image>
+          <text>重新搜索</text>
+        </view>
       </view>
       <!-- ① 蓝牙连接设备 → ② 设备扫描（3~5 秒）；扫描中已收到的网络照常列在下面 -->
       <view wx:if="{{scanning}}" class="wifi-list-scanning">
@@ -25,19 +28,18 @@
         <text>{{phase === 'connecting' ? '正在连接设备...' : '正在搜索网络...'}}</text>
       </view>
       <view wx:elif="{{tip}}" class="wifi-list-sub">{{tip}}</view>
-      <view wx:for="{{wifiList}}" wx:key="ssid" class="wifi-item" hover-class="none" data-ssid="{{item.ssid}}" bindtap="pickWifi">
+      <view wx:for="{{wifiList}}" wx:key="ssid" class="wifi-item" hover-class="wifi-item--pressed" data-ssid="{{item.ssid}}" bindtap="pickWifi">
         <image class="wifi-item__icon" src="/assets/images/badge-wifi.svg" mode="aspectFit"></image>
         <text class="wifi-item__name">{{item.ssid}}</text>
         <!-- 信号强度：信号格（与搜索设备列表同一组件，仿 iPhone 满格 4 格、最弱 1 格） -->
         <signal-bars class="wifi-item__signal" level="{{item.level}}"></signal-bars>
         <text class="wifi-item__arrow">›</text>
       </view>
-      <view wx:if="{{!scanning}}" class="wifi-item wifi-item--manual" hover-class="none" bindtap="manualInput">
-        <text class="wifi-item__name">手动输入WiFi名称</text>
-        <text class="wifi-item__arrow">›</text>
-      </view>
     </view>
   </view>
+
+  <!-- 底部手动输入：次按钮样式（白底橙边橙字、文字居中），位置与账号密码页「下一步」一致，扫描中也可点 -->
+  <view class="wifi-manual-button" hover-class="wifi-manual-button--pressed" bindtap="manualInput">手动输入WiFi名称</view>
 
   <global-toast id="globalToast"></global-toast>
 </view>

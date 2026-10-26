@@ -1,6 +1,9 @@
-/* 提示条、列表项与 WiFi 账号密码页 / 原 WiFi 列表弹层同一套样式 */
+/* 选择 WiFi 页（2026-10-26 整体优化）：提示语 + 灰字入口一组，下面是列表卡片；底部固定「手动输入WiFi名称」次按钮。
+   提示条、列表项沿用 WiFi 账号密码页 / 原 WiFi 列表弹层的样式；底部按钮与账号密码页「下一步」同位置同尺寸。 */
 .wifi-list-content {
   padding-top: 24rpx;
+  /* 给底部固定按钮让位：按钮 112 + 贴底 48 + 间隙 40 */
+  padding-bottom: calc(200rpx + var(--safe-bottom));
 }
 
 .wifi-tip {
@@ -9,15 +12,6 @@
   justify-content: center;
   color: #ff6421;
   font-size: 26rpx;
-}
-
-/* 提示语下的手动输入入口：灰色小字，居中 */
-.wifi-manual-hint {
-  margin: 12rpx 0 28rpx;
-  padding: 8rpx 0;
-  color: #8b9098;
-  font-size: 24rpx;
-  text-align: center;
 }
 
 .wifi-tip__icon {
@@ -33,15 +27,26 @@
   text-align: center;
 }
 
+/* 提示语下的手动输入入口：灰色小字，居中 */
+.wifi-manual-hint {
+  margin: 10rpx 0 32rpx;
+  padding: 6rpx 0;
+  color: #8b9098;
+  font-size: 24rpx;
+  text-align: center;
+}
+
 .wifi-list-panel {
-  padding: 28rpx 24rpx 16rpx;
+  padding: 28rpx 0 8rpx;
+  overflow: hidden;
 }
 
 .wifi-list-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24rpx 12rpx;
+  padding: 0 32rpx 20rpx;
+  border-bottom: 1rpx solid rgba(42, 43, 43, 0.06);
 }
 
 .wifi-list-head__title {
@@ -51,15 +56,23 @@
 }
 
 .wifi-list-head__rescan {
+  display: flex;
+  align-items: center;
   color: #ff6421;
-  font-size: 26rpx;
+  font-size: 24rpx;
+}
+
+.wifi-list-head__rescan-icon {
+  width: 30rpx;
+  height: 30rpx;
+  margin-right: 6rpx;
 }
 
 .wifi-list-scanning {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 48rpx 0;
+  padding: 40rpx 0;
   color: #8b9098;
   font-size: 26rpx;
 }
@@ -81,22 +94,36 @@
   }
 }
 
+/* 提示（没搜到 / 失败原因）：居中灰字 */
 .wifi-list-sub {
-  padding: 8rpx 24rpx 16rpx;
-  color: #b3b8c0;
-  font-size: 22rpx;
+  padding: 40rpx 48rpx;
+  color: #8b9098;
+  font-size: 24rpx;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .wifi-item {
+  position: relative;
   display: flex;
   align-items: center;
-  height: 104rpx;
-  padding: 0 24rpx;
-  border-radius: 20rpx;
+  height: 108rpx;
+  padding: 0 32rpx;
 }
 
-.wifi-item + .wifi-item {
-  margin-top: 8rpx;
+/* 行间细分隔线，从图标右侧起画（与图标对齐的内缩线） */
+.wifi-item + .wifi-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 92rpx;
+  right: 32rpx;
+  height: 1rpx;
+  background: rgba(42, 43, 43, 0.06);
+}
+
+.wifi-item--pressed {
+  background: rgba(255, 247, 242, 0.92);
 }
 
 .wifi-item__icon {
@@ -125,6 +152,28 @@
   font-size: 36rpx;
 }
 
-.wifi-item--manual .wifi-item__name {
-  color: #ff6421;
+/* 底部「手动输入WiFi名称」：次按钮（白底、橙色描边与文字，同配网状态页「取消」），文字居中；
+   位置尺寸同账号密码页「下一步」 */
+.wifi-manual-button {
+  position: fixed;
+  left: 48rpx;
+  right: 48rpx;
+  bottom: calc(48rpx + var(--safe-bottom));
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 112rpx;
+  box-sizing: border-box;
+  color: #ff621f;
+  background: rgba(255, 255, 255, 0.92);
+  border: 2rpx solid rgba(255, 98, 31, 0.4);
+  border-radius: 999rpx;
+  box-shadow: 0 12rpx 30rpx rgba(126, 150, 184, 0.12);
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.wifi-manual-button--pressed {
+  background: rgba(255, 247, 242, 0.96);
 }
