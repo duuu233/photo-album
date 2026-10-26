@@ -21,6 +21,12 @@ const RECENTLY_BOUND_DEVICE_KEY = 'recentlyBoundDeviceId'
 // 旧交互下列表要等窗口跑满才整批出现，单方面拉长窗口只会让人干等，这也是这次必须两件事一起改的原因。
 const SCAN_TIMEOUT_MS = 20000
 
+// WiFi 版设备（2026-10-26）：广播名按后台 IJ_* 模板命中，扫描层标 commType: 'WIFI' 并带出 12 位 wifiDeviceId
+// （见 utils/bluetooth.js includeWifi、utils/broadcast-match.js）。与蓝牙版共用这一张搜索列表，行上用标签区分；
+// 选中后不走蓝牙绑定，而是按 getProductByDevice 查规格：查到进 WiFi 配网，查不到 / 失败为「未知设备」，禁止连接。
+const COMM_WIFI = 'WIFI'
+const UNKNOWN_WIFI_DEVICE_MESSAGE = '未知设备，请联系客服开通'
+
 // 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
 // styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
 Page(fold.adapt({
@@ -30,6 +36,7 @@ Page(fold.adapt({
     scanning: false, // 是否正在扫描附近设备
     devices: [],
     selectedId: '', // 当前选中待绑定设备的 id（单选）
+    selectedIsWifi: false, // 选中的是不是 WiFi 版：底部按钮改成「立即配网」
     binding: false, // 是否正在绑定，避免重复点击「立即绑定」造成重复绑定
     location: null,
     showHelp: false,
@@ -61,8 +68,11 @@ Page(fold.adapt({
         return
       }
       this.setData({
+        // WiFi 行的规格来自 getProductByDevice，不按广播名匹配产品列表
         devices: this.data.devices.map(item =>
-          Object.assign({}, item, { sizeModel: api.scanSizeModel(item, list) })
+          item.commType === COMM_WIFI
+            ? item
+            : Object.assign({}, item, { sizeModel: api.scanSizeModel(item, list) })
         )
       })
     })
@@ -107,10 +117,19 @@ Page(fold.adapt({
     this.scanOrder = {}
     this.scanOrderNext = 0
 
+    // WiFi 规格查询：上一轮查不到 / 失败的，重新搜索时允许再查一次；查到的接口层另有 5 分钟缓存
+    const lookups = this.wifiLookups || {}
+    Object.keys(lookups).forEach(deviceNo => {
+      if (lookups[deviceNo].status === 'unknown') {
+        delete lookups[deviceNo]
+      }
+    })
+
     this.setData({
       scanning: true,
       devices: [],
       selectedId: '', // 每次重新搜索清空选中，让本次最先搜到的设备被默认选中
+      selectedIsWifi: false,
       showHelp: false
     })
 
@@ -136,6 +155,7 @@ Page(fold.adapt({
       const devices = await bluetooth.discoverDevices({
         timeout: SCAN_TIMEOUT_MS,
         freshOnly: true, // 只收本次搜索开始后的广播，不展示共享扫描会话之前累计的结果
+        includeWifi: true, // 蓝牙版与 WiFi 版一起搜，每台带 commType（只有本页这么搜，其它扫描入口不受影响）
         onUpdate: list => this.applyScanResult(seq, list)
       })
 
@@ -194,8 +214,12 @@ Page(fold.adapt({
       if (order[key] === undefined) {
         order[key] = next++
       }
+      if (item.commType === COMM_WIFI) {
+        return Object.assign({}, item, this.wifiRowFields(item))
+      }
       // deviceCode：列表里给用户看的「设备ID」，每次都从本次广播重新计算（见 displayDeviceCode）
       return Object.assign({}, item, {
+        commType: 'BLE',
         deviceCode: this.displayDeviceCode(item),
         // 设备图按蓝牙广播名区分机型（见 utils/device-thumb.js）
         thumb: deviceThumb.thumbOf(item),
@@ -205,11 +229,110 @@ Page(fold.adapt({
     this.scanOrderNext = next
     devices.sort((a, b) => order[a.deviceId || a.id] - order[b.deviceId || b.id])
 
+    const selectedId =
+      this.data.selectedId || (devices.length ? devices[0].id || devices[0].deviceId : '')
     this.setData({
       devices,
-      selectedId:
-        this.data.selectedId || (devices.length ? devices[0].id || devices[0].deviceId : '')
+      selectedId,
+      selectedIsWifi: this.isWifiSelected(devices, selectedId)
     })
+  },
+
+  isWifiSelected(devices, selectedId) {
+    const device = (devices || []).find(item => (item.id || item.deviceId) === selectedId)
+    return !!device && device.commType === COMM_WIFI
+  },
+
+  // WiFi 行的展示字段：设备ID 用广播名里解析出的 12 位 deviceNo；规格行按查询状态显示
+  // 「规格查询中… / 产品名 · 尺寸 / 未知设备」。首次见到这台就发起查询（每台只查一次）。
+  wifiRowFields(item) {
+    const deviceNo = item.wifiDeviceId || ''
+    this.lookupWifiProduct(deviceNo)
+    const lookup = (this.wifiLookups || {})[deviceNo] || { status: 'unknown', product: null }
+    return Object.assign(
+      {
+        commType: COMM_WIFI,
+        deviceCode: deviceNo || '--',
+        thumb: deviceThumb.thumbOf(item)
+      },
+      this.wifiSpecFields(lookup)
+    )
+  },
+
+  wifiSpecFields(lookup) {
+    if (lookup.status === 'loading') {
+      return { wifiStatus: 'loading', specText: '规格查询中…' }
+    }
+    const product = lookup.product
+    if (lookup.status !== 'found' || !product) {
+      return { wifiStatus: 'unknown', specText: '未知设备' }
+    }
+    // 展示型号 + 尺寸；产品名里已含尺寸（如「7.3寸相框」配 sizeModel「7.3寸」）就不重复
+    const name = product.productName || ''
+    const size = product.sizeModel || ''
+    const parts = [name, size && name.indexOf(size) === -1 ? size : ''].filter(Boolean)
+    return {
+      wifiStatus: 'found',
+      specText: parts.join(' · ') || 'WiFi 相框',
+      sizeModel: size,
+      productName: name
+    }
+  },
+
+  // 按 12 位 deviceNo 查 WiFi 产品规格（api.getProductByDevice）。本页每台只查一次；
+  // 查不到 / 失败 / 超时一律按「未知设备」，不重试（重新搜索或重进本页时可再查）。
+  lookupWifiProduct(deviceNo) {
+    const lookups = this.wifiLookups || (this.wifiLookups = {})
+    if (!deviceNo || lookups[deviceNo]) {
+      return
+    }
+    lookups[deviceNo] = { status: 'loading', product: null }
+    api
+      .getProductByDevice(deviceNo)
+      .then(product => ({ status: product ? 'found' : 'unknown', product: product || null }))
+      .catch(error => {
+        console.warn('[WiFi规格查询] 失败，按未知设备处理', deviceNo, (error && error.message) || error)
+        return { status: 'unknown', product: null }
+      })
+      .then(result => {
+        lookups[deviceNo] = result
+        if (this.unloaded) {
+          return
+        }
+        const fields = this.wifiSpecFields(result)
+        this.setData({
+          devices: this.data.devices.map(item =>
+            item.commType === COMM_WIFI && item.deviceCode === deviceNo
+              ? Object.assign({}, item, fields)
+              : item
+          )
+        })
+      })
+  },
+
+  // 选中 WiFi 设备后按「立即配网」：规格查到才进配网；未知设备直接弹窗拦下，不进入配网。
+  openWifiProvision(device) {
+    if (device.wifiStatus === 'loading') {
+      toast.warn({ title: '正在查询设备信息，请稍候', icon: 'none' })
+      return
+    }
+    if (device.wifiStatus !== 'found') {
+      wx.showModal({
+        title: '提示',
+        content: UNKNOWN_WIFI_DEVICE_MESSAGE,
+        showCancel: false,
+        confirmText: '我知道了'
+      })
+      return
+    }
+    // 离开前停扫：配网页后续要用 BLE 给设备下发配置，不能和本页的扫描抢射频
+    this.stopScanForBind()
+    const query = [
+      `deviceNo=${encodeURIComponent(device.deviceCode)}`,
+      `name=${encodeURIComponent(device.name || '')}`,
+      `spec=${encodeURIComponent(device.specText || '')}`
+    ].join('&')
+    wx.navigateTo({ url: `/subpackages/device/wifi-config/wifi-config?${query}` })
   },
 
   // 立刻结束搜索但**保留已搜到的列表**（与 cancelScan 不同，后者还会退出本页）。
@@ -274,10 +397,12 @@ Page(fold.adapt({
     }, 240)
   },
 
-  // 点选某台设备：仅更新选中态，绑定动作交给底部「立即绑定」
+  // 点选某台设备：仅更新选中态，绑定 / 配网动作交给底部按钮
   selectDevice(e) {
+    const selectedId = e.currentTarget.dataset.id
     this.setData({
-      selectedId: e.currentTarget.dataset.id
+      selectedId,
+      selectedIsWifi: this.isWifiSelected(this.data.devices, selectedId)
     })
   },
 
@@ -378,6 +503,14 @@ Page(fold.adapt({
         title: '请选择要绑定的电子纸设备',
         icon: 'none'
       })
+      return
+    }
+    // WiFi 版不走蓝牙绑定：查规格 → 进 WiFi 配网（蓝牙版下面的流程一行没动）
+    const selected = this.data.devices.find(
+      item => (item.id || item.deviceId) === this.data.selectedId
+    )
+    if (selected && selected.commType === COMM_WIFI) {
+      this.openWifiProvision(selected)
       return
     }
     // binding 在**任何 await 之前**同步置起：下面要等停扫落地，这段时间按钮照样点得动，

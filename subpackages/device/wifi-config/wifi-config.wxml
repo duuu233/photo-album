@@ -1,0 +1,62 @@
+<!-- WiFi 版设备配网 · 填写 WiFi（STEP 1 静态页，交互骨架见 wifi-config.js 文件头） -->
+<view class="mock-root wifi-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px; --nav-h: {{navHeight}}px;">
+  <view class="mock-bg">
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
+  </view>
+
+  <page-nav title="WiFi 配网" bind:measure="onNavMeasure"></page-nav>
+
+  <view class="mock-content wifi-content">
+    <!-- 头图：手机 → 设备 → 云 -->
+    <image class="wifi-art" src="/assets/images/wifi-provision-art.svg" mode="aspectFit"></image>
+
+    <view wx:if="{{deviceName || deviceNo}}" class="wifi-device">
+      <text class="wifi-device__name">{{deviceName || deviceNo}}</text>
+      <text wx:if="{{spec}}" class="wifi-device__spec">{{spec}}</text>
+    </view>
+
+    <view class="wifi-tip">
+      <view class="wifi-tip__icon">i</view>
+      <text>设备仅支持 2.4G WiFi 配网</text>
+    </view>
+
+    <view class="wifi-form glass-panel">
+      <view class="wifi-field">
+        <text class="wifi-field__label">WiFi名称</text>
+        <view class="wifi-field__box">
+          <input class="wifi-field__input" value="{{ssid}}" placeholder="请输入或选择WiFi名称" placeholder-class="wifi-field__placeholder" bindinput="onSsidInput" />
+          <view class="wifi-field__switch" hover-class="none" aria-role="button" aria-label="选择WiFi" bindtap="openWifiList">
+            <image class="wifi-field__switch-icon" src="/assets/images/wifi-switch.svg" mode="aspectFit"></image>
+          </view>
+        </view>
+      </view>
+      <view class="wifi-field">
+        <text class="wifi-field__label">WiFi密码</text>
+        <view class="wifi-field__box">
+          <!-- 明文输入（产品要求），便于用户核对 -->
+          <input class="wifi-field__input" value="{{password}}" placeholder="请输入WiFi密码" placeholder-class="wifi-field__placeholder" bindinput="onPasswordInput" />
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="wifi-primary wifi-bottom" hover-class="none" bindtap="goNext">下一步</view>
+
+  <!-- WiFi 列表：只列 2.4G，点一下即回填名称（无确认按钮） -->
+  <view wx:if="{{showWifiList}}" class="wifi-mask" catchtouchmove="noop" bindtap="closeWifiList">
+    <view class="wifi-sheet" catchtap="noop">
+      <view class="wifi-sheet__close" hover-class="none" bindtap="closeWifiList">×</view>
+      <view class="wifi-sheet__title">选择 2.4G WiFi</view>
+      <view wx:if="{{wifiListIsDemo}}" class="wifi-sheet__sub">静态示例数据，下一步接入手机附近的 WiFi 列表</view>
+      <scroll-view scroll-y class="wifi-sheet__list">
+        <view wx:for="{{wifiList}}" wx:key="ssid" class="wifi-item {{item.ssid === ssid ? 'is-active' : ''}}" hover-class="none" data-ssid="{{item.ssid}}" bindtap="pickWifi">
+          <image class="wifi-item__icon" src="/assets/images/badge-wifi.svg" mode="aspectFit"></image>
+          <text class="wifi-item__name">{{item.ssid}}</text>
+          <text class="wifi-item__band">2.4G</text>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+
+  <global-toast id="globalToast"></global-toast>
+</view>

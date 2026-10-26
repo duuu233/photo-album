@@ -20,7 +20,9 @@ function loadBindPage() {
   let definition
   const state = {}
   const dependencies = {
-    api: {},
+    // 2026-10-23 起 applyScanResult 按广播名补 sizeModel（api.scanSizeModel），桩要提供它，
+    // 否则列表渲染直接抛错；本用例不关心尺寸，按「匹配不到」返回空串
+    api: { scanSizeModel: () => '' },
     toast: { warn() {} },
     permission: { getCurrentLocation: async () => ({ latitude: 0, longitude: 0 }) },
     bluetooth: { openAdapter: async () => {}, stopDiscovery() {}, showEmptyResultGuide() {}, discoverDevices: async options => { state.scanOptions = options; return [] } },
@@ -44,7 +46,9 @@ function loadBindPage() {
 
 function loadBluetooth() {
   let handler
-  const sandbox = { module: { exports: {} }, require: target => target === './frame-protocol' ? protocol : {}, console, setTimeout, clearTimeout, wx: {
+  // 广播名匹配规则（含 WiFi 版 IJ_* 模板，2026-10-26）是白名单过滤的一部分，注入真实模块（纯函数）
+  const modules = { './frame-protocol': protocol, './broadcast-match': require('../utils/broadcast-match') }
+  const sandbox = { module: { exports: {} }, require: target => modules[target] || {}, console, setTimeout, clearTimeout, wx: {
     openBluetoothAdapter() {},
     onBluetoothDeviceFound: value => { handler = value }, offBluetoothDeviceFound() {},
     startBluetoothDevicesDiscovery: options => options.success({}),

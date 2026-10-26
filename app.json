@@ -9,7 +9,9 @@
         "detail/detail",
         "ota/ota",
         "slideshow/slideshow",
-        "debug/debug"
+        "debug/debug",
+        "wifi-config/wifi-config",
+        "wifi-provision/wifi-provision"
       ]
     },
     {

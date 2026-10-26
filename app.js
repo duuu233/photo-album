@@ -3,6 +3,7 @@ const system = require('./utils/system')
 const deviceBle = require('./utils/device-ble')
 const aiServiceConsent = require('./utils/ai-service-consent')
 const deviceIdentity = require('./utils/device-identity')
+const iotWs = require('./utils/iot-ws')
 
 // 将回调式的 wx.login 封装为 Promise，便于在 async 流程中 await
 function wxLogin() {
@@ -319,6 +320,8 @@ App({
     this.setSelectedDevice(null)
     // 设备身份登记表按 userProductId 存完整设备 ID，换账号后这批主键与新用户无关，一并清空
     deviceIdentity.clear()
+    // WiFi 版设备的推送长连接是按旧 token 握手的，退出 / 失效后一并断开并清掉订阅
+    iotWs.close()
     wx.removeStorageSync('token')
     wx.removeStorageSync('jwtToken')
     wx.removeStorageSync('userInfo')

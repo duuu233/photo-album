@@ -437,6 +437,28 @@ function scanSizeModel(scan, products) {
   return best ? String(best.sizeModel || '').trim() : ''
 }
 
+// WiFi 版设备产品规格查询结果缓存（2026-10-26）：按 12 位 deviceNo，只缓存**查到**的结果，5 分钟有效。
+// 查不到 / 接口失败不缓存——口径是「失败按未知设备处理，用户重新进入搜索页时可再查一次」；
+// 同一次搜索里不重复查由搜索页自己按 deviceNo 记账（见 bind.js lookupWifiProduct）。
+const WIFI_PRODUCT_CACHE_MS = 5 * 60 * 1000
+const wifiProductCache = {}
+
+// getProductByDevice 的返回归一成产品对象；空数据、空对象、关键字段全空都视为「查不到」返回 null。
+// 兼容直接回对象或回列表（取第一条）两种形状。
+function normalizeWifiProduct(data) {
+  const raw = Array.isArray(data) ? data[0] : data
+  if (!raw || typeof raw !== 'object') {
+    return null
+  }
+  const productName = String(firstValue(raw.productName, raw.name, raw.model, '')).trim()
+  const sizeModel = String(firstValue(raw.sizeModel, '')).trim()
+  const productId = firstValue(raw.productId, raw.id, '')
+  if (!productName && !sizeModel && (productId === '' || productId === null)) {
+    return null
+  }
+  return Object.assign({}, raw, { productId, productName, sizeModel })
+}
+
 function productScore(product, scan) {
   const text = [
     product.productName,
@@ -479,6 +501,30 @@ module.exports = {
     return http.get('/Client/Product/getProductList', params, {
       mock: false
     })
+  },
+
+  // WiFi 版设备按 12 位 deviceId 查产品规格（尺寸、旋转、方向等，老服务接口，2026-10-26）。
+  // 查到返回产品对象，查不到 / 返回空返回 null；网络或接口失败 reject。
+  // 静默（不弹错误）、不做网络重试：失败 / 超时由调用方直接按「未知设备」处理。
+  async getProductByDevice(deviceNo) {
+    const key = String(deviceNo || '').trim().toUpperCase()
+    if (!key) {
+      return null
+    }
+    const cached = wifiProductCache[key]
+    if (cached && Date.now() - cached.at < WIFI_PRODUCT_CACHE_MS) {
+      return cached.product
+    }
+    const data = await http.get(
+      '/Client/Product/getProductByDevice',
+      { deviceNo: key },
+      { mock: false, showError: false, retry: false }
+    )
+    const product = normalizeWifiProduct(data)
+    if (product) {
+      wifiProductCache[key] = { at: Date.now(), product }
+    }
+    return product
   },
 
   // 拉取产品列表里每个产品的 broadcastId（广播名），用于蓝牙搜索时按它过滤目标相框。

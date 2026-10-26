@@ -1,0 +1,36 @@
+<!-- WiFi 版设备配网 · 配网状态（STEP 1 静态页，状态流转说明见 wifi-provision.js 文件头） -->
+<view class="mock-root provision-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px; --nav-h: {{navHeight}}px;">
+  <view class="mock-bg">
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
+  </view>
+
+  <page-nav title="设备配网" bind:measure="onNavMeasure"></page-nav>
+
+  <view class="mock-content provision-content">
+    <image class="provision-art" src="/assets/images/wifi-provision-art.svg" mode="aspectFit"></image>
+
+    <view class="provision-title {{phase === 'failed' ? 'is-failed' : ''}} {{phase === 'success' ? 'is-success' : ''}}">{{title}}</view>
+    <view class="provision-hint">请将手机靠近设备，保持网络连接稳定</view>
+
+    <view class="provision-steps glass-panel">
+      <view wx:for="{{steps}}" wx:key="key" class="provision-step is-{{item.status}}">
+        <view class="step-icon">
+          <view wx:if="{{item.status === 'loading'}}" class="step-icon__spinner"></view>
+          <text wx:elif="{{item.status === 'done'}}" class="step-icon__mark">✓</text>
+          <text wx:elif="{{item.status === 'fail'}}" class="step-icon__mark">×</text>
+        </view>
+        <text class="step-text">{{item.text}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{phase === 'success'}}" class="provision-actions">
+    <view class="provision-primary" hover-class="none" bindtap="goExperience">立即体验</view>
+  </view>
+  <view wx:elif="{{phase === 'failed'}}" class="provision-actions provision-actions--pair">
+    <view class="provision-secondary" hover-class="none" bindtap="cancel">取消</view>
+    <view class="provision-primary" hover-class="none" bindtap="retry">重新配网</view>
+  </view>
+
+  <global-toast id="globalToast"></global-toast>
+</view>

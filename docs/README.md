@@ -38,10 +38,12 @@
 | [BoltStar AI 参考文档](reference/ai/README.md) | 当前/历史 API 版本与错误码草案入口 |
 | [照片预览独立截图 Demo](preview-demo.md) | 微信开发者工具启动条件、圆/方形参数、同源编辑逻辑与演示隔离 |
 | [WiFi 版前端对接文档（草稿）](前端对接文档_草稿.md) | XT IoT 服务（`iot.boltfox.cn`）接口草稿 v0.27：投屏、设备查询与控制、WebSocket、消息通知；draft，以后端最新版为准 |
+| [WiFi 版对接开发进度](wifi/对接开发进度.md) | WiFi 版分步骤推进计划（STEP 0~9）、各步接口与验收标准、当前进度 |
 | [WiFi 版对接文档评审建议](前端对接文档_评审建议.md) | 小程序端对草稿 v0.27 的评审意见（P0/P1/P2）、待后端答复清单与小程序端自身调整项；draft |
 
 ## 变更记录
 
+- [2026-10-26 WiFi版联调基础与搜索](changes/2026-10-26-WiFi版联调基础与搜索.md)：`main-wifi` 分支，对接进度 STEP 0/1。新增 IoT 客户端（`iot-errors`/`iot-request`/`iot-ws`/`iot-api`，503 不登出、WS 按需连接与退避重连）；搜索页同搜蓝牙版与 WiFi 版（`IJ_*` 模板取 12 位 deviceId），行上挂「WiFi版/蓝牙版」标签，WiFi 设备按 `getProductByDevice` 查规格，查不到为未知设备并禁止连接；新增 WiFi 配置、配网状态两张静态页。本机无node测试未跑，未真机。
 - [2026-10-23 屏幕尺寸读sizeModel与抖动出帧迁后端](changes/2026-10-23-屏幕尺寸读sizeModel与抖动出帧迁后端.md)：设备详情「屏幕尺寸」直接展示后台 `sizeModel`，没配不展示；抖动出帧由第三方 seekink 改调 `/Client/Basic/imageDitheringBinDownload`（用户自己的 userToken），删 getXTYUserToken 及调试台 Token 卡片。同日追加：搜索列表按广播名匹配产品显示 sizeModel；type 数值不变由后端对齐。本机无node测试未跑，未真机。
 - [2026-10-23 设备容量按机型区分](changes/2026-10-23-设备容量按机型区分.md)：按规格书 v1.6 §5.2，容量先按机型（broadcastId：EF6-370 95、EF6-589 51、EB-169 25、EC-370 11）再按屏型（新增 0x04→25）；修复 EB-169、EC-370 最大照片数量显示 --，投屏选槽同口径。本机无node测试未跑，未真机。
 - [2026-10-22 设备图按机型区分](changes/2026-10-22-设备图按机型区分.md)：六处设备图统一走 `utils/device-thumb.js`，EB-169 圆屏图、EC-370 矩形图、其余原图；已绑定记录用设备列表下发的 broadcastId（缺失按 productId 回查产品列表），搜索结果按广播名，兜底 shapeType=1。绑定匹配产品按广播名命中 broadcastId 加权。10-23 追加：记录的 broadcastId 缺失或不是产品广播名时按 productId 回查；绑错产品的设备需重新绑定。10-23 再追加：列表记录仍认不出机型时按 userProductId 静默调详情补（EC-370 首页/我的设备错、详情对）。本机无node测试未跑，未真机。

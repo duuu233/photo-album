@@ -51,8 +51,18 @@
                ⚠️ 2026-08-21 前它叫 home-icon02.png，首页改版的新素材占了这个名字，故文件更名、图没换。 -->
           <view class="nearby-icon"><image class="nearby-icon__img" src="{{item.thumb || '/assets/images/home-device-thumb.png'}}" mode="aspectFit"></image></view>
           <view class="nearby-copy">
-            <text class="nearby-name">{{item.name}}</text>
-            <text class="nearby-sub">{{item.sizeModel ? item.sizeModel + ' · ' : ''}}{{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.signalText || '--'}}</text>
+            <!-- 广播名后挂通信类型标签（2026-10-26 WiFi 版接入）：WiFi 版青绿、蓝牙版蓝，与选中态的橙色错开。
+                 标签高度不超过设备名一行，卡片高度不变（列表 4.5 张的版式见 bind.wxss .device-list）。 -->
+            <view class="nearby-title">
+              <text class="nearby-name">{{item.name}}</text>
+              <view class="comm-badge {{item.commType === 'WIFI' ? 'comm-badge--wifi' : 'comm-badge--ble'}}">
+                <image class="comm-badge__icon" src="{{item.commType === 'WIFI' ? '/assets/images/badge-wifi.svg' : '/assets/images/badge-bluetooth.svg'}}" mode="aspectFit"></image>
+                <text class="comm-badge__text">{{item.commType === 'WIFI' ? 'WiFi版' : '蓝牙版'}}</text>
+              </view>
+            </view>
+            <!-- WiFi 版：规格来自 getProductByDevice（查询中 / 型号·尺寸 / 未知设备），广播里没有电量 -->
+            <text wx:if="{{item.commType === 'WIFI'}}" class="nearby-sub {{item.wifiStatus === 'unknown' ? 'nearby-sub--unknown' : ''}}">{{item.specText}} · 信号 {{item.signalText || '--'}}</text>
+            <text wx:else class="nearby-sub">{{item.sizeModel ? item.sizeModel + ' · ' : ''}}{{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.signalText || '--'}}</text>
             <!-- 设备ID：本次广播里的 6 字节 Device_ID，用来区分同型号同名设备，安卓/iOS 同一来源；
                  取不到显示 --（见 bind.js displayDeviceCode）。
                  判重/身份匹配仍只认连上后 0x01 读到的完整 6 字节 ID，与这里的展示无关。 -->
@@ -63,7 +73,7 @@
         </view>
       </scroll-view>
       <view class="primary-action bind-bottom" hover-class="none" bindtap="confirmBind">
-        立即绑定
+        {{selectedIsWifi ? '立即配网' : '立即绑定'}}
       </view>
     </block>
 
