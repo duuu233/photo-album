@@ -6,8 +6,8 @@
 //      查不到/返回空壳记录/失败显示「未知设备」；未知设备点行或点底部按钮都直接弹「未知设备，请联系客服开通」
 //      （本页底部提示弹层，与首页提示同一套样式）、
 //      不进配网；查到的点行即进 WiFi 配置页；不缓存，重新搜索时全部重查；
-//   ④ WiFi 配置页（STEP 2）：当前连的是 2.4G 直接回填；没连 / 5G 直接弹列表，列表只留 2.4G、同名去重、信号强在前，
-//      点选即回填；「下一步」把名称 / 密码交给配网流程，密码不进页面路由；两张新页面已在 app.json 注册。
+//   ④ WiFi 配置页（STEP 2）：进页面统一先弹列表、不自动回填（产品 2026-10-26 拍板），列表只留 2.4G、同名去重、
+//      当前连接的排第一并打标、其余信号强在前，点选即回填；「下一步」把名称 / 密码交给配网流程，密码不进页面路由；两张新页面已在 app.json 注册。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -259,12 +259,20 @@ async function main() {
     return Object.assign(loaded, { world })
   }
   {
-    const { page: config } = loadConfig({ SSID: 'Home-2.4', frequency: 2437 })
+    // 2026-10-26 改为统一先弹列表：原断言「2.4G 直接回填、不弹列表」随之改为「不回填、弹列表，当前网络排第一」
+    const { page: config, world } = loadConfig({ SSID: 'Home-2.4', frequency: 2437 })
     config.onLoad({ deviceNo: 'E348C21ED428', name: 'IJ_E348C21ED428' })
     await flush()
-    assert.equal(config.data.ssid, 'Home-2.4', '当前连的是 2.4G：直接回填名称')
-    assert.equal(config.data.showWifiList, false, '回填了就不弹列表')
-    checked('当前 2.4G WiFi 直接回填')
+    await flush()
+    assert.equal(config.data.ssid, '', '连着 2.4G 也不自动回填')
+    assert.equal(config.data.showWifiList, true, '进页面统一先弹列表')
+    world.listHandler({ wifiList: [
+      { SSID: 'Cafe', frequency: 2462, signalStrength: 90 },
+      { SSID: 'Home-2.4', frequency: 2437, signalStrength: 40 }
+    ] })
+    assert.deepEqual(config.data.wifiList.map(item => item.ssid), ['Home-2.4', 'Cafe'], '当前连接的排第一')
+    assert.equal(config.data.wifiList[0].current, true)
+    checked('连着 2.4G 也统一先弹列表，当前网络排第一')
   }
   {
     const { page: config, state: configState, world } = loadConfig({ SSID: 'Home5G', frequency: 5180 })

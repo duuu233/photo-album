@@ -7,16 +7,16 @@ const wifiProvision = require('../../../utils/wifi-provision')
 // 入口：搜索设备页点了规格已查到的 WiFi 设备（未知设备在那一页就被拦下，进不来）。
 //
 // 交互（对接进度 STEP 2）：
-//   · 进页面先看手机当前连的 WiFi：是 2.4G 就直接回填名称；没连 WiFi 或连的是 5G 就直接弹出 WiFi 列表；
-//   · 名称后的切换图标随时弹列表；列表只列 2.4G，点一下即回填，无确认按钮；
+//   · 进页面**统一先弹 WiFi 列表**让用户选（2026-10-26 产品拍板）：不再按当前连接自动回填——iOS 判不了频段，
+//     两端行为不一致，连着 5G 还会被回填（真机反馈）。当前连接的网络若可用，在列表里标「当前连接」、排第一；
+//   · 名称后的切换图标随时弹列表；列表只列 2.4G，点一下即回填，无确认按钮；也可直接手动输入；
 //   · 密码明文输入；「下一步」把名称 / 密码交给配网流程（内存交接，**密码不进页面路由**）。
 // 平台差异（微信能力限制，做不到的部分页面上给提示、可直接手动输入）：
-//   · 安卓：getConnectedWifi 带频段，2.4G / 5G 判得准；wx.getWifiList 拿附近列表（需要手机定位开着），
-//     按 frequency 落在 2400~2500MHz 筛 2.4G。不传 partialInfo：传 true 时只回 SSID / BSSID，没有频段就判不了 2.4G。
-//   · iOS：getConnectedWifi 不回频段，判不了当前是 2.4G 还是 5G。只有**确认是 2.4G 才回填**（2026-10-26 真机反馈：
-//     连着 5G 被回填了），判不了一律按「不是 2.4G」直接弹列表；弹层里先放当前连接的网络（标「当前连接」，点一下即回填），
-//     wx.getWifiList 在 iOS 上会跳到系统设置、要用户手动进「无线局域网」页才回调，也不带频段，所以另给
-//     「获取附近WiFi」按钮由用户自己点，拿到的列表无法按频段筛选，原样列出。
+//   · 安卓：wx.getWifiList 拿附近列表（需要手机定位开着），按 frequency 落在 2400~2500MHz 筛 2.4G；
+//     getConnectedWifi 只用来给列表里的当前网络打标。不传 partialInfo：传 true 时只回 SSID / BSSID，没有频段。
+//   · iOS：getConnectedWifi 不回频段，当前网络原样放在列表第一项；wx.getWifiList 在 iOS 上会跳到系统设置、
+//     要用户手动进「无线局域网」页才回调，也不带频段，所以另给「获取附近WiFi」按钮由用户自己点，
+//     拿到的列表无法按频段筛选，原样列出；选了频段未知的网络，名称框下提示确认是 2.4G。
 // 2.4G 信道 2412~2484MHz。只认这个区间：5G（5xxx）、6G 都不算；个别机型若按 GHz 给（2.4 / 5），按 GHz 判一次
 function is24G(frequency) {
   const value = Number(frequency)
@@ -80,7 +80,7 @@ Page(fold.adapt({
       spec: decode(options && options.spec)
     })
     this.isIOS = isIOS()
-    this.prefillCurrentWifi()
+    this.loadCurrentThenOpenList()
   },
 
   onUnload() {
@@ -92,8 +92,8 @@ Page(fold.adapt({
 
   noop() {},
 
-  // 读手机当前连接的 WiFi：2.4G 直接回填；没连 / 5G 直接弹列表。iOS 拿不到频段时按「可能是 2.4G」回填，由用户确认。
-  async prefillCurrentWifi() {
+  // 进页面：先读手机当前连接的 WiFi（只用来在列表里标「当前连接」），然后统一弹列表，不自动回填
+  async loadCurrentThenOpenList() {
     let current = null
     try {
       await wxp(wx.startWifi, {})
@@ -106,14 +106,6 @@ Page(fold.adapt({
       return
     }
     this.currentWifi = current
-    const ssid = String((current && current.SSID) || '').trim()
-    // 只有确认是 2.4G 才直接回填；没连、5G、频段判不了（iOS）都直接弹列表
-    if (ssid && is24G(current.frequency)) {
-      if (!this.data.ssid) {
-        this.setData({ ssid, bandHint: '' })
-      }
-      return
-    }
     this.openWifiList()
   },
 
@@ -207,13 +199,16 @@ Page(fold.adapt({
         best[ssid] = item
       }
     })
+    const currentSsid = String((this.currentWifi && this.currentWifi.SSID) || '').trim()
     const wifiList = Object.keys(best)
       .map(ssid => ({
         ssid,
         band: is24G(best[ssid].frequency) ? '2.4G' : '',
-        signal: Number(best[ssid].signalStrength) || 0
+        signal: Number(best[ssid].signalStrength) || 0,
+        current: !!currentSsid && ssid === currentSsid
       }))
-      .sort((a, b) => b.signal - a.signal)
+      // 当前连接的排第一，其余按信号强弱
+      .sort((a, b) => Number(b.current) - Number(a.current) || b.signal - a.signal)
     this.setData({
       wifiList,
       wifiListLoading: false,
