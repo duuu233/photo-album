@@ -219,7 +219,16 @@ function parseWifiState(data) {
   return state
 }
 
+function toHex(bytes) {
+  return Array.from(bytes || [])
+    .map(b => (b < 16 ? '0' : '') + b.toString(16).toUpperCase())
+    .join(' ')
+}
+
 // 设备回的 WiFi 列表：len | rssi | ssid(len-1) 依次排列。长度不合法的残尾丢弃。
+// 乐鑫标准格式**只有 SSID 和 RSSI**，没有信道 / 频率（ESP32 绝大多数型号只支持 2.4G，扫到的本来就是 2.4G）。
+// 每项另带 len 与原始字节 raw（十六进制），数组上挂 rawHex（整包）/ tailHex（解析不了的残尾），
+// 联调时核对固件有没有在标准格式之外追加字段。
 function parseWifiList(data) {
   const bytes = Array.from(data || [])
   const list = []
@@ -230,9 +239,16 @@ function parseWifiList(data) {
       break
     }
     const rssi = bytes[i + 1] > 127 ? bytes[i + 1] - 256 : bytes[i + 1]
-    list.push({ ssid: utf8Decode(bytes.slice(i + 2, i + 1 + len)), rssi })
+    list.push({
+      ssid: utf8Decode(bytes.slice(i + 2, i + 1 + len)),
+      rssi,
+      len,
+      raw: toHex(bytes.slice(i, i + 1 + len))
+    })
     i += 1 + len
   }
+  list.rawHex = toHex(bytes)
+  list.tailHex = toHex(bytes.slice(i))
   return list
 }
 
@@ -306,7 +322,7 @@ function handleMessage(session, message) {
   }
   if (message.subtype === DATA.WIFI_LIST) {
     const list = parseWifiList(message.data)
-    console.log('[BluFi] 设备扫描到 WiFi', list.length, '个')
+    console.log('[BluFi] 设备扫描到 WiFi', list.length, '个，原始回包', list.rawHex, list.tailHex ? `残尾 ${list.tailHex}` : '')
     emit(session, 'wifiList', list)
   } else if (message.subtype === DATA.WIFI_STATE) {
     const state = parseWifiState(message.data)

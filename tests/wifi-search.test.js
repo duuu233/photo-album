@@ -256,7 +256,7 @@ async function main() {
       bluetooth: { async openAdapter() {}, async whenScanStopped() {} },
       blufi: { async connect(id) { world.connects.push(id); if (options.connectError) throw new Error('fail'); return session } },
       'wifi-provision': { getTarget: () => (options.noTarget ? null : { bleDeviceId: 'ble-w1', deviceNo: 'E348C21ED428' }) }
-    }))
+    }), options.envVersion ? { getAccountInfoSync: () => ({ miniProgram: { envVersion: options.envVersion } }) } : {})
     return Object.assign(loaded, { world })
   }
   {
@@ -309,6 +309,32 @@ async function main() {
     assert.ok(/设备信息已失效/.test(lost.page.data.tip))
     assert.equal(lost.world.connects.length, 0)
     checked('连不上设备 / 设备没回列表 / 交接信息丢失都给提示，可重新搜索或手动输入')
+  }
+  {
+    // 联调查看：非正式版每个 WiFi 下打出设备回包全部字段，不去重、隐藏网络也列
+    const rawList = [
+      { ssid: 'Home', rssi: -70, len: 5, raw: '05 BA 48 6F 6D 65' },
+      { ssid: 'Home', rssi: -60, len: 5, raw: '05 C4 48 6F 6D 65' },
+      { ssid: '', rssi: -40, len: 1, raw: '01 D8' }
+    ]
+    rawList.rawHex = '05 BA 48 6F 6D 65 05 C4 48 6F 6D 65 01 D8'
+    rawList.tailHex = ''
+    const dev = loadList({ list: rawList, envVersion: 'develop' })
+    dev.page.onLoad({})
+    await flush()
+    await flush()
+    assert.equal(dev.page.data.showRaw, true)
+    assert.equal(dev.page.data.wifiList.length, 3, '不去重、隐藏网络也列')
+    assert.equal(dev.page.data.wifiList[1].raw, '05 C4 48 6F 6D 65')
+    assert.equal(dev.page.data.wifiList[0].channel, '', '没有信道字段时留空，页面显示「未返回」')
+    assert.ok(/14 字节 · 解析出 3 条/.test(dev.page.data.rawSummary), dev.page.data.rawSummary)
+    const release = loadList({ list: rawList, envVersion: 'release' })
+    release.page.onLoad({})
+    await flush()
+    await flush()
+    assert.equal(release.page.data.showRaw, false, '正式版不显示')
+    assert.equal(release.page.data.wifiList.length, 1, '正式版照常去重')
+    checked('非正式版在每个 WiFi 下打出设备回包字段')
   }
   {
     const world = { credentials: null, back: 0, redirect: null }

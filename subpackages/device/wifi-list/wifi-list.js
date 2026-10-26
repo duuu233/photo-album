@@ -16,6 +16,16 @@ const wifiProvision = require('../../../utils/wifi-provision')
 // BLE 句柄从搜索页经 utils/wifi-provision 内存交接（getTarget），url 只带展示用的设备信息。
 const SCAN_TIMEOUT_MS = 12000
 
+// 联调查看：非正式版（开发版 / 体验版）在每个 WiFi 下面打出设备回包的全部字段与原始字节，并且不去重，
+// 用来确认设备回了哪些参数（乐鑫标准格式只有 SSID + RSSI，没有信道 / 频率，无法按频段过滤）。正式版不显示。
+function showRawFields() {
+  try {
+    return wx.getAccountInfoSync().miniProgram.envVersion !== 'release'
+  } catch (error) {
+    return false
+  }
+}
+
 // 信号强度分 4 格（dBm）：≥-55 4 格、≥-67 3 格、≥-78 2 格、其余 1 格
 function signalLevel(rssi) {
   const value = Number(rssi)
@@ -25,8 +35,22 @@ function signalLevel(rssi) {
   return 1
 }
 
-// 设备回的列表整理成页面数据：去掉空名称、同名取信号强的、按信号排序
-function toWifiList(list) {
+// 设备回的列表整理成页面数据：去掉空名称、同名取信号强的、按信号排序。
+// raw 模式（联调查看）不去重、隐藏网络也列，原样保留每条的全部字段。
+function toWifiList(list, raw) {
+  const view = item => ({
+    ssid: String((item && item.ssid) || '').trim(),
+    rssi: Number(item && item.rssi) || 0,
+    level: signalLevel(item && item.rssi),
+    len: item && item.len,
+    raw: (item && item.raw) || '',
+    // 设备回包里若有信道 / 频率字段就带上；乐鑫标准格式没有，页面显示「未返回」
+    channel: item && item.channel !== undefined ? item.channel : '',
+    frequency: item && item.frequency !== undefined ? item.frequency : ''
+  })
+  if (raw) {
+    return (list || []).map((item, index) => Object.assign(view(item), { key: `${index}` }))
+  }
   const best = {}
   ;(list || []).forEach(item => {
     const ssid = String((item && item.ssid) || '').trim()
@@ -38,7 +62,7 @@ function toWifiList(list) {
     }
   })
   return Object.keys(best)
-    .map(ssid => ({ ssid, rssi: Number(best[ssid].rssi) || 0, level: signalLevel(best[ssid].rssi) }))
+    .map(ssid => Object.assign(view(best[ssid]), { key: ssid }))
     .sort((a, b) => b.rssi - a.rssi)
 }
 
@@ -51,7 +75,10 @@ Page(fold.adapt({
     spec: '',
     wifiList: [],
     scanning: true,
-    tip: ''
+    tip: '',
+    showRaw: false, // 联调查看：每个 WiFi 下打出设备回包字段（非正式版）
+    rawSummary: '',
+    rawHex: ''
   },
 
   onLoad(options) {
@@ -66,7 +93,8 @@ Page(fold.adapt({
     this.setData({
       deviceNo: decode(options && options.deviceNo),
       deviceName: decode(options && options.name),
-      spec: decode(options && options.spec)
+      spec: decode(options && options.spec),
+      showRaw: showRawFields()
     })
     this.scan()
   },
@@ -112,8 +140,11 @@ Page(fold.adapt({
       this.setData({ scanning: false, tip: '设备未返回WiFi列表，请重新搜索或手动输入WiFi名称' })
       return
     }
-    const wifiList = toWifiList(list)
+    const wifiList = toWifiList(list, this.data.showRaw)
+    const tailHex = list.tailHex || ''
     this.setData({
+      rawSummary: `设备回包 ${list.rawHex ? list.rawHex.split(' ').length : 0} 字节 · 解析出 ${list.length} 条${tailHex ? ` · 解析不了的残尾 ${tailHex.split(' ').length} 字节：${tailHex}` : ''}`,
+      rawHex: list.rawHex || '',
       scanning: false,
       wifiList,
       tip: wifiList.length ? '' : '设备附近没有搜到WiFi，请重新搜索或手动输入WiFi名称'

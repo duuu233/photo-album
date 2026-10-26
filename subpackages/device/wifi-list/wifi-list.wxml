@@ -23,9 +23,22 @@
         <text>正在搜索网络...</text>
       </view>
       <view wx:elif="{{tip}}" class="wifi-list-sub">{{tip}}</view>
-      <view wx:for="{{wifiList}}" wx:key="ssid" class="wifi-item" hover-class="none" data-ssid="{{item.ssid}}" bindtap="pickWifi">
+      <!-- 联调查看（非正式版）：整包原始数据 -->
+      <view wx:if="{{showRaw && !scanning && rawSummary}}" class="wifi-raw-summary">
+        <text user-select>{{rawSummary}}</text>
+        <text wx:if="{{rawHex}}" class="wifi-raw-summary__hex" user-select>{{rawHex}}</text>
+      </view>
+      <view wx:for="{{wifiList}}" wx:key="key" class="wifi-item {{showRaw ? 'wifi-item--raw' : ''}}" hover-class="none" data-ssid="{{item.ssid}}" bindtap="pickWifi">
         <image class="wifi-item__icon" src="/assets/images/badge-wifi.svg" mode="aspectFit"></image>
-        <text class="wifi-item__name">{{item.ssid}}</text>
+        <view wx:if="{{showRaw}}" class="wifi-item__body">
+          <text class="wifi-item__name">{{item.ssid || '(隐藏网络)'}}</text>
+          <!-- 设备回包里这条的全部字段：SSID / RSSI / 信道 / 频率 / 长度 / 原始字节 -->
+          <text class="wifi-item__raw" user-select>SSID：{{item.ssid || '(空)'}}</text>
+          <text class="wifi-item__raw" user-select>RSSI：{{item.rssi}} dBm（{{item.level}} 格）</text>
+          <text class="wifi-item__raw" user-select>信道：{{item.channel !== '' ? item.channel : '未返回'}} · 频率：{{item.frequency !== '' ? item.frequency + ' MHz' : '未返回'}}</text>
+          <text class="wifi-item__raw" user-select>长度字节：{{item.len}} · 原始：{{item.raw}}</text>
+        </view>
+        <text wx:else class="wifi-item__name">{{item.ssid}}</text>
         <!-- 信号强度：4 格，按设备扫到的 RSSI 点亮 -->
         <view class="wifi-signal" aria-label="信号 {{item.level}} 格">
           <view class="wifi-signal__bar {{item.level >= 1 ? 'is-on' : ''}}"></view>

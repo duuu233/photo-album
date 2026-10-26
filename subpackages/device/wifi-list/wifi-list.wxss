@@ -151,3 +151,48 @@
 .wifi-item--manual .wifi-item__name {
   color: #ff6421;
 }
+
+/* 联调查看（非正式版）：设备回包字段 */
+.wifi-raw-summary {
+  margin: 0 24rpx 12rpx;
+  padding: 16rpx 20rpx;
+  color: #555c66;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1rpx dashed #c8cdd5;
+  border-radius: 12rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.wifi-raw-summary__hex {
+  display: block;
+  margin-top: 8rpx;
+  color: #8b9098;
+  font-family: Menlo, monospace;
+}
+
+.wifi-item--raw {
+  height: auto;
+  padding-top: 16rpx;
+  padding-bottom: 16rpx;
+  align-items: flex-start;
+}
+
+.wifi-item__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.wifi-item__body .wifi-item__name {
+  display: block;
+}
+
+.wifi-item__raw {
+  display: block;
+  margin-top: 4rpx;
+  color: #8b9098;
+  font-size: 22rpx;
+  line-height: 1.4;
+  word-break: break-all;
+}
