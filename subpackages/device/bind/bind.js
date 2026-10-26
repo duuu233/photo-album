@@ -10,6 +10,7 @@ const deviceThumb = require('../../../utils/device-thumb')
 const system = require('../../../utils/system')
 const fold = require('../../../utils/fold-adapt')
 const wifiProvision = require('../../../utils/wifi-provision')
+const blufi = require('../../../utils/blufi')
 
 const app = getApp()
 const RECENTLY_BOUND_DEVICE_KEY = 'recentlyBoundDeviceId'
@@ -319,7 +320,12 @@ Page(fold.adapt({
   },
 
   // 选中 WiFi 设备后按「立即配网」：规格查到才进配网；未知设备直接弹窗拦下，不进入配网。
-  openWifiProvision(device) {
+  // 配网第一步就是蓝牙连上设备（2026-10-26 产品定的流程）：在本页连，连上才进 WiFi 列表页（同一会话留给列表页扫 WiFi、
+  // 配网状态页下发参数复用）；连不上就停在本页提示，可直接再点重试。与蓝牙版「立即绑定」同样先停扫、等射频安静再连。
+  async openWifiProvision(device) {
+    if (this._wifiConnecting) {
+      return
+    }
     if (device.wifiStatus === 'loading') {
       toast.warn({ title: '正在查询设备信息，请稍候', icon: 'none' })
       return
@@ -328,8 +334,25 @@ Page(fold.adapt({
       this.setData({ showUnknownTip: true, unknownTipClosing: false })
       return
     }
-    // 离开前停扫：配网页后续要用 BLE 给设备下发配置，不能和本页的扫描抢射频
+    // 先停扫并等射频安静：连接和扫描抢同一路射频，边扫边连容易连不上
+    this._wifiConnecting = true
     this.stopScanForBind()
+    wx.showLoading({ title: '连接设备中', mask: true })
+    try {
+      await bluetooth.whenScanStopped()
+      await blufi.connect(device.deviceId)
+    } catch (error) {
+      console.warn('[WiFi配网] 蓝牙连接设备失败', device.deviceId, error && error.message)
+      wx.hideLoading()
+      this._wifiConnecting = false
+      toast.warn({
+        title: activeDevice.friendlyConnectMessage((error && error.message) || '连接设备失败，请靠近设备后重试'),
+        icon: 'none'
+      })
+      return
+    }
+    wx.hideLoading()
+    this._wifiConnecting = false
     // 配网要用的设备信息走内存交接（BLE 句柄、deviceNo、查到的产品），url 只带展示用的字段
     wifiProvision.setTarget({
       bleDeviceId: device.deviceId,
@@ -342,7 +365,7 @@ Page(fold.adapt({
       `name=${encodeURIComponent(device.name || '')}`,
       `spec=${encodeURIComponent(device.specText || '')}`
     ].join('&')
-    // 先进 WiFi 列表选网络，选中后再进账号密码页（2026-10-26 产品调整流程）
+    // 已连上设备 → 进 WiFi 列表页让设备扫描附近 WiFi → 选中后进账号密码页（2026-10-26 产品定的流程）
     wx.navigateTo({ url: `/subpackages/device/wifi-list/wifi-list?${query}` })
   },
 

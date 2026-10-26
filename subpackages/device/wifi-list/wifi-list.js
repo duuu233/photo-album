@@ -12,7 +12,8 @@ const wifiProvision = require('../../../utils/wifi-provision')
 //     手机扫到的也不一定是设备那边收得到的；ESP32 只支持 2.4G，设备扫出来的天然就是 2.4G，不再按频段筛；
 //   · 同名去重取信号强的，信号强的在前；隐藏网络（名称为空）不列；
 //   · 这条蓝牙连接一直留着给配网状态页复用（同一会话、序号连续），离开本页（返回搜索页）才断开；
-//   · 连不上设备 / 设备没回列表：提示原因，给「重新搜索」，也可「手动输入WiFi名称」。
+//   · 连不上设备 / 设备没回列表 / 设备报扫描失败：提示原因，给「重新搜索」，也可「手动输入WiFi名称」；
+//   · 页面依次显示「正在连接设备...」「正在搜索网络...」；非正式版另有联调日志（每一步 + 收发原始帧 + 设备报错）。
 // BLE 句柄从搜索页经 utils/wifi-provision 内存交接（getTarget），url 只带展示用的设备信息。
 const SCAN_TIMEOUT_MS = 12000
 
@@ -76,6 +77,8 @@ Page(fold.adapt({
     wifiList: [],
     scanning: true,
     tip: '',
+    phase: 'connecting', // connecting 连接设备中 / scanning 设备扫描中
+    logs: [], // 联调日志（非正式版显示）：每一步与收发的原始帧
     showRaw: false, // 联调查看：每个 WiFi 下打出设备回包字段（非正式版）
     rawSummary: '',
     rawHex: ''
@@ -102,10 +105,38 @@ Page(fold.adapt({
   // 返回搜索页（或整个配网流程结束）时断开蓝牙；往后跳到账号密码页时本页不卸载，连接保留给配网复用
   onUnload() {
     this.unloaded = true
+    ;(this._offHooks || []).forEach(off => off())
     if (this.session) {
       this.session.close()
       this.session = null
     }
+  },
+
+  // 联调日志：非正式版显示在页面上，同时打到控制台
+  log(text) {
+    console.log('[WiFi列表]', text)
+    if (!this.data.showRaw || this.unloaded) {
+      return
+    }
+    const now = new Date()
+    const pad = n => (n < 10 ? '0' : '') + n
+    const time = `${pad(now.getMinutes())}:${pad(now.getSeconds())}.${String(now.getMilliseconds()).padStart(3, '0')}`
+    this._logId = (this._logId || 0) + 1
+    this.setData({ logs: this.data.logs.concat({ id: this._logId, text: `${time} ${text}` }).slice(-80) })
+  },
+
+  // 会话的收发帧 / 控制帧 / 设备报错接进联调日志（同一会话只接一次）
+  hookSession(session) {
+    if (this._hookedSession === session) {
+      return
+    }
+    ;(this._offHooks || []).forEach(off => off())
+    this._hookedSession = session
+    this._offHooks = [
+      session.on('frame', frame => this.log(`${frame.dir === 'tx' ? '发 →' : '收 ←'} ${frame.hex}`)),
+      session.on('ctrl', ctrl => this.log(`设备控制帧 子类型 0x${ctrl.subtype.toString(16)}`)),
+      session.on('deviceError', detail => this.log(`设备报错：${detail.message}`))
+    ]
   },
 
   async scan() {
@@ -114,32 +145,61 @@ Page(fold.adapt({
       this.setData({ scanning: false, wifiList: [], tip: '设备信息已失效，请返回重新搜索设备' })
       return
     }
-    this.setData({ scanning: true, tip: '' })
+    // ① 蓝牙连接设备（从搜索页进来时已连上，这里直接复用；断了就重连）
+    this.setData({ scanning: true, phase: 'connecting', tip: '', logs: [] })
+    this.log(`① 蓝牙连接设备 ${target.bleDeviceId}`)
     try {
       await bluetooth.openAdapter()
       await bluetooth.whenScanStopped()
       this.session = await blufi.connect(target.bleDeviceId)
     } catch (error) {
       console.warn('[WiFi列表] 蓝牙连接设备失败', error && error.message)
+      this.log(`连接失败：${(error && error.message) || error}`)
       if (!this.unloaded) {
         this.setData({ scanning: false, tip: '连接设备失败，请将手机靠近设备后重新搜索' })
       }
       return
     }
+    if (this.unloaded) {
+      return
+    }
+    this.hookSession(this.session)
+    const info = this.session.info ? this.session.info() : {}
+    this.log(`已连接：服务 ${info.serviceId || '-'}，单帧上限 ${info.frameLimit || '-'} 字节`)
+
+    // ② 设备扫描附近 WiFi
+    this.setData({ phase: 'scanning' })
+    this.log(`② 切 STA 模式（0x02）并发送获取WiFi列表（0x09），最多等 ${SCAN_TIMEOUT_MS / 1000} 秒`)
     let list = null
     try {
       list = await this.session.scanWifi(SCAN_TIMEOUT_MS)
     } catch (error) {
-      console.warn('[WiFi列表] 发送扫描指令失败', error && error.message)
-      list = null
+      console.warn('[WiFi列表] 设备扫描失败', error && error.message)
+      this.log(`扫描失败：${(error && error.message) || error}`)
+      if (!this.unloaded) {
+        // 设备报的错（带 code：扫描失败、要求加密等）原样告诉用户；写指令本身失败（蓝牙断了等）给通用提示
+        const deviceError = error && error.code !== undefined
+        this.setData({
+          scanning: false,
+          tip: deviceError
+            ? `${error.message}，请重新搜索或手动输入WiFi名称`
+            : '发送扫描指令失败，请重新搜索或手动输入WiFi名称'
+        })
+      }
+      return
     }
     if (this.unloaded) {
       return
     }
     if (!list) {
-      this.setData({ scanning: false, tip: '设备未返回WiFi列表，请重新搜索或手动输入WiFi名称' })
+      this.log(`${SCAN_TIMEOUT_MS / 1000} 秒内没收到设备的 WiFi 列表`)
+      this.setData({
+        scanning: false,
+        tip: '设备未返回WiFi列表（可能没扫到网络或设备不支持），请重新搜索或手动输入WiFi名称'
+      })
       return
     }
+    this.log(`③ 收到 WiFi 列表：${list.length} 条`)
     const wifiList = toWifiList(list, this.data.showRaw)
     const tailHex = list.tailHex || ''
     this.setData({

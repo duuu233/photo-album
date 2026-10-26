@@ -151,7 +151,8 @@ async function main() {
     'device-id': deviceIdUtil,
     'device-name': {}, system: {}, 'fold-adapt': { adapt: value => value },
     'device-thumb': require('../utils/device-thumb'),
-    'wifi-provision': { setTarget: value => { pageState.target = value } }
+    'wifi-provision': { setTarget: value => { pageState.target = value } },
+    blufi: { async connect(id) { pageState.connected = (pageState.connected || []).concat(id); if (pageState.connectFails) throw new Error('createBLEConnection:fail'); return {} } }
   }))
   const wifiRow = (handle, deviceNo) => ({
     id: handle, deviceId: handle, name: `IJ_${deviceNo}`, commType: 'WIFI', wifiDeviceId: deviceNo,
@@ -193,8 +194,16 @@ async function main() {
   assert.equal(page.data.binding, false, '未知设备不进入蓝牙绑定流程')
   checked('未知设备点行 / 点按钮都直接弹窗拦下')
 
+  state.connectFails = true
   page.selectDevice({ currentTarget: { dataset: { id: 'w1' } } })
-  assert.equal(state.navs.length, 1, '点查到规格的 WiFi 设备即进配置页')
+  await flush()
+  assert.equal(state.navs.length, 0, '第一步蓝牙连设备失败：停在搜索页，不进列表页')
+  assert.equal(state.toasts.at(-1).title, 'createBLEConnection:fail')
+  state.connectFails = false
+  page.selectDevice({ currentTarget: { dataset: { id: 'w1' } } })
+  await flush()
+  assert.deepEqual(state.connected, ['w1', 'w1'], '第一步先用蓝牙连上设备')
+  assert.equal(state.navs.length, 1, '连上后才进 WiFi 列表页')
   assert.ok(
     state.navs[0].url.indexOf('/subpackages/device/wifi-list/wifi-list?deviceNo=E348C21ED428') === 0,
     `查到规格的 WiFi 设备先进 WiFi 列表页：${state.navs[0].url}`
@@ -204,7 +213,8 @@ async function main() {
   assert.equal(state.target.deviceNo, 'E348C21ED428')
   assert.equal(state.target.product.productId, 21, '查到的产品随行交给配网第 4 步绑定')
   await page.confirmBind()
-  assert.equal(state.navs.length, 2, '选中后点底部按钮同样进配置页')
+  await flush()
+  assert.equal(state.navs.length, 2, '选中后点底部按钮同样先连设备、再进列表页')
   checked('查到规格的 WiFi 设备进入 WiFi 列表页')
 
   page.applyScanResult(1, rows.concat(wifiRow('w4', 'BBBBBBBBBBBB')))
@@ -247,7 +257,13 @@ async function main() {
   const loadList = options => {
     const world = { closed: 0, scans: 0, connects: [] }
     const session = {
-      async scanWifi() { world.scans++; return options.list === undefined ? [] : options.list },
+      async scanWifi() {
+        world.scans++
+        if (options.scanError) throw options.scanError
+        return options.list === undefined ? [] : options.list
+      },
+      on: () => () => {},
+      info: () => ({ serviceId: 'FFFF', frameLimit: 244 }),
       close() { world.closed++ }
     }
     const loaded = loadPage('subpackages/device/wifi-list/wifi-list.js', () => ({
@@ -303,6 +319,11 @@ async function main() {
     await flush()
     await flush()
     assert.equal(silent.world.scans, 2, '可重新搜索')
+    const scanFail = loadList({ scanError: Object.assign(new Error('设备返回错误 11：WiFi 扫描失败'), { code: 11 }) })
+    scanFail.page.onLoad({})
+    await flush()
+    await flush()
+    assert.ok(/设备返回错误 11：WiFi 扫描失败/.test(scanFail.page.data.tip), '设备报扫描失败时把错误原样告诉用户，不干等超时')
     const lost = loadList({ noTarget: true })
     lost.page.onLoad({})
     await flush()
@@ -324,6 +345,8 @@ async function main() {
     await flush()
     await flush()
     assert.equal(dev.page.data.showRaw, true)
+    assert.ok(dev.page.data.logs.some(line => /① 蓝牙连接设备 ble-w1/.test(line.text)), '联调日志第一步是蓝牙连接设备')
+    assert.ok(dev.page.data.logs.some(line => /③ 收到 WiFi 列表：3 条/.test(line.text)))
     assert.equal(dev.page.data.wifiList.length, 3, '不去重、隐藏网络也列')
     assert.equal(dev.page.data.wifiList[1].raw, '05 C4 48 6F 6D 65')
     assert.equal(dev.page.data.wifiList[0].channel, '', '没有信道字段时留空，页面显示「未返回」')

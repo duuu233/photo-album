@@ -98,4 +98,10 @@ const arr = frame => Array.from(frame)
   checked('设备扫描 WiFi：0x09 指令与 0x11 列表解析')
 }
 
+{
+  assert.equal(blufi.errorText(11), 'WiFi 扫描失败', '设备报错码按乐鑫定义翻译')
+  assert.equal(blufi.errorText(99), '未知错误')
+  checked('设备错误码文案')
+}
+
 console.log(`blufi: ${checks} groups passed`)

@@ -17,10 +17,10 @@
         <text class="wifi-list-head__title">设备附近的 WiFi</text>
         <text wx:if="{{!scanning}}" class="wifi-list-head__rescan" hover-class="none" bindtap="rescan">重新搜索</text>
       </view>
-      <!-- 设备扫描中（3~5 秒） -->
+      <!-- ① 蓝牙连接设备 → ② 设备扫描（3~5 秒） -->
       <view wx:if="{{scanning}}" class="wifi-list-scanning">
         <view class="wifi-list-spinner"></view>
-        <text>正在搜索网络...</text>
+        <text>{{phase === 'connecting' ? '正在连接设备...' : '正在搜索网络...'}}</text>
       </view>
       <view wx:elif="{{tip}}" class="wifi-list-sub">{{tip}}</view>
       <!-- 联调查看（非正式版）：整包原始数据 -->
@@ -52,6 +52,13 @@
         <text class="wifi-item__name">手动输入WiFi名称</text>
         <text class="wifi-item__arrow">›</text>
       </view>
+    </view>
+
+    <!-- 联调日志（非正式版）：连接、发送的指令、设备回的每一帧原始字节、设备报错 -->
+    <view wx:if="{{showRaw}}" class="wifi-debug-log">
+      <view class="wifi-debug-log__title">联调日志</view>
+      <view wx:if="{{!logs.length}}" class="wifi-debug-log__line">（暂无）</view>
+      <text wx:for="{{logs}}" wx:key="id" class="wifi-debug-log__line" user-select>{{item.text}}</text>
     </view>
   </view>
 

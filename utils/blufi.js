@@ -65,6 +65,27 @@ const STA_STATE = {
   NO_IP: 0x03
 }
 
+// 设备报错（数据帧 0x12）的错误码，按乐鑫 ESP-IDF esp_blufi_error_state_t
+const ERROR_TEXT = {
+  0: '序号错误',
+  1: '校验错误',
+  2: '解密错误',
+  3: '加密错误',
+  4: '安全初始化错误',
+  5: 'DH 内存分配错误',
+  6: 'DH 参数错误',
+  7: '读取参数错误',
+  8: '生成公钥错误',
+  9: '数据格式错误',
+  10: 'MD5 计算错误',
+  11: 'WiFi 扫描失败',
+  12: '消息状态错误'
+}
+
+function errorText(code) {
+  return ERROR_TEXT[code] || '未知错误'
+}
+
 // 默认 MTU 23 时单帧最多 20 字节；协商到更大 MTU 后按 MTU-3 算，帧内 data 最多 255
 const DEFAULT_FRAME_LIMIT = 20
 const HEADER_LENGTH = 4
@@ -318,7 +339,8 @@ function handleMessage(session, message) {
     return
   }
   if (!message.isData) {
-    return // 控制帧（ACK 等）本期不需要处理
+    emit(session, 'ctrl', { subtype: message.subtype, data: message.data })
+    return // 控制帧（ACK 等）配网流程不需要处理，只给联调日志
   }
   if (message.subtype === DATA.WIFI_LIST) {
     const list = parseWifiList(message.data)
@@ -334,8 +356,8 @@ function handleMessage(session, message) {
     emit(session, 'custom', custom)
   } else if (message.subtype === DATA.ERROR) {
     const code = message.data.length ? message.data[0] : -1
-    console.warn('[BluFi] 设备报错', code)
-    emit(session, 'deviceError', { code, message: `设备返回错误（${code}）` })
+    console.warn('[BluFi] 设备报错', code, errorText(code))
+    emit(session, 'deviceError', { code, message: `设备返回错误 ${code}：${errorText(code)}` })
   }
 }
 
@@ -350,7 +372,9 @@ function bindHub() {
       if (!session || !matchUuid(res.characteristicId, NOTIFY_UUID)) {
         return // 非 BluFi 会话（蓝牙版 FF00、OTA FF10）一律不管
       }
-      const message = session.decoder(new Uint8Array(res.value || new ArrayBuffer(0)))
+      const bytes = new Uint8Array(res.value || new ArrayBuffer(0))
+      emit(session, 'frame', { dir: 'rx', hex: toHex(bytes) })
+      const message = session.decoder(bytes)
       if (message) {
         handleMessage(session, message)
       }
@@ -476,6 +500,7 @@ function writeFrames(session, isData, subtype, payload) {
     }
     const frames = encodeFrames(isData, subtype, payload, session.seq, session.frameLimit)
     for (let i = 0; i < frames.length; i++) {
+      emit(session, 'frame', { dir: 'tx', hex: toHex(frames[i]) })
       await wxp(wx.writeBLECharacteristicValue, {
         deviceId: session.deviceId,
         serviceId: session.serviceId,
@@ -534,11 +559,33 @@ function createApi(session) {
       return writeFrames(session, false, CTRL.CONNECT_WIFI, [])
     },
 
-    // 让设备扫描附近 WiFi：发 0x09，等设备回 0x11 列表。超时 resolve(null)（固件不支持 / 扫描失败）
+    // 会话参数（联调日志用）
+    info() {
+      return { deviceId: session.deviceId, serviceId: session.serviceId, frameLimit: session.frameLimit }
+    },
+
+    // 让设备扫描附近 WiFi：先把设备切到 STA 模式（0x02，设备 WiFi 没起在 STA 时乐鑫的扫描会直接失败），
+    // 再发 0x09，等设备回 0x11 列表。
+    //   · 收到列表 → resolve(list)；
+    //   · 设备回错误报告（0x12，如 11「WiFi 扫描失败」）→ reject，error.code 为设备错误码；
+    //   · 超时 → resolve(null)：固件不支持，或乐鑫示例在一个网络都没扫到时什么都不回。
     async scanWifi(timeout) {
+      let offError = null
+      const failed = new Promise((resolve, reject) => {
+        offError = on(session, 'deviceError', detail => {
+          const error = new Error(detail.message)
+          error.code = detail.code
+          reject(error)
+        })
+      })
       const wait = waitFor(session, 'wifiList', null, timeout || 12000)
-      await writeFrames(session, false, CTRL.GET_WIFI_LIST, [])
-      return wait
+      try {
+        await writeFrames(session, false, CTRL.SET_OPMODE, [OPMODE_STA])
+        await writeFrames(session, false, CTRL.GET_WIFI_LIST, [])
+        return await Promise.race([wait, failed])
+      } finally {
+        offError()
+      }
     },
 
     requestWifiStatus() {
@@ -581,6 +628,7 @@ module.exports = {
   DATA,
   FC,
   STA_STATE,
+  errorText,
   utf8Encode,
   utf8Decode,
   encodeFrames,

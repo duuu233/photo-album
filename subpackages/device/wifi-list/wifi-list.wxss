@@ -196,3 +196,27 @@
   line-height: 1.4;
   word-break: break-all;
 }
+
+/* 联调日志（非正式版） */
+.wifi-debug-log {
+  margin-top: 24rpx;
+  padding: 20rpx 24rpx;
+  background: rgba(30, 33, 38, 0.86);
+  border-radius: 16rpx;
+}
+
+.wifi-debug-log__title {
+  margin-bottom: 8rpx;
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.wifi-debug-log__line {
+  display: block;
+  color: #c9f7d8;
+  font-family: Menlo, monospace;
+  font-size: 20rpx;
+  line-height: 1.5;
+  word-break: break-all;
+}
