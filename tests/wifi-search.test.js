@@ -140,7 +140,14 @@ async function main() {
   const { page, state } = loadPage('subpackages/device/bind/bind.js', pageState => ({
     api: {
       scanSizeModel: () => '',
-      getProductByDevice: deviceNo => { queried.push(deviceNo); return products[deviceNo]() }
+      // 与 api.lookupProductByDevice 同形状：{ product, reason }，不抛错
+      lookupProductByDevice: deviceNo => {
+        queried.push(deviceNo)
+        return products[deviceNo]().then(
+          product => ({ product, reason: product ? '' : `${deviceNo}：返回为空` }),
+          error => ({ product: null, reason: `${deviceNo}：接口失败：${error.message}` })
+        )
+      }
     },
     toast: { warn: options => pageState.toasts.push(options) },
     permission: { getCurrentLocation: async () => ({ latitude: 0, longitude: 0 }) },
@@ -183,28 +190,33 @@ async function main() {
   assert.equal(byId('w3').specText, '未知设备', '接口失败/超时 → 未知设备，不重试')
   checked('WiFi 行按 deviceNo 查规格：尺寸读 sizeModel（没配 --寸），查不到/失败为未知设备')
 
+  // 2026-10-26 产品口径：点搜索列表只是选中，没有其它意思；配网 / 未知设备提示都由底部按钮触发
   page.selectDevice({ currentTarget: { dataset: { id: 'w2' } } })
-  assert.equal(page.data.showUnknownTip, true, '点未知设备那一行就直接弹窗')
-  assert.equal(page.data.unknownTipText, '未知设备，请联系客服开通')
-  assert.equal(state.modals.length, 0, '用本页提示弹层，不再用系统 showModal')
-  assert.equal(page.data.selectedId, 'w1', '未知设备不被选中')
-  page.data.showUnknownTip = false
-  page.data.selectedId = 'w3'
+  assert.equal(page.data.selectedId, 'w2', '点未知设备也只是选中')
+  assert.equal(page.data.showUnknownTip, false, '点行不弹窗')
   await page.confirmBind()
-  assert.equal(page.data.showUnknownTip, true, '未知设备被默认选中时，点底部按钮同样弹窗')
+  assert.equal(page.data.showUnknownTip, true, '点底部「立即配网」才弹未知设备提示')
+  assert.equal(page.data.unknownTipText, '未知设备，请联系客服开通')
+  assert.equal(page.data.unknownTipReason, '', '正式版（取不到环境按正式版）不显示原因')
+  assert.equal(state.modals.length, 0, '用本页提示弹层，不再用系统 showModal')
   assert.equal(state.navs.length, 0, '未知设备不进入配网')
   assert.equal(page.data.binding, false, '未知设备不进入蓝牙绑定流程')
-  checked('未知设备点行 / 点按钮都直接弹窗拦下')
+  checked('点行只选中；未知设备点底部按钮弹窗拦下')
 
+  page.data.showUnknownTip = false
   state.connectFails = true
   page.selectDevice({ currentTarget: { dataset: { id: 'w1' } } })
+  await flush()
+  assert.equal(state.connected, undefined, '点行不连设备')
+  assert.equal(state.navs.length, 0, '点行不跳转')
+  await page.confirmBind()
   await flush()
   assert.equal(state.navs.length, 0, '第一步蓝牙连设备失败：停在搜索页，不进列表页')
   assert.equal(state.toasts.at(-1).title, 'createBLEConnection:fail')
   state.connectFails = false
-  page.selectDevice({ currentTarget: { dataset: { id: 'w1' } } })
+  await page.confirmBind()
   await flush()
-  assert.deepEqual(state.connected, ['w1', 'w1'], '第一步先用蓝牙连上设备')
+  assert.deepEqual(state.connected, ['w1', 'w1'], '点「立即配网」先用蓝牙连上设备')
   assert.equal(state.navs.length, 1, '连上后才进 WiFi 列表页')
   assert.ok(
     state.navs[0].url.indexOf('/subpackages/device/wifi-list/wifi-list?deviceNo=E348C21ED428') === 0,
@@ -214,25 +226,41 @@ async function main() {
   assert.equal(state.target.bleDeviceId, 'w1', '配网要用的蓝牙句柄走内存交接')
   assert.equal(state.target.deviceNo, 'E348C21ED428')
   assert.equal(state.target.product.productId, 21, '查到的产品随行交给配网第 4 步绑定')
-  await page.confirmBind()
-  await flush()
-  assert.equal(state.navs.length, 2, '选中后点底部按钮同样先连设备、再进列表页')
-  checked('查到规格的 WiFi 设备进入 WiFi 列表页')
+  checked('查到规格的 WiFi 设备：点「立即配网」先连设备再进 WiFi 列表页')
 
   page.applyScanResult(1, rows.concat(wifiRow('w4', 'BBBBBBBBBBBB')))
   page.selectDevice({ currentTarget: { dataset: { id: 'w4' } } })
-  assert.equal(state.toasts.at(-1).title, '正在查询设备信息，请稍候', '规格还在查时先提示稍候')
-  assert.equal(state.navs.length, 2)
+  assert.equal(state.navs.length, 1, '点行只选中')
+  await page.confirmBind()
+  assert.equal(state.toasts.at(-1).title, '正在查询设备信息，请稍候', '规格还在查时点按钮先提示稍候')
+  assert.equal(state.navs.length, 1)
   checked('规格查询中不放行')
 
   page.selectDevice({ currentTarget: { dataset: { id: 'b1' } } })
   assert.equal(page.data.selectedIsWifi, false, '选中蓝牙设备时按钮仍是「立即绑定」')
-  assert.equal(state.navs.length, 2, '点蓝牙设备只选中，不跳转')
+  assert.equal(state.navs.length, 1, '点蓝牙设备只选中，不跳转')
   await page.confirmBind()
   await flush()
-  assert.equal(state.navs.length, 2, '蓝牙设备不进 WiFi 配网')
+  assert.equal(state.navs.length, 1, '蓝牙设备不进 WiFi 配网')
   assert.equal(state.toasts.at(-1).title, '蓝牙流程桩：到此为止', '蓝牙设备照旧走连接读 0x01 的绑定流程')
   checked('蓝牙设备的绑定流程不受影响')
+
+  {
+    // 开发版 / 体验版：未知设备提示里带上没查到的原因
+    const dev = loadPage('subpackages/device/bind/bind.js', pageState => ({
+      api: { scanSizeModel: () => '', lookupProductByDevice: async () => ({ product: null, reason: 'E348C21ED428：接口失败：500 系统异常；E3:48:C2:1E:D4:28：返回里没有产品 ID 和产品名称：{}' }) },
+      toast: { warn: options => pageState.toasts.push(options) },
+      'device-thumb': require('../utils/device-thumb'),
+      'device-id': deviceIdUtil, system: {}, 'fold-adapt': { adapt: value => value }
+    }), { getAccountInfoSync: () => ({ miniProgram: { envVersion: 'trial' } }) })
+    dev.page.applyScanResult(1, [wifiRow('x1', 'E348C21ED428')])
+    await flush()
+    await flush()
+    await dev.page.confirmBind()
+    assert.equal(dev.page.data.showUnknownTip, true)
+    assert.ok(/接口失败：500 系统异常/.test(dev.page.data.unknownTipReason) && /返回里没有产品 ID/.test(dev.page.data.unknownTipReason), '体验版把原因写在弹窗上')
+    checked('开发版 / 体验版未知设备提示带原因')
+  }
 
   await page.scan()
   assert.equal(state.scanOptions.includeWifi, true, '搜索设备页同时搜蓝牙版与 WiFi 版')

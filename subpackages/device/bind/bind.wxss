@@ -481,6 +481,19 @@
   text-align: center;
 }
 
+/* 联调原因：灰色小字，左对齐便于看长串 */
+.prompt-reason {
+  margin-top: 20rpx;
+  padding: 16rpx 20rpx;
+  color: #8b9098;
+  background: #f5f6f8;
+  border-radius: 12rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  text-align: left;
+  word-break: break-all;
+}
+
 .prompt-action {
   width: auto;
   margin-top: 88rpx;

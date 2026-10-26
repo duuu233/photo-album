@@ -468,6 +468,21 @@ function unwrapWifiProduct(data) {
   return raw
 }
 
+// 接口成功但算「没查到」时的原因（给联调看，见 lookupProductByDevice）
+function describeWifiProductMiss(data) {
+  const raw = unwrapWifiProduct(data)
+  if (raw === null || raw === undefined || raw === '') {
+    return '返回为空'
+  }
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return `返回格式不认识：${JSON.stringify(data)}`
+  }
+  if (!Object.keys(raw).length) {
+    return '返回为空对象'
+  }
+  return `返回里没有产品 ID 和产品名称：${JSON.stringify(data).slice(0, 200)}`
+}
+
 function normalizeWifiProduct(data) {
   const raw = unwrapWifiProduct(data)
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -528,25 +543,52 @@ module.exports = {
     })
   },
 
-  // WiFi 版设备按 12 位 deviceId 查产品规格（尺寸、旋转、方向等，老服务接口，2026-10-26）。
-  // 查到返回产品对象，查不到 / 返回空返回 null；网络或接口失败 reject。
+  // WiFi 版设备按 deviceId 查产品规格（尺寸、旋转、方向等，老服务接口，2026-10-26），带上没查到的原因。
+  // 返回 { product, reason }：查到时 product 为产品对象、reason 为空；没查到时 product 为 null，reason 逐个写法说明原因，
+  // 如「E348C21ED428：接口失败：500 系统异常；E3:48:C2:1E:D4:28：返回里没有产品 ID 和产品名称」。不抛错。
   // 静默（不弹错误）、不做网络重试：失败 / 超时由调用方直接按「未知设备」处理。
+  // 设备 ID 两种写法都查（2026-10-26 产品要求）：先不带冒号的 12 位（E348C21ED428，即广播名里取出的 deviceNo），
+  // 查不到再查带冒号的（E3:48:C2:1E:D4:28，与蓝牙版 / 绑定时的写法一致）——后台登记用哪种写法以实际为准。
   // 不做结果缓存，每次都实时查（2026-10-26 产品口径，与老接口一致）；同一次搜索里每台只查一次由
   // 搜索页自己按 deviceNo 记账（见 bind.js lookupWifiProduct），重新搜索全部重查。
-  async getProductByDevice(deviceNo) {
-    const key = String(deviceNo || '').trim().toUpperCase()
-    if (!key) {
-      return null
+  async lookupProductByDevice(deviceNo) {
+    const plain = String(deviceNo || '').replace(/[:\-\s]/g, '').trim().toUpperCase()
+    if (!plain) {
+      return { product: null, reason: '设备ID为空' }
     }
-    const data = await http.get(
-      '/Client/Product/getProductByDevice',
-      { deviceNo: key },
-      { mock: false, showError: false, retry: false }
-    )
-    const product = normalizeWifiProduct(data)
-    // 联调期保留：原始返回与归一结果一起打出来，规格显示不对时直接对照（真机 vConsole / 开发者工具可见）
-    console.log('[WiFi规格查询]', key, JSON.stringify(data), product ? `→ 查到 sizeModel=${product.sizeModel || '(空)'}` : '→ 未知设备')
-    return product
+    const colon = deviceIdUtil.canonical(plain)
+    const keys = colon && colon !== plain ? [plain, colon] : [plain]
+    const reasons = []
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]
+      let data = null
+      try {
+        data = await http.get(
+          '/Client/Product/getProductByDevice',
+          { deviceNo: key },
+          { mock: false, showError: false, retry: false }
+        )
+      } catch (error) {
+        const code = error && error.code !== undefined ? `${error.code} ` : ''
+        const message = String((error && error.message) || error || '').replace(/^接口-/, '')
+        reasons.push(`${key}：接口失败：${code}${message}`)
+        console.warn('[WiFi规格查询]', key, '接口失败', code, message)
+        continue
+      }
+      const product = normalizeWifiProduct(data)
+      // 联调期保留：原始返回与归一结果一起打出来，规格显示不对时直接对照（真机 vConsole / 开发者工具可见）
+      console.log('[WiFi规格查询]', key, JSON.stringify(data), product ? `→ 查到 sizeModel=${product.sizeModel || '(空)'}` : '→ 这种写法没查到')
+      if (product) {
+        return { product, reason: '' }
+      }
+      reasons.push(`${key}：${describeWifiProductMiss(data)}`)
+    }
+    return { product: null, reason: reasons.join('；') }
+  },
+
+  // 只要产品对象的简写：查到返回产品，没查到返回 null（原因见 lookupProductByDevice）
+  async getProductByDevice(deviceNo) {
+    return (await module.exports.lookupProductByDevice(deviceNo)).product
   },
 
   // 拉取产品列表里每个产品的 broadcastId（广播名），用于蓝牙搜索时按它过滤目标相框。

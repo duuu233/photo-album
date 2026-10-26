@@ -133,6 +133,8 @@
       <view class="sheet-close" hover-class="none" bindtap="closeUnknownTip">×</view>
       <view class="prompt-title">无法连接该设备</view>
       <view class="prompt-desc">{{unknownTipText}}</view>
+      <!-- 联调：没查到产品的原因（开发版 / 体验版才有值），如「E348C21ED428：接口失败：xxx」「…：返回里没有产品 ID 和产品名称」 -->
+      <view wx:if="{{unknownTipReason}}" class="prompt-reason" user-select>原因：{{unknownTipReason}}</view>
       <view class="primary-action prompt-action" hover-class="none" bindtap="closeUnknownTip">我知道了</view>
     </view>
   </view>

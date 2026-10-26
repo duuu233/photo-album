@@ -29,6 +29,16 @@ const SCAN_TIMEOUT_MS = 20000
 const COMM_WIFI = 'WIFI'
 const UNKNOWN_WIFI_DEVICE_MESSAGE = '未知设备，请联系客服开通'
 
+// 未知设备提示里带上「为什么没查到」（接口失败 / 返回为空 / 返回里没有产品 ID 等，见 api.lookupProductByDevice）：
+// 开发版 / 体验版显示，方便联调；正式版只给「未知设备，请联系客服开通」
+function showUnknownReason() {
+  try {
+    return wx.getAccountInfoSync().miniProgram.envVersion !== 'release'
+  } catch (error) {
+    return false
+  }
+}
+
 // 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
 // styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
 Page(fold.adapt({
@@ -47,6 +57,7 @@ Page(fold.adapt({
     showUnknownTip: false,
     unknownTipClosing: false,
     unknownTipText: UNKNOWN_WIFI_DEVICE_MESSAGE,
+    unknownTipReason: '', // 联调用：没查到产品的原因（仅开发版 / 体验版显示）
     renameVisible: false,
     renameValue: '',
     renameThumb: '',
@@ -273,7 +284,7 @@ Page(fold.adapt({
     }
     const product = lookup.product
     if (lookup.status !== 'found' || !product) {
-      return { wifiStatus: 'unknown', specText: '未知设备' }
+      return { wifiStatus: 'unknown', specText: '未知设备', unknownReason: lookup.reason || '' }
     }
     // 尺寸直接读后台产品配置的 sizeModel（如「13.3寸」），没配显示「--寸」（2026-10-26 产品口径）
     const size = product.sizeModel || ''
@@ -297,11 +308,15 @@ Page(fold.adapt({
     }
     lookups[deviceNo] = { status: 'loading', product: null }
     api
-      .getProductByDevice(deviceNo)
-      .then(product => ({ status: product ? 'found' : 'unknown', product: product || null }))
+      .lookupProductByDevice(deviceNo)
+      .then(result => ({
+        status: result && result.product ? 'found' : 'unknown',
+        product: (result && result.product) || null,
+        reason: (result && result.reason) || ''
+      }))
       .catch(error => {
         console.warn('[WiFi规格查询] 失败，按未知设备处理', deviceNo, (error && error.message) || error)
-        return { status: 'unknown', product: null }
+        return { status: 'unknown', product: null, reason: `查询出错：${(error && error.message) || error}` }
       })
       .then(result => {
         lookups[deviceNo] = result
@@ -331,7 +346,11 @@ Page(fold.adapt({
       return
     }
     if (device.wifiStatus !== 'found') {
-      this.setData({ showUnknownTip: true, unknownTipClosing: false })
+      this.setData({
+        showUnknownTip: true,
+        unknownTipClosing: false,
+        unknownTipReason: showUnknownReason() ? device.unknownReason || '没有查询结果' : ''
+      })
       return
     }
     // 先停扫并等射频安静：连接和扫描抢同一路射频，边扫边连容易连不上
@@ -442,23 +461,15 @@ Page(fold.adapt({
     }, 240)
   },
 
-  // 点选某台设备：蓝牙版只更新选中态，绑定交给底部「立即绑定」。
-  // WiFi 版点行即处理（对接口径「点击 WiFi 设备跳转配置页 / 未知设备点击直接弹窗」）：
-  // 未知设备当场弹「未知设备，请联系客服开通」、不改选中；查到规格的选中并进 WiFi 配置页；还在查的提示稍候。
+  // 点选某台设备：**只更新选中态**，蓝牙版、WiFi 版一样（2026-10-26 产品口径：点列表只是选中，没有其它意思）。
+  // 绑定 / 配网都交给底部按钮：蓝牙版「立即绑定」；WiFi 版「立即配网」——未知设备在那里弹「未知设备，请联系客服开通」，
+  // 规格还在查时提示稍候，查到的先蓝牙连设备再进 WiFi 列表页（见 openWifiProvision）。
   selectDevice(e) {
     const selectedId = e.currentTarget.dataset.id
-    const device = this.data.devices.find(item => (item.id || item.deviceId) === selectedId)
-    if (device && device.commType === COMM_WIFI && device.wifiStatus !== 'found') {
-      this.openWifiProvision(device)
-      return
-    }
     this.setData({
       selectedId,
       selectedIsWifi: this.isWifiSelected(this.data.devices, selectedId)
     })
-    if (device && device.commType === COMM_WIFI) {
-      this.openWifiProvision(device)
-    }
   },
 
   // 设备硬件序列号归一化，仅用于本页比较。
