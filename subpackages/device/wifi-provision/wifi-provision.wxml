@@ -19,6 +19,8 @@
           <text wx:elif="{{item.status === 'done'}}" class="step-icon__mark">✓</text>
           <text wx:elif="{{item.status === 'fail'}}" class="step-icon__mark">×</text>
         </view>
+        <!-- 步骤序号 1~4，排在状态图标之后、文字之前 -->
+        <text class="step-no">{{index + 1}}.</text>
         <text class="step-text">{{item.text}}</text>
       </view>
     </view>

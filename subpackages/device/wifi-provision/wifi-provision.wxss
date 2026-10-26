@@ -93,12 +93,22 @@
   line-height: 1;
 }
 
+.step-no {
+  min-width: 36rpx;
+  margin-right: 8rpx;
+  color: #8b9098;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
 .step-text {
   color: #8b9098;
   font-size: 28rpx;
 }
 
+.is-loading .step-no,
 .is-loading .step-text,
+.is-done .step-no,
 .is-done .step-text {
   color: #2a2d32;
 }
@@ -107,6 +117,7 @@
   font-weight: 700;
 }
 
+.is-fail .step-no,
 .is-fail .step-text {
   color: #e5533d;
 }
