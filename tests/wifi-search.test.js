@@ -363,34 +363,19 @@ async function main() {
     checked('连不上设备 / 设备没回列表 / 交接信息丢失都给提示，可重新搜索或手动输入')
   }
   {
-    // 联调查看：非正式版每个 WiFi 下打出设备回包全部字段，不去重、隐藏网络也列
-    const rawList = [
-      { ssid: 'Home', rssi: -70, len: 5, raw: '05 BA 48 6F 6D 65' },
-      { ssid: 'Home', rssi: -60, len: 5, raw: '05 C4 48 6F 6D 65' },
-      { ssid: '', rssi: -40, len: 1, raw: '01 D8' }
-    ]
-    rawList.rawHex = '05 BA 48 6F 6D 65 05 C4 48 6F 6D 65 01 D8'
-    rawList.tailHex = ''
-    const dev = loadList({ list: rawList, envVersion: 'develop' })
+    // 2026-10-26 去掉页面调试内容（原「非正式版打出回包字段 / 联调日志」用例随之删除），各环境同一套界面；
+    // 保留的判据：名称为空的隐藏网络不列、标题与手动输入入口
+    const dev = loadList({ list: [{ ssid: 'Home', rssi: -60 }, { ssid: '', rssi: -40 }], envVersion: 'develop' })
     dev.page.onLoad({})
     await flush()
     await flush()
-    assert.equal(dev.page.data.showRaw, true)
-    assert.ok(dev.page.data.logs.some(line => /① 蓝牙连接设备 ble-w1/.test(line.text)), '联调日志第一步是蓝牙连接设备')
-    assert.ok(dev.page.data.logs.some(line => /③ 收到 WiFi 列表：3 条/.test(line.text)))
-    // 2026-10-26 产品要求：名称为空的隐藏网络联调查看也不列（原断言「隐藏网络也列」随之改为不列，不去重的判据保留）
-    assert.equal(dev.page.data.wifiList.length, 2, '联调查看不去重，但名称为空的隐藏网络不列')
-    assert.equal(dev.page.data.wifiList[1].raw, '05 C4 48 6F 6D 65')
-    assert.ok(/隐藏网络（名称为空）1 条/.test(dev.page.data.rawSummary), dev.page.data.rawSummary)
-    assert.equal(dev.page.data.wifiList[0].channel, '', '没有信道字段时留空，页面显示「未返回」')
-    assert.ok(/14 字节 · 解析出 3 条/.test(dev.page.data.rawSummary), dev.page.data.rawSummary)
-    const release = loadList({ list: rawList, envVersion: 'release' })
-    release.page.onLoad({})
-    await flush()
-    await flush()
-    assert.equal(release.page.data.showRaw, false, '正式版不显示')
-    assert.equal(release.page.data.wifiList.length, 1, '正式版照常去重')
-    checked('非正式版在每个 WiFi 下打出设备回包字段，隐藏网络不列')
+    assert.deepEqual(dev.page.data.wifiList.map(item => item.ssid), ['Home'], '开发版也不列隐藏网络、不出调试字段')
+    assert.equal(dev.page.data.showRaw, undefined, '页面不再有调试开关')
+    const tpl = fs.readFileSync(path.join(root, 'subpackages/device/wifi-list/wifi-list.wxml'), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
+    assert.ok(/设备附近的2\.4G WiFi/.test(tpl), '列表标题为「设备附近的2.4G WiFi」')
+    assert.ok(/class="wifi-manual-hint"[^>]*bindtap="manualInput"[^>]*>若列表搜索不到您的wifi，请手动输入</.test(tpl), '提示语下有灰字手动输入入口')
+    assert.ok(!/showRaw|logs|rawSummary|wifi-debug-log/.test(tpl), '模板里不再有调试内容')
+    checked('各环境同一套界面：无调试内容，隐藏网络不列，提示语下可手动输入')
   }
   {
     const world = { credentials: null, back: 0, redirect: null }

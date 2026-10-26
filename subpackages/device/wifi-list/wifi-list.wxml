@@ -11,34 +11,23 @@
       <view class="wifi-tip__icon">i</view>
       <text>设备仅支持 2.4G WiFi 配网</text>
     </view>
+    <!-- 搜不到时的手动入口：灰字，点击进账号密码页手动填名称 -->
+    <view class="wifi-manual-hint" hover-class="none" aria-role="button" bindtap="manualInput">若列表搜索不到您的wifi，请手动输入</view>
 
     <view class="wifi-list-panel glass-panel">
       <view class="wifi-list-head">
-        <text class="wifi-list-head__title">设备附近的 WiFi</text>
+        <text class="wifi-list-head__title">设备附近的2.4G WiFi</text>
         <text wx:if="{{!scanning}}" class="wifi-list-head__rescan" hover-class="none" bindtap="rescan">重新搜索</text>
       </view>
-      <!-- ① 蓝牙连接设备 → ② 设备扫描（3~5 秒） -->
+      <!-- ① 蓝牙连接设备 → ② 设备扫描（3~5 秒）；扫描中已收到的网络照常列在下面 -->
       <view wx:if="{{scanning}}" class="wifi-list-scanning">
         <view class="wifi-list-spinner"></view>
         <text>{{phase === 'connecting' ? '正在连接设备...' : '正在搜索网络...'}}</text>
       </view>
       <view wx:elif="{{tip}}" class="wifi-list-sub">{{tip}}</view>
-      <!-- 联调查看（非正式版）：整包原始数据 -->
-      <view wx:if="{{showRaw && !scanning && rawSummary}}" class="wifi-raw-summary">
-        <text user-select>{{rawSummary}}</text>
-        <text wx:if="{{rawHex}}" class="wifi-raw-summary__hex" user-select>{{rawHex}}</text>
-      </view>
-      <view wx:for="{{wifiList}}" wx:key="key" class="wifi-item {{showRaw ? 'wifi-item--raw' : ''}}" hover-class="none" data-ssid="{{item.ssid}}" bindtap="pickWifi">
+      <view wx:for="{{wifiList}}" wx:key="ssid" class="wifi-item" hover-class="none" data-ssid="{{item.ssid}}" bindtap="pickWifi">
         <image class="wifi-item__icon" src="/assets/images/badge-wifi.svg" mode="aspectFit"></image>
-        <view wx:if="{{showRaw}}" class="wifi-item__body">
-          <text class="wifi-item__name">{{item.ssid}}</text>
-          <!-- 设备回包里这条的全部字段：SSID / RSSI / 信道 / 频率 / 长度 / 原始字节 -->
-          <text class="wifi-item__raw" user-select>SSID：{{item.ssid}}</text>
-          <text class="wifi-item__raw" user-select>RSSI：{{item.rssi}} dBm（{{item.level}} 格）</text>
-          <text class="wifi-item__raw" user-select>信道：{{item.channel !== '' ? item.channel : '未返回'}} · 频率：{{item.frequency ? item.frequency + ' MHz' : '未返回'}}</text>
-          <text class="wifi-item__raw" user-select>长度字节：{{item.len}} · 原始：{{item.raw}}</text>
-        </view>
-        <text wx:else class="wifi-item__name">{{item.ssid}}</text>
+        <text class="wifi-item__name">{{item.ssid}}</text>
         <!-- 信号强度：信号格（与搜索设备列表同一组件，仿 iPhone 满格 4 格、最弱 1 格） -->
         <signal-bars class="wifi-item__signal" level="{{item.level}}"></signal-bars>
         <text class="wifi-item__arrow">›</text>
@@ -47,13 +36,6 @@
         <text class="wifi-item__name">手动输入WiFi名称</text>
         <text class="wifi-item__arrow">›</text>
       </view>
-    </view>
-
-    <!-- 联调日志（非正式版）：连接、发送的指令、设备回的每一帧原始字节、设备报错 -->
-    <view wx:if="{{showRaw}}" class="wifi-debug-log">
-      <view class="wifi-debug-log__title">联调日志</view>
-      <view wx:if="{{!logs.length}}" class="wifi-debug-log__line">（暂无）</view>
-      <text wx:for="{{logs}}" wx:key="id" class="wifi-debug-log__line" user-select>{{item.text}}</text>
     </view>
   </view>
 

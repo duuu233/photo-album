@@ -7,9 +7,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 28rpx;
   color: #ff6421;
   font-size: 26rpx;
+}
+
+/* 提示语下的手动输入入口：灰色小字，居中 */
+.wifi-manual-hint {
+  margin: 12rpx 0 28rpx;
+  padding: 8rpx 0;
+  color: #8b9098;
+  font-size: 24rpx;
+  text-align: center;
 }
 
 .wifi-tip__icon {
@@ -119,73 +127,4 @@
 
 .wifi-item--manual .wifi-item__name {
   color: #ff6421;
-}
-
-/* 联调查看（非正式版）：设备回包字段 */
-.wifi-raw-summary {
-  margin: 0 24rpx 12rpx;
-  padding: 16rpx 20rpx;
-  color: #555c66;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1rpx dashed #c8cdd5;
-  border-radius: 12rpx;
-  font-size: 22rpx;
-  line-height: 1.5;
-  word-break: break-all;
-}
-
-.wifi-raw-summary__hex {
-  display: block;
-  margin-top: 8rpx;
-  color: #8b9098;
-  font-family: Menlo, monospace;
-}
-
-.wifi-item--raw {
-  height: auto;
-  padding-top: 16rpx;
-  padding-bottom: 16rpx;
-  align-items: flex-start;
-}
-
-.wifi-item__body {
-  flex: 1;
-  min-width: 0;
-}
-
-.wifi-item__body .wifi-item__name {
-  display: block;
-}
-
-.wifi-item__raw {
-  display: block;
-  margin-top: 4rpx;
-  color: #8b9098;
-  font-size: 22rpx;
-  line-height: 1.4;
-  word-break: break-all;
-}
-
-/* 联调日志（非正式版） */
-.wifi-debug-log {
-  margin-top: 24rpx;
-  padding: 20rpx 24rpx;
-  background: rgba(30, 33, 38, 0.86);
-  border-radius: 16rpx;
-}
-
-.wifi-debug-log__title {
-  margin-bottom: 8rpx;
-  color: #ffffff;
-  font-size: 24rpx;
-  font-weight: 700;
-}
-
-.wifi-debug-log__line {
-  display: block;
-  color: #c9f7d8;
-  font-family: Menlo, monospace;
-  font-size: 20rpx;
-  line-height: 1.5;
-  word-break: break-all;
 }
