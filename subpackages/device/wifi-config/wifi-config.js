@@ -10,14 +10,21 @@ const wifiProvision = require('../../../utils/wifi-provision')
 //   · 进页面先看手机当前连的 WiFi：是 2.4G 就直接回填名称；没连 WiFi 或连的是 5G 就直接弹出 WiFi 列表；
 //   · 名称后的切换图标随时弹列表；列表只列 2.4G，点一下即回填，无确认按钮；
 //   · 密码明文输入；「下一步」把名称 / 密码交给配网流程（内存交接，**密码不进页面路由**）。
-// 平台差异：
-//   · 安卓：wx.getWifiList 拿附近列表（需要手机定位开着），按 frequency < 3000MHz 筛 2.4G；
-//   · iOS：微信拿不到附近 WiFi 列表，也常拿不到频段——列表里只放当前连接的那个（频段未知时照样给），并提示可手动输入。
-const BAND_24G_MAX_MHZ = 3000
-
+// 平台差异（微信能力限制，做不到的部分页面上给提示、可直接手动输入）：
+//   · 安卓：getConnectedWifi 带频段，2.4G / 5G 判得准；wx.getWifiList 拿附近列表（需要手机定位开着），
+//     按 frequency 落在 2400~2500MHz 筛 2.4G。不传 partialInfo：传 true 时只回 SSID / BSSID，没有频段就判不了 2.4G。
+//   · iOS：getConnectedWifi 不回频段，判不了当前是 2.4G 还是 5G。只有**确认是 2.4G 才回填**（2026-10-26 真机反馈：
+//     连着 5G 被回填了），判不了一律按「不是 2.4G」直接弹列表；弹层里先放当前连接的网络（标「当前连接」，点一下即回填），
+//     wx.getWifiList 在 iOS 上会跳到系统设置、要用户手动进「无线局域网」页才回调，也不带频段，所以另给
+//     「获取附近WiFi」按钮由用户自己点，拿到的列表无法按频段筛选，原样列出。
+// 2.4G 信道 2412~2484MHz。只认这个区间：5G（5xxx）、6G 都不算；个别机型若按 GHz 给（2.4 / 5），按 GHz 判一次
 function is24G(frequency) {
   const value = Number(frequency)
-  return Number.isFinite(value) && value > 0 && value < BAND_24G_MAX_MHZ
+  if (!Number.isFinite(value) || value <= 0) {
+    return false
+  }
+  const mhz = value < 10 ? value * 1000 : value
+  return mhz >= 2400 && mhz < 2500
 }
 
 function isIOS() {
@@ -51,7 +58,11 @@ Page(fold.adapt({
     showWifiList: false,
     wifiList: [],
     wifiListLoading: false,
-    wifiListTip: ''
+    wifiListTip: '',
+    // iOS：获取附近 WiFi 要跳系统设置，放一个按钮让用户自己决定
+    iosNearbyEntry: false,
+    // iOS 回填的名称判不了频段：输入框下提示用户确认是 2.4G
+    bandHint: ''
   },
 
   onLoad(options) {
@@ -86,7 +97,7 @@ Page(fold.adapt({
     let current = null
     try {
       await wxp(wx.startWifi, {})
-      const res = await wxp(wx.getConnectedWifi, { partialInfo: true })
+      const res = await wxp(wx.getConnectedWifi, {})
       current = (res && res.wifi) || null
     } catch (error) {
       current = null // 没连 WiFi / 没开定位 / 不支持：都按「没连」处理
@@ -96,10 +107,10 @@ Page(fold.adapt({
     }
     this.currentWifi = current
     const ssid = String((current && current.SSID) || '').trim()
-    const bandUnknown = current && !Number(current.frequency)
-    if (ssid && (is24G(current.frequency) || (this.isIOS && bandUnknown))) {
+    // 只有确认是 2.4G 才直接回填；没连、5G、频段判不了（iOS）都直接弹列表
+    if (ssid && is24G(current.frequency)) {
       if (!this.data.ssid) {
-        this.setData({ ssid })
+        this.setData({ ssid, bandHint: '' })
       }
       return
     }
@@ -107,7 +118,7 @@ Page(fold.adapt({
   },
 
   onSsidInput(e) {
-    this.setData({ ssid: e.detail.value })
+    this.setData({ ssid: e.detail.value, bandHint: '' })
   },
 
   onPasswordInput(e) {
@@ -123,17 +134,25 @@ Page(fold.adapt({
     this.loadNearbyWifi()
   },
 
+  // iOS：先列当前连接的网络（频段判不了，原样给），附近列表要用户点按钮、跳系统设置去取
   showCurrentOnly() {
     const current = this.currentWifi
     const list =
       current && current.SSID && (is24G(current.frequency) || !Number(current.frequency))
-        ? [{ ssid: current.SSID, band: is24G(current.frequency) ? '2.4G' : '' }]
+        ? [{ ssid: current.SSID, band: is24G(current.frequency) ? '2.4G' : '', current: true }]
         : []
     this.setData({
       wifiList: list,
       wifiListLoading: false,
-      wifiListTip: 'iOS 无法获取附近WiFi列表，请直接输入WiFi名称'
+      iosNearbyEntry: true,
+      wifiListTip: 'iOS 无法区分2.4G/5G，请选择2.4G网络，或直接输入WiFi名称'
     })
+  },
+
+  // iOS「获取附近WiFi」：微信会跳到系统设置，用户进「无线局域网」页后列表才回来
+  async loadNearbyWifiIOS() {
+    this.setData({ wifiListLoading: true, wifiListTip: '' })
+    this.loadNearbyWifi()
   },
 
   async loadNearbyWifi() {
@@ -143,13 +162,19 @@ Page(fold.adapt({
         this.wifiListHandler = res => this.applyWifiList((res && res.wifiList) || [])
         wx.onGetWifiList(this.wifiListHandler)
       }
+      if (this.isIOS) {
+        toast.show({ title: '请在系统设置中进入「无线局域网」，再返回小程序', icon: 'none', duration: 3000 })
+      }
       await wxp(wx.getWifiList, {})
-      // 个别机型 getWifiList 成功却迟迟不回调 onGetWifiList：等一会儿还没列表就收起转圈，让用户手动输入
-      setTimeout(() => {
-        if (!this.unloaded && this.data.wifiListLoading) {
-          this.setData({ wifiListLoading: false, wifiListTip: '没有获取到WiFi列表，请直接输入WiFi名称' })
-        }
-      }, 8000)
+      // 个别机型 getWifiList 成功却迟迟不回调 onGetWifiList：等一会儿还没列表就收起转圈，让用户手动输入。
+      // iOS 要等用户从系统设置回来，不设这个超时（回调随时到都会刷新列表）
+      if (!this.isIOS) {
+        setTimeout(() => {
+          if (!this.unloaded && this.data.wifiListLoading) {
+            this.setData({ wifiListLoading: false, wifiListTip: '没有获取到WiFi列表，请直接输入WiFi名称' })
+          }
+        }, 8000)
+      }
     } catch (error) {
       if (this.unloaded) {
         return
@@ -165,7 +190,8 @@ Page(fold.adapt({
     }
   },
 
-  // 只留 2.4G、按 SSID 去重（同名取信号强的）、信号强的在前；没有频段信息的不列（判断不了是不是 2.4G）
+  // 只留 2.4G、按 SSID 去重（同名取信号强的）、信号强的在前。
+  // 没有频段信息时：安卓不列（判断不了是不是 2.4G）；iOS 本来就不给频段，只能原样列出、不标 2.4G
   applyWifiList(list) {
     if (this.unloaded) {
       return
@@ -173,7 +199,8 @@ Page(fold.adapt({
     const best = {}
     list.forEach(item => {
       const ssid = String((item && item.SSID) || '').trim()
-      if (!ssid || !is24G(item.frequency)) {
+      const bandUnknown = !Number(item && item.frequency)
+      if (!ssid || !(is24G(item.frequency) || (this.isIOS && bandUnknown))) {
         return
       }
       if (!best[ssid] || Number(item.signalStrength) > Number(best[ssid].signalStrength)) {
@@ -181,12 +208,21 @@ Page(fold.adapt({
       }
     })
     const wifiList = Object.keys(best)
-      .map(ssid => ({ ssid, band: '2.4G', signal: Number(best[ssid].signalStrength) || 0 }))
+      .map(ssid => ({
+        ssid,
+        band: is24G(best[ssid].frequency) ? '2.4G' : '',
+        signal: Number(best[ssid].signalStrength) || 0
+      }))
       .sort((a, b) => b.signal - a.signal)
     this.setData({
       wifiList,
       wifiListLoading: false,
-      wifiListTip: wifiList.length ? '' : '附近没有搜到2.4G WiFi，可直接输入WiFi名称'
+      iosNearbyEntry: false,
+      wifiListTip: wifiList.length
+        ? this.isIOS
+          ? 'iOS 无法区分2.4G/5G，请选择2.4G网络'
+          : ''
+        : '附近没有搜到2.4G WiFi，可直接输入WiFi名称'
     })
   },
 
@@ -196,7 +232,12 @@ Page(fold.adapt({
 
   // 点一下即选中并回填，不需要额外的确认按钮
   pickWifi(e) {
-    this.setData({ ssid: e.currentTarget.dataset.ssid || '', showWifiList: false })
+    const band = e.currentTarget.dataset.band || ''
+    this.setData({
+      ssid: e.currentTarget.dataset.ssid || '',
+      showWifiList: false,
+      bandHint: band ? '' : '无法识别该WiFi频段，请确认是2.4G网络'
+    })
   },
 
   goNext() {

@@ -225,3 +225,23 @@
   border-radius: 999rpx;
   font-size: 20rpx;
 }
+
+.wifi-field__hint {
+  margin-top: 10rpx;
+  color: #ff6421;
+  font-size: 22rpx;
+}
+
+.wifi-item__current {
+  margin-left: 16rpx;
+  color: #8b9098;
+  font-size: 22rpx;
+}
+
+/* iOS「获取附近WiFi」入口：要跳系统设置，做成文字链由用户自己决定 */
+.wifi-sheet__nearby {
+  margin-top: 24rpx;
+  color: #ff6421;
+  font-size: 26rpx;
+  text-align: center;
+}

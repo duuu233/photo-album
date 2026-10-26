@@ -242,7 +242,7 @@ async function main() {
   }
 
   // ── ④ WiFi 配置页与页面注册 ──
-  const loadConfig = connected => {
+  const loadConfig = (connected, platform = 'android') => {
     const world = { listHandler: null, credentials: null }
     const loaded = loadPage('subpackages/device/wifi-config/wifi-config.js', pageState => ({
       toast: { warn: options => pageState.toasts.push(options) },
@@ -250,7 +250,7 @@ async function main() {
       'fold-adapt': { adapt: value => value },
       'wifi-provision': { getTarget: () => ({ deviceNo: 'E348C21ED428' }), setCredentials: value => { world.credentials = value } }
     }), {
-      getDeviceInfo: () => ({ platform: 'android' }),
+      getDeviceInfo: () => ({ platform }),
       startWifi: ({ success }) => success({}),
       getConnectedWifi: ({ success, fail }) => (connected ? success({ wifi: connected }) : fail({ errCode: 12005 })),
       onGetWifiList: handler => { world.listHandler = handler },
@@ -301,6 +301,28 @@ async function main() {
     await flush()
     assert.equal(config.data.showWifiList, true, '没连 WiFi：直接弹列表')
     checked('没连 WiFi 直接弹列表')
+  }
+  {
+    // 2026-10-26 真机反馈：连着 5G 被回填。iOS 不回频段，判不了就按「不是 2.4G」弹列表，绝不回填
+    const { page: config } = loadConfig({ SSID: 'Home5G' }, 'ios')
+    config.onLoad({})
+    await flush()
+    await flush()
+    assert.equal(config.data.ssid, '', 'iOS 频段未知：不回填')
+    assert.equal(config.data.showWifiList, true, 'iOS 频段未知：直接弹列表')
+    assert.equal(config.data.wifiList[0].ssid, 'Home5G')
+    assert.equal(config.data.wifiList[0].current, true, '当前连接的网络放在列表里，标「当前连接」')
+    assert.equal(config.data.iosNearbyEntry, true, 'iOS 另给「获取附近WiFi」入口')
+    config.pickWifi({ currentTarget: { dataset: { ssid: 'Home5G', band: '' } } })
+    assert.ok(/2\.4G/.test(config.data.bandHint), '选了频段未知的网络：提示确认是 2.4G')
+
+    const ghz = loadConfig({ SSID: 'Home5G', frequency: 5 })
+    ghz.page.onLoad({})
+    await flush()
+    await flush()
+    assert.equal(ghz.page.data.ssid, '', '频段按 GHz 给的 5G 同样不回填')
+    assert.equal(ghz.page.data.showWifiList, true)
+    checked('5G / 频段判不了一律弹列表，只有确认 2.4G 才回填')
   }
   const device = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8')).subpackages.find(item => item.root === 'subpackages/device')
   assert.ok(device.pages.includes('wifi-config/wifi-config') && device.pages.includes('wifi-provision/wifi-provision'))
