@@ -87,6 +87,11 @@ function hookSessionLog(session, log) {
         log(`蓝牙发 → 密码帧（${frame.length} 字节，内容已隐藏）`)
         return
       }
+      // 手机发出的自定义数据帧目前只有 mqtt_config，里面是 MQTT 账号密码明文：整帧打码
+      if (frame.dir === 'tx' && frame.isData && frame.subtype === blufi.DATA.CUSTOM) {
+        log(`蓝牙发 → 自定义数据帧（${frame.length} 字节，含 mqtt_config 凭据，内容已隐藏）`)
+        return
+      }
       log(`蓝牙${frame.dir === 'tx' ? '发 →' : '收 ←'} ${frame.hex}`)
     }),
     session.on('wifiState', state =>
@@ -118,7 +123,8 @@ function hookSessionLog(session, log) {
 //       设备通讯协议 2.2.3【设置 MQTT 配置信息】mqtt_config；
 //   · 「蓝牙发 → / 蓝牙收 ← <十六进制>」：每一帧原始字节；「设备WiFi状态 / 设备自定义数据 / 设备报错 / 设备断开了蓝牙连接」：设备主动上报；
 //   · ①~④ 开头的行是步骤分隔，「配网失败（第 N 步）：原因」「设备已上云并绑定，配网成功」是结论。
-// WiFi 密码不进日志：参数里只记位数，密码帧显示「密码帧（N 字节，内容已隐藏）」；mqtt_config 的 pwd 同样打码。
+// WiFi 密码不进日志：参数里只记位数，密码帧显示「密码帧（N 字节，内容已隐藏）」；mqtt_config 的 pwd 同样打码，
+// 承载 mqtt_config 的自定义数据帧（手机发出的）整帧打码。
 //   · 【流程N】标签对应后端给的配网全流程编号（2026-10-26），只标 App 实际执行、且参数能拿到的步骤：
 //     ③ 蓝牙连接、④ 下发 WiFi、⑤ 下发 MQTT、⑦ 设备 WiFi 状态报告、⑭ 轮询在线、⑮ 老服务绑定。
 //     **只打运行时真实拿到的参数**（广播名、deviceNo、蓝牙服务 / 单帧上限、SSID、密码位数、实际下发的 opmode / MQTT 配置、

@@ -11,7 +11,13 @@ module.exports = {
   iotBaseURL: 'https://iot.boltfox.cn',
   iotWsURL: 'wss://iot.boltfox.cn/ws/push',
   // 配网时经蓝牙下发给设备的 MQTT 配置（协议 2.2.3 mqtt_config：{ host, port, usr, pwd }）。
-  // 来源待后端 / 固件确认（2026-10-26 产品确认先留接口位、不下发）：为 null 时配网跳过 mqtt_config，
-  // 设备沿用出厂配置。拿到后优先改成由接口下发（见 utils/wifi-provision.js getMqttConfig），不要在这里写真实凭证。
-  iotMqttConfig: null
+  // 2026-10-26 产品提供 EMQX 设备账号并确认写在这里：配网第 2 步下发给设备、要求 mqtt_config_ack.result=0。
+  // 设为 null 则配网跳过 mqtt_config（设备沿用出厂配置）。日志里 pwd 与该帧原文一律打码（见 utils/wifi-provision.js）。
+  // 以后若后端提供配网会话接口返回 mqttConfig，改在 wifi-provision.getMqttConfig 里取。
+  iotMqttConfig: {
+    host: 'mqtt.boltfox.cn',
+    port: 11883,
+    usr: 'xt-boltstar-device',
+    pwd: 'Xt#Mqtt@2026!5f8'
+  }
 }

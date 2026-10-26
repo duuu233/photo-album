@@ -30,7 +30,11 @@ function setup(options = {}) {
     on(type, fn) { (handlers[type] = handlers[type] || []).push(fn); return () => {} },
     info() { return { serviceId: 'FFFF', frameLimit: 244 } },
     async connectWifi() { log.writes.push(['connect']) },
-    async request(action, data) { log.requests.push([action, data]); return options.mqttAck || { result: 0 } },
+    async request(action, data) {
+      log.requests.push([action, data])
+      ;(handlers.frame || []).forEach(fn => fn({ dir: 'tx', isData: true, subtype: 0x13, length: 60, hex: '4D 00 05 38 7B 22 70 77 64 22 3A 22 53 65 63 72 65 74' }))
+      return options.mqttAck || { result: 0 }
+    },
     waitFor() { return Promise.resolve(options.wifiState === undefined ? { staState: 0 } : options.wifiState) },
     close() { log.closed++ }
   }
@@ -50,7 +54,7 @@ function setup(options = {}) {
     './config': { iotMqttConfig: options.mqtt || null },
     './blufi': {
       STA_STATE: { CONNECTED: 0, FAIL: 1 },
-      DATA: { STA_PASSWORD: 0x03 },
+      DATA: { STA_PASSWORD: 0x03, CUSTOM: 0x13 },
       async connect(id) { log.connectedTo = id; if (options.connectError) throw new Error('connect fail'); return session }
     },
     './bluetooth': { async openAdapter() {}, async whenScanStopped() {} }
@@ -128,10 +132,16 @@ async function main() {
     checked('配网日志：每一步有记录，密码不进日志')
   }
   {
-    const { log, run } = setup({ mqtt: { host: 'mqtt.example.com', port: 1883, usr: 'u', pwd: 'p' } })
+    const { log, run } = setup({ mqtt: { host: 'mqtt.example.com', port: 1883, usr: 'u', pwd: 'Secret#Pwd' } })
     await run()
     assert.equal(log.requests[0][0], 'mqtt_config')
     assert.equal(log.requests[0][1].host, 'mqtt.example.com')
+    assert.equal(log.requests[0][1].pwd, 'Secret#Pwd', '下发给设备的是真实密码')
+    const mqttLog = log.lines.join('\n')
+    assert.equal(mqttLog.indexOf('Secret#Pwd'), -1, 'MQTT 密码不进日志')
+    assert.equal(mqttLog.indexOf('53 65 63 72 65 74'), -1, '承载 mqtt_config 的帧原文不进日志')
+    assert.ok(/自定义数据帧（60 字节，含 mqtt_config 凭据，内容已隐藏）/.test(mqttLog))
+    assert.ok(/"pwd":"（已隐藏）"/.test(mqttLog), '参数里 pwd 打码')
     const failed = setup({ mqtt: { host: 'h' }, mqttAck: { result: 5 } })
     await assert.rejects(failed.run(), error => error.step === 1 && /错误码 5/.test(error.message))
     assert.ok(failed.log.closed >= 1)

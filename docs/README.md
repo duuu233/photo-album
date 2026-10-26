@@ -43,7 +43,7 @@
 
 ## 变更记录
 
-- [2026-10-26 WiFi版配网STEP2](changes/2026-10-26-WiFi版配网STEP2.md)：`main-wifi` 分支。新增 `utils/blufi.js`（乐鑫 BluFi 帧与会话，未加密）、`utils/wifi-provision.js`（手机网络 → 下发 WiFi → 设备连 WiFi → 老服务绑定 + 带 since 轮询在线）、`api.bindWifiDevice`；WiFi 配置页接当前 WiFi 回填与 2.4G 列表，配网状态页接真实流程。`mqtt_config` 来源未定暂不下发。本机无node测试未跑，未真机。
+- [2026-10-26 WiFi版配网STEP2](changes/2026-10-26-WiFi版配网STEP2.md)：`main-wifi` 分支。新增 `utils/blufi.js`（乐鑫 BluFi 帧与会话，未加密）、`utils/wifi-provision.js`（手机网络 → 下发 WiFi → 设备连 WiFi → 老服务绑定 + 带 since 轮询在线）、`api.bindWifiDevice`；WiFi 配置页接当前 WiFi 回填与 2.4G 列表，配网状态页接真实流程。`mqtt_config` 一度暂不下发，同日起按 `config.iotMqttConfig`（EMQX 设备账号）下发。本机无node测试未跑，未真机。
 - [2026-10-26 WiFi版联调基础与搜索](changes/2026-10-26-WiFi版联调基础与搜索.md)：`main-wifi` 分支，对接进度 STEP 0/1。新增 IoT 客户端（`iot-errors`/`iot-request`/`iot-ws`/`iot-api`，503 不登出、WS 按需连接与退避重连）；搜索页同搜蓝牙版与 WiFi 版（`IJ_*` 模板取 12 位 deviceId），行上挂「WiFi版/蓝牙版」标签，WiFi 设备按 `getProductByDevice` 查规格，查不到为未知设备并禁止连接；新增 WiFi 配置、配网状态两张静态页。同日追加：WiFi 行尺寸直接读 `sizeModel`（没配 `--寸`）；`IJ_`+12 位一律按 WiFi 版（后台写 `IJ_` 不再被当蓝牙版）、空壳记录算查不到、点未知设备行直接弹窗。本机无node测试未跑，未真机。
 - [2026-10-23 屏幕尺寸读sizeModel与抖动出帧迁后端](changes/2026-10-23-屏幕尺寸读sizeModel与抖动出帧迁后端.md)：设备详情「屏幕尺寸」直接展示后台 `sizeModel`，没配不展示；抖动出帧由第三方 seekink 改调 `/Client/Basic/imageDitheringBinDownload`（用户自己的 userToken），删 getXTYUserToken 及调试台 Token 卡片。同日追加：搜索列表按广播名匹配产品显示 sizeModel；type 数值不变由后端对齐。本机无node测试未跑，未真机。
 - [2026-10-23 设备容量按机型区分](changes/2026-10-23-设备容量按机型区分.md)：按规格书 v1.6 §5.2，容量先按机型（broadcastId：EF6-370 95、EF6-589 51、EB-169 25、EC-370 11）再按屏型（新增 0x04→25）；修复 EB-169、EC-370 最大照片数量显示 --，投屏选槽同口径。本机无node测试未跑，未真机。
