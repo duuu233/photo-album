@@ -4,7 +4,8 @@
 //   ② 配了 MQTT 配置：发 mqtt_config，result 非 0 停在第 2 步；
 //   ③ 设备报 WiFi 连接失败：停在第 3 步；等不到 WiFi 状态报告：放行，交给第 4 步；
 //   ④ 在线轮询：503 / 403 继续轮询，60s 等不到 online 停在第 4 步；401 直接停；
-//   ⑤ 手机没网停在第 1 步；任何结束路径都释放蓝牙会话。
+//   ⑤ 手机没网停在第 1 步；任何结束路径都释放蓝牙会话；
+//   ⑥ 配网日志：每一步与结果都有记录，WiFi 密码不进日志（只记位数，密码帧打码）。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -15,11 +16,18 @@ let checks = 0
 function checked(name) { checks++; console.log('PASS ' + name) }
 
 function setup(options = {}) {
-  const log = { steps: [], writes: [], requests: [], binds: [], onlineCalls: [], closed: 0 }
+  const log = { steps: [], writes: [], requests: [], binds: [], onlineCalls: [], closed: 0, lines: [] }
+  const handlers = {}
   let clock = 1000000
   const onlineReplies = (options.online || [{ online: true }]).slice()
   const session = {
-    async configureSta(ssid, password) { log.writes.push(['sta', ssid, password]) },
+    async configureSta(ssid, password) {
+      log.writes.push(['sta', ssid, password])
+      ;(handlers.frame || []).forEach(fn => fn({ dir: 'tx', isData: true, subtype: 0x02, length: 8, hex: '09 00 01 04 48 6F 6D 65' }))
+      ;(handlers.frame || []).forEach(fn => fn({ dir: 'tx', isData: true, subtype: 0x03, length: 12, hex: '0D 00 02 08 70 61 35 35 77 6F 72 64' }))
+    },
+    on(type, fn) { (handlers[type] = handlers[type] || []).push(fn); return () => {} },
+    info() { return { serviceId: 'FFFF', frameLimit: 244 } },
     async connectWifi() { log.writes.push(['connect']) },
     async request(action, data) { log.requests.push([action, data]); return options.mqttAck || { result: 0 } },
     waitFor() { return Promise.resolve(options.wifiState === undefined ? { staState: 0 } : options.wifiState) },
@@ -40,6 +48,7 @@ function setup(options = {}) {
     './config': { iotMqttConfig: options.mqtt || null },
     './blufi': {
       STA_STATE: { CONNECTED: 0, FAIL: 1 },
+      DATA: { STA_PASSWORD: 0x03 },
       async connect(id) { log.connectedTo = id; if (options.connectError) throw new Error('connect fail'); return session }
     },
     './bluetooth': { async openAdapter() {}, async whenScanStopped() {} }
@@ -59,7 +68,7 @@ function setup(options = {}) {
     product: { productId: 21, productName: 'WiFi相框', sizeModel: '13.3寸' },
     ssid: '我家WiFi', password: 'pa55word'
   }
-  const run = () => provision.run(job, { onStep: (i, s) => log.steps.push(`${i}:${s}`) })
+  const run = () => provision.run(job, { onStep: (i, s) => log.steps.push(`${i}:${s}`), onLog: text => log.lines.push(text) })
   return { log, run, provision, startClock: 1000000 }
 }
 
@@ -78,6 +87,17 @@ async function main() {
     assert.deepEqual(log.onlineCalls[0], ['E348C21ED428', startClock], 'since = 本次配网开始时间')
     assert.ok(log.closed >= 1, '蓝牙会话已释放')
     checked('正常配网：四步依次通过，绑定后带 since 轮询在线')
+
+    const all = log.lines.join('\n')
+    for (const marker of ['开始配网', '① 检查手机网络', '② 蓝牙连接设备', '下发 WiFi', '③ 让设备连接 WiFi', '④ 老服务绑定', '在线查询 #1', '配网成功']) {
+      assert.ok(all.indexOf(marker) > -1, `日志里要有「${marker}」`)
+    }
+    assert.ok(/WiFi「我家WiFi」，密码 8 位/.test(all), '记 WiFi 名称与密码位数')
+    assert.equal(all.indexOf('pa55word'), -1, '密码原文不进日志')
+    assert.ok(/密码帧（12 字节，内容已隐藏）/.test(all), '密码帧打码')
+    assert.equal(all.indexOf('70 61 35 35 77 6F 72 64'), -1, '密码帧十六进制也不进日志')
+    assert.ok(/蓝牙发 → 09 00 01 04 48 6F 6D 65/.test(all), '其它帧照常记原文')
+    checked('配网日志：每一步有记录，密码不进日志')
   }
   {
     const { log, run } = setup({ mqtt: { host: 'mqtt.example.com', port: 1883, usr: 'u', pwd: 'p' } })
@@ -107,6 +127,7 @@ async function main() {
 
     const never = setup({ online: [{ online: false }] })
     await assert.rejects(never.run(), error => error.step === 3 && /联网超时/.test(error.message))
+    assert.ok(never.log.lines.some(line => /配网失败（第 4 步）：设备联网超时/.test(line)), '失败原因记进日志')
     assert.ok(never.log.onlineCalls.length >= 25 && never.log.onlineCalls.length <= 31, `约 60s / 2s 轮询：${never.log.onlineCalls.length} 次`)
 
     const relogin = setup({ online: [Object.assign(new Error('401'), { code: 401, action: 'relogin' })] })

@@ -75,23 +75,71 @@ function getNetworkType() {
   })
 }
 
-// 跑一遍配网。hooks：{ onStep(index, status), isCancelled() }。
+// 蓝牙会话事件接进配网日志：收发帧（密码帧打码）、设备 WiFi 状态报告、自定义数据、设备报错、断开。返回退订函数。
+function hookSessionLog(session, log) {
+  if (!session || typeof session.on !== 'function') {
+    return () => {}
+  }
+  const offs = [
+    session.on('frame', frame => {
+      if (frame.dir === 'tx' && frame.isData && frame.subtype === blufi.DATA.STA_PASSWORD) {
+        log(`蓝牙发 → 密码帧（${frame.length} 字节，内容已隐藏）`)
+        return
+      }
+      log(`蓝牙${frame.dir === 'tx' ? '发 →' : '收 ←'} ${frame.hex}`)
+    }),
+    session.on('wifiState', state =>
+      log(
+        `设备WiFi状态：STA ${state.staState}（0 已连上 / 1 失败 / 2 连接中 / 3 无IP）` +
+          `${state.ssid ? `，SSID ${state.ssid}` : ''}` +
+          `${state.endReason !== null && state.endReason !== undefined ? `，断开原因 ${state.endReason}` : ''}` +
+          `${state.rssi !== null && state.rssi !== undefined ? `，RSSI ${state.rssi}` : ''}`
+      )
+    ),
+    session.on('custom', custom => log(`设备自定义数据：${custom.text}`)),
+    session.on('deviceError', detail => log(`设备报错：${detail.message}`)),
+    session.on('disconnect', () => log('设备断开了蓝牙连接'))
+  ]
+  return () => offs.forEach(off => off())
+}
+
+// 跑一遍配网。hooks：{ onStep(index, status), isCancelled(), onLog(text) }。
 // 成功 resolve { device }（老服务归一化后的设备记录）；失败 reject，error.step 为失败的步骤下标、message 为给用户看的文案。
+// onLog：配网日志（每一步的入参 / 结果、蓝牙收发帧、设备状态报告、绑定与每次在线查询），方便联调；同时打控制台 [配网]。
+// WiFi 密码不进日志：只记位数，密码帧打码。
 async function run(job, hooks) {
   const onStep = (hooks && hooks.onStep) || function () {}
   const isCancelled = (hooks && hooks.isCancelled) || (() => false)
+  const onLog = (hooks && hooks.onLog) || function () {}
+  const log = text => {
+    console.log('[配网]', text)
+    try {
+      onLog(text)
+    } catch (error) {
+      // 页面日志回调出错不影响配网
+    }
+  }
   const checkCancel = step => {
     if (isCancelled()) {
+      log('已取消配网')
       throw provisionError(step, '已取消配网')
     }
   }
   const since = Date.now()
   let session = null
+  let offSessionLog = () => {}
+  const product = job.product || {}
+  log(
+    `开始配网：设备 ${job.deviceNo || '-'}（${job.name || '-'}），蓝牙句柄 ${job.bleDeviceId || '-'}，` +
+      `产品 ${product.productId || '-'} ${product.productName || ''}，WiFi「${job.ssid}」，密码 ${String(job.password || '').length} 位，since=${since}`
+  )
 
   try {
     // ① 手机网络
     onStep(0, 'loading')
+    log('① 检查手机网络')
     const networkType = await getNetworkType()
+    log(`手机网络类型：${networkType}`)
     if (networkType === 'none') {
       throw provisionError(0, '手机网络不可用，请检查网络后重试')
     }
@@ -100,38 +148,49 @@ async function run(job, hooks) {
 
     // ② 设备网络配置
     onStep(1, 'loading')
+    log('② 蓝牙连接设备（列表页已连上则复用）')
     try {
       await bluetooth.openAdapter()
       await bluetooth.whenScanStopped()
       session = await blufi.connect(job.bleDeviceId)
     } catch (error) {
-      console.warn('[配网] 蓝牙连接设备失败', error && error.message)
+      log(`蓝牙连接设备失败：${(error && error.message) || error}`)
       throw provisionError(1, '连接设备失败，请将手机靠近设备后重试', error)
     }
+    offSessionLog = hookSessionLog(session, log)
+    const info = typeof session.info === 'function' ? session.info() : {}
+    log(`已连接：服务 ${info.serviceId || '-'}，单帧上限 ${info.frameLimit || '-'} 字节`)
     checkCancel(1)
+    log('下发 WiFi：STA 模式（0x02）→ 名称（数据 0x02）→ 密码（数据 0x03）')
     try {
       await session.configureSta(job.ssid, job.password)
     } catch (error) {
-      console.warn('[配网] 下发WiFi失败', error && error.message)
+      log(`下发 WiFi 失败：${(error && error.message) || error}`)
       throw provisionError(1, '设备网络配置下发失败，请靠近设备后重试', error)
     }
     const mqttConfig = await getMqttConfig(job)
     if (mqttConfig) {
+      log(`下发 mqtt_config：host ${mqttConfig.host || '-'}，port ${mqttConfig.port || '-'}，usr ${mqttConfig.usr || '-'}`)
       let ack = null
       try {
         ack = await session.request('mqtt_config', mqttConfig, MQTT_ACK_TIMEOUT_MS)
       } catch (error) {
+        log(`mqtt_config 无应答：${(error && error.message) || error}`)
         throw provisionError(1, '设备未响应网络配置，请重试', error)
       }
+      log(`mqtt_config_ack：${JSON.stringify(ack)}`)
       if (Number(ack && ack.result) !== 0) {
         throw provisionError(1, `设备网络配置失败（错误码 ${ack && ack.result}）`)
       }
+    } else {
+      log('MQTT 配置来源未定，本次不下发 mqtt_config')
     }
     onStep(1, 'done')
     checkCancel(2)
 
     // ③ 设备连接 WiFi
     onStep(2, 'loading')
+    log(`③ 让设备连接 WiFi（控制 0x03），最多等 ${WIFI_STATE_TIMEOUT_MS / 1000} 秒的状态报告`)
     const settled = session.waitFor(
       'wifiState',
       state => state.staState === blufi.STA_STATE.CONNECTED || state.staState === blufi.STA_STATE.FAIL,
@@ -140,23 +199,29 @@ async function run(job, hooks) {
     try {
       await session.connectWifi()
     } catch (error) {
+      log(`发送连接指令失败：${(error && error.message) || error}`)
       throw provisionError(2, '设备连接WiFi失败，请靠近设备后重试', error)
     }
     const state = await settled
+    if (!state) {
+      log('没等到设备的 WiFi 状态报告，交给第 4 步在线查询裁决')
+    }
     if (state && state.staState === blufi.STA_STATE.FAIL) {
       throw provisionError(2, '设备连接WiFi失败，请检查WiFi名称和密码，并确认是2.4G网络')
     }
     onStep(2, 'done')
     // 设备已拿到 WiFi，蓝牙不再需要：尽早释放，别占着设备
+    offSessionLog()
     session.close()
     session = null
+    log('已释放蓝牙连接')
     checkCancel(3)
 
     // ④ 绑定 + 轮询上云
     onStep(3, 'loading')
+    log(`④ 老服务绑定：deviceNo ${job.deviceNo}，productId ${product.productId || '-'}`)
     let device = null
     try {
-      const product = job.product || {}
       device = await api.bindWifiDevice({
         deviceNo: job.deviceNo,
         productId: product.productId,
@@ -165,28 +230,39 @@ async function run(job, hooks) {
         broadcastName: job.name
       })
     } catch (error) {
+      log(`绑定失败：${(error && error.message) || error}`)
       throw provisionError(3, `设备绑定失败：${(error && error.message) || '请稍后重试'}`, error)
     }
+    log(`绑定成功：userProductId ${(device && (device.userProductId || device.id)) || '-'}`)
+    log(`轮询在线：每 ${ONLINE_POLL_INTERVAL_MS / 1000} 秒查一次，最多 ${ONLINE_TIMEOUT_MS / 1000} 秒`)
     const deadline = Date.now() + ONLINE_TIMEOUT_MS
+    let attempt = 0
     while (Date.now() < deadline) {
       checkCancel(3)
+      attempt += 1
       try {
         const res = await iotApi.getDeviceOnline(job.deviceNo, since, { showError: false })
+        log(`在线查询 #${attempt}：online=${res && res.online}，lastOnlineAt=${(res && res.lastOnlineAt) || '-'}`)
         if (res && res.online) {
           onStep(3, 'done')
+          log('设备已上云，配网成功')
           return { device }
         }
       } catch (error) {
+        log(`在线查询 #${attempt} 失败：code ${error && error.code}，${(error && error.message) || error}`)
         if (error && error.action === 'relogin') {
           throw provisionError(3, '登录已失效，请重新登录', error)
         }
         // 503（权限服务暂不可用）/ 403（绑定还没生效）/ 网络抖动：不算失败，继续轮询
-        console.warn('[配网] 在线查询失败，继续轮询', error && error.code, error && error.message)
       }
       await sleep(ONLINE_POLL_INTERVAL_MS)
     }
     throw provisionError(3, '设备联网超时，请检查WiFi密码或信号后重试')
+  } catch (error) {
+    log(`配网失败（第 ${(error && typeof error.step === 'number' ? error.step : 0) + 1} 步）：${(error && error.message) || error}`)
+    throw error
   } finally {
+    offSessionLog()
     if (session) {
       session.close()
     }

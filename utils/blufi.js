@@ -556,7 +556,8 @@ function writeFrames(session, isData, subtype, payload) {
     }
     const frames = encodeFrames(isData, subtype, payload, session.seq, session.frameLimit)
     for (let i = 0; i < frames.length; i++) {
-      emit(session, 'frame', { dir: 'tx', hex: toHex(frames[i]) })
+      // 带上帧类型：日志据此把密码帧（数据帧 STA_PASSWORD）打码，不把 WiFi 密码原文写进日志
+      emit(session, 'frame', { dir: 'tx', hex: toHex(frames[i]), isData, subtype, length: frames[i].length })
       await wxp(wx.writeBLECharacteristicValue, {
         deviceId: session.deviceId,
         serviceId: session.serviceId,
