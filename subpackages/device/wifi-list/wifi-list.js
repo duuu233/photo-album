@@ -3,6 +3,7 @@ const fold = require('../../../utils/fold-adapt')
 const bluetooth = require('../../../utils/bluetooth')
 const blufi = require('../../../utils/blufi')
 const wifiProvision = require('../../../utils/wifi-provision')
+const signal = require('../../../utils/signal')
 
 // WiFi 版设备配网第一步：选择 WiFi（2026-10-26 产品定的流程）：
 //   App 蓝牙连接设备 → 设备扫描附近 WiFi（3~5 秒，页面显示「正在搜索网络...」）→ 显示列表（名称 + 信号强度）
@@ -29,17 +30,13 @@ function showRawFields() {
   }
 }
 
-// 信号强度分 4 格（dBm）：≥-55 4 格、≥-67 3 格、≥-78 2 格、其余 1 格
+// 信号格数与搜索设备列表同一套（utils/signal.js）：满格 4、最弱 1、未知 0
 function signalLevel(rssi) {
-  const value = Number(rssi)
-  if (value >= -55) return 4
-  if (value >= -67) return 3
-  if (value >= -78) return 2
-  return 1
+  return signal.rssiToLevel(rssi)
 }
 
 // 设备回的列表整理成页面数据：去掉空名称、同名取信号强的、按信号排序。
-// raw 模式（联调查看）不去重、隐藏网络也列，原样保留每条的全部字段。
+// raw 模式（联调查看）不去重，原样保留每条的全部字段；5G 与名称为空的隐藏网络两种模式都不列。
 function toWifiList(list, raw) {
   const view = item => ({
     ssid: String((item && item.ssid) || '').trim(),
@@ -54,10 +51,17 @@ function toWifiList(list, raw) {
   // 只留 2.4G：信道 1~14 为 2.4G（国内外通用），其余（36 起的 5G）去掉；
   // 设备没回信道（乐鑫标准格式）时无从判断，照常列出（这类设备多为单 2.4G 芯片）
   const is24G = item => blufi.is24GChannel(item && item.channel) !== false
-  const kept = (list || []).filter(is24G)
-  const filtered5G = (list || []).length - kept.length
+  const band24 = (list || []).filter(is24G)
+  const filtered5G = (list || []).length - band24.length
+  // 名称为空的（隐藏网络，联调里显示成「SSID：(空)」）一律不列，联调查看也不列（2026-10-26 产品要求）
+  const kept = band24.filter(item => String((item && item.ssid) || '').trim())
+  const filteredHidden = band24.length - kept.length
   if (raw) {
-    return { items: kept.map((item, index) => Object.assign(view(item), { key: `${index}` })), filtered5G }
+    return {
+      items: kept.map((item, index) => Object.assign(view(item), { key: `${index}` })),
+      filtered5G,
+      filteredHidden
+    }
   }
   const best = {}
   kept.forEach(item => {
@@ -72,7 +76,7 @@ function toWifiList(list, raw) {
   const items = Object.keys(best)
     .map(ssid => Object.assign(view(best[ssid]), { key: ssid }))
     .sort((a, b) => b.rssi - a.rssi)
-  return { items, filtered5G }
+  return { items, filtered5G, filteredHidden }
 }
 
 Page(fold.adapt({
@@ -229,7 +233,7 @@ Page(fold.adapt({
     const bytes = list.rawHex ? list.rawHex.split(' ').length : 0
     this.setData({
       wifiList: result.items,
-      rawSummary: `设备回包 ${bytes} 字节 · 解析出 ${list.length} 条 · 过滤掉 5G ${result.filtered5G} 条${tailHex ? ` · 解析不了的残尾 ${tailHex.split(' ').length} 字节：${tailHex}` : ''}`,
+      rawSummary: `设备回包 ${bytes} 字节 · 解析出 ${list.length} 条 · 过滤掉 5G ${result.filtered5G} 条 · 隐藏网络（名称为空）${result.filteredHidden} 条${tailHex ? ` · 解析不了的残尾 ${tailHex.split(' ').length} 字节：${tailHex}` : ''}`,
       rawHex: list.rawHex || ''
     })
     return result.items.length

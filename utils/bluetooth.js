@@ -1,6 +1,7 @@
 const protocol = require('./frame-protocol')
 const api = require('./api')
 const broadcastMatch = require('./broadcast-match')
+const signal = require('./signal')
 
 // 共享扫描会话：硬件扫描全局只有一路（activeScan），并发的 discoverDevices 调用作为「订阅者」
 // 挂到同一会话上，各自带自己的 onUpdate/until/timeout，各自命中/到点各自 resolve；
@@ -474,6 +475,8 @@ function normalizeDevice(device) {
     RSSI: device.RSSI || 0,
     // 信号强度展示档位（强/正常/偏弱/弱，已按产品口径保守下调一级）
     signalText: rssiToSignalText(device.RSSI),
+    // 信号格数 0~4（仿 iPhone 信号格，页面用 signal-bars 组件画；与 signalText 同一组门槛，见 utils/signal.js）
+    signalLevel: signal.rssiToLevel(device.RSSI),
     localName: device.localName || '',
     advertisServiceUUIDs: device.advertisServiceUUIDs || [],
     realBluetooth: true

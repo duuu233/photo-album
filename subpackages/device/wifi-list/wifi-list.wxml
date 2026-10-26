@@ -31,21 +31,16 @@
       <view wx:for="{{wifiList}}" wx:key="key" class="wifi-item {{showRaw ? 'wifi-item--raw' : ''}}" hover-class="none" data-ssid="{{item.ssid}}" bindtap="pickWifi">
         <image class="wifi-item__icon" src="/assets/images/badge-wifi.svg" mode="aspectFit"></image>
         <view wx:if="{{showRaw}}" class="wifi-item__body">
-          <text class="wifi-item__name">{{item.ssid || '(隐藏网络)'}}</text>
+          <text class="wifi-item__name">{{item.ssid}}</text>
           <!-- 设备回包里这条的全部字段：SSID / RSSI / 信道 / 频率 / 长度 / 原始字节 -->
-          <text class="wifi-item__raw" user-select>SSID：{{item.ssid || '(空)'}}</text>
+          <text class="wifi-item__raw" user-select>SSID：{{item.ssid}}</text>
           <text class="wifi-item__raw" user-select>RSSI：{{item.rssi}} dBm（{{item.level}} 格）</text>
           <text class="wifi-item__raw" user-select>信道：{{item.channel !== '' ? item.channel : '未返回'}} · 频率：{{item.frequency ? item.frequency + ' MHz' : '未返回'}}</text>
           <text class="wifi-item__raw" user-select>长度字节：{{item.len}} · 原始：{{item.raw}}</text>
         </view>
         <text wx:else class="wifi-item__name">{{item.ssid}}</text>
-        <!-- 信号强度：4 格，按设备扫到的 RSSI 点亮 -->
-        <view class="wifi-signal" aria-label="信号 {{item.level}} 格">
-          <view class="wifi-signal__bar {{item.level >= 1 ? 'is-on' : ''}}"></view>
-          <view class="wifi-signal__bar {{item.level >= 2 ? 'is-on' : ''}}"></view>
-          <view class="wifi-signal__bar {{item.level >= 3 ? 'is-on' : ''}}"></view>
-          <view class="wifi-signal__bar {{item.level >= 4 ? 'is-on' : ''}}"></view>
-        </view>
+        <!-- 信号强度：信号格（与搜索设备列表同一组件，仿 iPhone 满格 4 格、最弱 1 格） -->
+        <signal-bars class="wifi-item__signal" level="{{item.level}}"></signal-bars>
         <text class="wifi-item__arrow">›</text>
       </view>
       <view wx:if="{{!scanning}}" class="wifi-item wifi-item--manual" hover-class="none" bindtap="manualInput">

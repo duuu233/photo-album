@@ -28,6 +28,7 @@ function loadBluetooth(productIds) {
   const modules = {
     './frame-protocol': protocol,
     './broadcast-match': match,
+    './signal': require('../utils/signal'),
     './api': { getProductBroadcastIds: async () => productIds }
   }
   const sandbox = { module: { exports: {} }, require: target => modules[target] || {}, console, setTimeout, clearTimeout, wx: {
@@ -105,6 +106,7 @@ async function main() {
     assert.equal(withWifi[0].commType, 'WIFI')
     assert.equal(withWifi[0].wifiDeviceId, 'E348C21ED428')
     assert.equal(withWifi[1].commType, 'BLE')
+    assert.deepEqual(withWifi.map(item => item.signalLevel), [4, 3], '扫描记录带信号格数（-50 满格、-60 三格）')
     const bleOnly = await bleScan
     assert.deepEqual(Array.from(bleOnly, item => item.deviceId), ['h-ble'], '其它扫描入口（连接前扫描/自动重连）不收 WiFi 设备')
     assert.equal(bleOnly[0].commType, undefined, '不传 includeWifi 时返回的记录与接入前一致')
@@ -284,6 +286,7 @@ async function main() {
         async connect(id) { world.connects.push(id); if (options.connectError) throw new Error('fail'); return session },
         is24GChannel: require('../utils/blufi').is24GChannel
       },
+      signal: require('../utils/signal'),
       'wifi-provision': { getTarget: () => (options.noTarget ? null : { bleDeviceId: 'ble-w1', deviceNo: 'E348C21ED428' }) }
     }), options.envVersion ? { getAccountInfoSync: () => ({ miniProgram: { envVersion: options.envVersion } }) } : {})
     world.page = loaded.page
@@ -375,8 +378,10 @@ async function main() {
     assert.equal(dev.page.data.showRaw, true)
     assert.ok(dev.page.data.logs.some(line => /① 蓝牙连接设备 ble-w1/.test(line.text)), '联调日志第一步是蓝牙连接设备')
     assert.ok(dev.page.data.logs.some(line => /③ 收到 WiFi 列表：3 条/.test(line.text)))
-    assert.equal(dev.page.data.wifiList.length, 3, '不去重、隐藏网络也列')
+    // 2026-10-26 产品要求：名称为空的隐藏网络联调查看也不列（原断言「隐藏网络也列」随之改为不列，不去重的判据保留）
+    assert.equal(dev.page.data.wifiList.length, 2, '联调查看不去重，但名称为空的隐藏网络不列')
     assert.equal(dev.page.data.wifiList[1].raw, '05 C4 48 6F 6D 65')
+    assert.ok(/隐藏网络（名称为空）1 条/.test(dev.page.data.rawSummary), dev.page.data.rawSummary)
     assert.equal(dev.page.data.wifiList[0].channel, '', '没有信道字段时留空，页面显示「未返回」')
     assert.ok(/14 字节 · 解析出 3 条/.test(dev.page.data.rawSummary), dev.page.data.rawSummary)
     const release = loadList({ list: rawList, envVersion: 'release' })
@@ -385,7 +390,7 @@ async function main() {
     await flush()
     assert.equal(release.page.data.showRaw, false, '正式版不显示')
     assert.equal(release.page.data.wifiList.length, 1, '正式版照常去重')
-    checked('非正式版在每个 WiFi 下打出设备回包字段')
+    checked('非正式版在每个 WiFi 下打出设备回包字段，隐藏网络不列')
   }
   {
     const world = { credentials: null, back: 0, redirect: null }

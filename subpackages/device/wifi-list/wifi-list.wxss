@@ -107,39 +107,8 @@
   white-space: nowrap;
 }
 
-/* 信号强度 4 格：由低到高递增，点亮为青绿（与 WiFi 图标同色） */
-.wifi-signal {
-  display: flex;
-  align-items: flex-end;
-  height: 26rpx;
+.wifi-item__signal {
   margin-left: 16rpx;
-}
-
-.wifi-signal__bar {
-  width: 6rpx;
-  margin-left: 4rpx;
-  background: #dfe3e8;
-  border-radius: 2rpx;
-}
-
-.wifi-signal__bar:nth-child(1) {
-  height: 8rpx;
-}
-
-.wifi-signal__bar:nth-child(2) {
-  height: 14rpx;
-}
-
-.wifi-signal__bar:nth-child(3) {
-  height: 20rpx;
-}
-
-.wifi-signal__bar:nth-child(4) {
-  height: 26rpx;
-}
-
-.wifi-signal__bar.is-on {
-  background: #0e9f87;
 }
 
 .wifi-item__arrow {

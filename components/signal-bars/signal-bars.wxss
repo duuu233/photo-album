@@ -1,0 +1,50 @@
+/* 4 根竖条底部对齐、高度 1/4 → 满高递增；点亮为深色、未亮为浅灰（同 iPhone 信号格） */
+.signal-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  vertical-align: middle;
+}
+
+.signal-bars__bar {
+  background: #d5d9df;
+  border-radius: 2rpx;
+}
+
+.signal-bars__bar.is-on {
+  background: #2a2d32;
+}
+
+.signal-bars--normal {
+  height: 26rpx;
+}
+
+.signal-bars--normal .signal-bars__bar {
+  width: 6rpx;
+  margin-left: 4rpx;
+}
+
+.signal-bars--small {
+  height: 20rpx;
+}
+
+.signal-bars--small .signal-bars__bar {
+  width: 5rpx;
+  margin-left: 3rpx;
+}
+
+.signal-bars__bar:nth-child(1) {
+  height: 25%;
+  margin-left: 0;
+}
+
+.signal-bars__bar:nth-child(2) {
+  height: 50%;
+}
+
+.signal-bars__bar:nth-child(3) {
+  height: 75%;
+}
+
+.signal-bars__bar:nth-child(4) {
+  height: 100%;
+}

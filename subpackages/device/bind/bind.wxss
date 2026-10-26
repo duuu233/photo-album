@@ -326,6 +326,11 @@
   white-space: nowrap;
 }
 
+/* 信号格紧跟「信号」二字 */
+.nearby-signal {
+  margin-left: 8rpx;
+}
+
 /* WiFi 行第二行：尺寸位置在查询中换成小圆圈 loading，与后面的「· 信号」同一行排开 */
 .nearby-sub--row {
   display: flex;

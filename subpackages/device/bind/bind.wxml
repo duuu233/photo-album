@@ -66,9 +66,14 @@
             <view wx:if="{{item.commType === 'WIFI'}}" class="nearby-sub nearby-sub--row {{item.wifiStatus === 'unknown' ? 'nearby-sub--unknown' : ''}}">
               <view wx:if="{{item.wifiStatus === 'loading'}}" class="spec-spinner"></view>
               <text wx:else>{{item.specText}}</text>
-              <text> · 信号 {{item.signalText || '--'}}</text>
+              <text> · 信号</text>
+              <signal-bars class="nearby-signal" level="{{item.signalLevel}}" size="small"></signal-bars>
             </view>
-            <text wx:else class="nearby-sub">{{item.sizeModel || '--寸'}} · {{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.signalText || '--'}}</text>
+            <!-- 信号强弱用信号格显示（仿 iPhone：满格 4 格、最弱 1 格、未知全灰），不再写「强 / 弱」文字 -->
+            <view wx:else class="nearby-sub nearby-sub--row">
+              <text>{{item.sizeModel || '--寸'}} · {{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号</text>
+              <signal-bars class="nearby-signal" level="{{item.signalLevel}}" size="small"></signal-bars>
+            </view>
             <!-- 设备ID：本次广播里的 6 字节 Device_ID，用来区分同型号同名设备，安卓/iOS 同一来源；
                  取不到显示 --（见 bind.js displayDeviceCode）。
                  判重/身份匹配仍只认连上后 0x01 读到的完整 6 字节 ID，与这里的展示无关。 -->
