@@ -1,0 +1,8 @@
+{
+  "navigationStyle": "custom",
+  "navigationBarTitleText": "选择WiFi",
+  "usingComponents": {
+    "page-nav": "/components/page-nav/page-nav"
+  },
+  "backgroundColor": "#edf6ff"
+}

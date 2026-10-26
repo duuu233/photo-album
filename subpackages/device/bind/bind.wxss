@@ -326,6 +326,29 @@
   white-space: nowrap;
 }
 
+/* WiFi 行第二行：尺寸位置在查询中换成小圆圈 loading，与后面的「· 信号」同一行排开 */
+.nearby-sub--row {
+  display: flex;
+  align-items: center;
+}
+
+.spec-spinner {
+  flex: 0 0 auto;
+  width: 20rpx;
+  height: 20rpx;
+  box-sizing: border-box;
+  border: 3rpx solid rgba(255, 98, 31, 0.2);
+  border-top-color: #ff621f;
+  border-radius: 50%;
+  animation: specSpin 0.8s linear infinite;
+}
+
+@keyframes specSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* WiFi 版查不到产品规格：「未知设备」用警示色，选中后按「立即配网」会被弹窗拦下 */
 .nearby-sub--unknown {
   color: #e5533d;

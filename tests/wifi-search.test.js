@@ -5,9 +5,10 @@
 //   ③ 搜索页：WiFi 行按 deviceNo 查产品规格（每台只查一次），查到直接显示 sizeModel、没配显示「--寸」，
 //      查不到/返回空壳记录/失败显示「未知设备」；未知设备点行或点底部按钮都直接弹「未知设备，请联系客服开通」
 //      （本页底部提示弹层，与首页提示同一套样式）、
-//      不进配网；查到的点行即进 WiFi 配置页；不缓存，重新搜索时全部重查；
-//   ④ WiFi 配置页（STEP 2）：进页面统一先弹列表、不自动回填（产品 2026-10-26 拍板），列表只留 2.4G、同名去重、
-//      当前连接的排第一并打标、其余信号强在前，点选即回填；「下一步」把名称 / 密码交给配网流程，密码不进页面路由；两张新页面已在 app.json 注册。
+//      不进配网；查到的点行即进 WiFi 列表页；不缓存，重新搜索时全部重查；
+//   ④ 配网前两页（2026-10-26 产品调整流程）：搜索页 → WiFi 列表页（只列 2.4G、同名去重、信号强在前；底部可手动输入）
+//      → 选中即进 WiFi 账号密码页并带上名称 → 「下一步」把名称 / 密码交给配网流程，密码不进页面路由；
+//      账号密码页的切换图标回到列表页；三张配网页已在 app.json 注册。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -160,7 +161,7 @@ async function main() {
 
   page.applyScanResult(1, rows)
   assert.equal(page.data.devices[0].wifiStatus, 'loading')
-  assert.equal(page.data.devices[0].specText, '规格查询中…')
+  assert.equal(page.data.devices[0].specText, '', '查询中不出文字，尺寸位置显示小圆圈 loading（wifiStatus 驱动）')
   assert.equal(page.data.devices[0].deviceCode, 'E348C21ED428', 'WiFi 行的设备ID 是广播名里的 12 位 deviceNo')
   assert.equal(page.data.devices[3].commType, 'BLE')
   assert.equal(page.data.devices[3].deviceCode, '37:0B:00:D0:44:5A', '蓝牙行仍取广播 6 字节')
@@ -194,8 +195,8 @@ async function main() {
   page.selectDevice({ currentTarget: { dataset: { id: 'w1' } } })
   assert.equal(state.navs.length, 1, '点查到规格的 WiFi 设备即进配置页')
   assert.ok(
-    state.navs[0].url.indexOf('/subpackages/device/wifi-config/wifi-config?deviceNo=E348C21ED428') === 0,
-    `查到规格的 WiFi 设备进 WiFi 配置页：${state.navs[0].url}`
+    state.navs[0].url.indexOf('/subpackages/device/wifi-list/wifi-list?deviceNo=E348C21ED428') === 0,
+    `查到规格的 WiFi 设备先进 WiFi 列表页：${state.navs[0].url}`
   )
   assert.equal(page.data.selectedId, 'w1')
   assert.equal(state.target.bleDeviceId, 'w1', '配网要用的蓝牙句柄走内存交接')
@@ -203,7 +204,7 @@ async function main() {
   assert.equal(state.target.product.productId, 21, '查到的产品随行交给配网第 4 步绑定')
   await page.confirmBind()
   assert.equal(state.navs.length, 2, '选中后点底部按钮同样进配置页')
-  checked('查到规格的 WiFi 设备进入 WiFi 配置页')
+  checked('查到规格的 WiFi 设备进入 WiFi 列表页')
 
   page.applyScanResult(1, rows.concat(wifiRow('w4', 'BBBBBBBBBBBB')))
   page.selectDevice({ currentTarget: { dataset: { id: 'w4' } } })
@@ -241,102 +242,96 @@ async function main() {
     checked('空数据 / 空壳记录 / 只有尺寸没有产品身份都算查不到')
   }
 
-  // ── ④ WiFi 配置页与页面注册 ──
-  const loadConfig = (connected, platform = 'android') => {
-    const world = { listHandler: null, credentials: null }
-    const loaded = loadPage('subpackages/device/wifi-config/wifi-config.js', pageState => ({
-      toast: { warn: options => pageState.toasts.push(options) },
+  // ── ④ WiFi 列表页 → 账号密码页 ──
+  const loadList = (connected, platform = 'android', listFail) => {
+    const world = { listHandler: null }
+    const loaded = loadPage('subpackages/device/wifi-list/wifi-list.js', () => ({
       system: { getLayoutMetrics: () => ({ statusBarHeight: 20, safeBottom: 0 }) },
-      'fold-adapt': { adapt: value => value },
-      'wifi-provision': { getTarget: () => ({ deviceNo: 'E348C21ED428' }), setCredentials: value => { world.credentials = value } }
+      'fold-adapt': { adapt: value => value }
     }), {
       getDeviceInfo: () => ({ platform }),
       startWifi: ({ success }) => success({}),
       getConnectedWifi: ({ success, fail }) => (connected ? success({ wifi: connected }) : fail({ errCode: 12005 })),
       onGetWifiList: handler => { world.listHandler = handler },
-      getWifiList: ({ success }) => success({})
+      getWifiList: ({ success, fail }) => (listFail ? fail(listFail) : success({}))
     })
     return Object.assign(loaded, { world })
   }
   {
-    // 2026-10-26 改为统一先弹列表：原断言「2.4G 直接回填、不弹列表」随之改为「不回填、弹列表，当前网络排第一」
-    const { page: config, world } = loadConfig({ SSID: 'Home-2.4', frequency: 2437 })
-    config.onLoad({ deviceNo: 'E348C21ED428', name: 'IJ_E348C21ED428' })
+    const { page: list, state: listState, world } = loadList({ SSID: 'Home5G', frequency: 5180 })
+    list.onLoad({ deviceNo: 'E348C21ED428', name: 'IJ_E348C21ED428', spec: encodeURIComponent('13.3寸') })
     await flush()
-    await flush()
-    assert.equal(config.data.ssid, '', '连着 2.4G 也不自动回填')
-    assert.equal(config.data.showWifiList, true, '进页面统一先弹列表')
-    world.listHandler({ wifiList: [
-      { SSID: 'Cafe', frequency: 2462, signalStrength: 90 },
-      { SSID: 'Home-2.4', frequency: 2437, signalStrength: 40 }
-    ] })
-    assert.deepEqual(config.data.wifiList.map(item => item.ssid), ['Home-2.4', 'Cafe'], '当前连接的排第一')
-    assert.equal(config.data.wifiList[0].current, true)
-    checked('连着 2.4G 也统一先弹列表，当前网络排第一')
-  }
-  {
-    const { page: config, state: configState, world } = loadConfig({ SSID: 'Home5G', frequency: 5180 })
-    config.onLoad({ deviceNo: 'E348C21ED428', name: 'IJ_E348C21ED428' })
-    await flush()
-    await flush()
-    assert.equal(config.data.ssid, '', '5G 不回填')
-    assert.equal(config.data.showWifiList, true, '连的是 5G：直接弹列表')
+    assert.equal(list.data.loading, true, '进页面就去取附近 WiFi')
     world.listHandler({ wifiList: [
       { SSID: 'Home-2.4', frequency: 2437, signalStrength: 60 },
       { SSID: 'Home5G', frequency: 5180, signalStrength: 99 },
       { SSID: 'Home-2.4', frequency: 2412, signalStrength: 80 },
       { SSID: 'Cafe', frequency: 2462, signalStrength: 90 },
+      { SSID: 'Odd', frequency: 5, signalStrength: 95 },
       { SSID: '', frequency: 2412, signalStrength: 70 }
     ] })
-    assert.deepEqual(config.data.wifiList.map(item => item.ssid), ['Cafe', 'Home-2.4'], '只留 2.4G、同名去重、信号强在前')
-    config.goNext()
-    assert.equal(configState.toasts.at(-1).title, '请输入或选择WiFi名称')
-    config.pickWifi({ currentTarget: { dataset: { ssid: 'Home-2.4' } } })
-    assert.equal(config.data.ssid, 'Home-2.4', '点一下即回填名称')
-    assert.equal(config.data.showWifiList, false, '选中后列表直接收起，无需确认')
+    assert.equal(list.data.loading, false)
+    assert.deepEqual(list.data.wifiList.map(item => item.ssid), ['Cafe', 'Home-2.4'], '只留 2.4G（5G、按 GHz 给的 5G 都不列）、同名去重、信号强在前')
+    list.pickWifi({ currentTarget: { dataset: { ssid: 'Home-2.4' } } })
+    const url = listState.navs.at(-1).url
+    assert.ok(url.indexOf('/subpackages/device/wifi-config/wifi-config?') === 0, '选中即进账号密码页')
+    assert.ok(url.indexOf('ssid=Home-2.4') > -1, '名称带过去')
+    assert.ok(url.indexOf('deviceNo=E348C21ED428') > -1)
+    list.manualInput()
+    assert.ok(/ssid=($|&)/.test(listState.navs.at(-1).url), '手动输入：名称留空进账号密码页')
+    checked('WiFi 列表页：只列 2.4G，选中进账号密码页，可手动输入')
+  }
+  {
+    const gps = loadList(null, 'android', { errCode: 12006, errMsg: 'getWifiList:fail:need location' })
+    gps.page.onLoad({})
+    await flush()
+    await flush()
+    assert.equal(gps.page.data.loading, false)
+    assert.ok(/定位/.test(gps.page.data.tip), '定位没开：提示打开定位或手动输入')
+    const ios = loadList({ SSID: 'HomeWiFi' }, 'ios')
+    ios.page.onLoad({})
+    await flush()
+    await flush()
+    assert.deepEqual(ios.page.data.wifiList.map(item => item.ssid), ['HomeWiFi'], 'iOS 拿不到附近列表，只列当前连接的网络')
+    assert.equal(ios.page.data.wifiList[0].band, '', 'iOS 判不了频段，不标 2.4G')
+    const ios5g = loadList({ SSID: 'Home5G', frequency: 5180 }, 'ios')
+    ios5g.page.onLoad({})
+    await flush()
+    await flush()
+    assert.equal(ios5g.page.data.wifiList.length, 0, '明确是 5G 的不列')
+    checked('定位没开给提示；iOS 只列当前网络')
+  }
+  {
+    const world = { credentials: null, back: 0, redirect: null }
+    const { page: config, state: configState } = loadPage('subpackages/device/wifi-config/wifi-config.js', pageState => ({
+      toast: { warn: options => pageState.toasts.push(options) },
+      system: { getLayoutMetrics: () => ({ statusBarHeight: 20, safeBottom: 0 }) },
+      'fold-adapt': { adapt: value => value },
+      'wifi-provision': { getTarget: () => ({ deviceNo: 'E348C21ED428' }), setCredentials: value => { world.credentials = value } }
+    }), {
+      navigateBack: () => { world.back++ },
+      redirectTo: options => { world.redirect = options.url }
+    })
+    config.onLoad({ deviceNo: 'E348C21ED428', name: 'IJ_E348C21ED428', ssid: encodeURIComponent('我家WiFi') })
+    assert.equal(config.data.ssid, '我家WiFi', '名称由列表页带过来')
     config.onPasswordInput({ detail: { value: 'secret-123' } })
     config.goNext()
     const url = configState.navs.at(-1).url
     assert.ok(url.indexOf('/subpackages/device/wifi-provision/wifi-provision?') === 0)
     assert.equal(url.indexOf('secret-123'), -1, 'WiFi 密码不进页面路由')
-    assert.deepEqual(JSON.parse(JSON.stringify(world.credentials)), { ssid: 'Home-2.4', password: 'secret-123' }, '名称 / 密码交给配网流程')
-    checked('5G / 没连 WiFi 直接弹 2.4G 列表，点选回填，下一步不带密码')
-  }
-  {
-    const { page: config } = loadConfig(null)
-    config.onLoad({})
-    await flush()
-    await flush()
-    assert.equal(config.data.showWifiList, true, '没连 WiFi：直接弹列表')
-    checked('没连 WiFi 直接弹列表')
-  }
-  {
-    // 2026-10-26 真机反馈：连着 5G 被回填。iOS 不回频段，判不了就按「不是 2.4G」弹列表，绝不回填
-    const { page: config } = loadConfig({ SSID: 'Home5G' }, 'ios')
-    config.onLoad({})
-    await flush()
-    await flush()
-    assert.equal(config.data.ssid, '', 'iOS 频段未知：不回填')
-    assert.equal(config.data.showWifiList, true, 'iOS 频段未知：直接弹列表')
-    assert.equal(config.data.wifiList[0].ssid, 'Home5G')
-    assert.equal(config.data.wifiList[0].current, true, '当前连接的网络放在列表里，标「当前连接」')
-    assert.equal(config.data.iosNearbyEntry, true, 'iOS 另给「获取附近WiFi」入口')
-    config.pickWifi({ currentTarget: { dataset: { ssid: 'Home5G', band: '' } } })
-    assert.ok(/2\.4G/.test(config.data.bandHint), '选了频段未知的网络：提示确认是 2.4G')
-
-    const ghz = loadConfig({ SSID: 'Home5G', frequency: 5 })
-    ghz.page.onLoad({})
-    await flush()
-    await flush()
-    assert.equal(ghz.page.data.ssid, '', '频段按 GHz 给的 5G 同样不回填')
-    assert.equal(ghz.page.data.showWifiList, true)
-    checked('5G / 频段判不了一律弹列表，只有确认 2.4G 才回填')
+    assert.deepEqual(JSON.parse(JSON.stringify(world.credentials)), { ssid: '我家WiFi', password: 'secret-123' }, '名称 / 密码交给配网流程')
+    config.onSsidInput({ detail: { value: '' } })
+    config.goNext()
+    assert.equal(configState.toasts.at(-1).title, '请输入或选择WiFi名称')
+    config.openWifiList()
+    assert.ok(world.redirect && world.redirect.indexOf('/subpackages/device/wifi-list/wifi-list?') === 0, '页面栈里没有列表页时重新打开列表页')
+    checked('账号密码页：名称带入、密码只走内存交接、切换图标回列表')
   }
   const device = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8')).subpackages.find(item => item.root === 'subpackages/device')
-  assert.ok(device.pages.includes('wifi-config/wifi-config') && device.pages.includes('wifi-provision/wifi-provision'))
+  assert.ok(['wifi-list/wifi-list', 'wifi-config/wifi-config', 'wifi-provision/wifi-provision'].every(page => device.pages.includes(page)))
   const wxml = fs.readFileSync(path.join(root, 'subpackages/device/bind/bind.wxml'), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
   assert.ok(/comm-badge--wifi/.test(wxml) && /comm-badge--ble/.test(wxml), '搜索列表行要挂 WiFi版 / 蓝牙版 标签')
-  checked('两张配网页已注册，搜索列表带通信类型标签')
+  checked('三张配网页已注册，搜索列表带通信类型标签')
 
   console.log(`wifi-search: ${checks} groups passed`)
 }

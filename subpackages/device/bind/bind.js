@@ -69,6 +69,11 @@ Page(fold.adapt({
   loadProductCatalog() {
     api.getProductCatalog().then(list => {
       this.productCatalog = list
+      // 联调期保留：蓝牙版尺寸显示 --寸 时，对照产品列表里各广播名配的 sizeModel 是不是空的
+      console.log(
+        '[搜索尺寸] 产品列表 broadcastId=sizeModel：',
+        (list || []).map(item => `${item.broadcastId || '(无广播名)'}=${item.sizeModel || '(空)'}`).join(', ') || '(产品列表为空)'
+      )
       if (this.unloaded || !this.data.devices.length) {
         return
       }
@@ -245,7 +250,7 @@ Page(fold.adapt({
   },
 
   // WiFi 行的展示字段：设备ID 用广播名里解析出的 12 位 deviceNo；规格行按查询状态显示
-  // 「规格查询中… / 尺寸 / 未知设备」。首次见到这台就发起查询（每台只查一次）。
+  // 「查询中（小圆圈 loading）/ 尺寸 / 未知设备」。首次见到这台就发起查询（每台只查一次）。
   wifiRowFields(item) {
     const deviceNo = item.wifiDeviceId || ''
     this.lookupWifiProduct(deviceNo)
@@ -262,7 +267,8 @@ Page(fold.adapt({
 
   wifiSpecFields(lookup) {
     if (lookup.status === 'loading') {
-      return { wifiStatus: 'loading', specText: '规格查询中…' }
+      // 查询中：页面上尺寸位置显示小圆圈 loading（wifiStatus 驱动），不出文字
+      return { wifiStatus: 'loading', specText: '' }
     }
     const product = lookup.product
     if (lookup.status !== 'found' || !product) {
@@ -336,7 +342,8 @@ Page(fold.adapt({
       `name=${encodeURIComponent(device.name || '')}`,
       `spec=${encodeURIComponent(device.specText || '')}`
     ].join('&')
-    wx.navigateTo({ url: `/subpackages/device/wifi-config/wifi-config?${query}` })
+    // 先进 WiFi 列表选网络，选中后再进账号密码页（2026-10-26 产品调整流程）
+    wx.navigateTo({ url: `/subpackages/device/wifi-list/wifi-list?${query}` })
   },
 
   // 立刻结束搜索但**保留已搜到的列表**（与 cancelScan 不同，后者还会退出本页）。

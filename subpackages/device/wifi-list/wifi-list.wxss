@@ -1,0 +1,101 @@
+/* 提示条、列表项与 WiFi 账号密码页 / 原 WiFi 列表弹层同一套样式 */
+.wifi-list-content {
+  padding-top: 24rpx;
+}
+
+.wifi-tip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 28rpx;
+  color: #ff6421;
+  font-size: 26rpx;
+}
+
+.wifi-tip__icon {
+  width: 30rpx;
+  height: 30rpx;
+  margin-right: 10rpx;
+  color: #ffffff;
+  background: #ff6421;
+  border-radius: 50%;
+  font-size: 20rpx;
+  font-weight: 700;
+  line-height: 30rpx;
+  text-align: center;
+}
+
+.wifi-list-panel {
+  padding: 28rpx 24rpx 16rpx;
+}
+
+.wifi-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24rpx 12rpx;
+}
+
+.wifi-list-head__title {
+  color: #2a2d32;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.wifi-list-head__refresh {
+  width: 40rpx;
+  height: 40rpx;
+}
+
+.wifi-list-sub {
+  padding: 8rpx 24rpx 16rpx;
+  color: #b3b8c0;
+  font-size: 22rpx;
+}
+
+.wifi-item {
+  display: flex;
+  align-items: center;
+  height: 104rpx;
+  padding: 0 24rpx;
+  border-radius: 20rpx;
+}
+
+.wifi-item + .wifi-item {
+  margin-top: 8rpx;
+}
+
+.wifi-item__icon {
+  width: 40rpx;
+  height: 40rpx;
+  margin-right: 20rpx;
+}
+
+.wifi-item__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: #2a2d32;
+  font-size: 30rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wifi-item__band {
+  margin-left: 16rpx;
+  padding: 4rpx 12rpx;
+  color: #0e9f87;
+  background: rgba(18, 184, 150, 0.12);
+  border-radius: 999rpx;
+  font-size: 20rpx;
+}
+
+.wifi-item__arrow {
+  margin-left: 16rpx;
+  color: #c8cdd5;
+  font-size: 36rpx;
+}
+
+.wifi-item--manual .wifi-item__name {
+  color: #ff6421;
+}

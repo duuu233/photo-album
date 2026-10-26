@@ -10,6 +10,7 @@
         "ota/ota",
         "slideshow/slideshow",
         "debug/debug",
+        "wifi-list/wifi-list",
         "wifi-config/wifi-config",
         "wifi-provision/wifi-provision"
       ]

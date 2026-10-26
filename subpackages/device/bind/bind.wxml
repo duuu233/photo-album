@@ -60,9 +60,15 @@
                 <text class="comm-badge__text">{{item.commType === 'WIFI' ? 'WiFi版' : '蓝牙版'}}</text>
               </view>
             </view>
-            <!-- WiFi 版：规格来自 getProductByDevice（查询中 / 尺寸 sizeModel，没配 --寸 / 未知设备），广播里没有电量 -->
-            <text wx:if="{{item.commType === 'WIFI'}}" class="nearby-sub {{item.wifiStatus === 'unknown' ? 'nearby-sub--unknown' : ''}}">{{item.specText}} · 信号 {{item.signalText || '--'}}</text>
-            <text wx:else class="nearby-sub">{{item.sizeModel ? item.sizeModel + ' · ' : ''}}{{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.signalText || '--'}}</text>
+            <!-- 尺寸两类设备同一口径（2026-10-26）：直接显示后台产品配置的 sizeModel，没配显示 --寸。
+                 WiFi 版尺寸来自 getProductByDevice（查询中显示小圆圈 loading / 查不到为未知设备），广播里没有电量；
+                 蓝牙版尺寸按广播名匹配产品列表（api.scanSizeModel）。 -->
+            <view wx:if="{{item.commType === 'WIFI'}}" class="nearby-sub nearby-sub--row {{item.wifiStatus === 'unknown' ? 'nearby-sub--unknown' : ''}}">
+              <view wx:if="{{item.wifiStatus === 'loading'}}" class="spec-spinner"></view>
+              <text wx:else>{{item.specText}}</text>
+              <text> · 信号 {{item.signalText || '--'}}</text>
+            </view>
+            <text wx:else class="nearby-sub">{{item.sizeModel || '--寸'}} · {{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.signalText || '--'}}</text>
             <!-- 设备ID：本次广播里的 6 字节 Device_ID，用来区分同型号同名设备，安卓/iOS 同一来源；
                  取不到显示 --（见 bind.js displayDeviceCode）。
                  判重/身份匹配仍只认连上后 0x01 读到的完整 6 字节 ID，与这里的展示无关。 -->

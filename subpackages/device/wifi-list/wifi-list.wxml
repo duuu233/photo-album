@@ -1,0 +1,36 @@
+<!-- WiFi 版设备配网 · 选择 WiFi（交互说明见 wifi-list.js 文件头）。列表项样式沿用原 WiFi 列表弹层 -->
+<view class="mock-root wifi-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px; --nav-h: {{navHeight}}px;">
+  <view class="mock-bg">
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
+  </view>
+
+  <page-nav title="选择WiFi" bind:measure="onNavMeasure"></page-nav>
+
+  <view class="mock-content wifi-list-content">
+    <view class="wifi-tip">
+      <view class="wifi-tip__icon">i</view>
+      <text>设备仅支持 2.4G WiFi 配网</text>
+    </view>
+
+    <view class="wifi-list-panel glass-panel">
+      <view class="wifi-list-head">
+        <text class="wifi-list-head__title">附近的 2.4G WiFi</text>
+        <image wx:if="{{!loading}}" class="wifi-list-head__refresh" src="/assets/images/refresh-icon.png" mode="aspectFit" aria-label="重新获取" bindtap="refresh"></image>
+      </view>
+      <view wx:if="{{loading}}" class="wifi-list-sub">正在获取附近WiFi…</view>
+      <view wx:elif="{{tip}}" class="wifi-list-sub">{{tip}}</view>
+      <view wx:for="{{wifiList}}" wx:key="ssid" class="wifi-item" hover-class="none" data-ssid="{{item.ssid}}" bindtap="pickWifi">
+        <image class="wifi-item__icon" src="/assets/images/badge-wifi.svg" mode="aspectFit"></image>
+        <text class="wifi-item__name">{{item.ssid}}</text>
+        <text wx:if="{{item.band}}" class="wifi-item__band">{{item.band}}</text>
+        <text class="wifi-item__arrow">›</text>
+      </view>
+      <view class="wifi-item wifi-item--manual" hover-class="none" bindtap="manualInput">
+        <text class="wifi-item__name">手动输入WiFi名称</text>
+        <text class="wifi-item__arrow">›</text>
+      </view>
+    </view>
+  </view>
+
+  <global-toast id="globalToast"></global-toast>
+</view>
