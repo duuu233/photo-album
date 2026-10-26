@@ -13,7 +13,7 @@ const signal = require('../../../utils/signal')
 //     附近列表、手机扫到的也不一定是设备那边收得到的；本设备是双频芯片，按回包里的信道只留 2.4G（ch 1~14，国内外通用）；
 //   · 设备分批回就边收边显示，最后一批后再等 5 秒才结束转圈；
 //   · 同名去重取信号强的，信号强的在前；隐藏网络（名称为空）不列；
-//   · 两步选择（2026-10-26）：点一行只是选中（高亮 + 行尾出「连接」），再点「连接」（或再点一次已选中的那行）才进账号密码页；
+//   · 点一行即选中该网络，直接带名称进账号密码页（2026-10-26 一度改为「选中 + 连接」两步，按产品要求改回一步）；
 //   · 这条蓝牙连接一直留着给配网状态页复用（同一会话、序号连续），离开本页（返回搜索页）才断开；
 //   · 连不上设备 / 设备没回列表 / 设备报扫描失败：提示原因，给「重新搜索」；搜不到时可手动输入
 //     （提示语下的灰字「若列表搜索不到您的wifi，请手动输入」与列表下方居中的「手动输入WiFi名称」文字都进账号密码页）；
@@ -56,8 +56,7 @@ Page(fold.adapt({
     wifiList: [],
     scanning: true,
     phase: 'connecting', // connecting 连接设备中 / scanning 设备扫描中
-    tip: '',
-    selectedSsid: '' // 第一步选中的网络；再点「连接」才进账号密码页
+    tip: ''
   },
 
   onLoad(options) {
@@ -93,7 +92,7 @@ Page(fold.adapt({
       return
     }
     // ① 蓝牙连接设备（从搜索页进来时已连上，这里直接复用；断了就重连）
-    this.setData({ scanning: true, phase: 'connecting', tip: '', selectedSsid: '' })
+    this.setData({ scanning: true, phase: 'connecting', tip: '' })
     try {
       await bluetooth.openAdapter()
       await bluetooth.whenScanStopped()
@@ -158,21 +157,9 @@ Page(fold.adapt({
     }
   },
 
-  // 第一步：点一行只选中；再点一次已选中的那行等同点「连接」
+  // 点一行即选中该网络，带名称进账号密码页
   pickWifi(e) {
-    const ssid = e.currentTarget.dataset.ssid || ''
-    if (ssid && ssid === this.data.selectedSsid) {
-      this.goConfig(ssid)
-      return
-    }
-    this.setData({ selectedSsid: ssid })
-  },
-
-  // 第二步：点选中行的「连接」，带名称进账号密码页
-  connectSelected() {
-    if (this.data.selectedSsid) {
-      this.goConfig(this.data.selectedSsid)
-    }
+    this.goConfig(e.currentTarget.dataset.ssid || '')
   },
 
   // 手动输入：名称留空进账号密码页（提示语下的灰字、列表下方居中文字都走这里）

@@ -351,28 +351,19 @@ async function main() {
     assert.equal(list.data.scanning, false)
     assert.deepEqual(list.data.wifiList.map(item => item.ssid), ['Cafe', 'Home', 'Far'], '同名取信号强的、隐藏网络不列、信号强在前')
     assert.deepEqual(list.data.wifiList.map(item => item.level), [4, 3, 1], '信号强度分 4 格')
-    // 两步（2026-10-26）：点一行只选中，再点「连接」才进账号密码页
+    // 点一行即选中该网络，直接进账号密码页（2026-10-26 一度改为「选中 + 连接」两步，按产品要求改回）
     const navsBefore = listState.navs.length
     list.pickWifi({ currentTarget: { dataset: { ssid: 'Home' } } })
-    assert.equal(list.data.selectedSsid, 'Home', '第一步：点一行只是选中')
-    assert.equal(listState.navs.length, navsBefore, '只选中不跳转')
-    list.pickWifi({ currentTarget: { dataset: { ssid: 'Cafe' } } })
-    assert.equal(list.data.selectedSsid, 'Cafe', '点别的行换选中')
-    assert.equal(listState.navs.length, navsBefore)
-    list.pickWifi({ currentTarget: { dataset: { ssid: 'Home' } } })
-    list.connectSelected()
-    assert.equal(listState.navs.length, navsBefore + 1, '第二步：点「连接」才进账号密码页')
+    assert.equal(listState.navs.length, navsBefore + 1, '点一行即进账号密码页')
     const url = listState.navs.at(-1).url
-    assert.ok(url.indexOf('/subpackages/device/wifi-config/wifi-config?') === 0, '连接进账号密码页')
+    assert.ok(url.indexOf('/subpackages/device/wifi-config/wifi-config?') === 0, '进账号密码页')
     assert.ok(url.indexOf('ssid=Home') > -1, '名称带过去')
     assert.equal(world.closed, 0, '去账号密码页时蓝牙连接保留，给配网复用')
     list.manualInput()
     assert.ok(/ssid=($|&)/.test(listState.navs.at(-1).url), '手动输入：名称留空进账号密码页')
     list.onUnload()
     assert.equal(world.closed, 1, '离开列表页（返回搜索页）断开蓝牙')
-    list.pickWifi({ currentTarget: { dataset: { ssid: 'Home' } } })
-    assert.equal(listState.navs.length, navsBefore + 3, '再点一次已选中的那行等同点「连接」')
-    checked('WiFi 列表页：蓝牙连设备 → 设备扫描 → 列表（名称 + 信号），选中 + 连接两步进账号密码页')
+    checked('WiFi 列表页：蓝牙连设备 → 设备扫描 → 列表（名称 + 信号），点一行即进账号密码页')
   }
   {
     const failed = loadList({ connectError: true })
@@ -421,7 +412,7 @@ async function main() {
     const manual = /\.wifi-manual-text\s*\{([^}]*)\}/.exec(css)
     assert.ok(manual && /text-align:\s*center/.test(manual[1]), '文字居中')
     assert.ok(!/position:\s*fixed/.test(manual[1]) && !/border:/.test(manual[1]) && !/background/.test(manual[1]), '不是按钮样式（无底色、描边、固定定位）')
-    assert.ok(/class="wifi-item__connect"[^>]*catchtap="connectSelected"/.test(tpl), '选中行行尾有「连接」')
+    assert.ok(!/wifi-item__connect|connectSelected/.test(tpl), '列表行不再有「连接」按钮')
     checked('各环境同一套界面：无调试内容，隐藏网络不列，提示语下可手动输入')
   }
   {

@@ -150,30 +150,6 @@
   font-size: 36rpx;
 }
 
-/* 选中态（第一步）：浅橙底、橙色名称，行尾「连接」 */
-.wifi-item.is-selected {
-  background: rgba(255, 247, 242, 0.92);
-}
-
-.wifi-item.is-selected .wifi-item__name {
-  color: #ff5a1e;
-  font-weight: 700;
-}
-
-/* 第二步入口：选中行行尾的「连接」小按钮（橙色渐变，同全站主按钮色） */
-.wifi-item__connect {
-  flex: 0 0 auto;
-  margin-left: 16rpx;
-  padding: 0 24rpx;
-  height: 52rpx;
-  line-height: 52rpx;
-  color: #ffffff;
-  background: linear-gradient(90deg, #ff8338, #ff621f);
-  border-radius: 999rpx;
-  font-size: 24rpx;
-  font-weight: 700;
-}
-
 /* 列表下方的手动输入：原文字版样式（橙字），居中 */
 .wifi-manual-text {
   padding: 28rpx 32rpx 24rpx;
