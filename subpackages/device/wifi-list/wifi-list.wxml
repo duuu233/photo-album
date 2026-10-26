@@ -28,18 +28,19 @@
         <text>{{phase === 'connecting' ? '正在连接设备...' : '正在搜索网络...'}}</text>
       </view>
       <view wx:elif="{{tip}}" class="wifi-list-sub">{{tip}}</view>
-      <view wx:for="{{wifiList}}" wx:key="ssid" class="wifi-item" hover-class="wifi-item--pressed" data-ssid="{{item.ssid}}" bindtap="pickWifi">
+      <!-- 两步：点一行只选中（高亮 + 行尾「连接」），再点「连接」才进账号密码页 -->
+      <view wx:for="{{wifiList}}" wx:key="ssid" class="wifi-item {{item.ssid === selectedSsid ? 'is-selected' : ''}}" hover-class="wifi-item--pressed" data-ssid="{{item.ssid}}" bindtap="pickWifi">
         <image class="wifi-item__icon" src="/assets/images/badge-wifi.svg" mode="aspectFit"></image>
         <text class="wifi-item__name">{{item.ssid}}</text>
         <!-- 信号强度：信号格（与搜索设备列表同一组件，仿 iPhone 满格 4 格、最弱 1 格） -->
         <signal-bars class="wifi-item__signal" level="{{item.level}}"></signal-bars>
-        <text class="wifi-item__arrow">›</text>
+        <view wx:if="{{item.ssid === selectedSsid}}" class="wifi-item__connect" hover-class="none" catchtap="connectSelected">连接</view>
+        <text wx:else class="wifi-item__arrow">›</text>
       </view>
+      <!-- 手动输入：文字样式（橙字）居中，列表下方 -->
+      <view wx:if="{{!scanning}}" class="wifi-manual-text" hover-class="none" bindtap="manualInput">手动输入WiFi名称</view>
     </view>
   </view>
-
-  <!-- 底部手动输入：次按钮样式（白底橙边橙字、文字居中），位置与账号密码页「下一步」一致，扫描中也可点 -->
-  <view class="wifi-manual-button" hover-class="wifi-manual-button--pressed" bindtap="manualInput">手动输入WiFi名称</view>
 
   <global-toast id="globalToast"></global-toast>
 </view>

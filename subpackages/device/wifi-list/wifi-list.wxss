@@ -1,9 +1,7 @@
-/* 选择 WiFi 页（2026-10-26 整体优化）：提示语 + 灰字入口一组，下面是列表卡片；底部固定「手动输入WiFi名称」次按钮。
-   提示条、列表项沿用 WiFi 账号密码页 / 原 WiFi 列表弹层的样式；底部按钮与账号密码页「下一步」同位置同尺寸。 */
+/* 选择 WiFi 页（2026-10-26 整体优化）：提示语 + 灰字入口一组，下面是列表卡片，卡片末尾居中的「手动输入WiFi名称」橙字。
+   提示条、列表项沿用 WiFi 账号密码页 / 原 WiFi 列表弹层的样式。 */
 .wifi-list-content {
   padding-top: 24rpx;
-  /* 给底部固定按钮让位：按钮 112 + 贴底 48 + 间隙 40 */
-  padding-bottom: calc(200rpx + var(--safe-bottom));
 }
 
 .wifi-tip {
@@ -152,28 +150,34 @@
   font-size: 36rpx;
 }
 
-/* 底部「手动输入WiFi名称」：次按钮（白底、橙色描边与文字，同配网状态页「取消」），文字居中；
-   位置尺寸同账号密码页「下一步」 */
-.wifi-manual-button {
-  position: fixed;
-  left: 48rpx;
-  right: 48rpx;
-  bottom: calc(48rpx + var(--safe-bottom));
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 112rpx;
-  box-sizing: border-box;
-  color: #ff621f;
-  background: rgba(255, 255, 255, 0.92);
-  border: 2rpx solid rgba(255, 98, 31, 0.4);
-  border-radius: 999rpx;
-  box-shadow: 0 12rpx 30rpx rgba(126, 150, 184, 0.12);
-  font-size: 32rpx;
+/* 选中态（第一步）：浅橙底、橙色名称，行尾「连接」 */
+.wifi-item.is-selected {
+  background: rgba(255, 247, 242, 0.92);
+}
+
+.wifi-item.is-selected .wifi-item__name {
+  color: #ff5a1e;
   font-weight: 700;
 }
 
-.wifi-manual-button--pressed {
-  background: rgba(255, 247, 242, 0.96);
+/* 第二步入口：选中行行尾的「连接」小按钮（橙色渐变，同全站主按钮色） */
+.wifi-item__connect {
+  flex: 0 0 auto;
+  margin-left: 16rpx;
+  padding: 0 24rpx;
+  height: 52rpx;
+  line-height: 52rpx;
+  color: #ffffff;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+/* 列表下方的手动输入：原文字版样式（橙字），居中 */
+.wifi-manual-text {
+  padding: 28rpx 32rpx 24rpx;
+  color: #ff6421;
+  font-size: 30rpx;
+  text-align: center;
 }

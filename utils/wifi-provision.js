@@ -105,8 +105,19 @@ function hookSessionLog(session, log) {
 
 // 跑一遍配网。hooks：{ onStep(index, status), isCancelled(), onLog(text) }。
 // 成功 resolve { device }（老服务归一化后的设备记录）；失败 reject，error.step 为失败的步骤下标、message 为给用户看的文案。
-// onLog：配网日志（每一步的入参 / 结果、蓝牙收发帧、设备状态报告、绑定与每次在线查询），方便联调；同时打控制台 [配网]。
-// WiFi 密码不进日志：只记位数，密码帧打码。
+//
+// ── 配网日志（onLog，同时打控制台 [配网]；配网状态页开发版 / 体验版显示、可复制）──────────────
+// 每调用一个接口都按「调用了什么 → 什么参数 → 返回了什么」三行记，前缀固定，方便对照：
+//   · 「接口【接口名称】<方法> <完整地址>（出处 / 用途）」+「参数 <JSON>」+「返回 <JSON>」或「失败 HTTP <状态> code <业务码>：<文案>」
+//       接口名称按当日文档：IoT【在线状态】GET /api/device/online（前端对接文档 2.1，配网第 4 步见 2.4）；
+//       老服务【电子纸设备列表】getUserProductList、【绑定电子纸设备】addUserProduct（在 api.bindWifiDevice 里记）；
+//   · 「微信接口【名称】wx.xxx」+「参数」+「返回」：如【获取网络类型】wx.getNetworkType；
+//   · 「蓝牙接口 / 蓝牙指令【名称】（帧类型 / 出处）」+「参数」+「返回」：连设备（blufi.connect）；乐鑫 BluFi 标准帧
+//       【Set Opmode 设置工作模式】【STA SSID】【STA Password】【Connect to AP 连接WiFi】【Wi-Fi Connection State Report】；
+//       设备通讯协议 2.2.3【设置 MQTT 配置信息】mqtt_config；
+//   · 「蓝牙发 → / 蓝牙收 ← <十六进制>」：每一帧原始字节；「设备WiFi状态 / 设备自定义数据 / 设备报错 / 设备断开了蓝牙连接」：设备主动上报；
+//   · ①~④ 开头的行是步骤分隔，「配网失败（第 N 步）：原因」「设备已上云，配网成功」是结论。
+// WiFi 密码不进日志：参数里只记位数，密码帧显示「密码帧（N 字节，内容已隐藏）」；mqtt_config 的 pwd 同样打码。
 async function run(job, hooks) {
   const onStep = (hooks && hooks.onStep) || function () {}
   const isCancelled = (hooks && hooks.isCancelled) || (() => false)
@@ -138,8 +149,10 @@ async function run(job, hooks) {
     // ① 手机网络
     onStep(0, 'loading')
     log('① 检查手机网络')
+    log('微信接口【获取网络类型】wx.getNetworkType（读手机当前网络类型，配网第 1 步「手机网络正常」，接口文档 2.4）')
+    log('参数 无')
     const networkType = await getNetworkType()
-    log(`手机网络类型：${networkType}`)
+    log(`返回 ${JSON.stringify({ networkType })}（none 为无网络）`)
     if (networkType === 'none') {
       throw provisionError(0, '手机网络不可用，请检查网络后重试')
     }
@@ -148,37 +161,42 @@ async function run(job, hooks) {
 
     // ② 设备网络配置
     onStep(1, 'loading')
-    log('② 蓝牙连接设备（列表页已连上则复用）')
+    log('② 设备网络配置')
+    log('蓝牙接口【连接设备 BluFi 会话】blufi.connect（wx.createBLEConnection → getBLEDeviceServices 找 FFFF 服务 → getBLEDeviceCharacteristics 找 FF01 写 / FF02 通知 → notifyBLECharacteristicValueChange → setBLEMTU / getBLEMTU；列表页已连上则直接复用）')
+    log(`参数 ${JSON.stringify({ deviceId: job.bleDeviceId })}`)
     try {
       await bluetooth.openAdapter()
       await bluetooth.whenScanStopped()
       session = await blufi.connect(job.bleDeviceId)
     } catch (error) {
-      log(`蓝牙连接设备失败：${(error && error.message) || error}`)
+      log(`失败 ${(error && error.message) || error}`)
       throw provisionError(1, '连接设备失败，请将手机靠近设备后重试', error)
     }
     offSessionLog = hookSessionLog(session, log)
     const info = typeof session.info === 'function' ? session.info() : {}
-    log(`已连接：服务 ${info.serviceId || '-'}，单帧上限 ${info.frameLimit || '-'} 字节`)
+    log(`返回 ${JSON.stringify({ serviceId: info.serviceId || '', frameLimit: info.frameLimit || '' })}（frameLimit 为单帧最大字节数）`)
     checkCancel(1)
-    log('下发 WiFi：STA 模式（0x02）→ 名称（数据 0x02）→ 密码（数据 0x03）')
+    log('蓝牙指令【下发WiFi参数】乐鑫 BluFi 标准帧：控制帧 0x02【Set Opmode 设置工作模式】→ 数据帧 0x02【STA SSID】→ 数据帧 0x03【STA Password】（设备通讯协议 2.2：BluFi 以乐鑫官方为基线）')
+    log(`参数 ${JSON.stringify({ opmode: 1, ssid: job.ssid, password: `${String(job.password || '').length} 位（已隐藏）` })}`)
     try {
       await session.configureSta(job.ssid, job.password)
     } catch (error) {
-      log(`下发 WiFi 失败：${(error && error.message) || error}`)
+      log(`失败 ${(error && error.message) || error}`)
       throw provisionError(1, '设备网络配置下发失败，请靠近设备后重试', error)
     }
+    log('返回 三帧已写入（BluFi 这三条设备不单独应答）')
     const mqttConfig = await getMqttConfig(job)
     if (mqttConfig) {
-      log(`下发 mqtt_config：host ${mqttConfig.host || '-'}，port ${mqttConfig.port || '-'}，usr ${mqttConfig.usr || '-'}`)
+      log('蓝牙指令【设置 MQTT 配置信息】action=mqtt_config（设备通讯协议 2.2.3；走 BluFi 自定义数据 0x13，等 mqtt_config_ack）')
+      log(`参数 ${JSON.stringify(Object.assign({}, mqttConfig, { pwd: mqttConfig.pwd ? '（已隐藏）' : '' }))}`)
       let ack = null
       try {
         ack = await session.request('mqtt_config', mqttConfig, MQTT_ACK_TIMEOUT_MS)
       } catch (error) {
-        log(`mqtt_config 无应答：${(error && error.message) || error}`)
+        log(`失败 ${(error && error.message) || error}`)
         throw provisionError(1, '设备未响应网络配置，请重试', error)
       }
-      log(`mqtt_config_ack：${JSON.stringify(ack)}`)
+      log(`返回 ${JSON.stringify(ack)}（result=0 为成功）`)
       if (Number(ack && ack.result) !== 0) {
         throw provisionError(1, `设备网络配置失败（错误码 ${ack && ack.result}）`)
       }
@@ -190,7 +208,9 @@ async function run(job, hooks) {
 
     // ③ 设备连接 WiFi
     onStep(2, 'loading')
-    log(`③ 让设备连接 WiFi（控制 0x03），最多等 ${WIFI_STATE_TIMEOUT_MS / 1000} 秒的状态报告`)
+    log('③ 设备连接 WiFi')
+    log(`蓝牙指令【Connect to AP 连接WiFi】乐鑫 BluFi 控制帧 0x03，之后最多等 ${WIFI_STATE_TIMEOUT_MS / 1000} 秒设备的【Wi-Fi Connection State Report】（数据帧 0x0F）；配网第 3 步「设备正在连接Wi-Fi」，接口文档 2.4`)
+    log('参数 无')
     const settled = session.waitFor(
       'wifiState',
       state => state.staState === blufi.STA_STATE.CONNECTED || state.staState === blufi.STA_STATE.FAIL,
@@ -204,7 +224,9 @@ async function run(job, hooks) {
     }
     const state = await settled
     if (!state) {
-      log('没等到设备的 WiFi 状态报告，交给第 4 步在线查询裁决')
+      log('返回 没等到设备的 WiFi 状态报告，交给第 4 步在线查询裁决')
+    } else {
+      log(`返回 ${JSON.stringify(state)}（staState 0 已连上 / 1 失败）`)
     }
     if (state && state.staState === blufi.STA_STATE.FAIL) {
       throw provisionError(2, '设备连接WiFi失败，请检查WiFi名称和密码，并确认是2.4G网络')
@@ -219,15 +241,17 @@ async function run(job, hooks) {
 
     // ④ 绑定 + 轮询上云
     onStep(3, 'loading')
-    log(`④ 老服务绑定：deviceNo ${job.deviceNo}，productId ${product.productId || '-'}`)
+    log('④ 设备连接云端：先老服务绑定，再轮询 IoT 在线')
     let device = null
     try {
+      // 绑定里会调 getUserProductList（查是否已绑）/ addUserProduct（绑定）/ getUserProductList（回查），每个接口由 onLog 记三行
       device = await api.bindWifiDevice({
         deviceNo: job.deviceNo,
         productId: product.productId,
         productName: product.productName,
         sizeModel: product.sizeModel,
-        broadcastName: job.name
+        broadcastName: job.name,
+        onLog: log
       })
     } catch (error) {
       log(`绑定失败：${(error && error.message) || error}`)
@@ -240,16 +264,22 @@ async function run(job, hooks) {
     while (Date.now() < deadline) {
       checkCancel(3)
       attempt += 1
+      log(`接口【在线状态】GET ${config.iotBaseURL}/api/device/online（IoT 前端对接文档 2.1，配网第 4 步见 2.4；Header userToken；第 ${attempt} 次查询，since 之后上线才算 online）`)
+      log(`参数 ${JSON.stringify({ deviceNo: job.deviceNo, since })}`)
       try {
         const res = await iotApi.getDeviceOnline(job.deviceNo, since, { showError: false })
-        log(`在线查询 #${attempt}：online=${res && res.online}，lastOnlineAt=${(res && res.lastOnlineAt) || '-'}`)
+        log(`返回 ${JSON.stringify(res)}`)
         if (res && res.online) {
           onStep(3, 'done')
           log('设备已上云，配网成功')
           return { device }
         }
       } catch (error) {
-        log(`在线查询 #${attempt} 失败：code ${error && error.code}，${(error && error.message) || error}`)
+        log(
+          `失败 HTTP ${(error && error.statusCode) || '-'} code ${error && error.code}：${(error && error.message) || error}` +
+            `${error && error.serverMessage ? `（服务端 msg：${error.serverMessage}）` : ''}` +
+            `${error && error.action === 'relogin' ? '，登录失效，停止轮询' : '，继续轮询'}`
+        )
         if (error && error.action === 'relogin') {
           throw provisionError(3, '登录已失效，请重新登录', error)
         }

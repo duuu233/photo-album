@@ -1,6 +1,7 @@
 // 业务接口集中定义层：每个方法对应一个后端接口，统一通过 request.js 发起。
 // 第三个参数为请求选项，常用：loading 显示加载、auth:false 免登录、showError:false 静默错误。
 const http = require('./request')
+const config = require('./config')
 const deviceIdUtil = require('./device-id')
 const deviceThumb = require('./device-thumb')
 const { md5 } = require('./md5')
@@ -1084,7 +1085,10 @@ module.exports = {
   //   · 先查已绑定列表：同一台已绑定过（重配网 / 上次绑定成功但联网失败）就复用那条，不重复绑定；
   //   · 新绑定后回查列表补真实 userProductId（addUserProduct 的返回不含可靠主键，同蓝牙版 bind.js 的处理）。
   // 不弹 loading / 错误提示：配网状态页自己展示进度和错误。返回归一化后的设备记录（带 commType: 'WIFI'）。
+  // options.onLog(text)：可选，配网日志用——每个接口调用记「接口【名称】方法 完整地址」「参数」「返回 / 失败」三行
+  // （名称取老服务接口中文名，同 request.js API_NAME_MAP；格式见 wifi-provision.run 的日志说明）。
   async bindWifiDevice(options = {}) {
+    const log = typeof options.onLog === 'function' ? options.onLog : () => {}
     const productDeviceId = deviceIdUtil.requireComplete(
       options.deviceNo,
       '设备ID格式不正确，无法绑定'
@@ -1094,10 +1098,22 @@ module.exports = {
       [item && item.deviceNo, item && item.productDeviceId].some(
         value => String(value || '').replace(/[:\-\s]/g, '').toUpperCase() === serial
       )
-    const findBound = async () => {
+    const listParams = { pageIndex: 1, pageSize: 100 }
+    const findBound = async purpose => {
+      log(`接口【电子纸设备列表】GET ${config.baseURL}/Client/UserProduct/getUserProductList（老服务；${purpose}；经 api.getDevices 归一，自动带 terminal/language/device/userToken）`)
+      log(`参数 ${JSON.stringify(listParams)}`)
       try {
-        return (await module.exports.getDevices()).find(sameDevice) || null
+        const list = await module.exports.getDevices()
+        const matched = list.find(sameDevice) || null
+        log(
+          `返回 共 ${list.length} 台；` +
+            (matched
+              ? `匹配到这台：${JSON.stringify({ id: matched.id, userProductId: matched.userProductId, deviceNo: matched.deviceNo, productId: matched.productId, name: matched.name })}`
+              : `没有 deviceNo=${productDeviceId} 的记录`)
+        )
+        return matched
       } catch (error) {
+        log(`失败 code ${error && error.code}：${(error && error.message) || error}（按未绑定处理）`)
         return null
       }
     }
@@ -1107,17 +1123,24 @@ module.exports = {
       broadcastName: options.broadcastName || ''
     }
 
-    const existed = await findBound()
+    const existed = await findBound('查是否已绑定')
     if (existed) {
+      log('已绑定过这台设备，复用原记录，不再调 addUserProduct')
       return Object.assign({}, existed, wifiFields)
     }
 
     const productName = String(options.productName || options.broadcastName || '智能相框').trim()
-    const saved = await http.post(
-      '/Client/UserProduct/addUserProduct',
-      { productId: options.productId, productName, deviceId: productDeviceId },
-      { mock: false, showError: false }
-    )
+    const addParams = { productId: options.productId, productName, deviceId: productDeviceId }
+    log(`接口【绑定电子纸设备】POST ${config.baseURL}/Client/UserProduct/addUserProduct（老服务；WiFi 设备 deviceId 用带冒号的 12 位 deviceNo）`)
+    log(`参数 ${JSON.stringify(addParams)}`)
+    let saved = null
+    try {
+      saved = await http.post('/Client/UserProduct/addUserProduct', addParams, { mock: false, showError: false })
+    } catch (error) {
+      log(`失败 code ${error && error.code}：${(error && error.message) || error}`)
+      throw error
+    }
+    log(`返回 ${JSON.stringify(saved)}`)
     const savedName = String((saved && saved.productName) || '').trim()
     let device = normalizeDevice(
       Object.assign({}, saved, {
@@ -1129,7 +1152,7 @@ module.exports = {
         sizeModel: options.sizeModel || (saved && saved.sizeModel) || ''
       })
     )
-    const persisted = await findBound()
+    const persisted = await findBound('绑定后回查真实 userProductId')
     if (persisted && persisted.id) {
       device = Object.assign({}, device, {
         id: String(persisted.id),

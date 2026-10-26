@@ -89,7 +89,25 @@ async function main() {
     checked('正常配网：四步依次通过，绑定后带 since 轮询在线')
 
     const all = log.lines.join('\n')
-    for (const marker of ['开始配网', '① 检查手机网络', '② 蓝牙连接设备', '下发 WiFi', '③ 让设备连接 WiFi', '④ 老服务绑定', '在线查询 #1', '配网成功']) {
+    for (const marker of ['开始配网', '① 检查手机网络', '② 设备网络配置', '③ 设备连接 WiFi', '④ 设备连接云端', '配网成功']) {
+      assert.ok(all.indexOf(marker) > -1, `日志里要有「${marker}」`)
+    }
+    // 每个接口都记「接口【名称】」「参数」「返回」，名称按当日文档
+    for (const marker of [
+      '微信接口【获取网络类型】wx.getNetworkType',
+      '返回 {"networkType":"wifi"}',
+      '蓝牙接口【连接设备 BluFi 会话】blufi.connect',
+      '参数 {"deviceId":"ble-1"}',
+      '蓝牙指令【下发WiFi参数】',
+      '【Set Opmode 设置工作模式】',
+      '参数 {"opmode":1,"ssid":"我家WiFi","password":"8 位（已隐藏）"}',
+      '蓝牙指令【Connect to AP 连接WiFi】',
+      '返回 {"staState":0}',
+      '接口【在线状态】GET',
+      '/api/device/online（IoT 前端对接文档 2.1',
+      '参数 {"deviceNo":"E348C21ED428","since":1000000}',
+      '返回 {"online":true}'
+    ]) {
       assert.ok(all.indexOf(marker) > -1, `日志里要有「${marker}」`)
     }
     assert.ok(/WiFi「我家WiFi」，密码 8 位/.test(all), '记 WiFi 名称与密码位数')

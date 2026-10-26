@@ -5,7 +5,7 @@ const wifiProvision = require('../../../utils/wifi-provision')
 
 // WiFi 版设备配网第二步：WiFi 账号密码（2026-10-26 产品调整流程：先在 WiFi 列表页选网络，再进本页填密码）。
 //   · 名称由列表页带过来（选「手动输入」时为空，用户自己填）；名称后的切换图标回到 WiFi 列表重选；
-//   · 密码默认明文，右侧小眼睛切换明文 / ****（2026-10-26）；「下一步」把名称 / 密码交给配网流程（内存交接，**密码不进页面路由**），进配网状态页。
+//   · 密码默认加密显示 ****，右侧小眼睛切换明文 / ****（2026-10-26）；「下一步」把名称 / 密码交给配网流程（内存交接，**密码不进页面路由**），进配网状态页。
 const WIFI_LIST_URL = '/subpackages/device/wifi-list/wifi-list'
 
 Page(fold.adapt({
@@ -17,7 +17,7 @@ Page(fold.adapt({
     spec: '',
     ssid: '',
     password: '',
-    showPassword: true // true 明文、false 显示 ****；默认明文便于核对
+    showPassword: false // true 明文、false 显示 ****；默认加密（2026-10-26 产品要求），点小眼睛看明文
   },
 
   onLoad(options) {

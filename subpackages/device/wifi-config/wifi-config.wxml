@@ -33,7 +33,7 @@
       <view class="wifi-field">
         <text class="wifi-field__label">WiFi密码</text>
         <view class="wifi-field__box">
-          <!-- 默认明文（产品要求，便于用户核对），右侧小眼睛切换明文 / **** 隐藏 -->
+          <!-- 默认加密显示 ****，右侧小眼睛切换明文 / ****（2026-10-26 产品要求） -->
           <input class="wifi-field__input" value="{{password}}" password="{{!showPassword}}" placeholder="请输入WiFi密码" placeholder-class="wifi-field__placeholder" bindinput="onPasswordInput" />
           <view class="wifi-field__switch" hover-class="none" aria-role="button" aria-label="{{showPassword ? '隐藏密码' : '显示密码'}}" bindtap="togglePassword">
             <image class="wifi-field__eye-icon" src="{{showPassword ? '/assets/images/eye-open.svg' : '/assets/images/eye-closed.svg'}}" mode="aspectFit"></image>
