@@ -257,9 +257,19 @@ async function main() {
   const loadList = options => {
     const world = { closed: 0, scans: 0, connects: [] }
     const session = {
-      async scanWifi() {
+      async scanWifi(timeout, onBatch) {
         world.scans++
         if (options.scanError) throw options.scanError
+        if (options.batches) {
+          const all = []
+          world.seen = []
+          for (const batch of options.batches) {
+            batch.forEach(item => all.push(item))
+            onBatch(all, batch)
+            world.seen.push(world.page.data.wifiList.map(item => item.ssid))
+          }
+          return all
+        }
         return options.list === undefined ? [] : options.list
       },
       on: () => () => {},
@@ -270,10 +280,28 @@ async function main() {
       system: { getLayoutMetrics: () => ({ statusBarHeight: 20, safeBottom: 0 }) },
       'fold-adapt': { adapt: value => value },
       bluetooth: { async openAdapter() {}, async whenScanStopped() {} },
-      blufi: { async connect(id) { world.connects.push(id); if (options.connectError) throw new Error('fail'); return session } },
+      blufi: {
+        async connect(id) { world.connects.push(id); if (options.connectError) throw new Error('fail'); return session },
+        is24GChannel: require('../utils/blufi').is24GChannel
+      },
       'wifi-provision': { getTarget: () => (options.noTarget ? null : { bleDeviceId: 'ble-w1', deviceNo: 'E348C21ED428' }) }
     }), options.envVersion ? { getAccountInfoSync: () => ({ miniProgram: { envVersion: options.envVersion } }) } : {})
+    world.page = loaded.page
     return Object.assign(loaded, { world })
+  }
+  {
+    // 本设备回信道：只留 2.4G（ch 1~14），5G 去掉；分批回时边收边显示
+    const batched = loadList({ batches: [
+      [{ ssid: 'starhc520', rssi: -27, channel: 1 }, { ssid: 'starhc520_5G', rssi: -29, channel: 48 }],
+      [{ ssid: 'tyw-1308', rssi: -47, channel: 6 }, { ssid: '1308_5G', rssi: -60, channel: 157 }, { ssid: 'EricRachel', rssi: -84, channel: 13 }]
+    ] })
+    batched.page.onLoad({})
+    await flush()
+    await flush()
+    assert.deepEqual(batched.world.seen, [['starhc520'], ['starhc520', 'tyw-1308', 'EricRachel']], '每收到一批就刷新列表（边扫边显示）')
+    assert.deepEqual(batched.page.data.wifiList.map(item => item.ssid), ['starhc520', 'tyw-1308', 'EricRachel'], '5G（ch 48 / 157）被过滤，只留 2.4G')
+    assert.equal(batched.page.data.scanning, false)
+    checked('按信道只留 2.4G，分批回时边收边显示')
   }
   {
     const { page: list, state: listState, world } = loadList({ list: [

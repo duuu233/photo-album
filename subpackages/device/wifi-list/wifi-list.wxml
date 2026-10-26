@@ -35,7 +35,7 @@
           <!-- 设备回包里这条的全部字段：SSID / RSSI / 信道 / 频率 / 长度 / 原始字节 -->
           <text class="wifi-item__raw" user-select>SSID：{{item.ssid || '(空)'}}</text>
           <text class="wifi-item__raw" user-select>RSSI：{{item.rssi}} dBm（{{item.level}} 格）</text>
-          <text class="wifi-item__raw" user-select>信道：{{item.channel !== '' ? item.channel : '未返回'}} · 频率：{{item.frequency !== '' ? item.frequency + ' MHz' : '未返回'}}</text>
+          <text class="wifi-item__raw" user-select>信道：{{item.channel !== '' ? item.channel : '未返回'}} · 频率：{{item.frequency ? item.frequency + ' MHz' : '未返回'}}</text>
           <text class="wifi-item__raw" user-select>长度字节：{{item.len}} · 原始：{{item.raw}}</text>
         </view>
         <text wx:else class="wifi-item__name">{{item.ssid}}</text>

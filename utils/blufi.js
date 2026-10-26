@@ -15,9 +15,11 @@
 //
 // 自定义数据（数据帧子类型 0x13）承载协议文档 2.2 的 JSON 消息（如 mqtt_config / mqtt_config_ack）。
 //
-// 设备扫描附近 WiFi（2026-10-26）：手机发控制帧 0x09，设备扫描后回数据帧 0x11（WiFi 列表），
-// 每项为 len(1) | rssi(1，有符号 dBm) | ssid(len-1)。配网 WiFi 列表页用它代替手机自己扫（iOS 拿不到列表、
-// 手机扫的也不一定是设备那边收得到的网络）；ESP32 只支持 2.4G，设备扫出来的天然就是 2.4G。
+// 设备扫描附近 WiFi（2026-10-26）：手机发控制帧 0x09，设备扫描后回列表。两种回法都认：
+//   · 乐鑫标准：数据帧 0x11，每项 len(1) | rssi(1，有符号 dBm) | ssid(len-1)，没有信道；
+//   · **本设备实测**：自定义数据 0x13，文本每行一条 `ssid:<名称>,rssi:<dBm>,ch:<信道>`（真机日志 2026-10-26），
+//     带信道，且扫得到 5G（ch 36~165，设备是双频芯片），据此只留 2.4G（ch 1~14）。
+// 配网 WiFi 列表页用它代替手机自己扫（iOS 拿不到列表、手机扫的也不一定是设备那边收得到的网络）。
 const notifyHub = require('./ble-notify-hub')
 
 const SERVICE_UUID = 'FFFF'
@@ -84,6 +86,30 @@ const ERROR_TEXT = {
 
 function errorText(code) {
   return ERROR_TEXT[code] || '未知错误'
+}
+
+// 收到一批 WiFi 列表后再等这么久没有新的一批，才算扫描结束（设备可能分几条回；产品要求别太快收掉）
+const WIFI_LIST_QUIET_MS = 5000
+
+// 信道 → 中心频率（MHz）：2.4G 1~13 为 2407+5×ch、14 为 2484；5G 为 5000+5×ch
+function channelFrequency(channel) {
+  const ch = Number(channel)
+  if (!Number.isFinite(ch) || ch <= 0) {
+    return 0
+  }
+  if (ch === 14) {
+    return 2484
+  }
+  return ch < 14 ? 2407 + 5 * ch : 5000 + 5 * ch
+}
+
+// 2.4G 信道 1~14；信道未知（乐鑫标准格式不带）返回 null，由调用方决定
+function is24GChannel(channel) {
+  if (channel === undefined || channel === null || channel === '') {
+    return null
+  }
+  const ch = Number(channel)
+  return Number.isFinite(ch) && ch >= 1 && ch <= 14
 }
 
 // 默认 MTU 23 时单帧最多 20 字节；协商到更大 MTU 后按 MTU-3 算，帧内 data 最多 255
@@ -273,6 +299,28 @@ function parseWifiList(data) {
   return list
 }
 
+// 本设备用自定义数据（0x13）回的 WiFi 列表：每行 `ssid:<名称>,rssi:<dBm>,ch:<信道>`。
+// 名称里可能带逗号，所以从行尾往前认 rssi / ch；名称为空的是隐藏网络。认不出的行忽略。
+function parseCustomWifiList(text) {
+  const list = []
+  String(text || '')
+    .split(/\r?\n/)
+    .forEach(line => {
+      const match = /^\s*ssid:(.*),rssi:(-?\d+),ch:(\d+)\s*$/i.exec(line)
+      if (match) {
+        const channel = Number(match[3])
+        list.push({
+          ssid: match[1],
+          rssi: Number(match[2]),
+          channel,
+          frequency: channelFrequency(channel),
+          raw: line.trim()
+        })
+      }
+    })
+  return list
+}
+
 // 自定义数据里的 JSON 消息。协议文档表格写的是 date / ack_msg id，示例写的是 data / ack_msgid，两种都认。
 function parseCustom(data) {
   const text = utf8Decode(data)
@@ -354,6 +402,14 @@ function handleMessage(session, message) {
     const custom = parseCustom(message.data)
     console.log('[BluFi] 自定义数据', custom.text)
     emit(session, 'custom', custom)
+    // 本设备的 WiFi 列表走自定义数据（文本行），认得出就按 WiFi 列表发出去
+    const wifi = parseCustomWifiList(custom.text)
+    if (wifi.length) {
+      wifi.rawHex = toHex(message.data)
+      wifi.tailHex = ''
+      wifi.format = 'custom'
+      emit(session, 'wifiList', wifi)
+    }
   } else if (message.subtype === DATA.ERROR) {
     const code = message.data.length ? message.data[0] : -1
     console.warn('[BluFi] 设备报错', code, errorText(code))
@@ -564,27 +620,66 @@ function createApi(session) {
       return { deviceId: session.deviceId, serviceId: session.serviceId, frameLimit: session.frameLimit }
     },
 
-    // 让设备扫描附近 WiFi：先把设备切到 STA 模式（0x02，设备 WiFi 没起在 STA 时乐鑫的扫描会直接失败），
-    // 再发 0x09，等设备回 0x11 列表。
-    //   · 收到列表 → resolve(list)；
-    //   · 设备回错误报告（0x12，如 11「WiFi 扫描失败」）→ reject，error.code 为设备错误码；
-    //   · 超时 → resolve(null)：固件不支持，或乐鑫示例在一个网络都没扫到时什么都不回。
-    async scanWifi(timeout) {
-      let offError = null
-      const failed = new Promise((resolve, reject) => {
-        offError = on(session, 'deviceError', detail => {
+    // 让设备扫描附近 WiFi：先把设备切到 STA 模式（0x02，设备 WiFi 没起在 STA 时乐鑫的扫描会直接失败），再发 0x09。
+    //   · 设备可能分几批回（标准 0x11 或本设备的自定义文本），每到一批回调 onBatch(累计列表, 本批)，页面边收边显示；
+    //   · 收到一批后 WIFI_LIST_QUIET_MS（5 秒）内没有新的一批才算结束，resolve(累计列表)；
+    //   · 还没收到任何一批时：设备报错（0x12）/ 蓝牙断开 → reject（error.code 为设备错误码 / 'DISCONNECTED'）；
+    //     **已经收到过列表**后的报错只记日志、断开则直接用已收到的结束——不能因为设备收尾时的一条报错把列表作废；
+    //   · 总超时 timeout（默认 60 秒）：有收到就用收到的，一条没有 resolve(null)。
+    async scanWifi(timeout, onBatch) {
+      const collected = []
+      collected.rawHex = ''
+      collected.tailHex = ''
+      let finish = null
+      let fail = null
+      const result = new Promise((resolve, reject) => {
+        finish = resolve
+        fail = reject
+      })
+      const settle = () => finish(collected.length ? collected : null)
+      let quietTimer = null
+      const offs = [
+        on(session, 'wifiList', list => {
+          list.forEach(item => collected.push(item))
+          collected.rawHex = [collected.rawHex, list.rawHex].filter(Boolean).join(' ')
+          collected.tailHex = [collected.tailHex, list.tailHex].filter(Boolean).join(' ')
+          if (onBatch) {
+            try {
+              onBatch(collected, list)
+            } catch (error) {
+              console.warn('[BluFi] onBatch error', error)
+            }
+          }
+          clearTimeout(quietTimer)
+          quietTimer = setTimeout(settle, WIFI_LIST_QUIET_MS)
+        }),
+        on(session, 'deviceError', detail => {
+          if (collected.length) {
+            return
+          }
           const error = new Error(detail.message)
           error.code = detail.code
-          reject(error)
+          fail(error)
+        }),
+        on(session, 'disconnect', () => {
+          if (collected.length) {
+            settle()
+            return
+          }
+          const error = new Error('设备断开了蓝牙连接')
+          error.code = 'DISCONNECTED'
+          fail(error)
         })
-      })
-      const wait = waitFor(session, 'wifiList', null, timeout || 60000)
+      ]
+      const overall = setTimeout(settle, timeout || 60000)
       try {
         await writeFrames(session, false, CTRL.SET_OPMODE, [OPMODE_STA])
         await writeFrames(session, false, CTRL.GET_WIFI_LIST, [])
-        return await Promise.race([wait, failed])
+        return await result
       } finally {
-        offError()
+        clearTimeout(quietTimer)
+        clearTimeout(overall)
+        offs.forEach(off => off())
       }
     },
 
@@ -636,5 +731,8 @@ module.exports = {
   parseWifiState,
   parseCustom,
   parseWifiList,
+  parseCustomWifiList,
+  channelFrequency,
+  is24GChannel,
   connect
 }

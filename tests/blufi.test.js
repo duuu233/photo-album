@@ -99,6 +99,34 @@ const arr = frame => Array.from(frame)
 }
 
 {
+  // 本设备实测（2026-10-26 真机日志）：WiFi 列表走自定义数据 0x13，每行 ssid:<名称>,rssi:<dBm>,ch:<信道>
+  const text = [
+    'ssid:starhc520,rssi:-27,ch:1',
+    'ssid:,rssi:-28,ch:1',
+    'ssid:starhc520_5G,rssi:-29,ch:48',
+    'ssid:Zheng房间,rssi:-79,ch:1',
+    'ssid:a,b,rssi:-50,ch:6',
+    'ssid:1308_5G,rssi:-60,ch:157',
+    'ssid:EricRachel,rssi:-84,ch:13',
+    'garbage line'
+  ].join('\n')
+  const list = blufi.parseCustomWifiList(text)
+  assert.deepEqual(list.map(item => [item.ssid, item.rssi, item.channel]), [
+    ['starhc520', -27, 1], ['', -28, 1], ['starhc520_5G', -29, 48], ['Zheng房间', -79, 1],
+    ['a,b', -50, 6], ['1308_5G', -60, 157], ['EricRachel', -84, 13]
+  ], '名称可为空、可带中文和逗号；认不出的行忽略')
+  assert.equal(blufi.parseCustomWifiList('ssid:x,rssi:-1,ch:1\r\nssid:y,rssi:-2,ch:6').length, 2, '兼容 CRLF 换行')
+  assert.equal(blufi.channelFrequency(1), 2412)
+  assert.equal(blufi.channelFrequency(13), 2472)
+  assert.equal(blufi.channelFrequency(14), 2484)
+  assert.equal(blufi.channelFrequency(36), 5180)
+  assert.equal(blufi.channelFrequency(157), 5785)
+  assert.deepEqual([1, 6, 13, 14, 36, 48, 157].map(ch => blufi.is24GChannel(ch)), [true, true, true, true, false, false, false], '信道 1~14 为 2.4G')
+  assert.equal(blufi.is24GChannel(undefined), null, '没回信道（乐鑫标准格式）时判不了')
+  checked('本设备自定义文本格式的 WiFi 列表与信道→频段')
+}
+
+{
   assert.equal(blufi.errorText(11), 'WiFi 扫描失败', '设备报错码按乐鑫定义翻译')
   assert.equal(blufi.errorText(99), '未知错误')
   checked('设备错误码文案')

@@ -8,8 +8,9 @@ const wifiProvision = require('../../../utils/wifi-provision')
 //   App 蓝牙连接设备 → 设备扫描附近 WiFi（3~5 秒，页面显示「正在搜索网络...」）→ 显示列表（名称 + 信号强度）
 //   → 用户选中进 WiFi 账号密码页 → 配网状态页下发 WiFi 参数（+ MQTT 参数，来源未定前不发）。
 //
-//   · 列表来自**设备扫描**（BluFi 0x09 / 0x11，见 utils/blufi.js），不用手机扫：iOS 微信拿不到附近列表、
-//     手机扫到的也不一定是设备那边收得到的；ESP32 只支持 2.4G，设备扫出来的天然就是 2.4G，不再按频段筛；
+//   · 列表来自**设备扫描**（BluFi 0x09，设备回 0x11 或自定义文本，见 utils/blufi.js），不用手机扫：iOS 微信拿不到
+//     附近列表、手机扫到的也不一定是设备那边收得到的；本设备是双频芯片，按回包里的信道只留 2.4G（ch 1~14，国内外通用）；
+//   · 设备分批回就边收边显示，最后一批后再等 5 秒才结束转圈；
 //   · 同名去重取信号强的，信号强的在前；隐藏网络（名称为空）不列；
 //   · 这条蓝牙连接一直留着给配网状态页复用（同一会话、序号连续），离开本页（返回搜索页）才断开；
 //   · 连不上设备 / 设备没回列表 / 设备报扫描失败：提示原因，给「重新搜索」，也可「手动输入WiFi名称」；
@@ -44,17 +45,22 @@ function toWifiList(list, raw) {
     ssid: String((item && item.ssid) || '').trim(),
     rssi: Number(item && item.rssi) || 0,
     level: signalLevel(item && item.rssi),
-    len: item && item.len,
+    len: item && item.len !== undefined ? item.len : '-',
     raw: (item && item.raw) || '',
-    // 设备回包里若有信道 / 频率字段就带上；乐鑫标准格式没有，页面显示「未返回」
+    // 本设备回信道（自定义文本格式）；乐鑫标准格式没有，页面显示「未返回」
     channel: item && item.channel !== undefined ? item.channel : '',
-    frequency: item && item.frequency !== undefined ? item.frequency : ''
+    frequency: item && item.frequency ? item.frequency : ''
   })
+  // 只留 2.4G：信道 1~14 为 2.4G（国内外通用），其余（36 起的 5G）去掉；
+  // 设备没回信道（乐鑫标准格式）时无从判断，照常列出（这类设备多为单 2.4G 芯片）
+  const is24G = item => blufi.is24GChannel(item && item.channel) !== false
+  const kept = (list || []).filter(is24G)
+  const filtered5G = (list || []).length - kept.length
   if (raw) {
-    return (list || []).map((item, index) => Object.assign(view(item), { key: `${index}` }))
+    return { items: kept.map((item, index) => Object.assign(view(item), { key: `${index}` })), filtered5G }
   }
   const best = {}
-  ;(list || []).forEach(item => {
+  kept.forEach(item => {
     const ssid = String((item && item.ssid) || '').trim()
     if (!ssid) {
       return
@@ -63,9 +69,10 @@ function toWifiList(list, raw) {
       best[ssid] = item
     }
   })
-  return Object.keys(best)
+  const items = Object.keys(best)
     .map(ssid => Object.assign(view(best[ssid]), { key: ssid }))
     .sort((a, b) => b.rssi - a.rssi)
+  return { items, filtered5G }
 }
 
 Page(fold.adapt({
@@ -136,7 +143,8 @@ Page(fold.adapt({
     this._offHooks = [
       session.on('frame', frame => this.log(`${frame.dir === 'tx' ? '发 →' : '收 ←'} ${frame.hex}`)),
       session.on('ctrl', ctrl => this.log(`设备控制帧 子类型 0x${ctrl.subtype.toString(16)}`)),
-      session.on('deviceError', detail => this.log(`设备报错：${detail.message}`))
+      session.on('deviceError', detail => this.log(`设备报错：${detail.message}`)),
+      session.on('disconnect', () => this.log('设备断开了蓝牙连接'))
     ]
   },
 
@@ -173,7 +181,13 @@ Page(fold.adapt({
     this.log(`② 切 STA 模式（0x02）并发送获取WiFi列表（0x09），最多等 ${SCAN_TIMEOUT_MS / 1000} 秒`)
     let list = null
     try {
-      list = await this.session.scanWifi(SCAN_TIMEOUT_MS)
+      // 设备每回一批就先显示出来（边扫边显示），转圈保持到扫描结束
+      list = await this.session.scanWifi(SCAN_TIMEOUT_MS, (all, batch) => {
+        this.log(`收到一批 ${batch.length} 条（累计 ${all.length} 条）`)
+        if (!this.unloaded) {
+          this.applyList(all)
+        }
+      })
     } catch (error) {
       console.warn('[WiFi列表] 设备扫描失败', error && error.message)
       this.log(`扫描失败：${(error && error.message) || error}`)
@@ -201,15 +215,24 @@ Page(fold.adapt({
       return
     }
     this.log(`③ 收到 WiFi 列表：${list.length} 条`)
-    const wifiList = toWifiList(list, this.data.showRaw)
-    const tailHex = list.tailHex || ''
+    const shown = this.applyList(list)
     this.setData({
-      rawSummary: `设备回包 ${list.rawHex ? list.rawHex.split(' ').length : 0} 字节 · 解析出 ${list.length} 条${tailHex ? ` · 解析不了的残尾 ${tailHex.split(' ').length} 字节：${tailHex}` : ''}`,
-      rawHex: list.rawHex || '',
       scanning: false,
-      wifiList,
-      tip: wifiList.length ? '' : '设备附近没有搜到WiFi，请重新搜索或手动输入WiFi名称'
+      tip: shown ? '' : '设备附近没有搜到2.4G WiFi，请重新搜索或手动输入WiFi名称'
     })
+  },
+
+  // 把设备回的（累计）列表刷到页面：只留 2.4G、去重排序；联调模式另给整包统计。返回显示的条数
+  applyList(list) {
+    const result = toWifiList(list, this.data.showRaw)
+    const tailHex = list.tailHex || ''
+    const bytes = list.rawHex ? list.rawHex.split(' ').length : 0
+    this.setData({
+      wifiList: result.items,
+      rawSummary: `设备回包 ${bytes} 字节 · 解析出 ${list.length} 条 · 过滤掉 5G ${result.filtered5G} 条${tailHex ? ` · 解析不了的残尾 ${tailHex.split(' ').length} 字节：${tailHex}` : ''}`,
+      rawHex: list.rawHex || ''
+    })
+    return result.items.length
   },
 
   rescan() {
