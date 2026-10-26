@@ -7,7 +7,8 @@
   line-height: 0;
 }
 
-/* 4 根竖条底部对齐、高度 1/4 → 满高递增；点亮为绿色（2026-10-26 产品要求，与 WiFi 图标 / WiFi版标签同一个绿）、未亮为浅灰 */
+/* 4 根竖条底部对齐、高度 1/4 → 满高递增；未亮为浅灰。点亮颜色按设备类型（2026-10-26 产品要求）：
+   WiFi（默认）绿色，与 WiFi 图标 / 「WiFi版」标签同色；蓝牙版蓝色，与「蓝牙版」标签同色 */
 .signal-bars {
   display: flex;
   align-items: flex-end;
@@ -20,6 +21,10 @@
 
 .signal-bars__bar.is-on {
   background: #0e9f87;
+}
+
+.signal-bars--ble .signal-bars__bar.is-on {
+  background: #2f6feb;
 }
 
 .signal-bars--normal {

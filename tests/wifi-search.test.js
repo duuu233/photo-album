@@ -373,7 +373,7 @@ async function main() {
     assert.equal(dev.page.data.showRaw, undefined, '页面不再有调试开关')
     const tpl = fs.readFileSync(path.join(root, 'subpackages/device/wifi-list/wifi-list.wxml'), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
     assert.ok(/设备附近的2\.4G WiFi/.test(tpl), '列表标题为「设备附近的2.4G WiFi」')
-    assert.ok(/class="wifi-manual-hint"[^>]*bindtap="manualInput"[^>]*>若列表搜索不到您的wifi，请手动输入</.test(tpl), '提示语下有灰字手动输入入口')
+    assert.ok(/class="wifi-manual-hint"[^>]*bindtap="manualInput"[^>]*>若列表搜索不到您的wifi，请点击此处手动输入</.test(tpl), '提示语下有灰字手动输入入口')
     assert.ok(!/showRaw|logs|rawSummary|wifi-debug-log/.test(tpl), '模板里不再有调试内容')
     checked('各环境同一套界面：无调试内容，隐藏网络不列，提示语下可手动输入')
   }
