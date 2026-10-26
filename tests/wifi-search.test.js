@@ -1,9 +1,10 @@
 // WiFi 版接入搜索（2026-10-26，对接进度 STEP 1）：
 //   ① 广播名匹配：后台 `IJ_*` 模板按 `*` 拆前后缀、中间正好 12 位取 deviceId；蓝牙版固定广播名沿用包含匹配；
+//      广播名合内置 `IJ_*` 的一律是 WiFi 版，后台把广播 ID 写成 `IJ_`（不带 *）也不会被当成蓝牙版；
 //   ② 扫描层：只有 includeWifi 的订阅者（搜索设备页）收录 WiFi 设备并标 commType，其它扫描入口照旧只认蓝牙版；
-//   ③ 搜索页：WiFi 行按 deviceNo 查产品规格（每台只查一次），查到显示型号/尺寸，查不到/失败显示「未知设备」；
-//      选中未知设备按底部按钮直接弹「未知设备，请联系客服开通」、不进配网；查到的进 WiFi 配置页；
-//      重新搜索时查不到的允许再查一次；
+//   ③ 搜索页：WiFi 行按 deviceNo 查产品规格（每台只查一次），查到直接显示 sizeModel、没配显示「--寸」，
+//      查不到/返回空壳记录/失败显示「未知设备」；未知设备点行或点底部按钮都直接弹「未知设备，请联系客服开通」、
+//      不进配网；查到的点行即进 WiFi 配置页；重新搜索时查不到的允许再查一次；
 //   ④ WiFi 配置页「下一步」不把密码带进页面路由；两张新页面已在 app.json 注册。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -67,7 +68,7 @@ async function main() {
   for (const name of ['IJ_E348C21ED42', 'IJ_E348C21ED4281', 'IJ_', 'XIJ_E348C21ED428', 'IJ_E348C21ED42!']) {
     assert.equal(match.classify({ name }, ['IJ_*']), null, `${name} 不该命中：被 * 替换的部分必须正好 12 位`)
   }
-  assert.equal(match.classify({ name: 'IJ_E348C21ED428' }, ['IJ_*ABC']), null, '后缀对不上不命中')
+  assert.equal(match.matchWildcard('IJ_E348C21ED428', 'IJ_*ABC'), '', '后缀对不上不命中')
   assert.equal(match.matchWildcard('IJ_E348C21ED428', 'IJ_**'), '', '多个 * 视为配置错误')
   checked('中间不是 12 位 / 前后缀对不上都不命中')
 
@@ -75,7 +76,12 @@ async function main() {
   assert.deepEqual(JSON.parse(JSON.stringify(match.classify({ name: 'EF6-370' }, ids))), { commType: 'BLE', broadcastId: 'EF6-370' })
   assert.deepEqual(JSON.parse(JSON.stringify(match.classify({ name: 'EB-169' }, ids))), { commType: 'BLE', broadcastId: 'EB-169' })
   assert.equal(match.classify({ name: 'EF6-589' }, ['EF6-370', 'EB-169']), null)
-  assert.equal(match.classify({ name: 'IJ_E348C21ED428' }, ['EF6-370', 'EB-169']), null, '后台没配 IJ_* 时 WiFi 设备不命中')
+  // 2026-10-26 追加内置 IJ_* 模板：原断言「后台没配 IJ_* 就不命中」随之改为「仍认作 WiFi 版」，
+  // 守的判据换成更要紧的那条——WiFi 设备绝不能被归为蓝牙版（否则不查规格、拦不住未知设备）
+  assert.equal(match.classify({ name: 'IJ_E348C21ED428' }, ['EF6-370', 'EB-169']).commType, 'WIFI', '后台没配 IJ_* 时按内置模板仍认作 WiFi 版')
+  const loose = match.classify({ name: 'IJ_E348C21ED428' }, ['EF6-370', 'IJ_'])
+  assert.equal(loose.commType, 'WIFI', '后台把广播 ID 写成不带 * 的 IJ_ 时，不能按包含匹配归成蓝牙版')
+  assert.equal(loose.wifiDeviceId, 'E348C21ED428')
   assert.equal(match.classify({ name: 'EF6-370-A1' }, ['EF6-370']).commType, 'BLE', '蓝牙版沿用包含匹配，带后缀的现网广播名照样认')
   checked('蓝牙版固定广播名只命中对应设备')
 
@@ -100,11 +106,26 @@ async function main() {
     assert.equal(bleOnly[0].commType, undefined, '不传 includeWifi 时返回的记录与接入前一致')
     checked('只有 includeWifi 的订阅者收录 WiFi 设备并标 commType')
   }
+  {
+    // 后台把 WiFi 广播 ID 写成不带 * 的 IJ_：搜索页仍标 WIFI，其它扫描入口仍不收（不能靠包含匹配混进蓝牙候选）
+    const { bluetooth, emit } = loadBluetooth(['EB-169', 'IJ_'])
+    const wifiScan = bluetooth.discoverDevices({ freshOnly: true, includeWifi: true, timeout: 30 })
+    const bleScan = bluetooth.discoverDevices({ freshOnly: true, timeout: 30 })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    emit([{ deviceId: 'h-wifi', name: 'IJ_E348C21ED428', RSSI: -50 }])
+    const withWifi = await wifiScan
+    assert.equal(withWifi.length, 1)
+    assert.equal(withWifi[0].commType, 'WIFI')
+    assert.equal(withWifi[0].wifiDeviceId, 'E348C21ED428')
+    assert.equal((await bleScan).length, 0)
+    checked('后台广播 ID 写成 IJ_ 时 WiFi 设备不会被当成蓝牙版')
+  }
 
   // ── ③ 搜索页 ──
   const never = new Promise(() => {})
   const products = {
-    E348C21ED428: () => Promise.resolve({ productName: '7.3寸相框', sizeModel: '7.3寸' }),
+    E348C21ED428: () => Promise.resolve({ productId: 21, productName: 'WiFi相框', sizeModel: '13.3寸' }),
+    CCCCCCCCCCCC: () => Promise.resolve({ productId: 22, productName: 'WiFi相框', sizeModel: '' }),
     D0CF13F02FF8: () => Promise.resolve(null),
     AAAAAAAAAAAA: () => Promise.reject(new Error('timeout')),
     BBBBBBBBBBBB: () => never
@@ -132,7 +153,7 @@ async function main() {
     realBluetooth: true, RSSI: -50, signalText: '强'
   })
   const bleRow = { id: 'b1', deviceId: 'b1', name: 'EB-169', commType: 'BLE', realBluetooth: true, RSSI: -60, broadcastDeviceId: '37:0B:00:D0:44:5A' }
-  const rows = [wifiRow('w1', 'E348C21ED428'), wifiRow('w2', 'D0CF13F02FF8'), wifiRow('w3', 'AAAAAAAAAAAA'), bleRow]
+  const rows = [wifiRow('w1', 'E348C21ED428'), wifiRow('w2', 'D0CF13F02FF8'), wifiRow('w3', 'AAAAAAAAAAAA'), bleRow, wifiRow('w5', 'CCCCCCCCCCCC')]
 
   page.applyScanResult(1, rows)
   assert.equal(page.data.devices[0].wifiStatus, 'loading')
@@ -143,53 +164,70 @@ async function main() {
   assert.equal(page.data.selectedId, 'w1')
   assert.equal(page.data.selectedIsWifi, true, '选中 WiFi 设备时底部按钮改「立即配网」')
   page.applyScanResult(1, rows)
-  assert.deepEqual(queried, ['E348C21ED428', 'D0CF13F02FF8', 'AAAAAAAAAAAA'], '同一次搜索每台只查一次')
+  assert.deepEqual(queried, ['E348C21ED428', 'D0CF13F02FF8', 'AAAAAAAAAAAA', 'CCCCCCCCCCCC'], '同一次搜索每台只查一次')
   await flush()
   await flush()
   const byId = id => page.data.devices.find(item => item.id === id)
   assert.equal(byId('w1').wifiStatus, 'found')
-  assert.equal(byId('w1').specText, '7.3寸相框', '产品名已含尺寸时不重复拼')
+  assert.equal(byId('w1').specText, '13.3寸', '尺寸直接读 sizeModel')
+  assert.equal(byId('w5').specText, '--寸', '查到了但没配 sizeModel 显示 --寸')
   assert.equal(byId('w2').specText, '未知设备', '查不到 → 未知设备')
   assert.equal(byId('w3').specText, '未知设备', '接口失败/超时 → 未知设备，不重试')
-  checked('WiFi 行按 deviceNo 查规格：查到展示型号尺寸，查不到/失败为未知设备')
+  checked('WiFi 行按 deviceNo 查规格：尺寸读 sizeModel（没配 --寸），查不到/失败为未知设备')
 
   page.selectDevice({ currentTarget: { dataset: { id: 'w2' } } })
-  await page.confirmBind()
-  assert.equal(state.modals.length, 1)
+  assert.equal(state.modals.length, 1, '点未知设备那一行就直接弹窗')
   assert.equal(state.modals[0].content, '未知设备，请联系客服开通')
+  assert.equal(page.data.selectedId, 'w1', '未知设备不被选中')
+  page.data.selectedId = 'w3'
+  await page.confirmBind()
+  assert.equal(state.modals.length, 2, '未知设备被默认选中时，点底部按钮同样弹窗')
   assert.equal(state.navs.length, 0, '未知设备不进入配网')
   assert.equal(page.data.binding, false, '未知设备不进入蓝牙绑定流程')
-  checked('未知设备点连接直接弹窗拦下')
+  checked('未知设备点行 / 点按钮都直接弹窗拦下')
 
   page.selectDevice({ currentTarget: { dataset: { id: 'w1' } } })
-  await page.confirmBind()
-  assert.equal(state.navs.length, 1)
+  assert.equal(state.navs.length, 1, '点查到规格的 WiFi 设备即进配置页')
   assert.ok(
     state.navs[0].url.indexOf('/subpackages/device/wifi-config/wifi-config?deviceNo=E348C21ED428') === 0,
     `查到规格的 WiFi 设备进 WiFi 配置页：${state.navs[0].url}`
   )
+  assert.equal(page.data.selectedId, 'w1')
+  await page.confirmBind()
+  assert.equal(state.navs.length, 2, '选中后点底部按钮同样进配置页')
   checked('查到规格的 WiFi 设备进入 WiFi 配置页')
 
   page.applyScanResult(1, rows.concat(wifiRow('w4', 'BBBBBBBBBBBB')))
   page.selectDevice({ currentTarget: { dataset: { id: 'w4' } } })
-  await page.confirmBind()
   assert.equal(state.toasts.at(-1).title, '正在查询设备信息，请稍候', '规格还在查时先提示稍候')
-  assert.equal(state.navs.length, 1)
+  assert.equal(state.navs.length, 2)
   checked('规格查询中不放行')
 
   page.selectDevice({ currentTarget: { dataset: { id: 'b1' } } })
   assert.equal(page.data.selectedIsWifi, false, '选中蓝牙设备时按钮仍是「立即绑定」')
+  assert.equal(state.navs.length, 2, '点蓝牙设备只选中，不跳转')
   await page.confirmBind()
   await flush()
-  assert.equal(state.navs.length, 1, '蓝牙设备不进 WiFi 配网')
+  assert.equal(state.navs.length, 2, '蓝牙设备不进 WiFi 配网')
   assert.equal(state.toasts.at(-1).title, '蓝牙流程桩：到此为止', '蓝牙设备照旧走连接读 0x01 的绑定流程')
   checked('蓝牙设备的绑定流程不受影响')
 
   await page.scan()
   assert.equal(state.scanOptions.includeWifi, true, '搜索设备页同时搜蓝牙版与 WiFi 版')
   page.applyScanResult(page.scanSeq, [wifiRow('w1', 'E348C21ED428'), wifiRow('w2', 'D0CF13F02FF8')])
-  assert.deepEqual(queried.slice(4), ['D0CF13F02FF8'], '重新搜索：查不到的再查一次，查到的不重复查')
+  assert.deepEqual(queried.slice(5), ['D0CF13F02FF8'], '重新搜索：查不到的再查一次，查到的不重复查')
   checked('重新搜索时未知设备可再查一次')
+
+  // ── 规格接口返回归一：只认产品身份 ──
+  {
+    const api = require('../utils/api')
+    assert.equal(api.normalizeWifiProduct({ productId: 21, productName: 'WiFi相框', sizeModel: '13.3寸' }).sizeModel, '13.3寸')
+    assert.equal(api.normalizeWifiProduct([{ productId: '21', sizeModel: null }]).sizeModel, '', '列表形状取第一条；没配尺寸为空串')
+    for (const empty of [null, undefined, '', [], {}, { productId: 0, productName: null, sizeModel: null }, { productId: '0' }, { sizeModel: '13.3寸' }]) {
+      assert.equal(api.normalizeWifiProduct(empty), null, `${JSON.stringify(empty)} 应算查不到`)
+    }
+    checked('空数据 / 空壳记录 / 只有尺寸没有产品身份都算查不到')
+  }
 
   // ── ④ WiFi 配置页与页面注册 ──
   {

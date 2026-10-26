@@ -443,8 +443,10 @@ function scanSizeModel(scan, products) {
 const WIFI_PRODUCT_CACHE_MS = 5 * 60 * 1000
 const wifiProductCache = {}
 
-// getProductByDevice 的返回归一成产品对象；空数据、空对象、关键字段全空都视为「查不到」返回 null。
-// 兼容直接回对象或回列表（取第一条）两种形状。
+// getProductByDevice 的返回归一成产品对象；查不到返回 null。兼容直接回对象或回列表（取第一条）两种形状。
+// 「查到」只认产品身份：有效的 productId（非空、非 0）或非空的产品名。空数据、空对象、字段全是
+// null / 0 的空壳记录一律算查不到（2026-10-26 收紧：原先只要 sizeModel 有值、或 productId 为 0 也算查到，
+// 后端对未开通设备回一条默认值记录时会被当成已开通，「未知设备」就拦不住）。
 function normalizeWifiProduct(data) {
   const raw = Array.isArray(data) ? data[0] : data
   if (!raw || typeof raw !== 'object') {
@@ -453,7 +455,8 @@ function normalizeWifiProduct(data) {
   const productName = String(firstValue(raw.productName, raw.name, raw.model, '')).trim()
   const sizeModel = String(firstValue(raw.sizeModel, '')).trim()
   const productId = firstValue(raw.productId, raw.id, '')
-  if (!productName && !sizeModel && (productId === '' || productId === null)) {
+  const hasProductId = productId !== '' && String(productId).trim() !== '0'
+  if (!hasProductId && !productName) {
     return null
   }
   return Object.assign({}, raw, { productId, productName, sizeModel })
@@ -493,6 +496,7 @@ function productScore(product, scan) {
 module.exports = {
   resolveCarouselIntervalSeconds,
   scanSizeModel,
+  normalizeWifiProduct,
   // 产品列表（会话缓存、失败静默返回空数组，见 loadProductCatalog）
   getProductCatalog() {
     return loadProductCatalog()

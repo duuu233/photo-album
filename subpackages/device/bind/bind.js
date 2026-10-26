@@ -244,7 +244,7 @@ Page(fold.adapt({
   },
 
   // WiFi 行的展示字段：设备ID 用广播名里解析出的 12 位 deviceNo；规格行按查询状态显示
-  // 「规格查询中… / 产品名 · 尺寸 / 未知设备」。首次见到这台就发起查询（每台只查一次）。
+  // 「规格查询中… / 尺寸 / 未知设备」。首次见到这台就发起查询（每台只查一次）。
   wifiRowFields(item) {
     const deviceNo = item.wifiDeviceId || ''
     this.lookupWifiProduct(deviceNo)
@@ -267,15 +267,13 @@ Page(fold.adapt({
     if (lookup.status !== 'found' || !product) {
       return { wifiStatus: 'unknown', specText: '未知设备' }
     }
-    // 展示型号 + 尺寸；产品名里已含尺寸（如「7.3寸相框」配 sizeModel「7.3寸」）就不重复
-    const name = product.productName || ''
+    // 尺寸直接读后台产品配置的 sizeModel（如「13.3寸」），没配显示「--寸」（2026-10-26 产品口径）
     const size = product.sizeModel || ''
-    const parts = [name, size && name.indexOf(size) === -1 ? size : ''].filter(Boolean)
     return {
       wifiStatus: 'found',
-      specText: parts.join(' · ') || 'WiFi 相框',
+      specText: size || '--寸',
       sizeModel: size,
-      productName: name
+      productName: product.productName || ''
     }
   },
 
@@ -397,13 +395,23 @@ Page(fold.adapt({
     }, 240)
   },
 
-  // 点选某台设备：仅更新选中态，绑定 / 配网动作交给底部按钮
+  // 点选某台设备：蓝牙版只更新选中态，绑定交给底部「立即绑定」。
+  // WiFi 版点行即处理（对接口径「点击 WiFi 设备跳转配置页 / 未知设备点击直接弹窗」）：
+  // 未知设备当场弹「未知设备，请联系客服开通」、不改选中；查到规格的选中并进 WiFi 配置页；还在查的提示稍候。
   selectDevice(e) {
     const selectedId = e.currentTarget.dataset.id
+    const device = this.data.devices.find(item => (item.id || item.deviceId) === selectedId)
+    if (device && device.commType === COMM_WIFI && device.wifiStatus !== 'found') {
+      this.openWifiProvision(device)
+      return
+    }
     this.setData({
       selectedId,
       selectedIsWifi: this.isWifiSelected(this.data.devices, selectedId)
     })
+    if (device && device.commType === COMM_WIFI) {
+      this.openWifiProvision(device)
+    }
   },
 
   // 设备硬件序列号归一化，仅用于本页比较。

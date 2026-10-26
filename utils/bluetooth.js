@@ -62,10 +62,14 @@ async function loadAllowedBroadcastIds() {
 // 放行条件：厂商数据带 0xFFFF Company_ID 且长度符合本产品格式（parseAdvertising 的 companyMatched），
 // 不会把附近的其它蓝牙设备放进列表。不再要求屏型认识（2026-10-22）：新屏型（如 0x04）设备照样放行。
 //
-// WiFi 版（2026-10-26）：带 `*` 的广播 ID 是 WiFi 模板，不参与上面的包含匹配；只有 includeWifi 的订阅者
-// （搜索设备页）才按模板放行 WiFi 设备。其余入口（连接前扫描、自动重连、调试台白名单模式）照旧只认蓝牙版，
-// 不会把 WiFi 设备当候选去连 FF00 会话。
+// WiFi 版（2026-10-26）：广播名合 WiFi 模板（后台 `*` 模板或内置 IJ_*，见 utils/broadcast-match.js）的设备
+// 只给 includeWifi 的订阅者（搜索设备页）；其余入口（连接前扫描、自动重连、调试台白名单模式）一律不收——
+// 哪怕后台把广播 ID 写成能包含匹配上的 `IJ_`、或厂商数据凑巧对上，也不能把 WiFi 设备当候选去连 FF00 会话。
+// 带 `*` 的广播 ID 不参与下面的包含匹配。
 function isAllowedFrame(device, allowedIds, includeWifi) {
+  if (wifiMatchOf(device, allowedIds)) {
+    return !!includeWifi
+  }
   const name = `${device.name || ''} ${device.localName || ''}`.toUpperCase()
   if (
     (allowedIds || []).some(
@@ -74,19 +78,11 @@ function isAllowedFrame(device, allowedIds, includeWifi) {
   ) {
     return true
   }
-  if (includeWifi && isWifiFrame(device, allowedIds)) {
-    return true
-  }
   return !!(device && device.broadcastCompanyMatched)
 }
 
 function wifiMatchOf(device, allowedIds) {
-  const hit = broadcastMatch.classify(device, allowedIds)
-  return hit && hit.commType === broadcastMatch.COMM_WIFI ? hit : null
-}
-
-function isWifiFrame(device, allowedIds) {
-  return !!wifiMatchOf(device, allowedIds)
+  return broadcastMatch.wifiMatch(device, allowedIds)
 }
 
 // includeWifi 订阅者看到的每台设备都标上通信类型：commType 'WIFI'（带 wifiDeviceId，12 位 deviceNo）

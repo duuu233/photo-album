@@ -8,11 +8,17 @@
 //
 // 只认广播 local name，不依赖 MAC：iOS 拿不到 MAC。大小写不敏感；deviceId 统一转大写。
 //
+// 内置 WiFi 模板 `IJ_*`（2026-10-26 追加）：WiFi 前缀按对接约定固定为 `IJ_`。广播名合这个模板的一律认作
+// WiFi 设备，不看后台把广播 ID 写成 `IJ_*`、`IJ_` 还是别的——写成不带 `*` 的 `IJ_` 时，旧逻辑会按蓝牙版
+// 包含匹配把它当蓝牙设备，既不查规格、也拦不住未知设备。后台另配的其它 `*` 模板照样生效（先于内置模板）。
+//
 // ⚠️ 蓝牙版沿用原来的「包含匹配」（广播名里含该广播 ID 即命中，允许带前后缀），与扫描白名单、
 // 搜索列表尺寸（api.scanSizeModel）、绑定选产品（api.bindDevice）同一口径——改成完全匹配会让
 // 广播名带后缀的现网设备搜不到。WiFi 模板不参与包含匹配（广播名里本来就不会有字面的 `*`）。
 const WIFI_DEVICE_ID_LENGTH = 12
 const WIFI_DEVICE_ID_RE = /^[0-9A-Z]{12}$/
+
+const BUILTIN_WIFI_TEMPLATE = 'IJ_*'
 
 const COMM_WIFI = 'WIFI'
 const COMM_BLE = 'BLE'
@@ -49,23 +55,34 @@ function namesOf(device) {
   return [device && device.name, device && device.localName].filter(Boolean)
 }
 
-// 判定一台扫描到的设备属于哪类：
-//   { commType: 'WIFI', broadcastId, wifiDeviceId } / { commType: 'BLE', broadcastId } / null（都不命中）
-// WiFi 模板优先：它要求整名精确对上，比蓝牙的包含匹配更具体。
-function classify(device, broadcastIds) {
-  const ids = (broadcastIds || []).map(normalizeId).filter(Boolean)
+// WiFi 设备识别：先按后台配置的 `*` 模板，再按内置 `IJ_*`。命中返回 { broadcastId, wifiDeviceId }，否则 null。
+function wifiMatch(device, broadcastIds) {
+  const templates = (broadcastIds || [])
+    .map(normalizeId)
+    .filter(isWildcard)
+    .concat(BUILTIN_WIFI_TEMPLATE)
   const names = namesOf(device)
-  for (let i = 0; i < ids.length; i++) {
-    if (!isWildcard(ids[i])) {
-      continue
-    }
+  for (let i = 0; i < templates.length; i++) {
     for (let j = 0; j < names.length; j++) {
-      const wifiDeviceId = matchWildcard(names[j], ids[i])
+      const wifiDeviceId = matchWildcard(names[j], templates[i])
       if (wifiDeviceId) {
-        return { commType: COMM_WIFI, broadcastId: ids[i], wifiDeviceId }
+        return { broadcastId: templates[i], wifiDeviceId }
       }
     }
   }
+  return null
+}
+
+// 判定一台扫描到的设备属于哪类：
+//   { commType: 'WIFI', broadcastId, wifiDeviceId } / { commType: 'BLE', broadcastId } / null（都不命中）
+// WiFi 优先：它要求整名精确对上模板，比蓝牙的包含匹配更具体；合 WiFi 模板的设备绝不归为蓝牙版。
+function classify(device, broadcastIds) {
+  const wifi = wifiMatch(device, broadcastIds)
+  if (wifi) {
+    return { commType: COMM_WIFI, broadcastId: wifi.broadcastId, wifiDeviceId: wifi.wifiDeviceId }
+  }
+  const ids = (broadcastIds || []).map(normalizeId).filter(Boolean)
+  const names = namesOf(device)
   const upperNames = names.map(normalizeId)
   let best = ''
   ids.forEach(id => {
@@ -82,5 +99,6 @@ module.exports = {
   WIFI_DEVICE_ID_LENGTH,
   isWildcard,
   matchWildcard,
+  wifiMatch,
   classify
 }

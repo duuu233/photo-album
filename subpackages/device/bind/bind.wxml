@@ -60,7 +60,7 @@
                 <text class="comm-badge__text">{{item.commType === 'WIFI' ? 'WiFi版' : '蓝牙版'}}</text>
               </view>
             </view>
-            <!-- WiFi 版：规格来自 getProductByDevice（查询中 / 型号·尺寸 / 未知设备），广播里没有电量 -->
+            <!-- WiFi 版：规格来自 getProductByDevice（查询中 / 尺寸 sizeModel，没配 --寸 / 未知设备），广播里没有电量 -->
             <text wx:if="{{item.commType === 'WIFI'}}" class="nearby-sub {{item.wifiStatus === 'unknown' ? 'nearby-sub--unknown' : ''}}">{{item.specText}} · 信号 {{item.signalText || '--'}}</text>
             <text wx:else class="nearby-sub">{{item.sizeModel ? item.sizeModel + ' · ' : ''}}{{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.signalText || '--'}}</text>
             <!-- 设备ID：本次广播里的 6 字节 Device_ID，用来区分同型号同名设备，安卓/iOS 同一来源；

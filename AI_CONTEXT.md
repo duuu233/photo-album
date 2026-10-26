@@ -68,7 +68,7 @@
 
 ## WiFi 版对接（2026-10-26 起，`main-wifi` 分支）
 
-WiFi 版设备走独立的 XT IoT 服务（`iot.boltfox.cn`），按 `docs/wifi/对接开发进度.md` 分 STEP 推进。已完成 STEP 0/1：IoT 客户端 `utils/iot-errors.js` / `iot-request.js` / `iot-ws.js` / `iot-api.js` 与老服务 `request.js` 分开（返回 `{code,msg,data}`，401 重登、**503 不登出**）；WebSocket 单例按需连接，退出登录时关闭。搜索设备页传 `includeWifi` 同搜两类设备：后台广播 ID 带 `*` 为 WiFi 模板（`IJ_*` 取中间 12 位 deviceId，见 `utils/broadcast-match.js`），其余扫描入口不收 WiFi 设备；WiFi 设备按 `api.getProductByDevice` 查规格，查不到为「未知设备」禁止连接；WiFi 配置、配网状态两页目前为静态页。详见 `docs/changes/2026-10-26-WiFi版联调基础与搜索.md`。
+WiFi 版设备走独立的 XT IoT 服务（`iot.boltfox.cn`），按 `docs/wifi/对接开发进度.md` 分 STEP 推进。已完成 STEP 0/1：IoT 客户端 `utils/iot-errors.js` / `iot-request.js` / `iot-ws.js` / `iot-api.js` 与老服务 `request.js` 分开（返回 `{code,msg,data}`，401 重登、**503 不登出**）；WebSocket 单例按需连接，退出登录时关闭。搜索设备页传 `includeWifi` 同搜两类设备：后台广播 ID 带 `*` 为 WiFi 模板（`IJ_*` 取中间 12 位 deviceId，见 `utils/broadcast-match.js`），广播名合内置 `IJ_*` 的一律是 WiFi 版，其余扫描入口不收 WiFi 设备；WiFi 设备按 `api.getProductByDevice` 查规格，尺寸直接显示 `sizeModel`（没配 `--寸`），查不到 / 空壳记录 / 失败为「未知设备」，点行或按钮都弹窗禁止连接；WiFi 配置、配网状态两页目前为静态页。详见 `docs/changes/2026-10-26-WiFi版联调基础与搜索.md`。
 
 ## 设备图按机型区分（2026-10-22）
 
