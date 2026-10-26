@@ -7,8 +7,9 @@
 //                              并等 mqtt_config_ack.result=0（来源未定，当前为 null 则跳过，见 getMqttConfig）
 //   3 设备正在连接Wi-Fi      —— 发「连接 WiFi」，等设备的 WiFi 状态报告：连上即通过、明确失败即失败；
 //                              接口文档口径这一步没有可靠上报，等不到报告也放行，交给第 4 步裁决
-//   4 设备正在连接云端       —— 老服务绑定（绑定前 IoT 在线接口会 403）→ 轮询 GET /api/device/online?deviceNo=&since=，
-//                              since 为本次配网开始时间，online=true 即成功；503 / 403 / 网络失败继续轮询，60s 超时
+//   4 设备正在连接云端       —— 轮询 GET /api/device/online?deviceNo=&since=（since 为本次配网开始时间），online=true 后
+//                              再老服务绑定，绑定成功即成功（2026-10-26 产品调整顺序，原为先绑定后轮询）；
+//                              503 / 403 / 网络失败继续轮询，60s 超时；401 停止
 //
 // 页面之间的交接（handoff）放内存、不进页面路由：WiFi 密码不该出现在 url 里。
 const api = require('./api')
@@ -116,7 +117,7 @@ function hookSessionLog(session, log) {
 //       【Set Opmode 设置工作模式】【STA SSID】【STA Password】【Connect to AP 连接WiFi】【Wi-Fi Connection State Report】；
 //       设备通讯协议 2.2.3【设置 MQTT 配置信息】mqtt_config；
 //   · 「蓝牙发 → / 蓝牙收 ← <十六进制>」：每一帧原始字节；「设备WiFi状态 / 设备自定义数据 / 设备报错 / 设备断开了蓝牙连接」：设备主动上报；
-//   · ①~④ 开头的行是步骤分隔，「配网失败（第 N 步）：原因」「设备已上云，配网成功」是结论。
+//   · ①~④ 开头的行是步骤分隔，「配网失败（第 N 步）：原因」「设备已上云并绑定，配网成功」是结论。
 // WiFi 密码不进日志：参数里只记位数，密码帧显示「密码帧（N 字节，内容已隐藏）」；mqtt_config 的 pwd 同样打码。
 async function run(job, hooks) {
   const onStep = (hooks && hooks.onStep) || function () {}
@@ -241,7 +242,45 @@ async function run(job, hooks) {
 
     // ④ 绑定 + 轮询上云
     onStep(3, 'loading')
-    log('④ 设备连接云端：先老服务绑定，再轮询 IoT 在线')
+    // 顺序（2026-10-26 产品调整）：先轮询 IoT【在线状态】，设备上云（online=true）之后再调老服务绑定。
+    // ⚠️ 接口文档 2.4 写的是「先绑定再轮询」——在线接口会调老服务 checkPermission，设备还没绑到当前账号时返回 403；
+    //    按现在的顺序，若后端仍是这个口径，轮询会一直 403 直到超时。403 / 503 / 网络失败都继续轮询，日志里看得到。
+    log('④ 设备连接云端：先轮询 IoT 在线，上线后再老服务绑定')
+    log(`轮询在线：每 ${ONLINE_POLL_INTERVAL_MS / 1000} 秒查一次，最多 ${ONLINE_TIMEOUT_MS / 1000} 秒`)
+    const deadline = Date.now() + ONLINE_TIMEOUT_MS
+    let attempt = 0
+    let online = false
+    while (Date.now() < deadline) {
+      checkCancel(3)
+      attempt += 1
+      log(`接口【在线状态】GET ${config.iotBaseURL}/api/device/online（IoT 前端对接文档 2.1，配网第 4 步见 2.4；Header userToken；第 ${attempt} 次查询，since 之后上线才算 online）`)
+      log(`参数 ${JSON.stringify({ deviceNo: job.deviceNo, since })}`)
+      try {
+        const res = await iotApi.getDeviceOnline(job.deviceNo, since, { showError: false })
+        log(`返回 ${JSON.stringify(res)}`)
+        if (res && res.online) {
+          online = true
+          break
+        }
+      } catch (error) {
+        log(
+          `失败 HTTP ${(error && error.statusCode) || '-'} code ${error && error.code}：${(error && error.message) || error}` +
+            `${error && error.serverMessage ? `（服务端 msg：${error.serverMessage}）` : ''}` +
+            `${error && error.action === 'relogin' ? '，登录失效，停止轮询' : '，继续轮询'}`
+        )
+        if (error && error.action === 'relogin') {
+          throw provisionError(3, '登录已失效，请重新登录', error)
+        }
+        // 503（权限服务暂不可用）/ 403（未绑定无权限）/ 网络抖动：不算失败，继续轮询
+      }
+      await sleep(ONLINE_POLL_INTERVAL_MS)
+    }
+    if (!online) {
+      throw provisionError(3, '设备联网超时，请检查WiFi密码或信号后重试')
+    }
+    log('设备已上云，开始老服务绑定')
+    checkCancel(3)
+
     let device = null
     try {
       // 绑定里会调 getUserProductList（查是否已绑）/ addUserProduct（绑定）/ getUserProductList（回查），每个接口由 onLog 记三行
@@ -258,36 +297,9 @@ async function run(job, hooks) {
       throw provisionError(3, `设备绑定失败：${(error && error.message) || '请稍后重试'}`, error)
     }
     log(`绑定成功：userProductId ${(device && (device.userProductId || device.id)) || '-'}`)
-    log(`轮询在线：每 ${ONLINE_POLL_INTERVAL_MS / 1000} 秒查一次，最多 ${ONLINE_TIMEOUT_MS / 1000} 秒`)
-    const deadline = Date.now() + ONLINE_TIMEOUT_MS
-    let attempt = 0
-    while (Date.now() < deadline) {
-      checkCancel(3)
-      attempt += 1
-      log(`接口【在线状态】GET ${config.iotBaseURL}/api/device/online（IoT 前端对接文档 2.1，配网第 4 步见 2.4；Header userToken；第 ${attempt} 次查询，since 之后上线才算 online）`)
-      log(`参数 ${JSON.stringify({ deviceNo: job.deviceNo, since })}`)
-      try {
-        const res = await iotApi.getDeviceOnline(job.deviceNo, since, { showError: false })
-        log(`返回 ${JSON.stringify(res)}`)
-        if (res && res.online) {
-          onStep(3, 'done')
-          log('设备已上云，配网成功')
-          return { device }
-        }
-      } catch (error) {
-        log(
-          `失败 HTTP ${(error && error.statusCode) || '-'} code ${error && error.code}：${(error && error.message) || error}` +
-            `${error && error.serverMessage ? `（服务端 msg：${error.serverMessage}）` : ''}` +
-            `${error && error.action === 'relogin' ? '，登录失效，停止轮询' : '，继续轮询'}`
-        )
-        if (error && error.action === 'relogin') {
-          throw provisionError(3, '登录已失效，请重新登录', error)
-        }
-        // 503（权限服务暂不可用）/ 403（绑定还没生效）/ 网络抖动：不算失败，继续轮询
-      }
-      await sleep(ONLINE_POLL_INTERVAL_MS)
-    }
-    throw provisionError(3, '设备联网超时，请检查WiFi密码或信号后重试')
+    onStep(3, 'done')
+    log('设备已上云并绑定，配网成功')
+    return { device }
   } catch (error) {
     log(`配网失败（第 ${(error && typeof error.step === 'number' ? error.step : 0) + 1} 步）：${(error && error.message) || error}`)
     throw error

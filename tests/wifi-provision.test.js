@@ -1,5 +1,6 @@
 // WiFi 版配网流程（2026-10-26，对接进度 STEP 2）：
-//   ① 正常：手机网络 → BluFi 下发 STA/名称/密码 → 连 WiFi 收到「已连上」→ 老服务绑定 → 带 since 轮询在线 → 成功；
+//   ① 正常：手机网络 → BluFi 下发 STA/名称/密码 → 连 WiFi 收到「已连上」→ 带 since 轮询在线 → 上线后老服务绑定 → 成功
+//      （2026-10-26 产品调整第 4 步顺序：先在线、后绑定；原为先绑定后轮询）；
 //      没有 MQTT 配置时不发 mqtt_config；
 //   ② 配了 MQTT 配置：发 mqtt_config，result 非 0 停在第 2 步；
 //   ③ 设备报 WiFi 连接失败：停在第 3 步；等不到 WiFi 状态报告：放行，交给第 4 步；
@@ -16,7 +17,7 @@ let checks = 0
 function checked(name) { checks++; console.log('PASS ' + name) }
 
 function setup(options = {}) {
-  const log = { steps: [], writes: [], requests: [], binds: [], onlineCalls: [], closed: 0, lines: [] }
+  const log = { steps: [], writes: [], requests: [], binds: [], onlineCalls: [], closed: 0, lines: [], order: [] }
   const handlers = {}
   let clock = 1000000
   const onlineReplies = (options.online || [{ online: true }]).slice()
@@ -35,11 +36,12 @@ function setup(options = {}) {
   }
   const modules = {
     './api': {
-      async bindWifiDevice(args) { log.binds.push(args); if (options.bindError) throw new Error(options.bindError); return { id: '88', name: 'WiFi相框' } }
+      async bindWifiDevice(args) { log.binds.push(args); log.order.push('bind'); if (options.bindError) throw new Error(options.bindError); return { id: '88', name: 'WiFi相框' } }
     },
     './iot-api': {
       async getDeviceOnline(deviceNo, since) {
         log.onlineCalls.push([deviceNo, since])
+        log.order.push('online')
         const next = onlineReplies.length > 1 ? onlineReplies.shift() : onlineReplies[0]
         if (next instanceof Error || (next && next.code)) throw next
         return next
@@ -85,6 +87,7 @@ async function main() {
     assert.equal(log.binds[0].deviceNo, 'E348C21ED428')
     assert.equal(log.binds[0].productId, 21, '绑定用搜索时查到的产品')
     assert.deepEqual(log.onlineCalls[0], ['E348C21ED428', startClock], 'since = 本次配网开始时间')
+    assert.deepEqual(log.order, ['online', 'bind'], '第 4 步先查在线、上线后再绑定')
     assert.ok(log.closed >= 1, '蓝牙会话已释放')
     checked('正常配网：四步依次通过，绑定后带 since 轮询在线')
 
@@ -142,19 +145,23 @@ async function main() {
     const flaky = setup({ online: [unavailable, forbidden, { online: false }, { online: true }] })
     await flaky.run()
     assert.equal(flaky.log.onlineCalls.length, 4, '503 / 403 / 未上线都继续轮询')
+    assert.deepEqual(flaky.log.order, ['online', 'online', 'online', 'online', 'bind'], '直到上线才绑定，且只绑一次')
 
     const never = setup({ online: [{ online: false }] })
     await assert.rejects(never.run(), error => error.step === 3 && /联网超时/.test(error.message))
     assert.ok(never.log.lines.some(line => /配网失败（第 4 步）：设备联网超时/.test(line)), '失败原因记进日志')
     assert.ok(never.log.onlineCalls.length >= 25 && never.log.onlineCalls.length <= 31, `约 60s / 2s 轮询：${never.log.onlineCalls.length} 次`)
+    assert.equal(never.log.binds.length, 0, '设备一直没上线就不绑定')
 
     const relogin = setup({ online: [Object.assign(new Error('401'), { code: 401, action: 'relogin' })] })
     await assert.rejects(relogin.run(), error => error.step === 3 && /重新登录/.test(error.message))
     assert.equal(relogin.log.onlineCalls.length, 1, '登录失效不再轮询')
+    assert.equal(relogin.log.binds.length, 0, '登录失效不绑定')
 
     const bindFail = setup({ bindError: '服务异常' })
     await assert.rejects(bindFail.run(), error => error.step === 3 && /设备绑定失败：服务异常/.test(error.message))
-    checked('在线轮询：503/403 继续、60s 超时、401 停止；绑定失败停在第 4 步')
+    assert.deepEqual(bindFail.log.order, ['online', 'bind'], '上线后绑定失败停在第 4 步')
+    checked('第 4 步先在线后绑定：503/403 继续轮询、60s 超时不绑定、401 停止；上线后绑定失败停在第 4 步')
   }
   {
     const offline = setup({ network: 'none' })
