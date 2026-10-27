@@ -10,9 +10,43 @@ const activeDevice = require('../../../utils/active-device')
 const deviceName = require('../../../utils/device-name')
 const deviceIdentity = require('../../../utils/device-identity')
 const fold = require('../../../utils/fold-adapt')
+const broadcastMatch = require('../../../utils/broadcast-match')
+const iotApi = require('../../../utils/iot-api')
+const signal = require('../../../utils/signal')
 
 const app = getApp()
 const RECENTLY_BOUND_DEVICE_KEY = 'recentlyBoundDeviceId'
+
+// WiFi 版设备卡的状态字段（2026-10-27）：不走蓝牙，在线 / 信号 / 电量都来自 IoT GET /api/device/info。
+//   wifiStatus：loading 查询中 / online 在线 / offline 离线 / unknown 查不到（403 未绑定、503、网络失败等）
+const WIFI_STATUS_TEXT = { loading: '查询中', online: '在线', offline: '离线', unknown: '状态未知' }
+
+function wifiStatusFields(status, info) {
+  const shadow = (info && info.shadow) || {}
+  const online = status === 'online'
+  const battery = online ? batteryUtil.normalizeBattery(shadow.battery) : null
+  return {
+    wifiStatus: status,
+    wifiStatusText: WIFI_STATUS_TEXT[status] || WIFI_STATUS_TEXT.unknown,
+    wifiSignalLevel: online ? signal.rssiToLevel(shadow.wifiRssi) : 0,
+    wifiBatteryText: battery === null ? '' : `${battery}%`,
+    wifiBatteryIcon: battery === null ? '' : batteryUtil.getBatteryIcon(battery)
+  }
+}
+
+// 上一次查到的 WiFi 状态字段：重新拉列表时先沿用，查询回来再替换，避免每次进页面都闪「查询中」
+function previousWifiFields(previous) {
+  if (!previous || !previous.isWifi || !previous.wifiStatus) {
+    return wifiStatusFields('loading')
+  }
+  return {
+    wifiStatus: previous.wifiStatus,
+    wifiStatusText: previous.wifiStatusText,
+    wifiSignalLevel: previous.wifiSignalLevel,
+    wifiBatteryText: previous.wifiBatteryText,
+    wifiBatteryIcon: previous.wifiBatteryIcon
+  }
+}
 
 // 计算设备存储使用百分比，用于列表项进度条
 function memoryPercent(device) {
@@ -36,6 +70,9 @@ Page(fold.adapt({
     showMediaSheet: false, // 「拍照/相册」选择弹层是否展示（点某台设备的「投屏」后弹出）
     mediaSheetClosing: false, // 选择弹层是否正在播放退场动画
     reorderingDeviceId: '',
+    // 分组（2026-10-27）：WiFi 版 / 蓝牙版各几台，决定分组标题是否显示；卡片仍按 devices 渲染
+    wifiCount: 0,
+    bleCount: 0,
     renameVisible: false,
     renameDeviceId: '',
     renameValue: '',
@@ -119,21 +156,86 @@ Page(fold.adapt({
     }))
 
     const sortedDevices = this.sortDevices(devices)
+    const previousById = {}
+    ;(this.data.devices || []).forEach(item => {
+      previousById[String(item.id)] = item
+    })
+    const nextDevices = sortedDevices.map(item => Object.assign({}, item, {
+      memoryPercent: memoryPercent(item),
+      // 先展示最近缓存；下面 refreshConnectedBattery 仅在 15 秒过期后读 0x04。
+      batteryIcon: batteryUtil.batteryIconOf(item),
+      batteryText: batteryUtil.batteryText(item)
+    })).map((item, index, list) => Object.assign({}, item, {
+      canDeleteHint: !item.connected && index === list.length - 1
+    })).map(item => {
+      // WiFi 版按所属产品的广播 ID（IJ_* 模板）认；其余一律按蓝牙版，蓝牙版字段与行为不变
+      const isWifi = broadcastMatch.isWifiBroadcastId(item.broadcastId)
+      return isWifi
+        ? Object.assign({}, item, { isWifi: true }, previousWifiFields(previousById[String(item.id)]))
+        : Object.assign({}, item, { isWifi: false })
+    })
+    const wifiCount = nextDevices.filter(item => item.isWifi).length
     this.setData({
-      // 先算内存百分比，再标记“可删除提示”仅显示在最后一个离线设备上（引导用户清理）
-      devices: sortedDevices.map(item => Object.assign({}, item, {
-        memoryPercent: memoryPercent(item),
-        // 先展示最近缓存；下面 refreshConnectedBattery 仅在 15 秒过期后读 0x04。
-        batteryIcon: batteryUtil.batteryIconOf(item),
-        batteryText: batteryUtil.batteryText(item)
-      })).map((item, index, list) => Object.assign({}, item, {
-        canDeleteHint: !item.connected && index === list.length - 1
-      })),
+      devices: nextDevices,
+      wifiCount,
+      bleCount: nextDevices.length - wifiCount,
       selectedId: selected ? selected.id : '',
       loading: false,
       loadError: false
     })
+    this.refreshWifiStatus()
     await this.refreshConnectedBattery()
+  },
+
+  // 查 WiFi 版设备的在线 / 信号 / 电量（IoT GET /api/device/info，一次拿全）。传 id 只查这一台（「刷新状态」按钮）。
+  // 每台各自带序号，旧请求晚到不覆盖新结果；失败（403 未绑定 / 503 / 网络）显示「状态未知」，不弹错误。
+  refreshWifiStatus(onlyId) {
+    const targets = (this.data.devices || []).filter(item =>
+      item && item.isWifi && (onlyId === undefined || String(item.id) === String(onlyId))
+    )
+    const seqs = this._wifiStatusSeq || (this._wifiStatusSeq = {})
+    return Promise.all(targets.map(device => {
+      const key = String(device.id)
+      const seq = (seqs[key] || 0) + 1
+      seqs[key] = seq
+      return iotApi
+        .getDeviceInfo(device.productDeviceId || device.deviceNo, { showError: false })
+        .then(info => wifiStatusFields(info && info.online ? 'online' : 'offline', info))
+        .catch(error => {
+          console.warn('[我的设备] WiFi 设备状态查询失败', key, error && error.code, error && error.message)
+          return wifiStatusFields('unknown')
+        })
+        .then(fields => {
+          if (seqs[key] !== seq) {
+            return
+          }
+          this.setData({
+            devices: (this.data.devices || []).map(item =>
+              String(item.id) === key && item.isWifi ? Object.assign({}, item, fields) : item
+            )
+          })
+        })
+    }))
+  },
+
+  // WiFi 版「刷新状态」：重查这一台的在线 / 信号 / 电量
+  refreshWifiDevice(e) {
+    const id = e.currentTarget.dataset.id
+    const device = this.data.devices.find(item => item.id === id)
+    if (!device || !device.isWifi || device.wifiStatus === 'loading') {
+      return
+    }
+    this.setData({
+      devices: this.data.devices.map(item =>
+        item.id === id ? Object.assign({}, item, wifiStatusFields('loading')) : item
+      )
+    })
+    this.refreshWifiStatus(id)
+  },
+
+  // WiFi 版「投屏」：WiFi 投屏走 IoT 服务上传（对接进度 STEP 3），尚未接入；先提示，不进蓝牙投屏流程
+  startWifiProjection() {
+    toast.show({ title: 'WiFi版投屏即将上线', icon: 'none' })
   },
 
   // 产品排序：真实连接中的设备永远置顶，其次是刚绑定的设备，其余保持接口原有顺序。
@@ -262,6 +364,11 @@ Page(fold.adapt({
     }
 
     if (this.data.selectMode) {
+      // 选相框是给蓝牙投屏用的，WiFi 版走不了这条链路（WiFi 投屏待 STEP 3），不让选
+      if (device.isWifi) {
+        toast.show({ title: 'WiFi版投屏即将上线，请选择蓝牙版设备', icon: 'none' })
+        return
+      }
       app.setSelectedDevice(device)
       toast.show({
         title: '已切换电子纸设备',

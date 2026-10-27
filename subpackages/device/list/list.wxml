@@ -28,57 +28,119 @@
       <view class="empty-device__btn" hover-class="none" bindtap="retryLoad">重新加载</view>
     </view>
 
+    <!-- 按 WiFi 版 / 蓝牙版分组展示（2026-10-27）：WiFi 版在前；某组没有设备就不出该组标题。
+         两组都遍历同一份 devices（各自按 isWifi 过滤），连接 / 投屏 / 改名等原有逻辑都按 devices 找设备，不受分组影响。 -->
     <view wx:elif="{{devices.length}}" class="device-list">
-      <view class="device-card glass-panel {{item.connected ? '' : 'is-offline'}} {{reorderingDeviceId === '' + item.id ? 'device-card--promoted' : ''}}" wx:for="{{devices}}" wx:key="id" wx:for-index="index" data-id="{{item.id}}" bindtap="selectDevice">
-        <view class="device-card__main">
-          <!-- 2026-07-19 产品要求：设备图与首页设备卡同图（首页/列表/详情等六处同口径），不区分连接状态；
-               连接状态由蓝牙角标和状态文案表达。2026-10-22 起按机型区分（EB-169 圆屏 / EC-370 / 其余默认
-               home-device-thumb），取记录上的 thumb，见 utils/device-thumb.js。
-               该图四角透明自带圆角，故 .device-logo 不再加底色（首页也没有底色）。 -->
-          <view class="device-logo">
-            <image class="device-logo__icon" src="{{item.thumb || '/assets/images/home-device-thumb.png'}}" mode="aspectFit"></image>
-          </view>
-
-          <view class="device-copy">
-            <view class="device-name-row">
-              <text class="device-name">{{item.name}}</text>
-              <view class="edit-name-btn" hover-class="none" catchtap="renameDevice" data-id="{{item.id}}" aria-label="编辑设备名称">
-                <image class="edit-name-icon" src="/assets/images/edit-icon01.png" mode="aspectFit"></image>
-              </view>
-            </view>
-            <!-- productDeviceId 来自 getUserProductList.deviceId，经 API 层校验为完整 6 字节后展示；空值不占位 -->
-            <text wx:if="{{item.productDeviceId}}" class="device-id">设备ID {{item.productDeviceId}}</text>
-            <view class="device-meta">
-              <view class="connection {{item.connected ? 'is-connected' : ''}}">
-                <image class="meta-bt-icon" src="{{item.connected ? '/assets/images/bluetooth-icon.png' : '/assets/images/bluetooth-icon-not.png'}}" mode="aspectFit"></image>
-                <text>{{item.connected ? '已连接' : '未连接'}}</text>
-              </view>
-              <view wx:if="{{item.connected && item.batteryText}}" class="battery-meta">
-                <image class="battery-level-icon" src="{{item.batteryIcon}}" mode="aspectFit"></image>
-                <text>{{item.batteryText}}</text>
-              </view>
-            </view>
-          </view>
-
-          <view class="device-chevron">
-            <image class="device-chevron__icon" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
-          </view>
-        </view>
-
-        <!-- <view wx:if="{{item.canDeleteHint}}" class="device-delete-hint" hover-class="none" data-id="{{item.id}}" catchtap="deleteDevice">删除</view> -->
-
-        <view class="device-actions">
-          <view class="device-action projection-action" hover-class="none" data-id="{{item.id}}" catchtap="startProjection">
-            <image class="action-frame-icon" src="/assets/images/screen-casting-icon01.png" mode="aspectFit"></image>
-            <text>投屏</text>
-          </view>
-          <view class="device-action-divider"></view>
-          <view class="device-action connection-action {{item.connected ? 'disconnect' : 'connect'}}" hover-class="none" data-id="{{item.id}}" catchtap="toggleConnection">
-            <image class="action-bt-icon" src="{{item.connected ? '/assets/images/disconnect-icon01.png' : '/assets/images/bluetooth-connection.png'}}" mode="aspectFit"></image>
-            <text>{{item.connected ? '断开' : '连接'}}</text>
-          </view>
-        </view>
+      <view wx:if="{{wifiCount}}" class="device-group-title">
+        <image class="device-group-title__icon" src="/assets/images/badge-wifi.svg" mode="aspectFit"></image>
+        <text>WiFi版</text>
       </view>
+      <block wx:for="{{devices}}" wx:key="id" wx:for-index="index">
+        <!-- WiFi 版卡片（2026-10-27）：不走蓝牙，状态来自 IoT 设备信息（在线 / 信号 / 电量）；
+             按钮：投屏（WiFi 投屏待 STEP 3 接入，先提示）、刷新状态（重查这一台）。设备图、改名同蓝牙版。 -->
+        <view wx:if="{{item.isWifi}}" class="device-card device-card--wifi glass-panel {{item.wifiStatus === 'online' ? '' : 'is-offline'}}" data-id="{{item.id}}" bindtap="selectDevice">
+          <view class="device-card__main">
+            <view class="device-logo">
+              <image class="device-logo__icon" src="{{item.thumb || '/assets/images/home-device-thumb.png'}}" mode="aspectFit"></image>
+            </view>
+
+            <view class="device-copy">
+              <view class="device-name-row">
+                <text class="device-name">{{item.name}}</text>
+                <view class="edit-name-btn" hover-class="none" catchtap="renameDevice" data-id="{{item.id}}" aria-label="编辑设备名称">
+                  <image class="edit-name-icon" src="/assets/images/edit-icon01.png" mode="aspectFit"></image>
+                </view>
+              </view>
+              <text wx:if="{{item.productDeviceId}}" class="device-id">设备ID {{item.productDeviceId}}</text>
+              <view class="device-meta">
+                <view class="wifi-state is-{{item.wifiStatus}}">
+                  <view wx:if="{{item.wifiStatus === 'loading'}}" class="wifi-state__spinner"></view>
+                  <image wx:else class="meta-wifi-icon" src="/assets/images/badge-wifi.svg" mode="aspectFit"></image>
+                  <text>{{item.wifiStatusText}}</text>
+                </view>
+                <signal-bars wx:if="{{item.wifiStatus === 'online' && item.wifiSignalLevel}}" level="{{item.wifiSignalLevel}}" size="small"></signal-bars>
+                <view wx:if="{{item.wifiBatteryText}}" class="battery-meta">
+                  <image class="battery-level-icon" src="{{item.wifiBatteryIcon}}" mode="aspectFit"></image>
+                  <text>{{item.wifiBatteryText}}</text>
+                </view>
+              </view>
+            </view>
+
+            <view class="device-chevron">
+              <image class="device-chevron__icon" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
+            </view>
+          </view>
+
+          <view class="device-actions">
+            <view class="device-action projection-action" hover-class="none" data-id="{{item.id}}" catchtap="startWifiProjection">
+              <image class="action-frame-icon" src="/assets/images/screen-casting-icon01.png" mode="aspectFit"></image>
+              <text>投屏</text>
+            </view>
+            <view class="device-action-divider"></view>
+            <view class="device-action wifi-refresh-action {{item.wifiStatus === 'loading' ? 'is-busy' : ''}}" hover-class="none" data-id="{{item.id}}" catchtap="refreshWifiDevice">
+              <image class="action-refresh-icon" src="/assets/images/refresh-icon.png" mode="aspectFit"></image>
+              <text>刷新状态</text>
+            </view>
+          </view>
+        </view>
+      </block>
+
+      <view wx:if="{{bleCount}}" class="device-group-title {{wifiCount ? 'device-group-title--gap' : ''}}">
+        <image class="device-group-title__icon" src="/assets/images/badge-bluetooth.svg" mode="aspectFit"></image>
+        <text>蓝牙版</text>
+      </view>
+      <block wx:for="{{devices}}" wx:key="id" wx:for-index="index">
+        <view class="device-card glass-panel {{item.connected ? '' : 'is-offline'}} {{reorderingDeviceId === '' + item.id ? 'device-card--promoted' : ''}}" wx:if="{{!item.isWifi}}" data-id="{{item.id}}" bindtap="selectDevice">
+          <view class="device-card__main">
+            <!-- 2026-07-19 产品要求：设备图与首页设备卡同图（首页/列表/详情等六处同口径），不区分连接状态；
+                 连接状态由蓝牙角标和状态文案表达。2026-10-22 起按机型区分（EB-169 圆屏 / EC-370 / 其余默认
+                 home-device-thumb），取记录上的 thumb，见 utils/device-thumb.js。
+                 该图四角透明自带圆角，故 .device-logo 不再加底色（首页也没有底色）。 -->
+            <view class="device-logo">
+              <image class="device-logo__icon" src="{{item.thumb || '/assets/images/home-device-thumb.png'}}" mode="aspectFit"></image>
+            </view>
+
+            <view class="device-copy">
+              <view class="device-name-row">
+                <text class="device-name">{{item.name}}</text>
+                <view class="edit-name-btn" hover-class="none" catchtap="renameDevice" data-id="{{item.id}}" aria-label="编辑设备名称">
+                  <image class="edit-name-icon" src="/assets/images/edit-icon01.png" mode="aspectFit"></image>
+                </view>
+              </view>
+              <!-- productDeviceId 来自 getUserProductList.deviceId，经 API 层校验为完整 6 字节后展示；空值不占位 -->
+              <text wx:if="{{item.productDeviceId}}" class="device-id">设备ID {{item.productDeviceId}}</text>
+              <view class="device-meta">
+                <view class="connection {{item.connected ? 'is-connected' : ''}}">
+                  <image class="meta-bt-icon" src="{{item.connected ? '/assets/images/bluetooth-icon.png' : '/assets/images/bluetooth-icon-not.png'}}" mode="aspectFit"></image>
+                  <text>{{item.connected ? '已连接' : '未连接'}}</text>
+                </view>
+                <view wx:if="{{item.connected && item.batteryText}}" class="battery-meta">
+                  <image class="battery-level-icon" src="{{item.batteryIcon}}" mode="aspectFit"></image>
+                  <text>{{item.batteryText}}</text>
+                </view>
+              </view>
+            </view>
+
+            <view class="device-chevron">
+              <image class="device-chevron__icon" src="/assets/images/mine-icon-right.png" mode="aspectFit"></image>
+            </view>
+          </view>
+
+          <!-- <view wx:if="{{item.canDeleteHint}}" class="device-delete-hint" hover-class="none" data-id="{{item.id}}" catchtap="deleteDevice">删除</view> -->
+
+          <view class="device-actions">
+            <view class="device-action projection-action" hover-class="none" data-id="{{item.id}}" catchtap="startProjection">
+              <image class="action-frame-icon" src="/assets/images/screen-casting-icon01.png" mode="aspectFit"></image>
+              <text>投屏</text>
+            </view>
+            <view class="device-action-divider"></view>
+            <view class="device-action connection-action {{item.connected ? 'disconnect' : 'connect'}}" hover-class="none" data-id="{{item.id}}" catchtap="toggleConnection">
+              <image class="action-bt-icon" src="{{item.connected ? '/assets/images/disconnect-icon01.png' : '/assets/images/bluetooth-connection.png'}}" mode="aspectFit"></image>
+              <text>{{item.connected ? '断开' : '连接'}}</text>
+            </view>
+          </view>
+        </view>
+      </block>
     </view>
 
     <view class="empty-device glass-panel" wx:else>

@@ -93,11 +93,19 @@ function classify(device, broadcastIds) {
   return best ? { commType: COMM_BLE, broadcastId: best } : null
 }
 
+// 已绑定设备记录是不是 WiFi 版（2026-10-27，我的设备分组用）：看所属产品的 broadcastId——
+// WiFi 产品后台配的是带 `*` 的模板（如 `IJ_*`），也认写成 `IJ_` 前缀的；蓝牙版是固定广播名（`EF6-370` 等）。
+function isWifiBroadcastId(broadcastId) {
+  const id = normalizeId(broadcastId)
+  return !!id && (isWildcard(id) || id.indexOf(BUILTIN_WIFI_TEMPLATE.replace('*', '')) === 0)
+}
+
 module.exports = {
   COMM_WIFI,
   COMM_BLE,
   WIFI_DEVICE_ID_LENGTH,
   isWildcard,
+  isWifiBroadcastId,
   matchWildcard,
   wifiMatch,
   classify

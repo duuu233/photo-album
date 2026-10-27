@@ -3,7 +3,8 @@
   "navigationBarTitleText": "我的设备",
   "usingComponents": {
     "page-nav": "/components/page-nav/page-nav",
-    "device-name-dialog": "/components/device-name-dialog/device-name-dialog"
+    "device-name-dialog": "/components/device-name-dialog/device-name-dialog",
+    "signal-bars": "/components/signal-bars/signal-bars"
   },
   "backgroundColor": "#edf6ff"
 }

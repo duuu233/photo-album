@@ -44,6 +44,7 @@
 
 ## 变更记录
 
+- [2026-10-27 我的设备按WiFi版蓝牙版分组](changes/2026-10-27-我的设备按WiFi版蓝牙版分组.md)：`main-wifi` 分支。按产品 broadcastId（`IJ_*` / `IJ_`）认 WiFi 版，「我的设备」分 WiFi版 / 蓝牙版两组；蓝牙卡不变；WiFi 卡状态取 IoT `/api/device/info`（在线 / 离线 / 状态未知，在线显示信号与电量），按钮「投屏」（STEP 3 未接，先提示）+「刷新状态」；选相框模式不让选 WiFi 版。
 - [2026-10-27 WiFi版配网按入网流程补齐](changes/2026-10-27-WiFi版配网按入网流程补齐.md)：`main-wifi` 分支。按设备入网流程：第 2 步 WiFi → `mqtt_config` → 国家码 `01`（pending 优先、失败换 msgid 重试一次、不阻塞）→ 连接 WiFi 后释放蓝牙；第 3 步老服务绑定（失败不轮询）；第 4 步带 since 轮询在线（一直 503 提示稍后重试）；msgid 16 位、回执超时 5 秒。产品确认：设备ID 统一加冒号（绑定、搜索列表显示），传给后端查询的不加冒号（规格查询不再补查带冒号写法）；MQTT 参数改调 IoT `GET /api/device/provisioning/mqtt` 现取，前端 config 不再存凭据。
 - [2026-10-27 搜索列表尺寸没配显示--寸](changes/2026-10-27-搜索列表尺寸没配显示--寸.md)：搜索设备列表尺寸直接显示按广播名匹配到的 `sizeModel`，没配 / 匹配不到显示「--寸」（原为不显示），加 `[搜索尺寸]` 日志；搜索页测试桩补 scanSizeModel。设备详情口径不变。本机无node测试未跑，未真机。
 - [2026-10-26 WiFi版配网STEP2](changes/2026-10-26-WiFi版配网STEP2.md)：`main-wifi` 分支。新增 `utils/blufi.js`（乐鑫 BluFi 帧与会话，未加密）、`utils/wifi-provision.js`（手机网络 → 下发 WiFi → 设备连 WiFi → 老服务绑定 + 带 since 轮询在线）、`api.bindWifiDevice`；WiFi 配置页接当前 WiFi 回填与 2.4G 列表，配网状态页接真实流程。`mqtt_config` 一度暂不下发，同日起按 `config.iotMqttConfig`（EMQX 设备账号）下发。本机无node测试未跑，未真机。

@@ -263,6 +263,82 @@
   height: 40rpx;
 }
 
+/* ── 分组标题（2026-10-27）：WiFi 版 / 蓝牙版，图标沿用搜索列表的通信类型角标 ── */
+.device-group-title {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 0 8rpx;
+  color: #4a5059;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* 两组之间多留一点距离（列表本身 gap 24rpx） */
+.device-group-title--gap {
+  margin-top: 16rpx;
+}
+
+.device-group-title__icon {
+  width: 30rpx;
+  height: 30rpx;
+}
+
+/* ── WiFi 版卡片：在线青绿（与 WiFi版 角标同色）、离线 / 未知灰 ── */
+.wifi-state {
+  display: flex;
+  align-items: center;
+  gap: 9rpx;
+  color: #9ba2ad;
+}
+
+.wifi-state.is-online {
+  color: #0e9f87;
+}
+
+.meta-wifi-icon {
+  flex: 0 0 auto;
+  width: 26rpx;
+  height: 26rpx;
+}
+
+.is-offline .meta-wifi-icon,
+.is-unknown .meta-wifi-icon {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+.wifi-state__spinner {
+  width: 22rpx;
+  height: 22rpx;
+  border: 3rpx solid rgba(14, 159, 135, 0.25);
+  border-top-color: #0e9f87;
+  border-radius: 50%;
+  box-sizing: border-box;
+  animation: wifiStateSpin 0.8s linear infinite;
+}
+
+@keyframes wifiStateSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.wifi-refresh-action {
+  color: #0e9f87;
+}
+
+.wifi-refresh-action.is-busy {
+  opacity: 0.5;
+}
+
+.action-refresh-icon {
+  flex: 0 0 auto;
+  width: 36rpx;
+  height: 36rpx;
+}
+
 .empty-device {
   display: flex;
   flex-direction: column;
