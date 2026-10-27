@@ -367,6 +367,11 @@ function wxp(fn, options) {
   })
 }
 
+// 自定义消息的 msgid：13 位毫秒 + 3 位随机，共 16 位（设备入网流程 3.1），设备回执原样放进 ack_msgid
+function newMsgid() {
+  return `${Date.now()}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`
+}
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
@@ -689,9 +694,9 @@ function createApi(session) {
     },
 
     // 协议 2.2 的 JSON 指令：发 { msgid, action, data }，等 `${action}_ack`（按 ack_msgid 对上；设备没回 ack_msgid 时按 action 认）。
-    // 超时 reject。返回应答的 data（含 result）。
-    async request(action, data, timeout) {
-      const msgid = String(Date.now())
+    // msgid 不传时现生成（newMsgid）；重试必须换新的 msgid（设备入网流程 2.2）。超时 reject。返回应答的 data（含 result）。
+    async request(action, data, timeout, msgid) {
+      msgid = msgid || newMsgid()
       const wait = waitFor(
         session,
         'custom',
@@ -735,5 +740,6 @@ module.exports = {
   parseCustomWifiList,
   channelFrequency,
   is24GChannel,
+  newMsgid,
   connect
 }

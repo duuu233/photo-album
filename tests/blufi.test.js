@@ -132,4 +132,13 @@ const arr = frame => Array.from(frame)
   checked('设备错误码文案')
 }
 
+{
+  // 设备入网流程 3.1（2026-10-27）：msgid = 13 位毫秒 + 3 位随机，共 16 位；每次生成都是新的（重试必须换新 msgid）
+  const ids = Array.from({ length: 50 }, () => blufi.newMsgid())
+  ids.forEach(id => assert.ok(/^\d{16}$/.test(id), `msgid 为 16 位数字：${id}`))
+  assert.ok(Math.abs(Number(ids[0].slice(0, 13)) - Date.now()) < 5000, '前 13 位是当前毫秒时间')
+  assert.ok(new Set(ids).size > 1, '随机尾数让同一毫秒内的 msgid 也能区分')
+  checked('自定义消息 msgid 16 位')
+}
+
 console.log(`blufi: ${checks} groups passed`)

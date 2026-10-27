@@ -1122,7 +1122,8 @@ module.exports = {
   },
 
   // 绑定 WiFi 版设备（2026-10-26，配网 STEP 2）：走老服务同一个 addUserProduct。
-  //   · deviceId 用 12 位 deviceNo 转成的 AA:BB:CC:DD:EE:FF（产品确认与蓝牙版同口径）；
+  //   · deviceId 用 12 位大写十六进制、不带冒号（如 A61F5AE3A12D）：设备入网流程约束 7（2026-10-27）要求广播名、绑定、
+  //     MQTT clientid、deviceNo 同一格式，IoT 在线接口按它调老服务 checkPermission（原 10-26 口径为带冒号，与蓝牙版相同）；
   //   · productId / 产品名取搜索时 getProductByDevice 查到的产品，不再按广播名打分匹配；
   //   · 先查已绑定列表：同一台已绑定过（重配网 / 上次绑定成功但联网失败）就复用那条，不重复绑定；
   //   · 新绑定后回查列表补真实 userProductId（addUserProduct 的返回不含可靠主键，同蓝牙版 bind.js 的处理）。
@@ -1172,8 +1173,8 @@ module.exports = {
     }
 
     const productName = String(options.productName || options.broadcastName || '智能相框').trim()
-    const addParams = { productId: options.productId, productName, deviceId: productDeviceId }
-    log(`接口【绑定电子纸设备】POST ${config.baseURL}/Client/UserProduct/addUserProduct（老服务；WiFi 设备 deviceId 用带冒号的 12 位 deviceNo）`)
+    const addParams = { productId: options.productId, productName, deviceId: serial }
+    log(`接口【绑定电子纸设备】POST ${config.baseURL}/Client/UserProduct/addUserProduct（老服务；WiFi 设备 deviceId 用不带冒号的 12 位大写 deviceNo）`)
     log(`参数 ${JSON.stringify(addParams)}`)
     let saved = null
     try {
