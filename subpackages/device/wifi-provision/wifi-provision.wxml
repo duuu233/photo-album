@@ -41,9 +41,10 @@
   <view wx:if="{{phase === 'success'}}" class="provision-actions">
     <view class="provision-primary" hover-class="none" bindtap="goExperience">立即体验</view>
   </view>
-  <view wx:elif="{{phase === 'failed'}}" class="provision-actions provision-actions--pair">
-    <view class="provision-secondary" hover-class="none" bindtap="cancel">取消</view>
+  <!-- 失败：上下排，「重新配网」主按钮占满整行在上，「取消」在下只是橙色文字 -->
+  <view wx:elif="{{phase === 'failed'}}" class="provision-actions provision-actions--stack">
     <view class="provision-primary" hover-class="none" bindtap="retry">重新配网</view>
+    <view class="provision-cancel" hover-class="none" bindtap="cancel">取消</view>
   </view>
 
   <global-toast id="globalToast"></global-toast>

@@ -1,5 +1,6 @@
+/* 底部留出按钮区：失败态为主按钮 112 + 取消 88 + 底距 48 */
 .provision-content {
-  padding-bottom: calc(200rpx + var(--safe-bottom));
+  padding-bottom: calc(280rpx + var(--safe-bottom));
 }
 
 .provision-art {
@@ -128,13 +129,8 @@
   display: flex;
 }
 
-.provision-actions--pair .provision-primary,
-.provision-actions--pair .provision-secondary {
-  flex: 1;
-}
-
-.provision-actions--pair .provision-secondary {
-  margin-right: 24rpx;
+.provision-actions--stack {
+  flex-direction: column;
 }
 
 /* 主按钮：与全站主按钮同一套橙色渐变 + 外发光 */
@@ -152,18 +148,15 @@
   font-weight: 700;
 }
 
-.provision-secondary {
+/* 取消：无按钮底框，只留橙色文字（点击区仍有 88rpx 高） */
+.provision-cancel {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 112rpx;
+  height: 88rpx;
+  margin-top: 8rpx;
   color: #ff621f;
-  background: rgba(255, 255, 255, 0.86);
-  border: 2rpx solid rgba(255, 98, 31, 0.4);
-  border-radius: 999rpx;
-  box-sizing: border-box;
-  font-size: 34rpx;
-  font-weight: 700;
+  font-size: 32rpx;
 }
 
 /* 配网日志（开发版 / 体验版）：深色底等宽小字，固定高度内部滚动（本页 disableScroll），自动滚到最新一行 */
