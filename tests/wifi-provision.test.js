@@ -1,7 +1,7 @@
 // WiFi 版配网流程（2026-10-26 STEP 2；2026-10-27 按 docs/wifi/设备入网流程.md 2.2 调整）：
-//   ① 正常：手机网络 → BluFi 下发 WiFi → mqtt_config（有配置时）→ 国家码 01 → 「连接 WiFi」→ 释放蓝牙
+//   ① 正常：手机网络 → IoT 取 MQTT 参数 → BluFi 下发 WiFi → mqtt_config → 国家码 01 → 「连接 WiFi」→ 释放蓝牙
 //      → 第 3 步老服务绑定 → 第 4 步带 since 轮询在线 → 成功（绑定必须先于在线查询）；
-//   ② mqtt_config：result 非 0 / 超时停在第 2 步，不再发后续指令；
+//   ② MQTT 参数接口失败 / 不完整 / 401：停在第 2 步，不连设备；mqtt_config result 非 0 / 超时停在第 2 步，不再发后续指令；
 //   ③ 国家码：pending=1 优先、result=0 通过；result 非 0 换新 msgid 重试一次，仍失败继续；超时不重试、继续；
 //   ④ 绑定失败停在第 3 步，不开始轮询；
 //   ⑤ 在线轮询：503 / 403 继续轮询，60s 等不到 online 停在第 4 步（一直 503 提示稍后重试）；401 直接停；
@@ -50,6 +50,12 @@ function setup(options = {}) {
       async bindWifiDevice(args) { log.binds.push(args); log.order.push('bind'); if (options.bindError) throw new Error(options.bindError); return { id: '88', name: 'WiFi相框' } }
     },
     './iot-api': {
+      async getProvisioningMqtt(opts) {
+        log.order.push('mqtt-fetch')
+        log.mqttFetchOptions = opts
+        if (options.mqttFetch instanceof Error) throw options.mqttFetch
+        return options.mqttFetch !== undefined ? options.mqttFetch : { host: 'mqtt.example.com', port: 11883, usr: 'dev-user', pwd: 'Secret#Pwd' }
+      },
       async getDeviceOnline(deviceNo, since) {
         log.onlineCalls.push([deviceNo, since])
         log.order.push('online')
@@ -58,7 +64,7 @@ function setup(options = {}) {
         return next
       }
     },
-    './config': { iotMqttConfig: options.mqtt || null },
+    './config': { iotBaseURL: 'https://iot.example.com' },
     './blufi': {
       STA_STATE: { CONNECTED: 0, FAIL: 1 },
       DATA: { STA_PASSWORD: 0x03, CUSTOM: 0x13 },
@@ -87,6 +93,7 @@ function setup(options = {}) {
 }
 
 const timeout = () => new Error('设备未应答')
+const countryTries = ctx => ctx.log.requests.filter(item => item[0] === 'wifi_set_country_code')
 
 async function main() {
   {
@@ -96,12 +103,14 @@ async function main() {
     assert.deepEqual(log.steps, ['0:loading', '0:done', '1:loading', '1:done', '2:loading', '2:done', '3:loading', '3:done'])
     assert.equal(log.connectedTo, 'ble-1', '用搜索时拿到的蓝牙句柄连设备')
     assert.deepEqual(log.writes, [['sta', '我家WiFi', 'pa55word'], ['connect']], '先下发 WiFi，三条指令发完再让设备连接')
-    assert.deepEqual(log.requests.map(item => item[0]), ['wifi_set_country_code'], '没有 MQTT 配置时不发 mqtt_config，国家码照发')
-    assert.deepEqual(log.requests[0][1], { country: '01' }, '小程序国家码固定 01')
-    assert.ok(log.requests[0][2], '国家码带 msgid')
-    assert.equal(log.requests[0][3], 5000, '回执超时 5 秒')
-    assert.deepEqual(log.order, ['sta', 'wifi_set_country_code', 'connect', 'close', 'bind', 'online'],
-      'WiFi → 国家码 → 连接 → 释放蓝牙 → 绑定 → 轮询在线')
+    assert.deepEqual(log.requests.map(item => item[0]), ['mqtt_config', 'wifi_set_country_code'])
+    assert.deepEqual(JSON.parse(JSON.stringify(log.requests[0][1])), { host: 'mqtt.example.com', port: 11883, usr: 'dev-user', pwd: 'Secret#Pwd' }, '下发接口取到的 MQTT 参数（含真实密码）')
+    assert.equal(log.mqttFetchOptions.showError, false, '取 MQTT 参数静默，错误由配网页展示')
+    assert.deepEqual(JSON.parse(JSON.stringify(log.requests[1][1])), { country: '01' }, '小程序国家码固定 01')
+    assert.ok(log.requests[1][2], '国家码带 msgid')
+    assert.equal(log.requests[1][3], 5000, '回执超时 5 秒')
+    assert.deepEqual(log.order, ['mqtt-fetch', 'sta', 'mqtt_config', 'wifi_set_country_code', 'connect', 'close', 'bind', 'online'],
+      '取 MQTT 参数 → WiFi → mqtt_config → 国家码 → 连接 → 释放蓝牙 → 绑定 → 轮询在线')
     assert.equal(log.binds.length, 1)
     assert.equal(log.binds[0].deviceNo, 'E348C21ED428')
     assert.equal(log.binds[0].productId, 21, '绑定用搜索时查到的产品')
@@ -121,8 +130,11 @@ async function main() {
       '蓝牙指令【下发WiFi参数】',
       '【Set Opmode 设置工作模式】',
       '参数 {"opmode":1,"ssid":"我家WiFi","password":"8 位（已隐藏）"}',
+      '接口【配网 MQTT 参数】GET https://iot.example.com/api/device/provisioning/mqtt',
+      '返回 {"host":"mqtt.example.com","port":11883,"usr":"dev-user","pwd":"（已隐藏）"}',
+      '蓝牙指令【设置 MQTT 配置信息】action=mqtt_config',
       '蓝牙指令【设置WiFi国家码】action=wifi_set_country_code',
-      '参数 {"msgid":"1756108400170001","data":{"country":"01"}}',
+      '参数 {"msgid":"1756108400170002","data":{"country":"01"}}',
       '返回 {"result":0}',
       '蓝牙指令【Connect to AP 连接WiFi】',
       '已释放蓝牙连接',
@@ -131,7 +143,7 @@ async function main() {
       '参数 {"deviceNo":"E348C21ED428","since":1000000}',
       '返回 {"online":true}',
       // 按设备入网流程第二节的编号打的标签（只标 App 实际执行的步骤，参数都是运行时拿到的）
-      '【流程③】', '【流程④】', '【流程⑤】', '参数 无（config.iotMqttConfig 为空）', '【流程⑥】',
+      '【流程③】', '【流程④】', '【流程⑤】', '【流程⑥】',
       '【流程⑭】老服务绑定：deviceNo=E348C21ED428，productId=21', '【流程⑮】轮询在线：deviceNo=E348C21ED428'
     ]) {
       assert.ok(all.indexOf(marker) > -1, `日志里要有「${marker}」`)
@@ -141,6 +153,7 @@ async function main() {
     for (const fake of ['XT_ESP_', '1234567890', 'mqtt.boltfox.cn', 'xt-boltstar-device', '蓝灯', 'EMQX', '【流程⑦】', '【流程⑯】']) {
       assert.equal(all.indexOf(fake), -1, `日志不该有流程示例数据「${fake}」`)
     }
+    assert.equal(all.indexOf('Secret#Pwd'), -1, 'MQTT 密码不进日志')
     assert.ok(/WiFi「我家WiFi」，密码 8 位/.test(all), '记 WiFi 名称与密码位数')
     assert.equal(all.indexOf('pa55word'), -1, '密码原文不进日志')
     assert.ok(/密码帧（12 字节，内容已隐藏）/.test(all), '密码帧打码')
@@ -149,51 +162,67 @@ async function main() {
     checked('配网日志：每一步有记录，密码不进日志')
   }
   {
-    const { log, run } = setup({ mqtt: { host: 'mqtt.example.com', port: 1883, usr: 'u', pwd: 'Secret#Pwd' } })
+    const { log, run } = setup()
     await run()
-    assert.deepEqual(log.order.slice(0, 4), ['sta', 'mqtt_config', 'wifi_set_country_code', 'connect'], '顺序固定：WiFi → mqtt_config → 国家码')
-    assert.equal(log.requests[0][1].host, 'mqtt.example.com')
-    assert.equal(log.requests[0][1].pwd, 'Secret#Pwd', '下发给设备的是真实密码')
     assert.ok(log.requests[0][2] && log.requests[0][2] !== log.requests[1][2], 'mqtt_config 与国家码各带自己的 msgid')
     assert.equal(log.requests[0][3], 5000, 'mqtt_config 回执超时 5 秒')
     const mqttLog = log.lines.join('\n')
-    assert.equal(mqttLog.indexOf('Secret#Pwd'), -1, 'MQTT 密码不进日志')
     assert.equal(mqttLog.indexOf('53 65 63 72 65 74'), -1, '承载 mqtt_config 的帧原文不进日志')
     assert.ok(/自定义数据帧（60 字节，内容已隐藏/.test(mqttLog))
     assert.ok(/"pwd":"（已隐藏）"/.test(mqttLog), '参数里 pwd 打码')
 
-    const failed = setup({ mqtt: { host: 'h' }, acks: { mqtt_config: [{ result: 5 }] } })
+    const failed = setup({ acks: { mqtt_config: [{ result: 5 }] } })
     await assert.rejects(failed.run(), error => error.step === 1 && /错误码 5/.test(error.message))
     assert.deepEqual(failed.log.requests.map(item => item[0]), ['mqtt_config'], 'mqtt_config 失败就不再发国家码')
     assert.equal(failed.log.writes.some(item => item[0] === 'connect'), false, '也不让设备去连接')
     assert.equal(failed.log.binds.length, 0)
     assert.ok(failed.log.closed >= 1)
 
-    const silent = setup({ mqtt: { host: 'h' }, acks: { mqtt_config: [timeout()] } })
+    const silent = setup({ acks: { mqtt_config: [timeout()] } })
     await assert.rejects(silent.run(), error => error.step === 1 && /未响应网络配置/.test(error.message))
     assert.equal(silent.log.binds.length, 0)
     checked('mqtt_config：先于国家码，result 非 0 / 超时停在第 2 步')
   }
   {
+    const down = setup({ mqttFetch: Object.assign(new Error('服务暂时不可用，请稍后重试'), { code: 503, statusCode: 503, action: 'retry' }) })
+    await assert.rejects(down.run(), error => error.step === 1 && /获取设备网络配置失败/.test(error.message))
+    assert.equal(down.log.connectedTo, undefined, '取不到 MQTT 参数不连设备、不下发 WiFi')
+    assert.deepEqual(down.log.writes, [])
+    assert.ok(down.log.lines.some(line => /失败 HTTP 503 code 503/.test(line)), '失败原因记进日志')
+
+    const relogin = setup({ mqttFetch: Object.assign(new Error('401'), { code: 401, action: 'relogin' }) })
+    await assert.rejects(relogin.run(), error => error.step === 1 && /重新登录/.test(error.message))
+
+    for (const broken of [null, {}, { host: 'h', port: 11883, usr: 'u' }, { host: 'h', port: 'x', usr: 'u', pwd: 'p' }]) {
+      const incomplete = setup({ mqttFetch: broken })
+      await assert.rejects(incomplete.run(), error => error.step === 1 && /获取设备网络配置失败/.test(error.message), JSON.stringify(broken))
+      assert.deepEqual(incomplete.log.writes, [], `参数不完整不动设备：${JSON.stringify(broken)}`)
+    }
+    const stringPort = setup({ mqttFetch: { host: ' h ', port: '11883', usr: 'u', pwd: 'p' } })
+    await stringPort.run()
+    assert.deepEqual(JSON.parse(JSON.stringify(stringPort.log.requests[0][1])), { host: 'h', port: 11883, usr: 'u', pwd: 'p' }, 'port 转数字、host 去空白')
+    checked('MQTT 参数接口：失败 / 401 / 不完整都停在第 2 步且不动设备')
+  }
+  {
     const pending = setup({ acks: { wifi_set_country_code: [{ result: 3, pending: 1 }] } })
     await pending.run()
-    assert.equal(pending.log.requests.length, 1, 'pending=1 优先于 result，不重试')
+    assert.equal(countryTries(pending).length, 1, 'pending=1 优先于 result，不重试')
     assert.ok(pending.log.lines.some(line => /暂缓执行/.test(line)))
 
     const rejected = setup({ acks: { wifi_set_country_code: [{ result: 3 }] } })
     await rejected.run()
-    const tries = rejected.log.requests.filter(item => item[0] === 'wifi_set_country_code')
+    const tries = countryTries(rejected)
     assert.equal(tries.length, 2, 'result 非 0 重试一次')
     assert.notEqual(tries[0][2], tries[1][2], '重试换新的 msgid')
     assert.ok(rejected.log.steps.includes('3:done'), '重试仍失败也继续配网')
 
     const retried = setup({ acks: { wifi_set_country_code: [{ result: 3 }, { result: 0 }] } })
     await retried.run()
-    assert.equal(retried.log.requests.length, 2, '第二次成功')
+    assert.equal(countryTries(retried).length, 2, '第二次成功')
 
     const noAck = setup({ acks: { wifi_set_country_code: [timeout()] } })
     await noAck.run()
-    assert.equal(noAck.log.requests.length, 1, '等不到回执不重试')
+    assert.equal(countryTries(noAck).length, 1, '等不到回执不重试')
     assert.ok(noAck.log.steps.includes('3:done'), '国家码超时不阻塞配网')
     checked('国家码：pending 优先、失败换 msgid 重试一次、超时都不阻塞')
   }

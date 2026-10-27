@@ -2,7 +2,8 @@
 //
 // 页面上的四个状态（设备入网流程 2.2「配网 4 步与指令时序」）：
 //   1 手机网络正常           —— wx.getNetworkType，不是 none 即可
-//   2 设备网络配置已完成     —— BluFi 连上设备（WiFi 列表页扫描时已连上的会话直接复用），三条指令顺序固定：
+//   2 设备网络配置已完成     —— 先调 IoT GET /api/device/provisioning/mqtt 取 MQTT 参数（取不到就停在本步，不动设备）；
+//                              BluFi 连上设备（WiFi 列表页扫描时已连上的会话直接复用），三条指令顺序固定：
 //                              WiFi 信息（STA 模式 + 名称 + 密码）→ mqtt_config（等 mqtt_config_ack.result=0）→
 //                              国家码 wifi_set_country_code（小程序固定 01；成功 / pending=1 / 超时都不阻塞，
 //                              result 非 0 换新 msgid 重试一次，仍失败继续）；最后发「连接 WiFi」让设备退出配网，随即释放蓝牙
@@ -50,9 +51,27 @@ function getJob() {
   return target && credentials ? Object.assign({}, target, credentials) : null
 }
 
-// MQTT 配置来源：目前只有 config.iotMqttConfig（默认 null → 不下发）。后端出了配网会话接口后改在这里取。
+// MQTT 配置：每次配网现调 IoT GET /api/device/provisioning/mqtt（2026-10-27，凭据不再写在前端 config）。
+// 返回 { host, port, usr, pwd }；四项缺任何一项都按取不到处理（reject），由调用方停在第 2 步。
 async function getMqttConfig() {
-  return config.iotMqttConfig || null
+  const data = await iotApi.getProvisioningMqtt({ showError: false })
+  const mqtt = {
+    host: String((data && data.host) || '').trim(),
+    port: Number(data && data.port),
+    usr: String((data && data.usr) || ''),
+    pwd: String((data && data.pwd) || '')
+  }
+  if (!mqtt.host || !(mqtt.port > 0) || !mqtt.usr || !mqtt.pwd) {
+    const error = new Error('MQTT 参数不完整')
+    error.code = 'MQTT_CONFIG_INCOMPLETE'
+    throw error
+  }
+  return mqtt
+}
+
+// 日志用：pwd 只标有没有，不出原文
+function maskMqtt(mqtt) {
+  return Object.assign({}, mqtt, { pwd: mqtt && mqtt.pwd ? '（已隐藏）' : '' })
 }
 
 function provisionError(step, message, cause) {
@@ -209,6 +228,24 @@ async function run(job, hooks) {
     // ② 设备网络配置
     onStep(1, 'loading')
     log('② 设备网络配置')
+    // 先取 MQTT 参数：取不到就不动设备（不下发 WiFi），避免设备只收到半套配置
+    log(`接口【配网 MQTT 参数】GET ${config.iotBaseURL}/api/device/provisioning/mqtt（Header userToken；取下发给设备的 MQTT 参数，pwd 不进日志）`)
+    log('参数 无')
+    let mqttConfig = null
+    try {
+      mqttConfig = await getMqttConfig()
+    } catch (error) {
+      log(
+        `失败 HTTP ${(error && error.statusCode) || '-'} code ${error && error.code}：${(error && error.message) || error}` +
+          `${error && error.serverMessage ? `（服务端 msg：${error.serverMessage}）` : ''}`
+      )
+      if (error && error.action === 'relogin') {
+        throw provisionError(1, '登录已失效，请重新登录', error)
+      }
+      throw provisionError(1, '获取设备网络配置失败，请稍后重试', error)
+    }
+    log(`返回 ${JSON.stringify(maskMqtt(mqttConfig))}`)
+    checkCancel(1)
     log('【流程③】App 蓝牙扫描 → 连接设备（BluFi）')
     log('蓝牙接口【连接设备 BluFi 会话】blufi.connect（wx.createBLEConnection → getBLEDeviceServices 找 FFFF 服务 → getBLEDeviceCharacteristics 找 FF01 写 / FF02 通知 → notifyBLECharacteristicValueChange → setBLEMTU / getBLEMTU；列表页已连上则直接复用）')
     log(`参数 ${JSON.stringify({ deviceId: job.bleDeviceId })}`)
@@ -234,26 +271,20 @@ async function run(job, hooks) {
       throw provisionError(1, '设备网络配置下发失败，请靠近设备后重试', error)
     }
     log('返回 三帧已写入（BluFi 这三条设备不单独应答）')
-    const mqttConfig = await getMqttConfig(job)
     log('【流程⑤】App 下发 MQTT 参数（自定义消息 mqtt_config，设备回 mqtt_config_ack，result=0 表示成功）')
-    if (mqttConfig) {
-      const msgid = blufi.newMsgid()
-      log(`蓝牙指令【设置 MQTT 配置信息】action=mqtt_config（设备通讯协议 2.2.3；走 BluFi 自定义数据 0x13，${BLE_ACK_TIMEOUT_MS / 1000} 秒内等 mqtt_config_ack）`)
-      log(`参数 ${JSON.stringify({ msgid, data: Object.assign({}, mqttConfig, { pwd: mqttConfig.pwd ? '（已隐藏）' : '' }) })}`)
-      let ack = null
-      try {
-        ack = await session.request('mqtt_config', mqttConfig, BLE_ACK_TIMEOUT_MS, msgid)
-      } catch (error) {
-        log(`失败 ${(error && error.message) || error}`)
-        throw provisionError(1, '设备未响应网络配置，请重试', error)
-      }
-      log(`返回 ${JSON.stringify(ack)}（result=0 为成功）`)
-      if (Number(ack && ack.result) !== 0) {
-        throw provisionError(1, `设备网络配置失败（错误码 ${ack && ack.result}）`)
-      }
-    } else {
-      log('参数 无（config.iotMqttConfig 为空）')
-      log('返回 未下发 mqtt_config')
+    const mqttMsgid = blufi.newMsgid()
+    log(`蓝牙指令【设置 MQTT 配置信息】action=mqtt_config（设备通讯协议 2.2.3；走 BluFi 自定义数据 0x13，${BLE_ACK_TIMEOUT_MS / 1000} 秒内等 mqtt_config_ack）`)
+    log(`参数 ${JSON.stringify({ msgid: mqttMsgid, data: maskMqtt(mqttConfig) })}`)
+    let mqttAck = null
+    try {
+      mqttAck = await session.request('mqtt_config', mqttConfig, BLE_ACK_TIMEOUT_MS, mqttMsgid)
+    } catch (error) {
+      log(`失败 ${(error && error.message) || error}`)
+      throw provisionError(1, '设备未响应网络配置，请重试', error)
+    }
+    log(`返回 ${JSON.stringify(mqttAck)}（result=0 为成功）`)
+    if (Number(mqttAck && mqttAck.result) !== 0) {
+      throw provisionError(1, `设备网络配置失败（错误码 ${mqttAck && mqttAck.result}）`)
     }
     checkCancel(1)
     await sendCountryCode(session, log)

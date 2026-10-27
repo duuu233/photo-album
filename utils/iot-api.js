@@ -18,5 +18,11 @@ module.exports = {
   // 设备信息 / 影子：{ deviceNo, online, lastOnlineAt, firmwareVersion, shadow: {...} }
   getDeviceInfo(deviceNo, options) {
     return iot.get('/api/device/info', { deviceNo: plainDeviceNo(deviceNo) }, options)
+  },
+
+  // 配网下发给设备的 MQTT 参数：{ host, port, usr, pwd }（2026-10-27 后端提供，凭据不再写在前端）。
+  // 只在配网第 2 步现取现用，不缓存、不落本地；pwd 不进任何日志。
+  getProvisioningMqtt(options) {
+    return iot.get('/api/device/provisioning/mqtt', {}, options)
   }
 }
