@@ -56,6 +56,10 @@ function loadListPage(options = {}) {
     },
     signal
   }
+  // 状态字段来自共用的 utils/wifi-status.js：按真实源码装配，依赖用上面同一组桩
+  const statusSandbox = { module: { exports: {} }, require: target => modules[target.split('/').at(-1)], console: { log() {}, warn() {} } }
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'utils/wifi-status.js'), 'utf8'), statusSandbox, { filename: 'wifi-status.js' })
+  modules['wifi-status'] = statusSandbox.module.exports
   vm.runInNewContext(fs.readFileSync(path.join(root, 'subpackages/device/list/list.js'), 'utf8'), {
     require: target => modules[target.split('/').at(-1)],
     getApp: () => ({ globalData: { selectedDevice: null }, setSelectedDevice: value => { state.selected = value } }),

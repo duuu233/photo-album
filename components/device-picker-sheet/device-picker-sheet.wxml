@@ -28,7 +28,14 @@
           <image class="picker-device__icon-img" src="{{item.thumb || '/assets/images/home-device-thumb.png'}}" mode="aspectFit"></image>
         </view>
         <view class="picker-device__copy">
-          <text class="picker-device__name">{{item.name || item.productName || '电子纸设备'}}</text>
+          <view class="picker-device__title">
+            <text class="picker-device__name">{{item.name || item.productName || '电子纸设备'}}</text>
+            <!-- WiFi 版挂角标（2026-10-27，调用方给 isWifi）：选它不连蓝牙，走 WiFi 投屏 -->
+            <view wx:if="{{item.isWifi}}" class="picker-device__badge">
+              <image class="picker-device__badge-icon" src="/assets/images/badge-wifi.svg" mode="aspectFit"></image>
+              <text class="picker-device__badge-text">WiFi版</text>
+            </view>
+          </view>
           <!-- 设备ID：同型号同名设备靠它区分，与搜索页/设备列表同一口径（完整 6 字节） -->
           <text wx:if="{{item.productDeviceId}}" class="picker-device__sub">设备ID {{item.productDeviceId}}</text>
         </view>

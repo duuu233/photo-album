@@ -6,7 +6,8 @@
 //   ① 没有活动会话 → ensureConnectedForAction 先连，连上后带着句柄进预览（顺序：连 → 下载 → 跳转）；
 //   ② 连不上 → 停在本页，不下载、不跳转，按钮复位；
 //   ③ 已有活动会话 → 直接认领，不再扫描，低电量照旧提醒一次；
-//   ④ 图片下载超时 → 中文提示，不再把「downloadFile:fail timeout」原样 toast 出去（同日需求 2）。
+//   ④ 图片下载超时 → 中文提示，不再把「downloadFile:fail timeout」原样 toast 出去（同日需求 2）；
+//   ⑤ WiFi 版（2026-10-27）：不连蓝牙，先确认云端在线，带 isWifi 进预览；明确离线停在本页；弹层里 WiFi 行带 isWifi。
 const assert = require('assert')
 
 const storage = {}
@@ -63,12 +64,20 @@ stubModule('../utils/low-battery', {
   warnIfLow: async deviceId => trace.push(`warnIfLow:${deviceId}`)
 })
 stubModule('../utils/gallery-api', { getPhotoDetail: async () => ({}) })
-stubModule('../utils/api', { getDevices: async () => [] })
+let backendList = []
+stubModule('../utils/api', { getDevices: async () => backendList })
 stubModule('../utils/toast', {
   show: options => toasts.push(typeof options === 'string' ? options : options.title),
   warn: options => toasts.push(typeof options === 'string' ? options : options.title)
 })
 stubModule('../utils/fold-adapt', { adapt: options => options })
+let wifiOnline = true
+stubModule('../utils/wifi-status', {
+  ensureOnline: async device => {
+    trace.push(`wifiOnline:${device.id}`)
+    return wifiOnline
+  }
+})
 
 let pageOptions = null
 global.Page = options => {
@@ -155,6 +164,36 @@ async function main() {
     assert.ok(!/[A-Za-z]/.test(toasts[0]), '提示里不该有英文')
     assert.strictEqual(storage.pendingProjection, undefined)
     assert.strictEqual(page.data.projecting, false)
+  }
+
+  // ⑤ WiFi 版：不连蓝牙，确认在线后下载、进预览，设备带 isWifi
+  const wifiDevice = { id: '21', name: 'WiFi相框', broadcastId: 'IJ_*', productDeviceId: 'E3:48:C2:1E:D4:28' }
+  reset()
+  connectedId = ''
+  wifiOnline = true
+  {
+    const page = newPage()
+    await page.startProjection(wifiDevice)
+    assert.deepStrictEqual(trace, ['wifiOnline:21', 'download', 'navigate:/subpackages/projection/preview/preview'], 'WiFi 版不走蓝牙连接')
+    assert.strictEqual(storage.pendingProjection.device.isWifi, true)
+  }
+  reset()
+  wifiOnline = false
+  {
+    const page = newPage()
+    await page.startProjection(wifiDevice)
+    assert.deepStrictEqual(trace, ['wifiOnline:21'], '离线停在本页：不下载、不跳转')
+    assert.strictEqual(storage.pendingProjection, undefined)
+    assert.strictEqual(page.data.projecting, false)
+  }
+  reset()
+  connectedId = ''
+  backendList = [backendDevice, wifiDevice]
+  {
+    const page = newPage()
+    await page.onProject()
+    const rows = page.data.devicePicker.devices
+    assert.deepStrictEqual(rows.map(item => item.isWifi), [false, true], '弹层里 WiFi 行带 isWifi（挂角标）')
   }
 
   console.log('gallery-connect-before-preview.test.js: all passed')

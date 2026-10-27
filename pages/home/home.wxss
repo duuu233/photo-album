@@ -408,6 +408,21 @@ button {
   width: 28rpx;
   height: 36rpx;
 }
+
+/* WiFi 版设备卡（2026-10-27）：在线青绿（与 WiFi版 角标同色），离线 / 未知 / 查询中灰，图标随之变淡 */
+.device-status.wifi-status.is-online {
+  color: #0e9f87;
+}
+
+.mini-wifi {
+  width: 26rpx;
+  height: 26rpx;
+}
+
+.wifi-status:not(.is-online) .mini-wifi {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
 .carousel-dots {
   display: flex;
   align-self: center;

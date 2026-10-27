@@ -8,6 +8,8 @@ const activeDevice = require('../../utils/active-device')
 const aiLastSession = require('../../utils/ai-last-session')
 const deviceIdentity = require('../../utils/device-identity')
 const deviceThumb = require('../../utils/device-thumb')
+const broadcastMatch = require('../../utils/broadcast-match')
+const wifiStatus = require('../../utils/wifi-status')
 
 const app = getApp()
 
@@ -544,7 +546,7 @@ Page({
       ).map(item => Object.assign({}, item, {
         batteryText: batteryUtil.batteryText(item),
         batteryIcon: batteryUtil.batteryIconOf(item)
-      }))
+      })).map(item => this.tagWifiCard(item))
       const hasRealDevice = normalizedList.length > 0
       const list = hasRealDevice ? normalizedList : [DEFAULT_DEVICE]
 
@@ -574,6 +576,8 @@ Page({
       this.setScene(hasRealDevice ? SCENES.BOUND : SCENES.UNBOUND, {
         hasDevice: hasRealDevice
       })
+      // WiFi 版卡片的云端状态（不走蓝牙）后台查，回来再替换
+      this.refreshWifiCards()
       // 页面先展示缓存；15 秒内直接复用，超窗再后台读 0x04，失败保留旧值。
       await this.refreshConnectedBattery()
     } catch (error) {
@@ -590,6 +594,51 @@ Page({
         hasDevice: false
       })
     }
+  },
+
+  // WiFi 版设备卡（2026-10-27）：打 isWifi 标记，状态先沿用上一次查到的（避免每次回首页闪「查询中」），
+  // 没有就先「查询中」，由 refreshWifiCards 去 IoT 查。蓝牙版原样返回（只多一个 isWifi:false）。
+  tagWifiCard(item) {
+    if (!broadcastMatch.isWifiDevice(item)) {
+      return Object.assign({}, item, { isWifi: false })
+    }
+    const previous = (this.data.deviceList || []).find(old =>
+      old && old.isWifi && old.wifiStatus && old.wifiStatus !== 'loading' && String(old.id) === String(item.id)
+    )
+    const fields = previous
+      ? {
+          wifiStatus: previous.wifiStatus,
+          wifiStatusText: previous.wifiStatusText,
+          wifiSignalLevel: previous.wifiSignalLevel,
+          wifiBatteryText: previous.wifiBatteryText,
+          wifiBatteryIcon: previous.wifiBatteryIcon
+        }
+      : wifiStatus.statusFields('loading')
+    return Object.assign({}, item, { isWifi: true }, fields)
+  },
+
+  // 查首页轮播里每台 WiFi 版设备的在线 / 电量（IoT 设备信息），各自带序号防旧请求覆盖
+  refreshWifiCards() {
+    const seqs = this._wifiCardSeq || (this._wifiCardSeq = {})
+    const targets = (this.data.deviceList || []).filter(item => item && item.isWifi)
+    return Promise.all(targets.map(device => {
+      const key = String(device.id)
+      const seq = (seqs[key] || 0) + 1
+      seqs[key] = seq
+      return wifiStatus.fetchFields(device).then(fields => {
+        if (seqs[key] !== seq) {
+          return
+        }
+        const list = (this.data.deviceList || []).map(item =>
+          item && item.isWifi && String(item.id) === key ? Object.assign({}, item, fields) : item
+        )
+        const current = list[this.data.currentDeviceIndex]
+        this.setData({
+          deviceList: list,
+          currentDevice: current && String(current.id) === key ? current : this.data.currentDevice
+        })
+      })
+    }))
   },
 
   async refreshConnectedBattery() {
@@ -949,6 +998,11 @@ Page({
       this.showBindNowSheet()
       return false
     }
+    // WiFi 版不走蓝牙（2026-10-27）：确认云端在线即可（明确离线才拦，查不到放行由投屏接口裁决）
+    const current = app.globalData.selectedDevice || this.data.currentDevice
+    if (broadcastMatch.isWifiDevice(current)) {
+      return wifiStatus.ensureOnline(current)
+    }
     if (!this.isCurrentDeviceConnected()) {
       return this.connectCurrentDevice() // 连上后由它弹低电量提醒，这里不再弹第二次
     }
@@ -1083,9 +1137,11 @@ Page({
       return
     }
 
-    // 传给投屏页的设备用全量的已选设备（含真实蓝牙 deviceId），投屏页据此真实连接并图传
+    // 传给投屏页的设备用全量的已选设备（含真实蓝牙 deviceId），投屏页据此真实连接并图传；
+    // WiFi 版带上 isWifi，预览页据此走 WiFi 投屏结果页
+    const device = app.globalData.selectedDevice || this.data.currentDevice
     wx.setStorageSync('pendingProjection', {
-      device: app.globalData.selectedDevice || this.data.currentDevice,
+      device: broadcastMatch.isWifiDevice(device) ? Object.assign({}, device, { isWifi: true }) : device,
       images
     })
     wx.navigateTo({

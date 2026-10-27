@@ -17,6 +17,8 @@ const lowBattery = require('../../../utils/low-battery')
 const api = require('../../../utils/api')
 const toast = require('../../../utils/toast')
 const downloadError = require('../../../utils/download-error')
+const broadcastMatch = require('../../../utils/broadcast-match')
+const wifiStatus = require('../../../utils/wifi-status')
 
 const app = getApp()
 
@@ -166,11 +168,13 @@ Page(fold.adapt({
       }
       // pickerId 兜底链与 AI 对话页一致：后端记录主键缺失时才退到 deviceId/名称，
       // 它只用于「这一屏里选中了哪一行」，不是设备物理身份（身份必须是完整 6 字节 ID）。
+      // isWifi：WiFi 版行挂「WiFi版」角标，选中后不连蓝牙（2026-10-27）
       const pickerDevices = devices.map((item, index) =>
         Object.assign({}, item, {
           pickerId: String(
             item.id != null ? item.id : (item.deviceId || item.deviceNo || item.name || index)
-          )
+          ),
+          isWifi: broadcastMatch.isWifiDevice(item)
         })
       )
       this.setData({
@@ -245,7 +249,12 @@ Page(fold.adapt({
   // 投屏前把设备连上，返回带本机 BLE 句柄的设备；连不上返回 null（提示已由 ensureConnectedForAction 弹出）。
   //   · 已有活动会话：直接认领（后端记录不带 deviceId 也能按完整设备 ID 交叉匹配到），低电量照旧提醒一次；
   //   · 没有：ensureConnectedForAction 扫描连接（它自己会做低电量提醒，这里不再重复弹）。
+  //   · WiFi 版（2026-10-27）：不连蓝牙，确认云端在线（明确离线提示并返回 null，查不到放行由投屏接口裁决），
+  //     带 isWifi 进预览，预览页导出后去 WiFi 投屏结果页。
   async connectForProjection(device) {
+    if (broadcastMatch.isWifiDevice(device)) {
+      return (await wifiStatus.ensureOnline(device)) ? Object.assign({}, device, { isWifi: true }) : null
+    }
     let deviceId = activeDevice.findConnectedDeviceId(device)
     if (deviceId) {
       await lowBattery.warnIfLow(deviceId, { device })

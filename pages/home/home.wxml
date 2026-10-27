@@ -108,37 +108,51 @@
                 mode="aspectFill" />
               <view class="device-info">
                 <view class="device-title">{{item.name}}</view>
-                <view class="device-status {{item.connected ? 'is-connected' : ''}}">
-                  <image
-                    class="mini-bluetooth"
-                    src="{{item.connected ? '/assets/images/bluetooth-icon.png' : '/assets/images/bluetooth-icon-not.png'}}"
-                    mode="aspectFill" />
-                  <text>{{item.connected ? '已连接' : '未连接'}}</text>
-                </view>
-                <!-- 仅在已连接设备后才展示电量图标与数值。
-                     文案统一由 batteryText 给出（'87%' 或未知时的 '--'），模板不再自己拼 '%'——
-                     电量读不到时旧写法会渲染成假的百分比，用户分辨不出真假 -->
-                <view wx:if="{{item.connected}}" class="battery-row">
-                  <image
-                    class="battery-level-icon"
-                    src="{{item.batteryIcon}}"
-                    mode="aspectFit" />
-                  <text>{{item.batteryText}}</text>
-                </view>
-                <!-- 未连接时展示「连接蓝牙」按钮；catchtap 阻止冒泡到卡片的进入设备列表 -->
-                <view
-                  wx:if="{{!item.connected}}"
-                  class="device-connect-btn"
-                  hover-class="device-connect-btn--hover"
-                  hover-stay-time="80"
-                  catchtap="connectCurrentDevice"
-                >
-                  <image
-                    class="device-connect-icon"
-                    src="/assets/images/bluetooth-icon-white.png"
-                    mode="aspectFit" />
-                  <text>连接蓝牙</text>
-                </view>
+                <!-- 蓝牙版：连接状态 / 电量 / 「连接蓝牙」（原样） -->
+                <block wx:if="{{!item.isWifi}}">
+                  <view class="device-status {{item.connected ? 'is-connected' : ''}}">
+                    <image
+                      class="mini-bluetooth"
+                      src="{{item.connected ? '/assets/images/bluetooth-icon.png' : '/assets/images/bluetooth-icon-not.png'}}"
+                      mode="aspectFill" />
+                    <text>{{item.connected ? '已连接' : '未连接'}}</text>
+                  </view>
+                  <!-- 仅在已连接设备后才展示电量图标与数值。
+                       文案统一由 batteryText 给出（'87%' 或未知时的 '--'），模板不再自己拼 '%'——
+                       电量读不到时旧写法会渲染成假的百分比，用户分辨不出真假 -->
+                  <view wx:if="{{item.connected}}" class="battery-row">
+                    <image
+                      class="battery-level-icon"
+                      src="{{item.batteryIcon}}"
+                      mode="aspectFit" />
+                    <text>{{item.batteryText}}</text>
+                  </view>
+                  <!-- 未连接时展示「连接蓝牙」按钮；catchtap 阻止冒泡到卡片的进入设备列表 -->
+                  <view
+                    wx:if="{{!item.connected}}"
+                    class="device-connect-btn"
+                    hover-class="device-connect-btn--hover"
+                    hover-stay-time="80"
+                    catchtap="connectCurrentDevice"
+                  >
+                    <image
+                      class="device-connect-icon"
+                      src="/assets/images/bluetooth-icon-white.png"
+                      mode="aspectFit" />
+                    <text>连接蓝牙</text>
+                  </view>
+                </block>
+                <!-- WiFi 版（2026-10-27）：不走蓝牙，显示云端在线状态与电量（IoT 设备信息），没有「连接蓝牙」 -->
+                <block wx:else>
+                  <view class="device-status wifi-status is-{{item.wifiStatus}}">
+                    <image class="mini-wifi" src="/assets/images/badge-wifi.svg" mode="aspectFit" />
+                    <text>{{item.wifiStatusText}}</text>
+                  </view>
+                  <view wx:if="{{item.wifiBatteryText}}" class="battery-row">
+                    <image class="battery-level-icon" src="{{item.wifiBatteryIcon}}" mode="aspectFit" />
+                    <text>{{item.wifiBatteryText}}</text>
+                  </view>
+                </block>
               </view>
             </view>
           </swiper-item>

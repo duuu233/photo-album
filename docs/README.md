@@ -44,6 +44,7 @@
 
 ## 变更记录
 
+- [2026-10-27 WiFi版投屏与设备详情 · 首页与图库入口](changes/2026-10-27-WiFi版投屏与设备详情.md)：同日追加。首页设备卡 WiFi 版显示云端状态、拍照 / 相册不连蓝牙只确认在线；图库「连接并投屏」选 WiFi 版不连蓝牙、弹层挂 WiFi版角标；共用 `utils/wifi-status.js`。AI 对话入口未接。
 - [2026-10-27 WiFi版投屏与设备详情](changes/2026-10-27-WiFi版投屏与设备详情.md)：`main-wifi` 分支，STEP 3。WiFi 版投屏：预览页构图后去 WiFi 投屏结果页，`POST /api/device/play` 上传（真实上传进度）→ SENT → WS `play.result`（按 msgid 缓存、3 秒状态查询兜底）→ 终态，TIMEOUT 3 秒修正窗口、90 秒结果未知；新增 WiFi 设备详情页（IoT 设备信息、`device.status` 自动重查、投屏 / 刷新状态），蓝牙详情页遇 WiFi 版转过去；我的设备 WiFi 卡投屏改为真实投屏。投屏记录未写。
 - [2026-10-27 我的设备按WiFi版蓝牙版分组](changes/2026-10-27-我的设备按WiFi版蓝牙版分组.md)：`main-wifi` 分支。按产品 broadcastId（`IJ_*` / `IJ_`）认 WiFi 版，「我的设备」分 WiFi版 / 蓝牙版两组；蓝牙卡不变；WiFi 卡状态取 IoT `/api/device/info`（在线 / 离线 / 状态未知，在线显示信号与电量），按钮「投屏」（STEP 3 未接，先提示）+「刷新状态」；选相框模式不让选 WiFi 版。
 - [2026-10-27 WiFi版配网按入网流程补齐](changes/2026-10-27-WiFi版配网按入网流程补齐.md)：`main-wifi` 分支。按设备入网流程：第 2 步 WiFi → `mqtt_config` → 国家码 `01`（pending 优先、失败换 msgid 重试一次、不阻塞）→ 连接 WiFi 后释放蓝牙；第 3 步老服务绑定（失败不轮询）；第 4 步带 since 轮询在线（一直 503 提示稍后重试）；msgid 16 位、回执超时 5 秒。产品确认：设备ID 统一加冒号（绑定、搜索列表显示），传给后端查询的不加冒号（规格查询不再补查带冒号写法）；MQTT 参数改调 IoT `GET /api/device/provisioning/mqtt` 现取，前端 config 不再存凭据。

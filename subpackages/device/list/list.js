@@ -11,28 +11,13 @@ const deviceName = require('../../../utils/device-name')
 const deviceIdentity = require('../../../utils/device-identity')
 const fold = require('../../../utils/fold-adapt')
 const broadcastMatch = require('../../../utils/broadcast-match')
-const iotApi = require('../../../utils/iot-api')
-const signal = require('../../../utils/signal')
+const wifiStatus = require('../../../utils/wifi-status')
 
 const app = getApp()
 const RECENTLY_BOUND_DEVICE_KEY = 'recentlyBoundDeviceId'
 
-// WiFi 版设备卡的状态字段（2026-10-27）：不走蓝牙，在线 / 信号 / 电量都来自 IoT GET /api/device/info。
-//   wifiStatus：loading 查询中 / online 在线 / offline 离线 / unknown 查不到（403 未绑定、503、网络失败等）
-const WIFI_STATUS_TEXT = { loading: '查询中', online: '在线', offline: '离线', unknown: '状态未知' }
-
-function wifiStatusFields(status, info) {
-  const shadow = (info && info.shadow) || {}
-  const online = status === 'online'
-  const battery = online ? batteryUtil.normalizeBattery(shadow.battery) : null
-  return {
-    wifiStatus: status,
-    wifiStatusText: WIFI_STATUS_TEXT[status] || WIFI_STATUS_TEXT.unknown,
-    wifiSignalLevel: online ? signal.rssiToLevel(shadow.wifiRssi) : 0,
-    wifiBatteryText: battery === null ? '' : `${battery}%`,
-    wifiBatteryIcon: battery === null ? '' : batteryUtil.getBatteryIcon(battery)
-  }
-}
+// WiFi 版设备卡的状态字段（2026-10-27）：来自 utils/wifi-status.js（与首页设备卡共用）
+const wifiStatusFields = wifiStatus.statusFields
 
 // 上一次查到的 WiFi 状态字段：重新拉列表时先沿用，查询回来再替换，避免每次进页面都闪「查询中」
 function previousWifiFields(previous) {
@@ -198,13 +183,8 @@ Page(fold.adapt({
       const key = String(device.id)
       const seq = (seqs[key] || 0) + 1
       seqs[key] = seq
-      return iotApi
-        .getDeviceInfo(device.productDeviceId || device.deviceNo, { showError: false })
-        .then(info => wifiStatusFields(info && info.online ? 'online' : 'offline', info))
-        .catch(error => {
-          console.warn('[我的设备] WiFi 设备状态查询失败', key, error && error.code, error && error.message)
-          return wifiStatusFields('unknown')
-        })
+      return wifiStatus
+        .fetchFields(device)
         .then(fields => {
           if (seqs[key] !== seq) {
             return
