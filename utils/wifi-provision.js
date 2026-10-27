@@ -52,6 +52,7 @@ function getJob() {
 }
 
 // MQTT 配置：每次配网现调 IoT GET /api/device/provisioning/mqtt（2026-10-27，凭据不再写在前端 config）。
+// 不缓存：不存 Storage、不放模块变量，只在 run() 局部变量里活到 mqtt_config 发出为止。
 // 返回 { host, port, usr, pwd }；四项缺任何一项都按取不到处理（reject），由调用方停在第 2 步。
 async function getMqttConfig() {
   const data = await iotApi.getProvisioningMqtt({ showError: false })
@@ -281,6 +282,9 @@ async function run(job, hooks) {
     } catch (error) {
       log(`失败 ${(error && error.message) || error}`)
       throw provisionError(1, '设备未响应网络配置，请重试', error)
+    } finally {
+      // 发出去（或发送失败）就不再留：后面的日志 / 错误路径都碰不到密码
+      mqttConfig = null
     }
     log(`返回 ${JSON.stringify(mqttAck)}（result=0 为成功）`)
     if (Number(mqttAck && mqttAck.result) !== 0) {

@@ -21,8 +21,10 @@ module.exports = {
   },
 
   // 配网下发给设备的 MQTT 参数：{ host, port, usr, pwd }（2026-10-27 后端提供，凭据不再写在前端）。
-  // 只在配网第 2 步现取现用，不缓存、不落本地；pwd 不进任何日志。
+  // 响应不缓存：请求头要求中间层不缓存，客户端不存 Storage / 全局变量，配网第 2 步现取现用、发完即丢；pwd 不进任何日志。
   getProvisioningMqtt(options) {
-    return iot.get('/api/device/provisioning/mqtt', {}, options)
+    return iot.get('/api/device/provisioning/mqtt', {}, Object.assign({}, options, {
+      header: Object.assign({}, options && options.header, { 'Cache-Control': 'no-cache, no-store', Pragma: 'no-cache' })
+    }))
   }
 }

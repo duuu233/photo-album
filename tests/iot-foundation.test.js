@@ -183,7 +183,7 @@ async function main() {
   {
     const sent = []
     const iotApi = load('utils/iot-api.js', {
-      './iot-request': { get: (url, params) => { sent.push([url, params]); return Promise.resolve({}) } }
+      './iot-request': { get: (url, params, options) => { sent.push([url, params]); sent.lastOptions = options; return Promise.resolve({}) } }
     })
     await iotApi.getDeviceOnline('E3:48:C2:1E:D4:28', 1000)
     await iotApi.getDeviceInfo('e348c21ed428')
@@ -192,6 +192,15 @@ async function main() {
       ['/api/device/info', { deviceNo: 'E348C21ED428' }]
     ], '带冒号 / 小写都转成 12 位大写不带冒号')
     checked('IoT 查询接口的 deviceNo 去冒号')
+
+    sent.length = 0
+    await iotApi.getProvisioningMqtt({ showError: false })
+    assert.equal(sent[0][0], '/api/device/provisioning/mqtt')
+    const opts = JSON.parse(JSON.stringify(sent.lastOptions))
+    assert.equal(opts.showError, false)
+    assert.equal(opts.header['Cache-Control'], 'no-cache, no-store', '配网 MQTT 参数要求不缓存')
+    assert.equal(opts.header.Pragma, 'no-cache')
+    checked('配网 MQTT 参数请求带不缓存请求头')
   }
 
   console.log(`iot-foundation: ${checks} groups passed`)

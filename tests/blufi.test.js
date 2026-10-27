@@ -141,4 +141,14 @@ const arr = frame => Array.from(frame)
   checked('自定义消息 msgid 16 位')
 }
 
+{
+  // 带密码的帧（WiFi 密码 / 自定义数据 mqtt_config）原始字节不交给监听方（2026-10-27：千万不记录密码）
+  const bytes = blufi.utf8Encode('{"pwd":"Secret"}')
+  assert.equal(blufi.txFrameHex(true, blufi.DATA.STA_PASSWORD, bytes), '', 'WiFi 密码帧不给 hex')
+  assert.equal(blufi.txFrameHex(true, blufi.DATA.CUSTOM, bytes), '', '自定义数据帧不给 hex')
+  assert.ok(blufi.txFrameHex(true, blufi.DATA.STA_SSID, blufi.utf8Encode('Home')).length > 0, 'SSID 帧照常给 hex')
+  assert.ok(blufi.txFrameHex(false, blufi.CTRL.SET_OPMODE, [1]).length > 0, '控制帧照常给 hex')
+  checked('带密码的帧不出原始字节')
+}
+
 console.log(`blufi: ${checks} groups passed`)

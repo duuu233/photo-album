@@ -553,6 +553,15 @@ async function setupSession(deviceId) {
   return session.api
 }
 
+// 手机发出的帧里带密码的两类：WiFi 密码（数据帧 STA_PASSWORD）和自定义数据（mqtt_config 含 MQTT 密码）。
+// 这两类帧的原始字节不交给任何监听方（hex 为空、redacted 为 true），日志从源头就拿不到密码。
+function txFrameHex(isData, subtype, bytes) {
+  if (isData && (subtype === DATA.STA_PASSWORD || subtype === DATA.CUSTOM)) {
+    return ''
+  }
+  return toHex(bytes)
+}
+
 function writeFrames(session, isData, subtype, payload) {
   // 串行发送：序号必须严格按发出顺序递增，并发写会让设备收到乱序帧
   const run = session.sending.then(async () => {
@@ -561,8 +570,9 @@ function writeFrames(session, isData, subtype, payload) {
     }
     const frames = encodeFrames(isData, subtype, payload, session.seq, session.frameLimit)
     for (let i = 0; i < frames.length; i++) {
-      // 带上帧类型：日志据此把密码帧（数据帧 STA_PASSWORD）打码，不把 WiFi 密码原文写进日志
-      emit(session, 'frame', { dir: 'tx', hex: toHex(frames[i]), isData, subtype, length: frames[i].length })
+      // 带上帧类型：日志据此显示「密码帧 / 自定义数据帧，内容已隐藏」；这两类帧本身也不带 hex（见 txFrameHex）
+      const hex = txFrameHex(isData, subtype, frames[i])
+      emit(session, 'frame', { dir: 'tx', hex, redacted: !hex, isData, subtype, length: frames[i].length })
       await wxp(wx.writeBLECharacteristicValue, {
         deviceId: session.deviceId,
         serviceId: session.serviceId,
@@ -741,5 +751,6 @@ module.exports = {
   channelFrequency,
   is24GChannel,
   newMsgid,
+  txFrameHex,
   connect
 }
