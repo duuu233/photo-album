@@ -404,8 +404,10 @@ async function main() {
     assert.deepEqual(dev.page.data.wifiList.map(item => item.ssid), ['Home'], '开发版也不列隐藏网络、不出调试字段')
     assert.equal(dev.page.data.showRaw, undefined, '页面不再有调试开关')
     const tpl = fs.readFileSync(path.join(root, 'subpackages/device/wifi-list/wifi-list.wxml'), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
-    assert.ok(/设备附近的2\.4G WiFi/.test(tpl), '列表标题为「设备附近的2.4G WiFi」')
-    assert.ok(/class="wifi-manual-hint"[^>]*bindtap="manualInput"[^>]*>若搜索不到您的wifi，请手动输入</.test(tpl), '提示语下有灰字手动输入入口')
+    // 2026-10-27 去掉页面上的 2.4G 字样：顶部「设备仅支持 2.4G WiFi 配网」提示条删除，标题改为「设备附近的WiFi」
+    assert.ok(/设备附近的WiFi/.test(tpl), '列表标题为「设备附近的WiFi」')
+    assert.ok(!/2\.4G/.test(tpl) && !/wifi-tip/.test(tpl), '页面不再出现 2.4G 提示')
+    assert.ok(/class="wifi-manual-hint"[^>]*bindtap="manualInput"[^>]*>若搜索不到您的wifi，请手动输入</.test(tpl), '顶部有灰字手动输入入口')
     assert.ok(!/showRaw|logs|rawSummary|wifi-debug-log/.test(tpl), '模板里不再有调试内容')
     // 2026-10-26 再调整：「手动输入WiFi名称」不要按钮样式，回到文字样式、居中（原「底部固定按钮」断言随之改写）
     assert.ok(/class="wifi-manual-text"[^>]*bindtap="manualInput"[^>]*>手动输入WiFi名称</.test(tpl), '「手动输入WiFi名称」为文字入口')
