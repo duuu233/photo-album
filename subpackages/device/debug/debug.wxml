@@ -237,4 +237,5 @@
   <canvas type="2d" id="cropCanvas" class="crop-canvas" />
 
   <global-toast id="globalToast"></global-toast>
+  <debug-log></debug-log>
 </view>

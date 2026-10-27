@@ -1,0 +1,16 @@
+<!-- 联调日志浮窗（开发版 / 体验版）：收起时左下角小药丸，展开为日志框（说明见 debug-log.js） -->
+<block wx:if="{{enabled}}">
+  <view wx:if="{{!open}}" class="debug-log-pill" hover-class="none" catchtap="toggle">日志 {{count}}</view>
+  <view wx:else class="debug-log-panel" catchtap="noop" catchtouchmove="noop">
+    <view class="debug-log-head">
+      <text class="debug-log-title">联调日志 {{count}}</text>
+      <text class="debug-log-btn" hover-class="none" catchtap="copy">复制</text>
+      <text class="debug-log-btn" hover-class="none" catchtap="clear">清空</text>
+      <text class="debug-log-btn" hover-class="none" catchtap="toggle">关闭</text>
+    </view>
+    <scroll-view scroll-y class="debug-log-body" scroll-into-view="{{anchor}}">
+      <view wx:if="{{!lines.length}}" class="debug-log-line">（暂无）</view>
+      <text wx:for="{{lines}}" wx:key="id" id="{{item.id}}" class="debug-log-line" user-select>{{item.text}}</text>
+    </scroll-view>
+  </view>
+</block>

@@ -14,8 +14,9 @@ const wifiStatus = require('../../../utils/wifi-status')
 //   · 设备记录：老服务 getDeviceDetail（名称、设备 ID、尺寸、设备图）；
 //   · 状态：IoT GET /api/device/info（在线、最后上线、固件版本、影子：电量 / WiFi 信号与名称 / TF / 国家码 / 最后心跳）；
 //     订阅 WS device.status，上下线时自动重查（只推信号不推详情，文档 1.6）；
-//   · 操作：「投屏」（弹拍照 / 相册 → 预览构图 → WiFi 投屏结果页）、「刷新状态」。
-// 轮播、刷新屏幕、TF、休眠、OTA 等设备控制属于 STEP 5/6，未接；App 也没有删除 / 重新配网操作（设备入网流程 2.2）。
+//   · 操作：「投屏」（弹拍照 / 相册 → 预览构图 → WiFi 投屏结果页）、「轮播设置」（V1.4 更新说明 1.5，取代原「刷新状态」，
+//     进 wifi-slideshow 页；状态随进页与 WS device.status 自动重查）。
+// 刷新屏幕、TF、休眠、OTA 等设备控制属于 STEP 5/6，未接；App 也没有删除 / 重新配网操作（设备入网流程 2.2）。
 function plainDeviceNo(value) {
   return String(value || '').replace(/[:\-\s]/g, '').toUpperCase()
 }
@@ -46,7 +47,7 @@ function statusFields(info) {
     return { status: 'unknown', statusText: '状态未知', rows: [] }
   }
   const shadow = info.shadow || {}
-  const status = wifiStatus.deviceState(info) // online / sleeping / offline（休眠中 online=false，电量 / 信号同离线不显示）
+  const status = wifiStatus.deviceState(info) // online / sleeping / shutdown / offline（非在线时电量 / 信号不显示）
   const online = status === 'online'
   const battery = batteryUtil.normalizeBattery(shadow.battery)
   const rssi = Number(shadow.wifiRssi)
@@ -71,7 +72,7 @@ Page(fold.adapt({
     loading: true,
     loadError: false,
     device: null,
-    status: 'loading', // loading / online / sleeping / offline / unknown
+    status: 'loading', // loading / online / sleeping / shutdown / offline / unknown
     statusText: '查询中',
     rows: [],
     showMediaSheet: false,
@@ -160,13 +161,12 @@ Page(fold.adapt({
     this.setData(statusFields(info))
   },
 
-  // 「刷新状态」
-  refreshTap() {
-    if (this.data.status === 'loading') {
+  // 「轮播设置」：查询离线也能看，不拦状态；保存时由接口裁决
+  openSlideshow() {
+    if (!this.data.device) {
       return
     }
-    this.setData({ status: 'loading', statusText: '查询中' })
-    this.refreshStatus()
+    wx.navigateTo({ url: `/subpackages/device/wifi-slideshow/wifi-slideshow?id=${this.data.id}` })
   },
 
   // 「投屏」：离线 / 休眠先拦；在线 / 状态未知照常弹拍照 / 相册（未知时让接口裁决，离线会返回 4041）

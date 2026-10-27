@@ -165,12 +165,8 @@
   color: #eb5f1b;
 }
 
-.wifi-detail-action.refresh-action {
+.wifi-detail-action.slideshow-action {
   color: #0e9f87;
-}
-
-.wifi-detail-action.is-busy {
-  opacity: 0.5;
 }
 
 .wifi-detail-action-divider {

@@ -1,7 +1,8 @@
 // 我的设备按 WiFi 版 / 蓝牙版分组（2026-10-27）：
 //   ① 已绑定记录按所属产品 broadcastId 认 WiFi 版（IJ_* 模板 / IJ_ 前缀），其余按蓝牙版；
 //   ② WiFi 版状态来自 IoT GET /api/device/info：在线 / 离线 / 查不到（状态未知），在线才显示信号格与电量；
-//   ③ WiFi 版按钮：投屏不连蓝牙、直接弹拍照 / 相册（离线先拦）；刷新状态只重查这一台；点卡片进 WiFi 详情；选相框模式不让选 WiFi 版；
+//   ③ WiFi 版按钮：投屏不连蓝牙、直接弹拍照 / 相册（离线先拦）；轮播设置进 WiFi 轮播页（V1.4 取代原「刷新状态」，不拦离线）；
+//      点卡片进 WiFi 详情；选相框模式不让选 WiFi 版；
 //   ④ 模板：两组标题按数量显示，WiFi 卡用 WiFi 按钮，蓝牙卡仍是「投屏 / 连接」原样。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -120,15 +121,14 @@ async function main() {
     assert.equal(byId('1').wifiBatteryText, '86%')
     state.hang = false
 
-    state.infoCalls.length = 0
-    page.refreshWifiDevice({ currentTarget: { dataset: { id: '3' } } })
-    assert.equal(byId('3').wifiStatus, 'loading', '刷新时先转圈')
-    await flush()
-    assert.deepEqual(plain(state.infoCalls), [['D0:CF:13:F0:2F:F8', false]], '刷新状态只查这一台')
-    page.refreshWifiDevice({ currentTarget: { dataset: { id: '2' } } })
-    await flush()
-    assert.equal(state.infoCalls.length, 1, '蓝牙版不走 WiFi 刷新')
-    checked('刷新状态只重查这一台')
+    // V1.4 更新说明 1.5：原「刷新状态」改为「轮播设置」；状态未知 / 离线也能进（查询只要权限）
+    page.openWifiSlideshow({ currentTarget: { dataset: { id: '3' } } })
+    assert.equal(state.navs.at(-1), '/subpackages/device/wifi-slideshow/wifi-slideshow?id=3', '进 WiFi 轮播设置页')
+    const navCount = state.navs.length
+    page.openWifiSlideshow({ currentTarget: { dataset: { id: '2' } } })
+    assert.equal(state.navs.length, navCount, '蓝牙版不走 WiFi 轮播页')
+    assert.equal(typeof page.refreshWifiDevice, 'undefined', '「刷新状态」按钮已撤掉')
+    checked('轮播设置进 WiFi 轮播页')
 
     page.startWifiProjection({ currentTarget: { dataset: { id: '1' } } })
     assert.equal(page.data.showMediaSheet, true, '在线的 WiFi 版点投屏直接弹拍照 / 相册')
@@ -164,7 +164,8 @@ async function main() {
     assert.ok(/wx:if="\{\{bleCount\}\}" class="device-group-title/.test(tpl), '蓝牙版标题按数量显示')
     assert.ok(tpl.indexOf('WiFi版</text>') < tpl.indexOf('蓝牙版</text>'), 'WiFi 版在前')
     const wifiCard = tpl.slice(tpl.indexOf('wx:if="{{item.isWifi}}"'), tpl.indexOf('蓝牙版</text>'))
-    assert.ok(/catchtap="startWifiProjection"/.test(wifiCard) && /catchtap="refreshWifiDevice"/.test(wifiCard), 'WiFi 卡：投屏 + 刷新状态')
+    assert.ok(/catchtap="startWifiProjection"/.test(wifiCard) && /catchtap="openWifiSlideshow"/.test(wifiCard), 'WiFi 卡：投屏 + 轮播设置')
+    assert.ok(/<text>轮播设置<\/text>/.test(wifiCard) && wifiCard.indexOf('刷新状态</text>') === -1, '按钮文案改为轮播设置')
     assert.equal(wifiCard.indexOf('toggleConnection'), -1, 'WiFi 卡没有蓝牙连接 / 断开')
     const bleCard = tpl.slice(tpl.indexOf('wx:if="{{!item.isWifi}}"'))
     assert.ok(/catchtap="startProjection"/.test(bleCard) && /catchtap="toggleConnection"/.test(bleCard), '蓝牙卡按钮不变：投屏 + 连接 / 断开')

@@ -112,13 +112,13 @@
   white-space: nowrap;
 }
 
-.wifi-result-row.is-SUCCESS .wifi-result-row__text {
+/* V1.4 起不等 ack：SENT（已发送刷屏）/ UPLOADED（只上传）都算这一张成功 */
+.wifi-result-row.is-SENT .wifi-result-row__text,
+.wifi-result-row.is-UPLOADED .wifi-result-row__text {
   color: #0e9f87;
 }
 
-.wifi-result-row.is-FAILED .wifi-result-row__text,
-.wifi-result-row.is-TIMEOUT .wifi-result-row__text,
-.wifi-result-row.is-UNKNOWN .wifi-result-row__text {
+.wifi-result-row.is-FAILED .wifi-result-row__text {
   color: #e5533d;
 }
 

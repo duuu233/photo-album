@@ -8,6 +8,14 @@ const config = require('./config')
 const toast = require('./toast')
 const http = require('./request')
 const iotErrors = require('./iot-errors')
+const debugLog = require('./debug-log')
+
+// 联调日志（开发版 / 体验版左下角浮窗）：单测沙箱里可能没有 debug-log，取不到就不记
+function trace() {
+  if (debugLog && typeof debugLog.add === 'function') {
+    debugLog.add.apply(null, arguments)
+  }
+}
 
 // 网络层失败（断网 / 超时）的静默重试：只给 GET。设备控制、投屏等 POST 有副作用，重发可能重复下发。
 const GET_RETRY_MAX = 2
@@ -119,7 +127,18 @@ function request(options) {
     timeout: options.timeout || config.timeout
   }
   const retries = isGet && options.retry !== false ? GET_RETRY_MAX : 0
-  return sendWithRetry(sendOptions, retries).catch(error => handleError(error, options))
+  const startedAt = Date.now()
+  const label = `[IoT] ${method} ${appendQuery(options.url, query)}${isGet ? '' : ' 参数'}`
+  return sendWithRetry(sendOptions, retries).then(
+    data => {
+      trace(label, isGet ? '' : sendOptions.data, `→ 成功 ${Date.now() - startedAt}ms 返回`, data)
+      return data
+    },
+    error => {
+      trace(label, isGet ? '' : sendOptions.data, `→ 失败 ${Date.now() - startedAt}ms`, error && error.code, error && error.message)
+      return handleError(error, options)
+    }
+  )
 }
 
 // multipart 上传（2026-10-27，WiFi 投屏 POST /api/device/play）：wx.uploadFile，不做网络重试（重传会重复投屏）。
@@ -132,6 +151,8 @@ function upload(url, options) {
   if (token && !header.userToken) {
     header.userToken = token
   }
+  const startedAt = Date.now()
+  const label = `[IoT] 上传 ${url} 文件 ${opts.filePath} 参数`
   return new Promise((resolve, reject) => {
     const task = wx.uploadFile({
       url: buildUrl(url),
@@ -169,7 +190,16 @@ function upload(url, options) {
         }
       })
     }
-  }).catch(error => handleError(error, opts))
+  }).then(
+    data => {
+      trace(label, opts.formData, `→ 成功 ${Date.now() - startedAt}ms 返回`, data)
+      return data
+    },
+    error => {
+      trace(label, opts.formData, `→ 失败 ${Date.now() - startedAt}ms`, error && error.code, error && error.message)
+      return handleError(error, opts)
+    }
+  )
 }
 
 module.exports = {

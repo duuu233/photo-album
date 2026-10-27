@@ -681,7 +681,8 @@ module.exports = {
     })
   },
 
-  // 基础文件上传（与设备业务无关，如头像等通用文件），form-data 字段名 fileParam
+  // 基础文件上传（与设备业务无关，如头像等通用文件），form-data 字段名 fileParam。
+  // loading:false / showError:false 供页面自管进度与报错（WiFi 投屏写相册记录时用，见 addWifiAlbumRecord）
   setFileUpload(options = {}) {
     const filePaths = normalizeFilePaths(
       options.filePaths || options.files || options.filePath
@@ -693,9 +694,36 @@ module.exports = {
       name: 'fileParam',
       formData: options.formData,
       mock: false,
-      loading: true,
-      loadingText: '上传中'
+      loading: options.loading !== false,
+      loadingText: '上传中',
+      showError: options.showError
     })
+  },
+
+  // WiFi 版投屏后写老服务相册记录（V1.4 更新说明 1.4 / 2.4 / 9.1：相册数据由 App 调老服务维护，
+  // IoT 服务不写）。「我的上传」列表、轮播选图（imgUrls）、设备拉的播放列表、删除都认这条记录的 imgBle。
+  //   ① setFileUpload 上传投屏用的那张图 → img（相册缩略图 / 再次投屏用）；
+  //   ② addUserProductImgRecord 建记录：img + imgBle（= 投屏接口返回的 binUrl）+ deviceUploadState=1。
+  // WiFi 版没有槽位，不传 imgIndex。两步都静默（showError:false），失败抛给调用方，由结果页记日志并提示。
+  // ⚠️ 待联调：addUserProductImgRecord 不带 upirId / taskId 时能否新建记录、列表能否按 userProductId 查回来。
+  async addWifiAlbumRecord(data = {}) {
+    const uploadResult = await module.exports.setFileUpload({
+      filePath: data.filePath,
+      loading: false,
+      showError: false
+    })
+    const img = extractUploadUrl(uploadResult)
+    if (!img) {
+      throw new Error('相册图片上传失败')
+    }
+    const record = await module.exports.addUserProductImgRecord({
+      userProductId: data.userProductId,
+      img,
+      imgBle: data.imgBle,
+      deviceUploadState: 1,
+      showError: false
+    })
+    return { img, imgBle: data.imgBle, record }
   },
 
   // —— 用户接口 ——
@@ -1316,7 +1344,8 @@ module.exports = {
   // 批量删除投屏记录（「我的相册」删照片时连同来源记录一并删，否则删掉的照片还会留在列表里）。
   // 后端没有批量删接口，这里串行逐条调用；单条关掉 loading 与自动错误提示——
   // 批量删 10 张会闪 10 次「删除中」、失败时弹 10 条 toast，统一由调用方一次 loading + 一次提示。
-  // 返回 { total, failed }：允许部分失败（设备与相册记录已删成功时不能整体回滚），由调用方决定文案。
+  // 返回 { total, failed, failedIds }：允许部分失败（设备与相册记录已删成功时不能整体回滚），由调用方决定文案。
+  // failedIds（2026-10-27）：WiFi 版删完记录还要删云端 bin，只能删记录真删掉了的那些，见相册页 deleteWifiPhotos。
   deleteProjectionRecords(ids) {
     const list = (Array.isArray(ids) ? ids : [ids]).filter(
       id => id !== undefined && id !== null && id !== ''
@@ -1333,10 +1362,14 @@ module.exports = {
             )
             .then(
               () => result,
-              () => Object.assign(result, { failed: result.failed + 1 })
+              () =>
+                Object.assign(result, {
+                  failed: result.failed + 1,
+                  failedIds: result.failedIds.concat(String(id))
+                })
             )
         ),
-      Promise.resolve({ total: list.length, failed: 0 })
+      Promise.resolve({ total: list.length, failed: 0, failedIds: [] })
     )
   }
 }

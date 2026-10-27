@@ -1,0 +1,100 @@
+<!-- WiFi 版轮播设置（说明见 wifi-slideshow.js 文件头） -->
+<view class="mock-root wifi-slideshow-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
+  </view>
+
+  <page-nav title="轮播设置"></page-nav>
+
+  <view wx:if="{{loading}}" class="page-loading">
+    <view class="page-loading__spinner"></view>
+    <view class="page-loading__text">加载中…</view>
+  </view>
+
+  <view wx:elif="{{loadError}}" class="mock-content ws-content">
+    <view class="ws-error glass-panel">
+      <view class="ws-error__title">加载失败</view>
+      <view class="ws-error__desc">网络异常或服务出错，请稍后重试。</view>
+      <view class="ws-error__btn" hover-class="none" bindtap="retryLoad">重新加载</view>
+    </view>
+  </view>
+
+  <view wx:else class="mock-content ws-content">
+    <view class="ws-card glass-panel">
+      <view class="ws-head">
+        <text class="ws-title">轮播状态</text>
+        <text class="ws-state {{running ? 'is-on' : ''}}">{{running ? '轮播中' : (configured ? '已暂停' : '未设置')}}</text>
+      </view>
+      <view wx:if="{{updatedAt}}" class="ws-sub">最后设置 {{updatedAt}}</view>
+
+      <view class="ws-title ws-title--gap">轮播方式</view>
+      <view class="ws-segment">
+        <view class="ws-segment__item {{form.updateType === 2 ? 'is-active' : ''}}" hover-class="none" data-value="2" bindtap="chooseUpdateType">间隔时间</view>
+        <view class="ws-segment__item {{form.updateType === 1 ? 'is-active' : ''}}" hover-class="none" data-value="1" bindtap="chooseUpdateType">固定时间</view>
+      </view>
+
+      <block wx:if="{{form.updateType === 2}}">
+        <picker mode="time" value="{{form.beginTime}}" bindchange="changeBeginTime">
+          <view class="ws-row"><text>开始时间</text><text class="ws-row__value">{{form.beginTime}}</text></view>
+        </picker>
+        <picker mode="time" value="{{form.endTime}}" bindchange="changeEndTime">
+          <view class="ws-row"><text>结束时间</text><text class="ws-row__value">{{form.endTime}}</text></view>
+        </picker>
+        <picker mode="selector" range="{{intervalLabels}}" value="{{intervalIndex}}" bindchange="changeInterval">
+          <view class="ws-row"><text>每隔</text><text class="ws-row__value">{{intervalLabels[intervalIndex]}} 换一张</text></view>
+        </picker>
+      </block>
+      <block wx:else>
+        <picker mode="selector" range="{{dayOptions}}" value="{{form.updateDays - 1}}" bindchange="changeDays">
+          <view class="ws-row"><text>每隔</text><text class="ws-row__value">{{form.updateDays}} 天</text></view>
+        </picker>
+        <view class="ws-row ws-row--top">
+          <text>更新时间</text>
+          <view class="ws-times">
+            <view wx:for="{{form.updateTimeList}}" wx:key="*this" class="ws-time" hover-class="none" data-value="{{item}}" bindtap="removeTime">{{item}} ×</view>
+            <picker mode="time" value="{{newTime}}" bindchange="addTime">
+              <view class="ws-time ws-time--add">+ 添加</view>
+            </picker>
+          </view>
+        </view>
+      </block>
+
+      <view class="ws-title ws-title--gap">播放顺序</view>
+      <view class="ws-segment">
+        <view class="ws-segment__item {{form.mode === 1 ? 'is-active' : ''}}" hover-class="none" data-value="1" bindtap="chooseMode">顺序播放</view>
+        <view class="ws-segment__item {{form.mode === 2 ? 'is-active' : ''}}" hover-class="none" data-value="2" bindtap="chooseMode">随机播放</view>
+      </view>
+
+      <view class="ws-row ws-row--switch">
+        <text>轮播后休眠</text>
+        <switch checked="{{form.idle === 0}}" color="#ff6a20" bindchange="toggleIdle" />
+      </view>
+    </view>
+
+    <view class="ws-card glass-panel">
+      <view class="ws-head">
+        <text class="ws-title">轮播照片</text>
+        <view wx:if="{{tiles.length}}" class="ws-select-all" hover-class="none" bindtap="toggleAll">{{allSelected ? '取消全选' : '全选'}}</view>
+      </view>
+      <view class="ws-sub">从「我的上传」选择，按选择顺序轮播；不选则轮播全部照片。已选 {{selectedCount}} 张</view>
+      <view wx:if="{{selectionHint}}" class="ws-hint">{{selectionHint}}</view>
+
+      <view wx:if="{{photosError}}" class="ws-empty">「我的上传」加载失败，可直接保存（轮播全部照片）或返回重试</view>
+      <view wx:elif="{{!tiles.length}}" class="ws-empty">还没有可轮播的照片，先投屏几张吧</view>
+      <view wx:else class="ws-grid">
+        <view wx:for="{{tiles}}" wx:key="id" class="ws-tile {{item.order ? 'is-selected' : ''}}" hover-class="none" data-url="{{item.url}}" bindtap="toggleTile">
+          <image wx:if="{{item.thumb}}" class="ws-tile__img" src="{{item.thumb}}" mode="aspectFill" lazy-load></image>
+          <view class="ws-tile__badge">{{item.order || ''}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{!loading && !loadError}}" class="ws-actions">
+    <view wx:if="{{running}}" class="ws-text-btn {{stopping ? 'is-busy' : ''}}" hover-class="none" bindtap="stop">{{stopping ? '暂停中…' : '暂停轮播'}}</view>
+    <view class="ws-primary {{saving ? 'is-busy' : ''}}" hover-class="none" bindtap="save">{{saving ? '保存中…' : '保存并开始轮播'}}</view>
+  </view>
+
+  <global-toast id="globalToast"></global-toast>
+  <debug-log></debug-log>
+</view>

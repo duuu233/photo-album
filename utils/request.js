@@ -2,6 +2,7 @@ const config = require('./config')
 const mock = require('./mock')
 const toast = require('./toast')
 const language = require('./language')
+const debugLog = require('./debug-log')
 
 // 正式版(release)强制禁用 mock，防止本地模拟接口把假数据带到线上；取不到环境信息时按正式版处理（最保守）
 let isReleaseEnv = true
@@ -390,12 +391,16 @@ function request(rawOptions) {
   }
 
   // retry:false：网络失败不静默重试、立即按失败处理（如 WiFi 产品规格查询：失败就按「未知设备」展示，见 api.getProductByDevice）
+  // 联调日志（开发版 / 体验版）：结束时记一行「方法 路径 参数 → 结果 耗时」；路径不带公共 query（里面有 userToken）
+  const startedAt = Date.now()
   return requestWithRetry(sendOptions, options.retry === false ? 0 : NETWORK_RETRY_MAX)
     .then(res => {
+      debugLog.add(`[HTTP] ${method} ${options.url} 参数`, data, `→ 成功 ${Date.now() - startedAt}ms 返回`, res)
       done()
       return res
     })
     .catch(error => {
+      debugLog.add(`[HTTP] ${method} ${options.url} 参数`, data, `→ 失败 ${Date.now() - startedAt}ms`, error && error.code, error && error.message)
       done()
       return handleBusinessError(error, options)
     })
@@ -605,6 +610,7 @@ function upload(rawOptions) {
       })
     })
 
+  const startedAt = Date.now()
   return filePaths
     .reduce((promise, filePath) => {
       return promise.then(results =>
@@ -612,10 +618,12 @@ function upload(rawOptions) {
       )
     }, Promise.resolve([]))
     .then(results => {
+      debugLog.add(`[HTTP] 上传 ${options.url} 文件 ${filePaths.join(',')} 参数`, query, `→ 成功 ${Date.now() - startedAt}ms 返回`, results)
       done()
       return filePaths.length === 1 ? results[0] : results
     })
     .catch(error => {
+      debugLog.add(`[HTTP] 上传 ${options.url} 文件 ${filePaths.join(',')} → 失败 ${Date.now() - startedAt}ms`, error && error.code, error && error.message)
       done()
       return handleBusinessError(error, options)
     })

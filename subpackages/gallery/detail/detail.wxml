@@ -90,4 +90,5 @@
   ></device-picker-sheet>
 
   <global-toast id="globalToast"></global-toast>
+  <debug-log></debug-log>
 </view>

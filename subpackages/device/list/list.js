@@ -172,7 +172,7 @@ Page(fold.adapt({
     await this.refreshConnectedBattery()
   },
 
-  // 查 WiFi 版设备的在线 / 信号 / 电量（IoT GET /api/device/info，一次拿全）。传 id 只查这一台（「刷新状态」按钮）。
+  // 查 WiFi 版设备的在线 / 信号 / 电量（IoT GET /api/device/info，一次拿全）。传 id 只查这一台。
   // 每台各自带序号，旧请求晚到不覆盖新结果；失败（403 未绑定 / 503 / 网络）显示「状态未知」，不弹错误。
   refreshWifiStatus(onlyId) {
     const targets = (this.data.devices || []).filter(item =>
@@ -198,19 +198,15 @@ Page(fold.adapt({
     }))
   },
 
-  // WiFi 版「刷新状态」：重查这一台的在线 / 信号 / 电量
-  refreshWifiDevice(e) {
+  // WiFi 版「轮播设置」（V1.4 更新说明 1.5，取代原「刷新状态」）：进 WiFi 轮播设置页。
+  // 查询只要权限、离线也能看，所以这里不拦离线；保存时由接口裁决（离线 4041）。
+  openWifiSlideshow(e) {
     const id = e.currentTarget.dataset.id
     const device = this.data.devices.find(item => item.id === id)
-    if (!device || !device.isWifi || device.wifiStatus === 'loading') {
+    if (!device || !device.isWifi) {
       return
     }
-    this.setData({
-      devices: this.data.devices.map(item =>
-        item.id === id ? Object.assign({}, item, wifiStatusFields('loading')) : item
-      )
-    })
-    this.refreshWifiStatus(id)
+    wx.navigateTo({ url: `/subpackages/device/wifi-slideshow/wifi-slideshow?id=${device.id}` })
   },
 
   // WiFi 版「投屏」（STEP 3）：不连蓝牙，直接弹「拍照 / 相册」；选图后进同一个预览页构图，

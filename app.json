@@ -13,7 +13,8 @@
         "wifi-list/wifi-list",
         "wifi-config/wifi-config",
         "wifi-provision/wifi-provision",
-        "wifi-detail/wifi-detail"
+        "wifi-detail/wifi-detail",
+        "wifi-slideshow/wifi-slideshow"
       ]
     },
     {
@@ -97,7 +98,8 @@
     }
   },
   "usingComponents": {
-    "global-toast": "/components/toast/toast"
+    "global-toast": "/components/toast/toast",
+    "debug-log": "/components/debug-log/debug-log"
   },
   "style": "v2",
   "componentFramework": "glass-easel",

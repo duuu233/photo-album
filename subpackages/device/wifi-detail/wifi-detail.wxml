@@ -56,9 +56,10 @@
           <text>投屏</text>
         </view>
         <view class="wifi-detail-action-divider"></view>
-        <view class="wifi-detail-action refresh-action {{status === 'loading' ? 'is-busy' : ''}}" hover-class="none" bindtap="refreshTap">
-          <image class="wifi-detail-action__icon" src="/assets/images/refresh-icon.png" mode="aspectFit"></image>
-          <text>刷新状态</text>
+        <!-- V1.4 更新说明 1.5：原「刷新状态」改为「轮播设置」；状态随进页与 WS device.status 自动重查 -->
+        <view class="wifi-detail-action slideshow-action" hover-class="none" bindtap="openSlideshow">
+          <image class="wifi-detail-action__icon" src="/assets/images/device-detail-icon01.png" mode="aspectFit"></image>
+          <text>轮播设置</text>
         </view>
       </view>
     </block>
@@ -92,4 +93,5 @@
   </view>
 
   <global-toast id="globalToast"></global-toast>
+  <debug-log></debug-log>
 </view>

@@ -1,3 +1,4 @@
+const api = require('../../../utils/api')
 const system = require('../../../utils/system')
 const fold = require('../../../utils/fold-adapt')
 const dithering = require('../../../utils/dithering')
@@ -5,10 +6,14 @@ const wifiProjection = require('../../../utils/wifi-projection')
 const config = require('../../../utils/config')
 
 // WiFi 版投屏结果页（2026-10-27，对接进度 STEP 3）：预览页构图导出后 redirectTo 到这里（蓝牙版去 result 页）。
-// 逐张调 utils/wifi-projection.projectOne：上传进度条 0~100（真实上传进度），之后按阶段文案推进
-//（图片处理中 → 指令已下发 → 屏幕即将刷新 → 设备刷屏中 → 终态）。多张按顺序一张一张投，每张走完再投下一张。
-// 结束后：全部成功只给「完成」；有失败 / 超时 / 结果未知给「重试未成功的」+「完成」。
-// 投屏记录（setUserProductUpload / 相册归属）WiFi 版尚未确定口径（评审回复：需产品 / 老服务确认），本页不写记录。
+// 逐张调 utils/wifi-projection.projectOne：上传进度条 0~100（真实上传进度）→ 图片处理中 → 接口返回即结束。
+// V1.4（docs/wifi/XT相框通讯协议_V1.4_更新说明.md 第二节）起不再等设备 ack：返回 SENT 就提示「已发送，屏幕即将刷新」，
+// 设备真正的成功 / 失败由服务端写消息通知。
+// 多张按顺序一张一张传：本轮最后一张 refresh=true（刷屏），前面的 refresh=false（只上传、返回 UPLOADED、不刷屏），
+// 整批只刷一次屏（更新说明 2.4）。重试时同样按「本轮最后一张刷屏」。
+// 每张拿到 binUrl 后写老服务相册记录（api.addWifiAlbumRecord，img + imgBle），「我的上传」、轮播选图、删除都靠它；
+// 写记录失败不算投屏失败，只在这一张的文案后注明「未存入我的上传」并记日志。
+// 结束后：全部成功只给「完成」；有失败给「重试未成功的」+「完成」。
 // 投屏日志（2026-10-27，与当初配网日志同款）：开发版 / 体验版在页面下方显示、可一键复制；正式版不显示，只打控制台 [WiFi投屏]。
 // 本页记设备信息（尺寸 / 旋转字段，排查横竖向用）与每张图上传前的像素尺寸、文件大小；接口与 WS 过程由 projectOne 的 onLog 给出。
 // 重试不清空，一次进页面的全部过程都在一份日志里。
@@ -44,6 +49,19 @@ function describeFile(filePath) {
   })
   return Promise.all([imageInfo, fileSize]).then(([size, bytes]) => `${size}，${bytes}`)
 }
+// SENT（已下发刷屏）与 UPLOADED（只上传）都算这一张成功
+function isSent(status) {
+  return status === 'SENT' || status === 'UPLOADED'
+}
+
+// 结束文案：全部成功按张数给「已发送，屏幕即将刷新」；部分成功报张数；全失败沿用最后一张的失败原因
+function doneText(successCount, total, lastText) {
+  if (successCount === total) {
+    return total > 1 ? `已发送 ${total} 张，屏幕即将刷新` : '已发送，屏幕即将刷新'
+  }
+  return successCount ? `成功 ${successCount} 张，${total - successCount} 张未成功` : lastText
+}
+
 function imageSrc(image) {
   return (image && (image.tempFilePath || image.url)) || ''
 }
@@ -81,7 +99,7 @@ Page(fold.adapt({
     total: 0,
     stageText: '准备投屏',
     progress: 0,
-    items: [], // [{ key, src, status: pending/running/SUCCESS/FAILED/TIMEOUT/UNKNOWN, text }]
+    items: [], // [{ key, src, status: pending / running / SENT / UPLOADED / FAILED, text }]
     successCount: 0,
     retryable: false,
     showLog: false,
@@ -151,7 +169,26 @@ Page(fold.adapt({
     this.setData({ [`items[${index}]`]: item })
   },
 
-  // 按顺序投 indexes 里的这些张
+  // 写老服务相册记录（img + imgBle）。失败只记日志、返回 false，不影响投屏结果
+  async saveAlbumRecord(filePath, binUrl) {
+    const device = this.device || {}
+    const userProductId = device.userProductId || device.id
+    if (!binUrl || !userProductId) {
+      this.appendLog(`相册记录：跳过（${binUrl ? '' : '接口没返回 binUrl'}${userProductId ? '' : ' 设备没有 userProductId'}）`)
+      return false
+    }
+    this.appendLog(`接口【写相册记录】setFileUpload + addUserProductImgRecord 参数 ${JSON.stringify({ userProductId, imgBle: binUrl })}`)
+    try {
+      const saved = await api.addWifiAlbumRecord({ userProductId, filePath, imgBle: binUrl })
+      this.appendLog(`返回 img=${saved.img}`)
+      return true
+    } catch (error) {
+      this.appendLog(`失败 ${(error && (error.message || error.errMsg)) || error}`)
+      return false
+    }
+  },
+
+  // 按顺序投 indexes 里的这些张：本轮最后一张刷屏，前面的只上传
   async run(indexes) {
     this.setData({ phase: 'running', retryable: false })
     if (wx.setKeepScreenOn) {
@@ -166,13 +203,15 @@ Page(fold.adapt({
         return
       }
       const index = indexes[n]
+      const refresh = n === indexes.length - 1
       this.setData({ current: index, progress: 0, stageText: '图片上传中' })
       this.setItem(index, { status: 'running', text: '投屏中' })
       let result
+      let filePath = ''
       try {
         const image = this.images[index]
-        this.appendLog(`—— 第 ${index + 1} / ${this.images.length} 张 ——`)
-        const filePath = await resolveLocalFile(image)
+        this.appendLog(`—— 第 ${index + 1} / ${this.images.length} 张${refresh ? '（本轮最后一张，刷屏）' : '（只上传，不刷屏）'} ——`)
+        filePath = await resolveLocalFile(image)
         if (this.data.showLog) {
           this.appendLog(
             `图片：${filePath}，取景 ${image.exportOrientation || '-'}，导出角 ${image.exportRotation === undefined ? '-' : image.exportRotation}°，` +
@@ -184,6 +223,7 @@ Page(fold.adapt({
           deviceNo,
           filePath,
           type,
+          refresh,
           isCancelled: () => this.unloaded,
           onLog: text => this.appendLog(text),
           onStage: ({ text, progress }) => {
@@ -199,28 +239,39 @@ Page(fold.adapt({
       if (this.unloaded || result.status === 'CANCELLED') {
         return
       }
-      this.setItem(index, { status: result.status, text: result.message || result.text || '' })
-      this.setData({ stageText: result.message || result.text || '' })
+      let text = result.message || result.text || ''
+      if (isSent(result.status)) {
+        this.setData({ stageText: '正在存入我的上传' })
+        const saved = await this.saveAlbumRecord(filePath, result.binUrl)
+        if (this.unloaded) {
+          return
+        }
+        if (!saved) {
+          text = `${text}（未存入我的上传）`
+        }
+      }
+      this.setItem(index, { status: result.status, text })
+      this.setData({ stageText: text })
     }
-    const successCount = this.data.items.filter(item => item.status === 'SUCCESS').length
+    const successCount = this.data.items.filter(item => isSent(item.status)).length
     const total = this.data.items.length
     this.setData({
       phase: 'done',
       successCount,
       retryable: successCount < total,
-      stageText: successCount === total ? '投屏成功' : successCount ? `成功 ${successCount} 张，${total - successCount} 张未成功` : this.data.stageText
+      stageText: doneText(successCount, total, this.data.stageText)
     })
     if (wx.setKeepScreenOn) {
       wx.setKeepScreenOn({ keepScreenOn: false })
     }
   },
 
-  // 重试未成功的（失败 / 超时 / 结果未知）。超时已在 projectOne 里等过 3 秒并查过一次最终状态，这里可直接重投
+  // 重试未成功的（接口失败）：同样按「本轮最后一张刷屏」
   retryFailed() {
     if (this.data.phase !== 'done') {
       return
     }
-    const indexes = this.data.items.filter(item => item.status !== 'SUCCESS').map(item => item.key)
+    const indexes = this.data.items.filter(item => !isSent(item.status)).map(item => item.key)
     if (indexes.length) {
       this.appendLog(`重试未成功的：第 ${indexes.map(i => i + 1).join('、')} 张`)
       this.run(indexes)

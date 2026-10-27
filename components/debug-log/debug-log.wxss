@@ -1,0 +1,65 @@
+/* 联调日志浮窗：固定在左下角，盖在页面之上（含底部按钮栏），药丸尽量小、半透明，不挡操作 */
+.debug-log-pill {
+  position: fixed;
+  left: 16rpx;
+  bottom: calc(env(safe-area-inset-bottom) + 220rpx);
+  z-index: 9998;
+  padding: 8rpx 18rpx;
+  color: #ffffff;
+  background: rgba(37, 40, 45, 0.62);
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.debug-log-panel {
+  position: fixed;
+  left: 16rpx;
+  right: 16rpx;
+  bottom: calc(env(safe-area-inset-bottom) + 24rpx);
+  z-index: 9998;
+  display: flex;
+  flex-direction: column;
+  height: 56vh;
+  background: rgba(20, 22, 26, 0.9);
+  border-radius: 20rpx;
+  box-shadow: 0 16rpx 40rpx rgba(0, 0, 0, 0.25);
+}
+
+.debug-log-head {
+  display: flex;
+  align-items: center;
+  gap: 28rpx;
+  padding: 18rpx 24rpx;
+  border-bottom: 1rpx solid rgba(255, 255, 255, 0.12);
+}
+
+.debug-log-title {
+  flex: 1;
+  color: #ffffff;
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.debug-log-btn {
+  color: #ffb27d;
+  font-size: 26rpx;
+}
+
+.debug-log-body {
+  flex: 1;
+  height: 0;
+  padding: 12rpx 20rpx;
+  box-sizing: border-box;
+}
+
+.debug-log-line {
+  display: block;
+  padding: 4rpx 0;
+  color: #d9dde3;
+  font-family: Menlo, Consolas, monospace;
+  font-size: 20rpx;
+  line-height: 1.45;
+  word-break: break-all;
+}

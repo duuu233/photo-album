@@ -11,6 +11,14 @@
 // 单例、按需连接：只有调用 connect() / subscribe() 才会建连（App 启动不自动连，BLE 版用户用不到它）。
 // 已订阅的设备在重连后自动重新订阅。退出登录时 app.clearSession 会调 close()。
 const config = require('./config')
+const debugLog = require('./debug-log')
+
+// 联调日志（开发版 / 体验版左下角浮窗）：单测沙箱里可能没有 debug-log，取不到就不记；心跳 ping / pong 不记
+function trace() {
+  if (debugLog && typeof debugLog.add === 'function') {
+    debugLog.add.apply(null, arguments)
+  }
+}
 
 const HEARTBEAT_MS = 30000
 const RETRY_BASE_MS = 1000
@@ -55,12 +63,16 @@ function emit(type, payload) {
 
 function setState(next, extra) {
   state = next
+  trace(`[WS] 状态 → ${next}`, extra || '')
   emit('state', Object.assign({ state: next }, extra))
 }
 
 function send(message) {
   if (state !== 'open' || !task) {
     return false
+  }
+  if (message && message.type !== 'ping') {
+    trace('[WS] 发 →', message)
   }
   task.send({ data: JSON.stringify(message) })
   return true
@@ -178,6 +190,9 @@ function open() {
     }
     if (!message || !message.type) {
       return
+    }
+    if (message.type !== 'pong') {
+      trace('[WS] 收 ←', message)
     }
     emit('message', message)
     emit(message.type, message)

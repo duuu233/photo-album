@@ -1,3 +1,7 @@
+// 联调日志（开发版 / 体验版）：最先包装 console，后面各模块加载期的日志也能进左下角「日志」浮窗，见 utils/debug-log.js
+const debugLog = require('./utils/debug-log')
+debugLog.install()
+
 const api = require('./utils/api')
 const system = require('./utils/system')
 const deviceBle = require('./utils/device-ble')

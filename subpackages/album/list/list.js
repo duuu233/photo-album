@@ -28,6 +28,12 @@
 //      设备在别处被一键清空过就弹框提示重新上传（见 checkDeviceClearStatus）——它是
 //      UserProduct 侧的状态查询，不属于图库列表链路。
 //
+// WiFi 版设备（2026-10-27，docs/wifi/XT相框通讯协议_V1.4_更新说明.md 第九节）：没有蓝牙、没有槽位 imgIndex，
+//    删除与再次投屏都不连蓝牙，按照片所属设备的类型分开走（见 deleteWifiPhotos / doRetryProjection）：
+//    · 删除 = 先删老服务相册记录，再把删掉的那些记录的 imgBle 交给 IoT POST /api/device/photo/delete 删云端 bin；
+//      同时带 nextImageUrl（相册里剩下的第一张），删到的若正是屏上那张，服务端自动换图；
+//    · 再次投屏 = 确认在线后进预览页，导出后去 WiFi 投屏结果页（会写一条新的相册记录）。
+//
 // ⚠️ 多手机共用一台设备（2026-08-10 下午补）：另一部手机删过图后，本机列表里那条记录还在，
 //    它的槽位在设备上已经空了。此时**删除必须照样能删掉**——设备侧按真实 IMG_MASK 过滤后再发
 //    0x12，空槽位跳过、槽位上换了别的图也照删，后端记录一律删掉。详见 confirmDeleteSelected 第 3 步。
@@ -41,6 +47,9 @@ const activeDevice = require('../../../utils/active-device')
 const uploadLimit = require('../../../utils/upload-limit')
 const toast = require('../../../utils/toast')
 const fold = require('../../../utils/fold-adapt')
+const broadcastMatch = require('../../../utils/broadcast-match')
+const iotApi = require('../../../utils/iot-api')
+const wifiStatus = require('../../../utils/wifi-status')
 
 const app = getApp()
 
@@ -660,6 +669,14 @@ Page(fold.adapt({
       return
     }
 
+    // WiFi 版：没有槽位、不连蓝牙，单独一条链路（见文件头）
+    const owner = this.ownerIfWifi(ids)
+    if (owner) {
+      this.hideDeleteDialog()
+      await this.deleteWifiPhotos(ids, owner)
+      return
+    }
+
     // 1) 只认投屏记录里的 imgIndex。任意一张缺索引就整批终止，绝不按设备掩码/列表顺序猜位置。
     const targets = this.resolveDeleteTargets(ids)
     if (targets.some(item => item.slot < 0)) {
@@ -829,6 +846,83 @@ Page(fold.adapt({
     this.loadPhotos()
   },
 
+  // 照片属于同一台 WiFi 版设备时返回那台设备，其余（蓝牙版 / 跨设备 / 找不到）一律返回 null、不提示，
+  // 交回原蓝牙链路，由 ensureConnectedDevice 照旧提示「只能操作同一台」「未找到所属设备」等
+  ownerIfWifi(ids) {
+    const owners = []
+    ;(ids || []).forEach(id => {
+      const record = this.findRecord(id)
+      const owner = String((record && record.userProductId) || '')
+      if (owners.indexOf(owner) === -1) {
+        owners.push(owner)
+      }
+    })
+    const ownerId = owners.length === 1 ? owners[0] || String(this.data.currentFilter || '') : ''
+    const device = ownerId
+      ? (this.devices || []).filter(item => String(item.userProductId || item.id || '') === ownerId)[0]
+      : null
+    return device && broadcastMatch.isWifiDevice(device) ? device : null
+  },
+
+  // WiFi 版删除（V1.4 更新说明 9.4）：① 老服务删相册记录 → ② IoT 删云端 bin（只删记录真删掉了的那些）。
+  // 两步互不回滚：记录删了但云端没删，设备拉的播放列表也已经不含它（列表读的就是相册记录），只是 OSS 上留个文件。
+  // nextImageUrl 取相册里剩下的第一张：删到屏上当前图时服务端用它换图；删的不是当前图时服务端不动设备。
+  async deleteWifiPhotos(ids, device) {
+    const deviceNo = device.productDeviceId || device.deviceNo
+    wx.showLoading({ title: '删除中', mask: true })
+    let recordResult
+    try {
+      recordResult = await api.deleteProjectionRecords(ids)
+    } catch (error) {
+      recordResult = { total: ids.length, failed: ids.length, failedIds: ids.slice() }
+    }
+    const failedIds = recordResult.failedIds || []
+    const deletedIds = ids.filter(id => failedIds.indexOf(String(id)) === -1)
+    const imgUrls = []
+    deletedIds.forEach(id => {
+      const record = this.findRecord(id)
+      const url = record && record.imgBle
+      if (url && imgUrls.indexOf(url) === -1) {
+        imgUrls.push(url)
+      }
+    })
+    const next = (this.records || []).filter(record => ids.indexOf(record.id) === -1 && record.imgBle)[0]
+    console.log('[相册删除][WiFi] 记录删除', JSON.stringify(recordResult), '待删云端', imgUrls.length, '张，下一张', next ? next.imgBle : '-')
+
+    let cloudError = ''
+    let offline = false
+    for (let start = 0; start < imgUrls.length; start += 200) {
+      const payload = { deviceNo, imgUrls: imgUrls.slice(start, start + 200) }
+      if (next) {
+        payload.nextImageUrl = next.imgBle
+      }
+      try {
+        const res = await iotApi.deletePhotos(payload, { showError: false })
+        console.log('[相册删除][WiFi] 云端删除返回', JSON.stringify(res))
+        if (res && res.deviceNotified === false) {
+          offline = true
+        }
+      } catch (error) {
+        console.warn('[相册删除][WiFi] 云端删除失败', error && error.code, error && error.message)
+        cloudError = String((error && error.message) || '云端删除失败').replace(/^接口\(IoT\)-/, '')
+      }
+    }
+    wx.hideLoading()
+
+    if (!deletedIds.length) {
+      toast.warn({ title: '删除失败，请稍后重试', icon: 'none' })
+    } else if (cloudError) {
+      toast.warn({ title: `照片已从我的上传删除，相框播放列表更新失败：${cloudError}`, icon: 'none' })
+    } else if (failedIds.length) {
+      toast.warn({ title: `已删除 ${deletedIds.length} 张，${failedIds.length} 张未删除成功，请稍后重试`, icon: 'none' })
+    } else if (offline) {
+      toast.show({ title: '已删除；设备离线，相框换图将在设备联网后进行', icon: 'none' })
+    } else {
+      toast.show({ title: '已从相框播放列表移除，设备联网后更新', icon: 'none' })
+    }
+    this.loadPhotos()
+  },
+
   // 再次投屏（2026-08-04 取代原「刷新屏幕」按钮）：与投屏管理页的「再次投屏」完全同链路——
   // 把图片地址 + 目标设备写进 pendingProjection，跳投屏预览页；用户可在预览页重新构图，
   // 点「开始投屏」后照常走抖动出帧 + BLE 图传 + setUserProductUpload 建**新记录**。
@@ -898,11 +992,21 @@ Page(fold.adapt({
       return
     }
 
-    // 与「这些照片所属设备」建立蓝牙连接（口径同删除：槽位/图传只在它自己的设备上成立）。
-    // 放在取图之后：没有可投屏的图时不该先干等几秒扫描重连。
-    const device = await this.ensureConnectedDevice(ids)
-    if (!device) {
-      return // 提示已由 ensureConnectedDevice / ensureConnectedForAction 弹出
+    // WiFi 版（2026-10-27）：不连蓝牙，确认在线（休眠 / 关机 / 离线先拦）后带 isWifi 进预览页，导出后去 WiFi 投屏结果页
+    const wifiOwner = this.ownerIfWifi(ids)
+    let device
+    if (wifiOwner) {
+      if (!(await wifiStatus.ensureOnline(wifiOwner))) {
+        return
+      }
+      device = Object.assign({}, wifiOwner, { isWifi: true })
+    } else {
+      // 与「这些照片所属设备」建立蓝牙连接（口径同删除：槽位/图传只在它自己的设备上成立）。
+      // 放在取图之后：没有可投屏的图时不该先干等几秒扫描重连。
+      device = await this.ensureConnectedDevice(ids)
+      if (!device) {
+        return // 提示已由 ensureConnectedDevice / ensureConnectedForAction 弹出
+      }
     }
 
     if (images.length < ids.length) {

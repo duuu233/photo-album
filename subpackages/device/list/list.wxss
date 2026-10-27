@@ -309,6 +309,7 @@
 
 .is-offline .meta-wifi-icon,
 .is-sleeping .meta-wifi-icon,
+.is-shutdown .meta-wifi-icon,
 .is-unknown .meta-wifi-icon {
   opacity: 0.45;
   filter: grayscale(1);
@@ -330,15 +331,11 @@
   }
 }
 
-.wifi-refresh-action {
+.wifi-slideshow-action {
   color: #0e9f87;
 }
 
-.wifi-refresh-action.is-busy {
-  opacity: 0.5;
-}
-
-.action-refresh-icon {
+.action-slideshow-icon {
   flex: 0 0 auto;
   width: 36rpx;
   height: 36rpx;

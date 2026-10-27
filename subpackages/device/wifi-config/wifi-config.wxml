@@ -46,4 +46,5 @@
   <view class="wifi-primary wifi-bottom" hover-class="none" bindtap="goNext">下一步</view>
 
   <global-toast id="globalToast"></global-toast>
+  <debug-log></debug-log>
 </view>

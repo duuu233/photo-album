@@ -119,4 +119,5 @@
 
   <!-- 全局 Toast 实例：utils/toast.js 通过 #globalToast 找到它来显示长文案提示 -->
   <global-toast id="globalToast"></global-toast>
+  <debug-log></debug-log>
 </view>

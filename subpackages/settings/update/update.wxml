@@ -31,4 +31,5 @@
   <button class="delete-account" hover-class="none">用户注销</button>
 
   <global-toast id="globalToast"></global-toast>
+  <debug-log></debug-log>
 </view>

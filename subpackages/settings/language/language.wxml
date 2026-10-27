@@ -22,4 +22,5 @@
   <view class="primary-btn save-language" hover-class="none" bindtap="saveLanguage">保存设置</view>
 
   <global-toast id="globalToast"></global-toast>
+  <debug-log></debug-log>
 </view>

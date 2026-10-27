@@ -86,6 +86,25 @@ async function main() {
     assert.ok(/if \(res && res\.online\)/.test(read('utils/wifi-provision.js')), '配网轮询只认 online')
     checked('各页样式与入口')
   }
+  {
+    // V1.4 更新说明三：设备主动关机 → status=SHUTDOWN，灰色「已关机」，入口提示开机后可操作
+    assert.equal(wifiStatus.deviceState({ online: false, status: 'SHUTDOWN' }), 'shutdown')
+    assert.equal(wifiStatus.deviceState({ online: false, status: 'shutdown' }), 'shutdown', '大小写容错')
+    infoReply = { online: false, status: 'SHUTDOWN', shadow: { battery: 85, wifiRssi: -50 } }
+    const fields = await wifiStatus.fetchFields({ productDeviceId: 'D0CF13F02FF8' })
+    assert.equal(fields.wifiStatus, 'shutdown')
+    assert.equal(fields.wifiStatusText, '已关机')
+    assert.equal(fields.wifiBatteryText, '', '已关机不显示电量')
+    assert.equal(fields.wifiSignalLevel, 0)
+    toasts.length = 0
+    onlineReply = { online: false, status: 'SHUTDOWN' }
+    assert.equal(await wifiStatus.ensureOnline({ productDeviceId: 'X' }), false)
+    assert.deepEqual(toasts, ['设备已关机，开机后可操作'])
+    assert.equal(wifiStatus.blockedTip('shutdown'), '设备已关机，开机后可操作')
+    const read = file => fs.readFileSync(path.join(root, file), 'utf8')
+    assert.ok(/\.is-shutdown \.meta-wifi-icon/.test(read('subpackages/device/list/list.wxss')), '我的设备卡已关机图标变灰')
+    checked('已关机 SHUTDOWN')
+  }
   console.log(`wifi-sleeping-status: ${checks} groups passed`)
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

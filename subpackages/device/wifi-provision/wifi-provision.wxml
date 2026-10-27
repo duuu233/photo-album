@@ -36,4 +36,5 @@
   </view>
 
   <global-toast id="globalToast"></global-toast>
+  <debug-log></debug-log>
 </view>
