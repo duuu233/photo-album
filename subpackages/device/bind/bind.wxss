@@ -259,25 +259,14 @@
   white-space: nowrap;
 }
 
-/* 设备名 + 通信类型标签同一行（2026-10-26）：名字过长先省略名字，标签始终完整露出。
-   标签 32rpx 高，不超过设备名一行的行高（32rpx × 1.2~1.4），卡片高度与 4.5 张的推算不变。 */
-.nearby-title {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-
-.nearby-title .nearby-name {
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
+/* 通信类型标签（2026-10-27 起在第二行、把尺寸包进来，如「WiFi版·5.89寸」）：始终完整露出，后面的电量 / 信号过长才被截。
+   标签 28rpx 高，不超过副标题一行的行高（22rpx × 1.2~1.4 ≈ 26~31rpx），卡片高度与 4.5 张的推算基本不变。 */
 .comm-badge {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  height: 32rpx;
-  margin-left: 12rpx;
+  height: 28rpx;
+  margin-right: 12rpx;
   padding: 0 12rpx 0 8rpx;
   border-radius: 999rpx;
   box-sizing: border-box;
@@ -293,6 +282,11 @@
   font-size: 20rpx;
   font-weight: 600;
   line-height: 1;
+}
+
+/* 标签里的尺寸位置：查询中显示小圆圈 loading */
+.comm-badge .spec-spinner {
+  margin-left: 2rpx;
 }
 
 /* WiFi 版：青绿渐变浅底 + 描边 */
@@ -315,6 +309,11 @@
   color: #2f6feb;
 }
 
+/* WiFi 版查不到产品规格：标签里的「未知设备」用警示色，选中后按「立即配网」会被弹窗拦下 */
+.comm-badge--wifi .comm-badge__text--unknown {
+  color: #e5533d;
+}
+
 .nearby-sub {
   display: block;
   margin-top: 8rpx;
@@ -326,12 +325,14 @@
   white-space: nowrap;
 }
 
-/* 信号格紧跟「信号」二字 */
+/* 信号格紧跟「信号」二字。竖条底部对齐、行内居中后看着仍偏低（2026-10-27 反馈），整体再上提约 3px */
 .nearby-signal {
+  position: relative;
+  top: -6rpx;
   margin-left: 8rpx;
 }
 
-/* WiFi 行第二行：尺寸位置在查询中换成小圆圈 loading，与后面的「· 信号」同一行排开 */
+/* 第二行：标签（含尺寸 / loading）、电量、「信号」+ 信号格同一行排开 */
 .nearby-sub--row {
   display: flex;
   align-items: center;
@@ -352,11 +353,6 @@
   to {
     transform: rotate(360deg);
   }
-}
-
-/* WiFi 版查不到产品规格：「未知设备」用警示色，选中后按「立即配网」会被弹窗拦下 */
-.nearby-sub--unknown {
-  color: #e5533d;
 }
 
 /* 右侧单选指示：选中显示对勾图标，未选显示空心圆 */

@@ -51,27 +51,29 @@
                ⚠️ 2026-08-21 前它叫 home-icon02.png，首页改版的新素材占了这个名字，故文件更名、图没换。 -->
           <view class="nearby-icon"><image class="nearby-icon__img" src="{{item.thumb || '/assets/images/home-device-thumb.png'}}" mode="aspectFit"></image></view>
           <view class="nearby-copy">
-            <!-- 广播名后挂通信类型标签（2026-10-26 WiFi 版接入）：WiFi 版青绿、蓝牙版蓝，与选中态的橙色错开。
-                 标签高度不超过设备名一行，卡片高度不变（列表 4.5 张的版式见 bind.wxss .device-list）。 -->
-            <view class="nearby-title">
-              <text class="nearby-name">{{item.name}}</text>
-              <view class="comm-badge {{item.commType === 'WIFI' ? 'comm-badge--wifi' : 'comm-badge--ble'}}">
-                <image class="comm-badge__icon" src="{{item.commType === 'WIFI' ? '/assets/images/badge-wifi.svg' : '/assets/images/badge-bluetooth.svg'}}" mode="aspectFit"></image>
-                <text class="comm-badge__text">{{item.commType === 'WIFI' ? 'WiFi版' : '蓝牙版'}}</text>
+            <text class="nearby-name">{{item.name}}</text>
+            <!-- 第二行：通信类型标签把尺寸包进来（2026-10-27 产品要求，如「WiFi版·5.89寸」），WiFi 版青绿、蓝牙版蓝，与选中态的橙色错开；
+                 标签后接电量（蓝牙版）与「信号」+ 信号格。10-26 起标签挂在设备名后面，这次挪到这一行与尺寸合并。
+                 尺寸两类设备同一口径（2026-10-26）：直接显示后台产品配置的 sizeModel，没配显示 --寸。
+                 WiFi 版尺寸来自 getProductByDevice（查询中标签里显示小圆圈 loading / 查不到为「未知设备」警示色），广播里没有电量；
+                 蓝牙版尺寸按广播名匹配产品列表（api.scanSizeModel）。
+                 信号强弱用信号格显示（仿 iPhone：满格 4 格、最弱 1 格、未知全灰），不再写「强 / 弱」文字 -->
+            <view wx:if="{{item.commType === 'WIFI'}}" class="nearby-sub nearby-sub--row">
+              <view class="comm-badge comm-badge--wifi">
+                <image class="comm-badge__icon" src="/assets/images/badge-wifi.svg" mode="aspectFit"></image>
+                <text class="comm-badge__text">WiFi版·</text>
+                <view wx:if="{{item.wifiStatus === 'loading'}}" class="spec-spinner"></view>
+                <text wx:else class="comm-badge__text {{item.wifiStatus === 'unknown' ? 'comm-badge__text--unknown' : ''}}">{{item.specText}}</text>
               </view>
-            </view>
-            <!-- 尺寸两类设备同一口径（2026-10-26）：直接显示后台产品配置的 sizeModel，没配显示 --寸。
-                 WiFi 版尺寸来自 getProductByDevice（查询中显示小圆圈 loading / 查不到为未知设备），广播里没有电量；
-                 蓝牙版尺寸按广播名匹配产品列表（api.scanSizeModel）。 -->
-            <view wx:if="{{item.commType === 'WIFI'}}" class="nearby-sub nearby-sub--row {{item.wifiStatus === 'unknown' ? 'nearby-sub--unknown' : ''}}">
-              <view wx:if="{{item.wifiStatus === 'loading'}}" class="spec-spinner"></view>
-              <text wx:else>{{item.specText}}</text>
-              <text> · 信号</text>
+              <text>信号</text>
               <signal-bars class="nearby-signal" level="{{item.signalLevel}}" size="small"></signal-bars>
             </view>
-            <!-- 信号强弱用信号格显示（仿 iPhone：满格 4 格、最弱 1 格、未知全灰），不再写「强 / 弱」文字 -->
             <view wx:else class="nearby-sub nearby-sub--row">
-              <text>{{item.sizeModel || '--寸'}} · {{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号</text>
+              <view class="comm-badge comm-badge--ble">
+                <image class="comm-badge__icon" src="/assets/images/badge-bluetooth.svg" mode="aspectFit"></image>
+                <text class="comm-badge__text">蓝牙版·{{item.sizeModel || '--寸'}}</text>
+              </view>
+              <text>{{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号</text>
               <signal-bars class="nearby-signal" level="{{item.signalLevel}}" size="small" tone="ble"></signal-bars>
             </view>
             <!-- 设备ID：本次广播里的 6 字节 Device_ID，用来区分同型号同名设备，安卓/iOS 同一来源；
