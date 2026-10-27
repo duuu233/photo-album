@@ -1,0 +1,36 @@
+<!-- WiFi 版投屏结果（流程见 wifi-result.js 文件头与 utils/wifi-projection.js） -->
+<view class="mock-root wifi-result-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
+  </view>
+
+  <page-nav title="投屏"></page-nav>
+
+  <view class="mock-content wifi-result-content">
+    <view class="wifi-result-card glass-panel">
+      <image wx:if="{{items[current].src}}" class="wifi-result-image" src="{{items[current].src}}" mode="aspectFit"></image>
+      <view class="wifi-result-device">{{deviceName}}<text wx:if="{{total > 1}}">　第 {{current + 1}} / {{total}} 张</text></view>
+      <view class="wifi-result-stage {{phase === 'done' && successCount === total ? 'is-success' : ''}} {{phase === 'done' && successCount < total ? 'is-failed' : ''}}">{{stageText}}</view>
+      <view wx:if="{{phase === 'running'}}" class="wifi-result-progress">
+        <view class="wifi-result-progress__bar"><view class="wifi-result-progress__fill" style="width: {{progress}}%;"></view></view>
+        <text class="wifi-result-progress__num">{{progress}}%</text>
+      </view>
+      <view class="wifi-result-note">进度为图片上传进度，上传完成后等待设备下载并刷屏</view>
+    </view>
+
+    <view wx:if="{{total > 1}}" class="wifi-result-list glass-panel">
+      <view wx:for="{{items}}" wx:key="key" class="wifi-result-row is-{{item.status}}">
+        <image class="wifi-result-row__thumb" src="{{item.src}}" mode="aspectFill"></image>
+        <text class="wifi-result-row__no">第 {{index + 1}} 张</text>
+        <text class="wifi-result-row__text">{{item.text}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{phase === 'done'}}" class="wifi-result-actions">
+    <view wx:if="{{retryable && total}}" class="wifi-result-primary" hover-class="none" bindtap="retryFailed">重试未成功的</view>
+    <view class="{{retryable && total ? 'wifi-result-text-btn' : 'wifi-result-primary'}}" hover-class="none" bindtap="finish">完成</view>
+  </view>
+
+  <global-toast id="globalToast"></global-toast>
+</view>

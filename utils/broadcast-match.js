@@ -100,12 +100,18 @@ function isWifiBroadcastId(broadcastId) {
   return !!id && (isWildcard(id) || id.indexOf(BUILTIN_WIFI_TEMPLATE.replace('*', '')) === 0)
 }
 
+// 设备记录是不是 WiFi 版：列表页打过的 isWifi、配网绑定回来的 commType，或所属产品的广播 ID
+function isWifiDevice(device) {
+  return !!device && (device.isWifi === true || device.commType === COMM_WIFI || isWifiBroadcastId(device.broadcastId))
+}
+
 module.exports = {
   COMM_WIFI,
   COMM_BLE,
   WIFI_DEVICE_ID_LENGTH,
   isWildcard,
   isWifiBroadcastId,
+  isWifiDevice,
   matchWildcard,
   wifiMatch,
   classify

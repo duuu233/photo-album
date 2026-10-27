@@ -22,6 +22,13 @@
   → 整单收尾（传完 / 中途失败 / 中断）发一次 0x24，切到本批第一张成功写入的槽位
 ```
 
+## WiFi 版（2026-10-27，`main-wifi`）
+
+WiFi 版不走上面的蓝牙链路：预览页同样按设备 `width/height` 构图导出，之后 redirect 到 `subpackages/projection/wifi-result`，
+由 `utils/wifi-projection.js` 把导出图经 IoT `POST /api/device/play` 上传（服务端转 bin、上传 OSS、MQTT 下发），
+再按 WS `play.result` / `GET /api/device/play/status` 跟到终态。不读 0x01、不算帧长、不选槽位、不写 `setUserProductUpload` 记录。
+`type` 与蓝牙版同口径（`dithering.typeForDevice`）。详见 [变更记录](../changes/2026-10-27-WiFi版投屏与设备详情.md)。
+
 ## 组件职责
 
 | 组件 | 职责 |

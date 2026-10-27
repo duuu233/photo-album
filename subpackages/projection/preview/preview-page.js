@@ -3,6 +3,7 @@ const toast = require('../../../utils/toast')
 const activeDevice = require('../../../utils/active-device')
 const deviceRotation = require('../../../utils/device-rotation')
 const fold = require('../../../utils/fold-adapt')
+const broadcastMatch = require('../../../utils/broadcast-match')
 
 // 设备屏幕分辨率（width×height）：列表/详情接口都会返回，取景框据此锁定宽高比（如 500x500 → 1:1）。
 // 接口暂未返回该字段，这里先给默认值便于联调测试（如需 1:1 改成 { width: 500, height: 500 }）。
@@ -186,6 +187,10 @@ const createPreviewPage = (overrides = {}) => fold.adapt(Object.assign({
   },
 
   warmupPreview(device) {
+    // WiFi 版不走蓝牙（2026-10-27）：投屏经 IoT 服务上传，不用预热连接
+    if (broadcastMatch.isWifiDevice(device)) {
+      return
+    }
     // 预热连接：必须按设备记录的完整身份查找/连接，不能直接复用 Storage 里的 BLE 句柄。
     // 旧缓存若曾把 B 的句柄写进 A，直接 ensureConnection(handle) 会在预览页悄悄连到 B。
     // 失败静默忽略，结果页还会走同一套身份校验后重连。
@@ -1512,7 +1517,9 @@ const createPreviewPage = (overrides = {}) => fold.adapt(Object.assign({
     // AI 对话选完设备点「连接并投屏」进来时，预热连接往往还没跑完（或静默失败），用户看到的就是
     // 「连接并投屏了，还是未连接」，而且「重新绑定」根本不是解法。现在先等预热，还没有就当场连一次
     //（带 loading、连不上如实提示原因），连上了照常往下走。
-    if (!this.data.device.deviceId) {
+    // WiFi 版不需要蓝牙句柄，构图导出后去 WiFi 投屏结果页（2026-10-27）
+    const isWifi = broadcastMatch.isWifiDevice(this.data.device)
+    if (!isWifi && !this.data.device.deviceId) {
       const connected = await this.ensureDeviceHandle()
       if (!connected) {
         this.setData({ projecting: false })
@@ -1545,7 +1552,7 @@ const createPreviewPage = (overrides = {}) => fold.adapt(Object.assign({
     this.setData({ images })
     this.persistPending(images, performance)
     wx.redirectTo({
-      url: '/subpackages/projection/result/result?status=progress',
+      url: isWifi ? '/subpackages/projection/wifi-result/wifi-result' : '/subpackages/projection/result/result?status=progress',
       fail: () => {
         // 跳转失败（极少见）：复位锁，允许用户重试
         this.setData({ projecting: false })

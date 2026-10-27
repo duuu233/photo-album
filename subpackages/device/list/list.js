@@ -233,9 +233,21 @@ Page(fold.adapt({
     this.refreshWifiStatus(id)
   },
 
-  // WiFi 版「投屏」：WiFi 投屏走 IoT 服务上传（对接进度 STEP 3），尚未接入；先提示，不进蓝牙投屏流程
-  startWifiProjection() {
-    toast.show({ title: 'WiFi版投屏即将上线', icon: 'none' })
+  // WiFi 版「投屏」（STEP 3）：不连蓝牙，直接弹「拍照 / 相册」；选图后进同一个预览页构图，
+  // 预览页按设备类型跳 WiFi 投屏结果页（经 IoT 服务上传，见 utils/wifi-projection.js）。
+  // 不改当前选中设备：首页等蓝牙链路仍按原选中设备走。
+  startWifiProjection(e) {
+    const id = e.currentTarget.dataset.id
+    const device = this.data.devices.find(item => item.id === id)
+    if (!device || !device.isWifi) {
+      return
+    }
+    if (device.wifiStatus === 'offline') {
+      toast.show({ title: '设备已离线，请检查设备网络', icon: 'none' })
+      return
+    }
+    this._projectionDevice = device
+    this.setData({ showMediaSheet: true, mediaSheetClosing: false })
   },
 
   // 产品排序：真实连接中的设备永远置顶，其次是刚绑定的设备，其余保持接口原有顺序。
@@ -364,9 +376,9 @@ Page(fold.adapt({
     }
 
     if (this.data.selectMode) {
-      // 选相框是给蓝牙投屏用的，WiFi 版走不了这条链路（WiFi 投屏待 STEP 3），不让选
+      // 选相框模式的调用方（首页 / 图库等）后续都按蓝牙投屏链路走，WiFi 版不能选进来；WiFi 投屏从卡片的「投屏」进
       if (device.isWifi) {
-        toast.show({ title: 'WiFi版投屏即将上线，请选择蓝牙版设备', icon: 'none' })
+        toast.show({ title: 'WiFi版设备请点卡片上的「投屏」', icon: 'none' })
         return
       }
       app.setSelectedDevice(device)
@@ -378,8 +390,11 @@ Page(fold.adapt({
       return
     }
 
+    // WiFi 版进 WiFi 设备详情（2026-10-27）；蓝牙版不变
     wx.navigateTo({
-      url: `/subpackages/device/detail/detail?id=${id}`
+      url: device.isWifi
+        ? `/subpackages/device/wifi-detail/wifi-detail?id=${id}`
+        : `/subpackages/device/detail/detail?id=${id}`
     })
   },
 

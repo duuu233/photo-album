@@ -122,8 +122,59 @@ function request(options) {
   return sendWithRetry(sendOptions, retries).catch(error => handleError(error, options))
 }
 
+// multipart 上传（2026-10-27，WiFi 投屏 POST /api/device/play）：wx.uploadFile，不做网络重试（重传会重复投屏）。
+// options：{ filePath, name（默认 file）, formData, timeout, showError, onProgress(percent) }
+// 返回体同样按 {code,msg,data} 解包，错误与 request 同一套收尾（401 登出引导、503 不登出）。
+function upload(url, options) {
+  const opts = options || {}
+  const token = getToken()
+  const header = Object.assign({}, opts.header)
+  if (token && !header.userToken) {
+    header.userToken = token
+  }
+  return new Promise((resolve, reject) => {
+    const task = wx.uploadFile({
+      url: buildUrl(url),
+      filePath: opts.filePath,
+      name: opts.name || 'file',
+      formData: opts.formData || {},
+      header,
+      timeout: opts.timeout || config.timeout,
+      success(res) {
+        let body = res.data
+        if (typeof body === 'string') {
+          try {
+            body = JSON.parse(body)
+          } catch (error) {
+            body = {}
+          }
+        }
+        const result = iotErrors.fromResponse(res.statusCode, body, res.header)
+        if (result.ok) {
+          resolve(result.data)
+        } else {
+          reject(result.error)
+        }
+      },
+      fail(error) {
+        reject(iotErrors.fromNetworkFailure(error && error.errMsg))
+      }
+    })
+    if (task && typeof task.onProgressUpdate === 'function' && typeof opts.onProgress === 'function') {
+      task.onProgressUpdate(res => {
+        try {
+          opts.onProgress(Number(res && res.progress) || 0)
+        } catch (error) {
+          // 页面进度回调出错不影响上传
+        }
+      })
+    }
+  }).catch(error => handleError(error, opts))
+}
+
 module.exports = {
   request,
+  upload,
   get(url, data, options) {
     return request(Object.assign({}, options, { url, data, method: 'GET' }))
   },

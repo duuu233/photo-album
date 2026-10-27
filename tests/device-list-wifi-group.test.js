@@ -1,7 +1,7 @@
 // 我的设备按 WiFi 版 / 蓝牙版分组（2026-10-27）：
 //   ① 已绑定记录按所属产品 broadcastId 认 WiFi 版（IJ_* 模板 / IJ_ 前缀），其余按蓝牙版；
 //   ② WiFi 版状态来自 IoT GET /api/device/info：在线 / 离线 / 查不到（状态未知），在线才显示信号格与电量；
-//   ③ WiFi 版按钮：投屏先提示即将上线、不进蓝牙投屏；刷新状态只重查这一台；选相框模式不让选 WiFi 版；
+//   ③ WiFi 版按钮：投屏不连蓝牙、直接弹拍照 / 相册（离线先拦）；刷新状态只重查这一台；点卡片进 WiFi 详情；选相框模式不让选 WiFi 版；
 //   ④ 模板：两组标题按数量显示，WiFi 卡用 WiFi 按钮，蓝牙卡仍是「投屏 / 连接」原样。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -127,13 +127,25 @@ async function main() {
     checked('刷新状态只重查这一台')
 
     page.startWifiProjection({ currentTarget: { dataset: { id: '1' } } })
-    assert.equal(state.toasts.at(-1), 'WiFi版投屏即将上线')
-    assert.equal(state.navs.length, 0, 'WiFi 版投屏不进蓝牙投屏流程')
+    assert.equal(page.data.showMediaSheet, true, '在线的 WiFi 版点投屏直接弹拍照 / 相册')
+    assert.equal(page._projectionDevice.id, '1')
+    assert.equal(state.selected, null, '不改当前选中设备')
+    page.data.showMediaSheet = false
+    page.data.devices = page.data.devices.map(item => (item.id === '1' ? Object.assign({}, item, { wifiStatus: 'offline' }) : item))
+    page.startWifiProjection({ currentTarget: { dataset: { id: '1' } } })
+    assert.equal(page.data.showMediaSheet, false, '离线先拦下')
+    assert.equal(state.toasts.at(-1), '设备已离线，请检查设备网络')
+
+    page.selectDevice({ currentTarget: { dataset: { id: '1' } } })
+    assert.equal(state.navs.at(-1), '/subpackages/device/wifi-detail/wifi-detail?id=1', '点 WiFi 卡进 WiFi 详情')
+    page.selectDevice({ currentTarget: { dataset: { id: '2' } } })
+    assert.equal(state.navs.at(-1), '/subpackages/device/detail/detail?id=2', '蓝牙卡仍进原详情')
+
     page.data.selectMode = true
     page.selectDevice({ currentTarget: { dataset: { id: '1' } } })
     assert.equal(state.selected, null, '选相框模式不让选 WiFi 版')
-    assert.ok(/WiFi版投屏即将上线/.test(state.toasts.at(-1)))
-    checked('WiFi 版投屏先提示，选相框模式不让选')
+    assert.ok(/WiFi版设备请点卡片上的「投屏」/.test(state.toasts.at(-1)))
+    checked('WiFi 版投屏弹拍照 / 相册、离线拦下；卡片进 WiFi 详情；选相框模式不让选')
   }
   {
     const { page } = loadListPage({ devices: [{ id: '9', name: '蓝牙', broadcastId: 'EB-169', productDeviceId: 'AA:BB:CC:DD:EE:09' }] })

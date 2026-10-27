@@ -1,4 +1,5 @@
 const api = require('../../../utils/api')
+const broadcastMatch = require('../../../utils/broadcast-match')
 const toast = require('../../../utils/toast')
 const system = require('../../../utils/system')
 const batteryUtil = require('../../../utils/battery')
@@ -378,6 +379,12 @@ Page(fold.adapt({
         loading: false,
         loadError: true
       })
+      return
+    }
+
+    // WiFi 版走 WiFi 设备详情（2026-10-27）：本页全是蓝牙能力。从首页等入口进来的也在这里转过去
+    if (broadcastMatch.isWifiDevice(device)) {
+      wx.redirectTo({ url: `/subpackages/device/wifi-detail/wifi-detail?id=${this.data.id}` })
       return
     }
 

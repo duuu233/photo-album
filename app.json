@@ -12,7 +12,8 @@
         "debug/debug",
         "wifi-list/wifi-list",
         "wifi-config/wifi-config",
-        "wifi-provision/wifi-provision"
+        "wifi-provision/wifi-provision",
+        "wifi-detail/wifi-detail"
       ]
     },
     {
@@ -33,7 +34,7 @@
     },
     {
       "root": "subpackages/projection",
-      "pages": ["preview/preview", "preview-demo/preview-demo", "records/records", "result/result"]
+      "pages": ["preview/preview", "preview-demo/preview-demo", "records/records", "result/result", "wifi-result/wifi-result"]
     },
     {
       "root": "subpackages/settings",

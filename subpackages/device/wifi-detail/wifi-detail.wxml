@@ -1,0 +1,95 @@
+<!-- WiFi 版设备详情（说明见 wifi-detail.js 文件头） -->
+<view class="mock-root wifi-detail-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
+  </view>
+
+  <page-nav title="设备详情"></page-nav>
+
+  <view class="mock-content wifi-detail-content">
+    <view wx:if="{{loading}}" class="page-loading">
+      <view class="page-loading__spinner"></view>
+      <view class="page-loading__text">加载中…</view>
+    </view>
+
+    <view wx:elif="{{loadError}}" class="wifi-detail-error glass-panel">
+      <view class="wifi-detail-error__title">加载失败</view>
+      <view class="wifi-detail-error__desc">网络异常或服务出错，请稍后重试。</view>
+      <view class="wifi-detail-error__btn" hover-class="none" bindtap="retryLoad">重新加载</view>
+    </view>
+
+    <block wx:else>
+      <view class="wifi-detail-head glass-panel">
+        <image class="wifi-detail-head__thumb" src="{{device.thumb || '/assets/images/home-device-thumb.png'}}" mode="aspectFit"></image>
+        <view class="wifi-detail-head__copy">
+          <view class="wifi-detail-head__name-row">
+            <text class="wifi-detail-head__name">{{device.name}}</text>
+            <view class="comm-badge">
+              <image class="comm-badge__icon" src="/assets/images/badge-wifi.svg" mode="aspectFit"></image>
+              <text class="comm-badge__text">WiFi版</text>
+            </view>
+          </view>
+          <text wx:if="{{device.productDeviceId}}" class="wifi-detail-head__id">设备ID {{device.productDeviceId}}</text>
+          <text wx:if="{{device.sizeModel}}" class="wifi-detail-head__id">屏幕尺寸 {{device.sizeModel}}</text>
+          <view class="wifi-detail-state is-{{status}}">
+            <view wx:if="{{status === 'loading'}}" class="wifi-detail-state__spinner"></view>
+            <view wx:else class="wifi-detail-state__dot"></view>
+            <text>{{statusText}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{rows.length}}" class="wifi-detail-rows glass-panel">
+        <view wx:for="{{rows}}" wx:key="key" class="wifi-detail-row">
+          <text class="wifi-detail-row__label">{{item.label}}</text>
+          <view class="wifi-detail-row__value">
+            <image wx:if="{{item.icon}}" class="battery-level-icon" src="{{item.icon}}" mode="aspectFit"></image>
+            <signal-bars wx:if="{{item.key === 'signal' && item.level}}" level="{{item.level}}" size="small"></signal-bars>
+            <text>{{item.value}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="wifi-detail-actions glass-panel">
+        <view class="wifi-detail-action projection-action" hover-class="none" bindtap="startProjection">
+          <image class="wifi-detail-action__icon" src="/assets/images/screen-casting-icon01.png" mode="aspectFit"></image>
+          <text>投屏</text>
+        </view>
+        <view class="wifi-detail-action-divider"></view>
+        <view class="wifi-detail-action refresh-action {{status === 'loading' ? 'is-busy' : ''}}" hover-class="none" bindtap="refreshTap">
+          <image class="wifi-detail-action__icon" src="/assets/images/refresh-icon.png" mode="aspectFit"></image>
+          <text>刷新状态</text>
+        </view>
+      </view>
+    </block>
+  </view>
+
+  <view class="media-mask" wx:if="{{showMediaSheet}}" catchtouchmove="noop" bindtap="hideMediaSheet">
+    <view class="bottom-sheet media-sheet {{mediaSheetClosing ? 'pop-closing-sheet' : ''}}" catchtap="noop">
+      <view class="media-sheet-title">选择投屏方式</view>
+      <view class="media-option" hover-class="none" bindtap="chooseCamera">
+        <view class="media-option-left">
+          <image class="media-art mini camera-art" src="/assets/images/home-media-mini01.png" mode="aspectFit"></image>
+          <view class="media-option-copy">
+            <view>拍照</view>
+            <text>调用手机相机拍照</text>
+          </view>
+        </view>
+        <image class="round-arrow" src="/assets/images/home-camera-card-right-icon.png" mode="aspectFit"></image>
+      </view>
+      <view class="media-option" hover-class="none" bindtap="chooseAlbum">
+        <view class="media-option-left">
+          <image class="media-art mini album-art" src="/assets/images/home-media-mini02.png" mode="aspectFit"></image>
+          <view class="media-option-copy">
+            <view>相册</view>
+            <text>从手机相册选择照片</text>
+          </view>
+        </view>
+        <image class="round-arrow" src="/assets/images/home-album-card-right-icon.png" mode="aspectFit"></image>
+      </view>
+      <view class="cancel-action" hover-class="none" bindtap="hideMediaSheet">取消</view>
+    </view>
+  </view>
+
+  <global-toast id="globalToast"></global-toast>
+</view>

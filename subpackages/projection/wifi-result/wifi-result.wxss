@@ -1,0 +1,160 @@
+/* WiFi 版投屏结果：按钮样式与配网状态页一致（主按钮橙色渐变，次要操作橙色文字） */
+.wifi-result-content {
+  padding-bottom: calc(280rpx + var(--safe-bottom));
+}
+
+.wifi-result-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 32rpx;
+  padding: 40rpx 36rpx 36rpx;
+}
+
+.wifi-result-image {
+  width: 400rpx;
+  height: 520rpx;
+  border-radius: 16rpx;
+}
+
+.wifi-result-device {
+  margin-top: 24rpx;
+  color: #8b9098;
+  font-size: 24rpx;
+}
+
+.wifi-result-stage {
+  margin-top: 20rpx;
+  color: #2a2d32;
+  font-size: 34rpx;
+  font-weight: 700;
+  text-align: center;
+}
+
+.wifi-result-stage.is-success {
+  color: #ff5a1e;
+}
+
+.wifi-result-stage.is-failed {
+  color: #e5533d;
+}
+
+.wifi-result-progress {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-top: 28rpx;
+}
+
+.wifi-result-progress__bar {
+  flex: 1;
+  height: 16rpx;
+  overflow: hidden;
+  background: rgba(255, 98, 31, 0.12);
+  border-radius: 999rpx;
+}
+
+.wifi-result-progress__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
+  border-radius: 999rpx;
+  transition: width 0.2s linear;
+}
+
+.wifi-result-progress__num {
+  width: 88rpx;
+  color: #ff621f;
+  font-size: 24rpx;
+  text-align: right;
+}
+
+.wifi-result-note {
+  margin-top: 20rpx;
+  color: #9ba2ad;
+  font-size: 22rpx;
+  text-align: center;
+}
+
+.wifi-result-list {
+  margin-top: 24rpx;
+  padding: 8rpx 32rpx;
+}
+
+.wifi-result-row {
+  display: flex;
+  align-items: center;
+  height: 96rpx;
+  color: #8b9098;
+  font-size: 26rpx;
+}
+
+.wifi-result-row + .wifi-result-row {
+  border-top: 1rpx solid rgba(42, 43, 43, 0.06);
+}
+
+.wifi-result-row__thumb {
+  flex: 0 0 64rpx;
+  width: 64rpx;
+  height: 64rpx;
+  margin-right: 20rpx;
+  border-radius: 8rpx;
+}
+
+.wifi-result-row__no {
+  margin-right: 20rpx;
+  color: #4a5059;
+}
+
+.wifi-result-row__text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wifi-result-row.is-SUCCESS .wifi-result-row__text {
+  color: #0e9f87;
+}
+
+.wifi-result-row.is-FAILED .wifi-result-row__text,
+.wifi-result-row.is-TIMEOUT .wifi-result-row__text,
+.wifi-result-row.is-UNKNOWN .wifi-result-row__text {
+  color: #e5533d;
+}
+
+.wifi-result-row.is-running .wifi-result-row__text {
+  color: #ff621f;
+}
+
+.wifi-result-actions {
+  position: fixed;
+  left: 48rpx;
+  right: 48rpx;
+  bottom: calc(48rpx + var(--safe-bottom));
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+}
+
+.wifi-result-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 112rpx;
+  color: #ffffff;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
+  border-radius: 999rpx;
+  box-shadow: 0 18rpx 36rpx rgba(255, 98, 31, 0.2);
+  font-size: 36rpx;
+  font-weight: 700;
+}
+
+.wifi-result-text-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  margin-top: 8rpx;
+  color: #ff621f;
+  font-size: 32rpx;
+}
