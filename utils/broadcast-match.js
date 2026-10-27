@@ -105,11 +105,21 @@ function isWifiDevice(device) {
   return !!device && (device.isWifi === true || device.commType === COMM_WIFI || isWifiBroadcastId(device.broadcastId))
 }
 
+// 完整蓝牙广播名（2026-10-27，绑定时默认昵称用）：name / localName 取较长的那个。
+// 真机上两者常常只有一个带全（另一个为空或被截短），取长的才是完整广播，如 `IJ_E348C21ED428`、`EF6-370`。
+// 都取不到返回空串，由调用方回落到原来的取值。
+function fullBroadcastName(device) {
+  return namesOf(device)
+    .map(name => String(name).trim())
+    .reduce((best, name) => (name.length > best.length ? name : best), '')
+}
+
 module.exports = {
   COMM_WIFI,
   COMM_BLE,
   WIFI_DEVICE_ID_LENGTH,
   isWildcard,
+  fullBroadcastName,
   isWifiBroadcastId,
   isWifiDevice,
   matchWildcard,

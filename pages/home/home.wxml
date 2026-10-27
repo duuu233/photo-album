@@ -108,6 +108,14 @@
                 mode="aspectFill" />
               <view class="device-info">
                 <view class="device-title">{{item.name}}</view>
+                <!-- 类型 + 尺寸标签（2026-10-27）：与搜索列表同款「WiFi版·5.89寸 / 蓝牙版·5.89寸」，没配尺寸显示 --寸 -->
+                <view class="comm-badge {{item.isWifi ? 'comm-badge--wifi' : 'comm-badge--ble'}}">
+                  <image
+                    class="comm-badge__icon"
+                    src="{{item.isWifi ? '/assets/images/badge-wifi.svg' : '/assets/images/badge-bluetooth.svg'}}"
+                    mode="aspectFit" />
+                  <text class="comm-badge__text">{{item.isWifi ? 'WiFi版' : '蓝牙版'}}·{{item.sizeModel || '--寸'}}</text>
+                </view>
                 <!-- 蓝牙版：连接状态 / 电量 / 「连接蓝牙」（原样） -->
                 <block wx:if="{{!item.isWifi}}">
                   <view class="device-status {{item.connected ? 'is-connected' : ''}}">

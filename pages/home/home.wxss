@@ -247,8 +247,12 @@ button {
   width: 654rpx;
   height: 298rpx;
   margin: 0 auto;
-
-  justify-content: space-around;
+  /* 设备图与文字整体居中、间距固定（2026-10-27）：原「两侧环绕留白」把空白按内容宽度分摊，
+     名称长时设备图贴左、名称短时图文被拉开，蓝牙 / WiFi 两种卡看着都偏左 */
+  justify-content: center;
+  gap: 44rpx;
+  padding: 0 40rpx;
+  box-sizing: border-box;
   align-items: center;
   border-radius: 24px;
 }
@@ -297,6 +301,7 @@ button {
 }
 
 .device-orbit {
+  flex: 0 0 auto;
   width: 166rpx;
   height: 166rpx;
 }
@@ -338,13 +343,16 @@ button {
   /* 已连接显示「电量行」、未连接显示更高的「连接蓝牙」按钮，两态内容高度不同。
      device-info 在卡片内垂直居中，高度不固定时切换连接态会重新居中，导致标题/状态文字上下跳动。
      固定最小高度(取较高的未连接态)让整块居中位置恒定，内容仍从顶部排布 → 文字位置稳定不跳。 */
-  min-height: 220rpx;
+  min-height: 256rpx;
+  /* 名称过长时由标题省略号兜底，不把设备图挤出卡片 */
+  min-width: 0;
 }
 
 .device-title {
-  max-width: 320rpx;
+  /* 卡内可用宽 574 − 设备图 166 − 间距 44 = 364：完整广播名（如 IJ_E348C21ED428）基本能放下，再长才省略 */
+  max-width: 364rpx;
   overflow: hidden;
-  margin-bottom: 18rpx;
+  margin-bottom: 12rpx;
   color: #2a2d32;
   font-size: 40rpx;
   font-weight: 500;
@@ -407,6 +415,47 @@ button {
 .mini-bluetooth-white {
   width: 28rpx;
   height: 36rpx;
+}
+
+/* 类型 + 尺寸标签（2026-10-27）：样式与搜索列表 bind.wxss .comm-badge 同款，稍放大以配首页卡片 */
+.comm-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 32rpx;
+  margin-bottom: 16rpx;
+  padding: 0 14rpx 0 10rpx;
+  border-radius: 999rpx;
+  box-sizing: border-box;
+}
+
+.comm-badge__icon {
+  width: 24rpx;
+  height: 24rpx;
+  margin-right: 4rpx;
+}
+
+.comm-badge__text {
+  font-size: 22rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.comm-badge--wifi {
+  background: linear-gradient(135deg, rgba(18, 184, 150, 0.16), rgba(56, 189, 248, 0.12));
+  border: 1rpx solid rgba(14, 159, 135, 0.32);
+}
+
+.comm-badge--wifi .comm-badge__text {
+  color: #0e9f87;
+}
+
+.comm-badge--ble {
+  background: linear-gradient(135deg, rgba(47, 111, 235, 0.14), rgba(99, 102, 241, 0.1));
+  border: 1rpx solid rgba(47, 111, 235, 0.3);
+}
+
+.comm-badge--ble .comm-badge__text {
+  color: #2f6feb;
 }
 
 /* WiFi 版设备卡（2026-10-27）：在线青绿（与 WiFi版 角标同色），离线 / 未知 / 查询中灰，图标随之变淡 */

@@ -1156,7 +1156,9 @@ module.exports = {
       return Object.assign({}, existed, wifiFields)
     }
 
-    const productName = String(options.productName || options.broadcastName || '智能相框').trim()
+    // 默认昵称 = 完整蓝牙广播名（如 IJ_E348C21ED428，2026-10-27 产品口径），与蓝牙版一致；
+    // 之前传的是产品名，同款 WiFi 设备绑定后全叫一个名字。广播名取不到才回落产品名。
+    const productName = String(options.broadcastName || options.productName || '智能相框').trim()
     const saved = await http.post(
       '/Client/UserProduct/addUserProduct',
       { productId: options.productId, productName, deviceId: productDeviceId },

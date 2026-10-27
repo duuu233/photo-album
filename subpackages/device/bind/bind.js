@@ -11,6 +11,7 @@ const system = require('../../../utils/system')
 const fold = require('../../../utils/fold-adapt')
 const wifiProvision = require('../../../utils/wifi-provision')
 const blufi = require('../../../utils/blufi')
+const broadcastMatch = require('../../../utils/broadcast-match')
 
 const app = getApp()
 const RECENTLY_BOUND_DEVICE_KEY = 'recentlyBoundDeviceId'
@@ -374,16 +375,18 @@ Page(fold.adapt({
     }
     wx.hideLoading()
     this._wifiConnecting = false
-    // 配网要用的设备信息走内存交接（BLE 句柄、不带冒号的 deviceNo、查到的产品），url 只带展示用的字段
+    // 配网要用的设备信息走内存交接（BLE 句柄、不带冒号的 deviceNo、查到的产品），url 只带展示用的字段。
+    // name 取完整广播名（如 IJ_E348C21ED428）：配网绑定时作为默认昵称（2026-10-27，见 api.bindWifiDevice）
+    const fullName = broadcastMatch.fullBroadcastName(device) || device.name || ''
     wifiProvision.setTarget({
       bleDeviceId: device.deviceId,
       deviceNo: device.wifiDeviceNo,
-      name: device.name || '',
+      name: fullName,
       product: device.wifiProduct || null
     })
     const query = [
       `deviceNo=${encodeURIComponent(device.wifiDeviceNo)}`,
-      `name=${encodeURIComponent(device.name || '')}`,
+      `name=${encodeURIComponent(fullName)}`,
       `spec=${encodeURIComponent(device.specText || '')}`
     ].join('&')
     // 已连上设备 → 进 WiFi 列表页让设备扫描附近 WiFi → 选中后进账号密码页（2026-10-26 产品定的流程）
@@ -680,7 +683,8 @@ Page(fold.adapt({
       productDeviceId: info.deviceId,
       deviceNo: info.deviceId,
       firmwareDeviceId: info.deviceId,
-      name: scanDevice.name
+      // 默认昵称 = 完整蓝牙广播名（2026-10-27 产品口径）；name / localName 常只有一个带全，取长的那个
+      name: broadcastMatch.fullBroadcastName(scanDevice) || scanDevice.name
     })
 
     let device

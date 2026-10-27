@@ -217,6 +217,8 @@ function normalizeDevice(device) {
     // 屏幕分辨率：投屏预览页裁剪按此 width/height 锁定比例，透传给下游（接口就绪后即生效）
     width: device.width,
     height: device.height,
+    // 尺寸型号（如「5.89寸」，设备列表接口下发的后台产品配置）：设备卡标签显示，蓝牙版 / WiFi 版同口径
+    sizeModel: String(device.sizeModel || '').trim(),
     shapeType: device.shapeType,
     // 设备图按机型区分（见 utils/device-thumb.js）；broadcastId 一并透传，选中设备存下来再归一化时仍认得出机型
     broadcastId: device.broadcastId,
