@@ -78,6 +78,40 @@ module.exports = {
     return iot.post('/api/device/photo/delete', Object.assign({}, payload, { deviceNo: plainDeviceNo(payload && payload.deviceNo) }), options)
   },
 
+  // 休眠计划查询（V1.4 实现报告反馈 2.1）：{ configured, mode, enabled, beginTime, endTime, sleepTime, wakeTime, updatedAt }。
+  // configured=false 从未设置；mode 0 关闭 / 1 一次性（beginTime/endTime：yyyy-MM-dd HH:mm）/ 2 周期（sleepTime/wakeTime：HH:mm）。
+  // 只要权限，离线也能查。
+  getSleep(deviceNo, options) {
+    return iot.get('/api/device/sleep', { deviceNo: plainDeviceNo(deviceNo) }, options)
+  },
+
+  // 休眠设置（V1.4 更新说明第四节）：{ deviceNo, mode: 0 } / { mode: 2, sleepTime, wakeTime } / { mode: 1, beginTime, endTime }。
+  // 时间一律本地时间，**不要转 UTC**（服务端转）；要求设备在线（离线 4041），参数不合法 4000。
+  setSleep(payload, options) {
+    return iot.post('/api/device/sleep', Object.assign({}, payload, { deviceNo: plainDeviceNo(payload && payload.deviceNo) }), options)
+  },
+
+  // 消息列表（对接文档 8.1）：{ total, page, size, unreadCount, list: [{ id, category, type, payload, read, createdAt }] }，按时间倒序
+  getNotifications(params, options) {
+    const p = params || {}
+    return iot.get('/api/notification/list', {
+      deviceNo: plainDeviceNo(p.deviceNo),
+      page: p.page || 1,
+      size: p.size || 20,
+      unreadOnly: p.unreadOnly ? 'true' : undefined
+    }, options)
+  },
+
+  // 未读数（8.2）：{ unreadCount }
+  getUnreadCount(deviceNo, options) {
+    return iot.get('/api/notification/unread-count', { deviceNo: plainDeviceNo(deviceNo) }, options)
+  },
+
+  // 标记已读（8.3）：ids 为空数组 = 该设备全部已读；最多 500 个
+  markNotificationsRead(deviceNo, ids, options) {
+    return iot.post('/api/notification/read', { deviceNo: plainDeviceNo(deviceNo), ids: ids || [] }, options)
+  },
+
   // 配网下发给设备的 MQTT 参数：{ host, port, usr, pwd }（2026-10-27 后端提供，凭据不再写在前端）。
   // 响应不缓存：请求头要求中间层不缓存，客户端不存 Storage / 全局变量，配网第 2 步现取现用、发完即丢；pwd 不进任何日志。
   getProvisioningMqtt(options) {

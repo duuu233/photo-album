@@ -1,0 +1,138 @@
+/* WiFi 版消息中心（2026-10-27） */
+.msg-content {
+  padding-top: 32rpx;
+}
+
+.msg-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24rpx;
+  padding: 20rpx 32rpx;
+}
+
+.msg-toolbar__left {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  color: #33373d;
+  font-size: 28rpx;
+}
+
+.msg-read-all {
+  color: #ff6a20;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.msg-read-all.is-disabled {
+  color: #b5bac1;
+}
+
+.msg-item {
+  margin-bottom: 20rpx;
+  padding: 28rpx 32rpx;
+}
+
+.msg-item__head {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.msg-item__dot {
+  flex: 0 0 auto;
+  width: 14rpx;
+  height: 14rpx;
+  background: #e5533d;
+  border-radius: 50%;
+}
+
+.msg-item__title {
+  flex: 1;
+  min-width: 0;
+  color: #2a2d32;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.msg-item.is-read .msg-item__title {
+  color: #6b717a;
+  font-weight: 500;
+}
+
+.msg-item__tag {
+  flex: 0 0 auto;
+  padding: 4rpx 14rpx;
+  color: #5d636b;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 999rpx;
+  font-size: 22rpx;
+}
+
+.msg-item__tag.is-ALARM {
+  color: #e5533d;
+  background: rgba(229, 83, 61, 0.1);
+}
+
+.msg-item__tag.is-BUSINESS {
+  color: #0e9f87;
+  background: rgba(14, 159, 135, 0.1);
+}
+
+.msg-item__tag.is-DEVICE {
+  color: #2f80ed;
+  background: rgba(47, 128, 237, 0.1);
+}
+
+.msg-item__detail {
+  margin-top: 12rpx;
+  color: #5d636b;
+  font-size: 25rpx;
+  line-height: 1.5;
+}
+
+.msg-item__time {
+  margin-top: 10rpx;
+  color: #9ba2ad;
+  font-size: 22rpx;
+}
+
+.msg-more {
+  padding: 24rpx 0 calc(40rpx + var(--safe-bottom));
+  color: #9ba2ad;
+  font-size: 24rpx;
+  text-align: center;
+}
+
+.msg-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 64rpx 40rpx;
+  text-align: center;
+}
+
+.msg-state__title {
+  color: #2a2d32;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.msg-state__desc {
+  margin-top: 16rpx;
+  color: #8b9098;
+  font-size: 25rpx;
+  line-height: 1.5;
+}
+
+.msg-state__btn {
+  margin-top: 40rpx;
+  padding: 0 56rpx;
+  height: 80rpx;
+  color: #ffffff;
+  background: linear-gradient(180deg, #ff9140 0%, #ff6a20 100%);
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  line-height: 80rpx;
+}

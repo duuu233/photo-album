@@ -62,6 +62,21 @@
           <text>轮播设置</text>
         </view>
       </view>
+
+      <!-- V1.4 实现报告反馈：休眠设置、消息中心（未读角标） -->
+      <view class="wifi-detail-entries glass-panel">
+        <view class="wifi-detail-entry" hover-class="none" bindtap="openSleep">
+          <text class="wifi-detail-entry__label">休眠设置</text>
+          <view class="ui-chevron"></view>
+        </view>
+        <view class="wifi-detail-entry" hover-class="none" bindtap="openMessages">
+          <text class="wifi-detail-entry__label">消息中心</text>
+          <view class="wifi-detail-entry__right">
+            <text wx:if="{{unreadCount}}" class="wifi-detail-badge">{{unreadText}}</text>
+            <view class="ui-chevron"></view>
+          </view>
+        </view>
+      </view>
     </block>
   </view>
 

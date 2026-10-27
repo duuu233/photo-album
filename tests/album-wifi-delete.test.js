@@ -1,7 +1,8 @@
 // 「我的上传」WiFi 版照片（2026-10-27，docs/wifi/XT相框通讯协议_V1.4_更新说明.md 第九节）：
 //   ① 删除不连蓝牙、不认槽位：先删老服务相册记录，再把**真删掉了的**那些记录的 imgBle 交给 IoT 删云端 bin；
 //      带 nextImageUrl = 相册里剩下的第一张（删到屏上当前图时服务端自动换图）；
-//   ② 提示：全成功「已从相框播放列表移除，设备联网后更新」；deviceNotified=false 提示设备离线；部分记录失败报张数；
+//   ② 提示：全成功「已从相框播放列表移除，设备联网后更新」；deviceAction=PLAY_NEXT「已切换到下一张」；
+//      deviceNotified=false 提示设备离线；部分记录失败报张数；
 //      云端删除失败单独说；
 //   ③ 再次投屏：确认在线后带 isWifi 进预览页，不走蓝牙连接；休眠 / 离线被 ensureOnline 拦下；
 //   ④ 蓝牙版照片仍走原链路（ensureConnectedDevice）。
@@ -128,6 +129,10 @@ const reset = () => {
       await makePage(wifiRecords(), ['c']).confirmDeleteSelected()
       assert.equal(calls.cloud[0].nextImageUrl, 'https://oss/a.bin', '下一张取剩下的第一张')
       assert.deepEqual(toasts, ['已删除；设备离线，相框换图将在设备联网后进行'])
+      reset()
+      cloudReply = { deleted: 1, current: true, deviceAction: 'PLAY_NEXT', deviceNotified: true }
+      await makePage(wifiRecords(), ['a']).confirmDeleteSelected()
+      assert.deepEqual(toasts, ['已删除，相框已切换到下一张'], '以响应的 deviceAction 为准')
       reset()
       cloudReply = Object.assign(new Error('接口(IoT)-服务暂不可用'), { code: 503 })
       await makePage(wifiRecords(), ['a']).confirmDeleteSelected()

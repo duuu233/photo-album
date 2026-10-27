@@ -5,17 +5,33 @@ const system = require('../../../utils/system')
 const fold = require('../../../utils/fold-adapt')
 const wifiStatus = require('../../../utils/wifi-status')
 const strategy = require('../../../utils/wifi-strategy')
+const wifiProjection = require('../../../utils/wifi-projection')
+const dithering = require('../../../utils/dithering')
 
 // WiFi 版轮播设置（2026-10-27，docs/wifi/XT相框通讯协议_V1.4_更新说明.md 1.5 / 第五节）。
 // 入口：我的设备 WiFi 卡、WiFi 设备详情的「轮播设置」（取代原「刷新状态」）。蓝牙版仍走 slideshow 页，互不影响。
 //   · 回显：IoT GET /api/device/strategy（只要权限，离线也能查）；
 //   · 模式：间隔时间（开始 / 结束 HH:mm + 间隔）/ 固定时间（每 N 天 + 若干时间点）；顺序 / 随机；轮播后是否休眠；
 //   · 选图：「我的上传」里这台设备的照片（老服务投屏成功记录，只取带 imgBle 的），单选 / 多选 / 全选，
-//     按选择顺序作为 imgUrls 提交；一张不选就不带 imgUrls（= 轮播全部照片），绝不提交空数组（会回 4000）；
+//     按选择顺序作为 imgUrls 提交；回显 imgUrls=null（全部相册）时全选；一张不选不让保存（空数组会回 4000）；
+//     按相册顺序全选时不带 imgUrls，保持「全部相册」（之后新上传的也进轮播）；
 //   · 保存：IoT POST /api/device/strategy，要求设备在线（4041 时补查是休眠 / 关机 / 离线给对应提示）；
+//     轮播中改选图不用先暂停，直接保存（实现报告反馈六）；
+//   · 保存成功后立即投第一张（选中的第一张；全部相册取相册第一张）：下载这张图 → POST /api/device/play refresh=true，
+//     屏幕马上切过去，不等下一个轮播周期（服务端保存轮播只下发 strategy_bin、不自动播放）。这一张不写新的相册记录；
 //   · 正在轮播时可「暂停轮播」（POST /api/device/strategy/stop）。
 // 换算与选图顺序见 utils/wifi-strategy.js。
 const DAY_OPTIONS = Array.from({ length: 365 }, (item, index) => `${index + 1}`)
+
+function downloadToLocal(url) {
+  return new Promise((resolve, reject) => {
+    wx.downloadFile({
+      url,
+      success: res => (res.statusCode === 200 && res.tempFilePath ? resolve(res.tempFilePath) : reject(new Error('下载失败'))),
+      fail: () => reject(new Error('下载失败'))
+    })
+  })
+}
 
 function plainDeviceNo(value) {
   return String(value || '').replace(/[:\-\s]/g, '').toUpperCase()
@@ -52,6 +68,7 @@ Page(fold.adapt({
     selectionHint: '',
     photosError: false,
     saving: false,
+    savingText: '',
     stopping: false
   },
 
@@ -106,7 +123,7 @@ Page(fold.adapt({
     ;(records || []).forEach(record => {
       const url = String((record && record.imgBle) || '')
       if (record && record.status === 'success' && url && !tiles.some(tile => tile.url === url)) {
-        tiles.push({ id: String(record.id), url, thumb: record.imgThumb || record.thumbUrl || '' })
+        tiles.push({ id: String(record.id), url, thumb: record.imgThumb || record.thumbUrl || '', img: record.img || record.thumbUrl || '' })
       }
     })
     this.tiles = tiles
@@ -235,7 +252,8 @@ Page(fold.adapt({
     if (this.data.saving || !this.data.device) {
       return
     }
-    const built = strategy.buildPayload(this.deviceNo(), this.data.form, this.selected)
+    const albumUrls = (this.tiles || []).map(tile => tile.url)
+    const built = strategy.buildPayload(this.deviceNo(), this.data.form, this.selected, albumUrls)
     if (built.error) {
       toast.show({ title: built.error, icon: 'none' })
       return
@@ -256,8 +274,41 @@ Page(fold.adapt({
     if (this.unloaded) {
       return
     }
-    this.setData({ saving: false, running: true, configured: true, selectionHint: '' })
-    toast.show({ title: built.payload.imgUrls ? `已保存，轮播所选 ${built.payload.imgUrls.length} 张` : '已保存，轮播全部照片', icon: 'none' })
+    this.setData({ running: true, configured: true, selectionHint: '' })
+    const saved = built.payload.imgUrls ? `已保存，轮播所选 ${built.payload.imgUrls.length} 张` : '已保存，轮播全部照片'
+    const played = await this.playFirst(strategy.firstImageUrl(built.payload, albumUrls))
+    if (this.unloaded) {
+      return
+    }
+    this.setData({ saving: false })
+    toast.show({ title: played === true ? `${saved}，屏幕即将切到第一张` : `${saved}；${played}`, icon: 'none' })
+  },
+
+  // 保存后立即投第一张：返回 true 或给用户看的失败原因
+  async playFirst(url) {
+    const tile = (this.tiles || []).filter(item => item.url === url)[0]
+    if (!tile || !tile.img) {
+      return '第一张照片缺少原图，等下一个轮播周期再切换'
+    }
+    this.setData({ savingText: '正在切到第一张…' })
+    let outcome
+    try {
+      const filePath = await downloadToLocal(tile.img)
+      const result = await wifiProjection.projectOne({
+        deviceNo: this.deviceNo(),
+        filePath,
+        type: dithering.typeForDevice(this.data.device),
+        refresh: true,
+        isCancelled: () => this.unloaded
+      })
+      outcome = result.status === 'SENT' ? true : `切换第一张失败：${result.message || '投屏失败'}`
+    } catch (error) {
+      outcome = '第一张照片下载失败，等下一个轮播周期再切换'
+    }
+    if (!this.unloaded) {
+      this.setData({ savingText: '' })
+    }
+    return outcome
   },
 
   async stop() {

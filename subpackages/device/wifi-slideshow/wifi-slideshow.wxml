@@ -76,10 +76,10 @@
         <text class="ws-title">轮播照片</text>
         <view wx:if="{{tiles.length}}" class="ws-select-all" hover-class="none" bindtap="toggleAll">{{allSelected ? '取消全选' : '全选'}}</view>
       </view>
-      <view class="ws-sub">从「我的上传」选择，按选择顺序轮播；不选则轮播全部照片。已选 {{selectedCount}} 张</view>
+      <view class="ws-sub">从「我的上传」选择，按选择顺序轮播；全选即轮播全部照片（含之后新上传的）。已选 {{selectedCount}} 张</view>
       <view wx:if="{{selectionHint}}" class="ws-hint">{{selectionHint}}</view>
 
-      <view wx:if="{{photosError}}" class="ws-empty">「我的上传」加载失败，可直接保存（轮播全部照片）或返回重试</view>
+      <view wx:if="{{photosError}}" class="ws-empty">「我的上传」加载失败，请返回重试</view>
       <view wx:elif="{{!tiles.length}}" class="ws-empty">还没有可轮播的照片，先投屏几张吧</view>
       <view wx:else class="ws-grid">
         <view wx:for="{{tiles}}" wx:key="id" class="ws-tile {{item.order ? 'is-selected' : ''}}" hover-class="none" data-url="{{item.url}}" bindtap="toggleTile">
@@ -92,7 +92,7 @@
 
   <view wx:if="{{!loading && !loadError}}" class="ws-actions">
     <view wx:if="{{running}}" class="ws-text-btn {{stopping ? 'is-busy' : ''}}" hover-class="none" bindtap="stop">{{stopping ? '暂停中…' : '暂停轮播'}}</view>
-    <view class="ws-primary {{saving ? 'is-busy' : ''}}" hover-class="none" bindtap="save">{{saving ? '保存中…' : '保存并开始轮播'}}</view>
+    <view class="ws-primary {{saving ? 'is-busy' : ''}}" hover-class="none" bindtap="save">{{saving ? (savingText || '保存中…') : '保存并开始轮播'}}</view>
   </view>
 
   <global-toast id="globalToast"></global-toast>

@@ -14,7 +14,9 @@
         "wifi-config/wifi-config",
         "wifi-provision/wifi-provision",
         "wifi-detail/wifi-detail",
-        "wifi-slideshow/wifi-slideshow"
+        "wifi-slideshow/wifi-slideshow",
+        "wifi-sleep/wifi-sleep",
+        "wifi-messages/wifi-messages"
       ]
     },
     {

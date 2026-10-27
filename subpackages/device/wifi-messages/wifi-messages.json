@@ -1,0 +1,10 @@
+{
+  "navigationStyle": "custom",
+  "navigationBarTitleText": "消息中心",
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark",
+  "usingComponents": {
+    "page-nav": "/components/page-nav/page-nav"
+  },
+  "backgroundColor": "#edf6ff"
+}

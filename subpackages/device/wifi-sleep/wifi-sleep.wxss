@@ -1,0 +1,144 @@
+/* WiFi 版休眠设置（2026-10-27）：卡片 / 分段 / 主按钮与 WiFi 轮播设置页同一套样式 */
+.sl-content {
+  padding-top: 32rpx;
+  padding-bottom: calc(180rpx + var(--safe-bottom));
+}
+
+.sl-card {
+  margin-bottom: 28rpx;
+  padding: 36rpx 36rpx 32rpx;
+}
+
+.sl-title {
+  margin-bottom: 18rpx;
+  color: #33373d;
+  font-size: 30rpx;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.sl-summary {
+  color: #0e9f87;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.sl-summary.is-error {
+  color: #e5533d;
+}
+
+.sl-sub,
+.sl-tip,
+.sl-note {
+  margin-top: 12rpx;
+  color: #8a9099;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.sl-note {
+  padding: 0 8rpx;
+}
+
+.sl-segment {
+  display: flex;
+  gap: 20rpx;
+  margin-bottom: 8rpx;
+}
+
+.sl-segment__item {
+  flex: 1;
+  height: 76rpx;
+  color: #2a2d32;
+  background: rgba(238, 238, 238, 0.84);
+  border: 2rpx solid transparent;
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 72rpx;
+  text-align: center;
+}
+
+.sl-segment__item.is-active {
+  color: #ff6a20;
+  background: rgba(255, 255, 255, 0.6);
+  border-color: #ff6a20;
+}
+
+.sl-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+  min-height: 88rpx;
+  color: #33373d;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.06);
+  font-size: 28rpx;
+}
+
+.sl-row__value {
+  color: #ff6a20;
+  font-weight: 600;
+}
+
+.sl-pair {
+  display: flex;
+  gap: 28rpx;
+}
+
+.sl-actions {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
+  padding: 20rpx 46rpx calc(28rpx + var(--safe-bottom));
+}
+
+.sl-primary {
+  height: 92rpx;
+  color: #ffffff;
+  background: linear-gradient(180deg, #ff9140 0%, #ff6a20 100%);
+  border-radius: 999rpx;
+  box-shadow: 0 16rpx 32rpx rgba(255, 102, 31, 0.22);
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 92rpx;
+  text-align: center;
+}
+
+.sl-primary.is-busy {
+  opacity: 0.6;
+}
+
+.sl-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 64rpx 40rpx;
+  text-align: center;
+}
+
+.sl-error__title {
+  color: #2a2d32;
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.sl-error__desc {
+  margin-top: 16rpx;
+  color: #8b9098;
+  font-size: 26rpx;
+}
+
+.sl-error__btn {
+  margin-top: 40rpx;
+  padding: 0 56rpx;
+  height: 80rpx;
+  color: #ffffff;
+  background: linear-gradient(180deg, #ff9140 0%, #ff6a20 100%);
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  line-height: 80rpx;
+}

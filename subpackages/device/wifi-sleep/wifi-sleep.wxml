@@ -1,0 +1,77 @@
+<!-- WiFi 版休眠设置（说明见 wifi-sleep.js 文件头） -->
+<view class="mock-root wifi-sleep-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
+  </view>
+
+  <page-nav title="休眠设置"></page-nav>
+
+  <view wx:if="{{loading}}" class="page-loading">
+    <view class="page-loading__spinner"></view>
+    <view class="page-loading__text">加载中…</view>
+  </view>
+
+  <view wx:elif="{{loadError}}" class="mock-content sl-content">
+    <view class="sl-error glass-panel">
+      <view class="sl-error__title">加载失败</view>
+      <view class="sl-error__desc">网络异常或服务出错，请稍后重试。</view>
+      <view class="sl-error__btn" hover-class="none" bindtap="retryLoad">重新加载</view>
+    </view>
+  </view>
+
+  <view wx:else class="mock-content sl-content">
+    <view class="sl-card glass-panel">
+      <view class="sl-title">当前设置</view>
+      <view class="sl-summary {{queryFailed ? 'is-error' : ''}}">{{summary}}</view>
+      <view wx:if="{{updatedAt}}" class="sl-sub">最后设置 {{updatedAt}}</view>
+    </view>
+
+    <view class="sl-card glass-panel">
+      <view class="sl-title">休眠方式</view>
+      <view class="sl-segment">
+        <view class="sl-segment__item {{form.mode === 0 ? 'is-active' : ''}}" hover-class="none" data-value="0" bindtap="chooseMode">关闭</view>
+        <view class="sl-segment__item {{form.mode === 2 ? 'is-active' : ''}}" hover-class="none" data-value="2" bindtap="chooseMode">周期</view>
+        <view class="sl-segment__item {{form.mode === 1 ? 'is-active' : ''}}" hover-class="none" data-value="1" bindtap="chooseMode">一次性</view>
+      </view>
+
+      <block wx:if="{{form.mode === 2}}">
+        <picker mode="time" value="{{form.sleepTime}}" data-field="sleepTime" bindchange="changeField">
+          <view class="sl-row"><text>每天休眠</text><text class="sl-row__value">{{form.sleepTime}}</text></view>
+        </picker>
+        <picker mode="time" value="{{form.wakeTime}}" data-field="wakeTime" bindchange="changeField">
+          <view class="sl-row"><text>每天唤醒</text><text class="sl-row__value">{{crossDay ? '次日 ' : ''}}{{form.wakeTime}}</text></view>
+        </picker>
+        <view class="sl-tip">唤醒时间早于休眠时间时按次日唤醒（跨午夜）</view>
+      </block>
+
+      <block wx:elif="{{form.mode === 1}}">
+        <view class="sl-row sl-row--pair">
+          <text>开始</text>
+          <view class="sl-pair">
+            <picker mode="date" value="{{form.beginDate}}" start="{{today}}" data-field="beginDate" bindchange="changeField"><text class="sl-row__value">{{form.beginDate}}</text></picker>
+            <picker mode="time" value="{{form.beginTime}}" data-field="beginTime" bindchange="changeField"><text class="sl-row__value">{{form.beginTime}}</text></picker>
+          </view>
+        </view>
+        <view class="sl-row sl-row--pair">
+          <text>结束</text>
+          <view class="sl-pair">
+            <picker mode="date" value="{{form.endDate}}" start="{{today}}" data-field="endDate" bindchange="changeField"><text class="sl-row__value">{{form.endDate}}</text></picker>
+            <picker mode="time" value="{{form.endTime}}" data-field="endTime" bindchange="changeField"><text class="sl-row__value">{{form.endTime}}</text></picker>
+          </view>
+        </view>
+        <view class="sl-tip">只休眠这一次，开始时间需早于结束时间</view>
+      </block>
+
+      <view wx:else class="sl-tip">关闭后设备保持联网，不按计划休眠</view>
+    </view>
+
+    <view class="sl-note">设置时设备需要在线；时间按手机本地时间填写</view>
+  </view>
+
+  <view wx:if="{{!loading && !loadError}}" class="sl-actions">
+    <view class="sl-primary {{saving ? 'is-busy' : ''}}" hover-class="none" bindtap="save">{{saving ? '保存中…' : '保存'}}</view>
+  </view>
+
+  <global-toast id="globalToast"></global-toast>
+  <debug-log></debug-log>
+</view>

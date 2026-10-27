@@ -5,8 +5,9 @@
 //   · updateType 2 = 间隔（beginTime / endTime HH:mm + timingTime 秒），1 = 固定时间（updateDays 1~365 + updateTimeList HH:mm[]）；
 //   · mode 1 顺序 / 2 随机；idle 0 轮播后休眠 / 1 不休眠；
 //   · imgUrls：「我的上传」里选中照片的 imgBle，按选择顺序，最多 200；不传 = 轮播全部相册；
-//     **不能传空数组**（服务端回 4000），所以一张都没选时整个字段不带。
-//   · 回显 imgUrls：null = 没选过（全部相册）；[] = 选过但照片都删了。
+//     **不能传空数组**（服务端回 4000）：一张都没选时不让保存（2026-10-27 实现报告反馈六）；
+//     按相册顺序全选时不带 imgUrls（= 全部相册，之后新上传的照片也会进轮播）。
+//   · 回显 imgUrls：null = 没选过（全部相册，页面上全选）；[] = 选过但照片都删了（提示重新选择）。
 
 const UPDATE_INTERVAL = 2
 const UPDATE_FIXED = 1
@@ -87,12 +88,13 @@ function formFromStrategy(strategy) {
 }
 
 // 回显的 imgUrls 与当前相册对一下：只留相册里还在的、保持原顺序。
-// 返回 { selected, hint }：hint 是给用户看的一行说明（全部相册 / 已全部失效 / 部分已删除）
+// 返回 { selected, hint }：hint 是给用户看的一行说明（已全部失效 / 部分已删除）。
+// imgUrls=null（没选过 = 全部相册）按相册顺序全选；查询失败（strategy 为空）不选
 function selectionFromStrategy(strategy, albumUrls) {
   const urls = strategy && strategy.imgUrls
   const album = Array.isArray(albumUrls) ? albumUrls : []
   if (!Array.isArray(urls)) {
-    return { selected: [], hint: '' }
+    return { selected: strategy ? album.slice() : [], hint: '' }
   }
   const selected = []
   urls.forEach(url => {
@@ -101,7 +103,7 @@ function selectionFromStrategy(strategy, albumUrls) {
     }
   })
   if (!urls.length) {
-    return { selected, hint: '之前选择的照片已全部删除' }
+    return { selected, hint: '之前选择的照片已全部删除，请重新选择' }
   }
   if (!selected.length) {
     return { selected, hint: '之前选择的照片已不在「我的上传」中' }
@@ -142,8 +144,16 @@ function toggleAll(selected, albumUrls) {
   return list
 }
 
-// 表单 + 已选 → POST /api/device/strategy 的 body。返回 { payload } 或 { error }（给用户看的文案）
-function buildPayload(deviceNo, form, selected) {
+// 是否「按相册顺序全选」：是则不带 imgUrls，保持「全部相册」语义
+function isWholeAlbum(selected, albumUrls) {
+  const album = Array.isArray(albumUrls) ? albumUrls : []
+  const list = selected || []
+  return !!album.length && list.length === album.length && album.every((url, index) => list[index] === url)
+}
+
+// 表单 + 已选 → POST /api/device/strategy 的 body。返回 { payload } 或 { error }（给用户看的文案）。
+// albumUrls 传相册里可选的全部照片（网格顺序），用来判断「全部相册」
+function buildPayload(deviceNo, form, selected, albumUrls) {
   const f = form || {}
   const payload = {
     deviceNo,
@@ -174,11 +184,22 @@ function buildPayload(deviceNo, form, selected) {
     payload.updateDays = Math.floor(days)
     payload.updateTimeList = times
   }
-  const urls = (selected || []).filter(Boolean).slice(0, MAX_IMG_URLS)
-  if (urls.length) {
-    payload.imgUrls = urls
+  const urls = (selected || []).filter(Boolean)
+  if (!urls.length) {
+    return { error: '请至少选择一张照片' }
+  }
+  if (!isWholeAlbum(urls, albumUrls)) {
+    payload.imgUrls = urls.slice(0, MAX_IMG_URLS)
   }
   return { payload }
+}
+
+// 保存后立即播放的那张：选了照片取第一张选中的；全部相册取相册顺序第一张（实现报告反馈六）
+function firstImageUrl(payload, albumUrls) {
+  if (payload && Array.isArray(payload.imgUrls) && payload.imgUrls.length) {
+    return payload.imgUrls[0]
+  }
+  return (Array.isArray(albumUrls) && albumUrls[0]) || ''
 }
 
 module.exports = {
@@ -196,5 +217,7 @@ module.exports = {
   selectionFromStrategy,
   toggleSelection,
   toggleAll,
-  buildPayload
+  isWholeAlbum,
+  buildPayload,
+  firstImageUrl
 }

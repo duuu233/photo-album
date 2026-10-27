@@ -16,6 +16,8 @@ const wifiStatus = require('../../../utils/wifi-status')
 //     订阅 WS device.status，上下线时自动重查（只推信号不推详情，文档 1.6）；
 //   · 操作：「投屏」（弹拍照 / 相册 → 预览构图 → WiFi 投屏结果页）、「轮播设置」（V1.4 更新说明 1.5，取代原「刷新状态」，
 //     进 wifi-slideshow 页；状态随进页与 WS device.status 自动重查）。
+//   · 入口（V1.4 实现报告反馈二 / 三）：「休眠设置」进 wifi-sleep；「消息中心」进 wifi-messages，带未读角标
+//    （IoT GET /api/notification/unread-count，进页时查，收到本设备 WS notification.new 再查）。
 // 刷新屏幕、TF、休眠、OTA 等设备控制属于 STEP 5/6，未接；App 也没有删除 / 重新配网操作（设备入网流程 2.2）。
 function plainDeviceNo(value) {
   return String(value || '').replace(/[:\-\s]/g, '').toUpperCase()
@@ -75,6 +77,8 @@ Page(fold.adapt({
     status: 'loading', // loading / online / sleeping / shutdown / offline / unknown
     statusText: '查询中',
     rows: [],
+    unreadCount: 0,
+    unreadText: '',
     showMediaSheet: false,
     mediaSheetClosing: false
   },
@@ -89,6 +93,12 @@ Page(fold.adapt({
         this.refreshStatus()
       }
     })
+    // 新消息只推信号：收到就重查未读数
+    this._offNotice = iotWs.on('notification.new', event => {
+      if (this.data.device && event && plainDeviceNo(event.deviceNo) === this.deviceNo()) {
+        this.refreshUnread()
+      }
+    })
   },
 
   onShow() {
@@ -99,6 +109,9 @@ Page(fold.adapt({
     this.unloaded = true
     if (this._offStatus) {
       this._offStatus()
+    }
+    if (this._offNotice) {
+      this._offNotice()
     }
     if (this._subscribed) {
       iotWs.unsubscribe(this._subscribed)
@@ -133,6 +146,38 @@ Page(fold.adapt({
       this._subscribed = deviceNo
     }
     this.refreshStatus()
+    this.refreshUnread()
+  },
+
+  // 消息中心未读角标；查不到不显示，不弹错
+  async refreshUnread() {
+    const deviceNo = this.deviceNo()
+    if (!deviceNo) {
+      return
+    }
+    let count = 0
+    try {
+      const res = await iotApi.getUnreadCount(deviceNo, { showError: false })
+      count = Number(res && res.unreadCount) || 0
+    } catch (error) {
+      console.warn('[WiFi消息] 未读数查询失败', error && error.code, error && error.message)
+      return
+    }
+    if (!this.unloaded) {
+      this.setData({ unreadCount: count, unreadText: count > 99 ? '99+' : String(count) })
+    }
+  },
+
+  openSleep() {
+    if (this.data.device) {
+      wx.navigateTo({ url: `/subpackages/device/wifi-sleep/wifi-sleep?id=${this.data.id}` })
+    }
+  },
+
+  openMessages() {
+    if (this.data.device) {
+      wx.navigateTo({ url: `/subpackages/device/wifi-messages/wifi-messages?deviceNo=${this.deviceNo()}` })
+    }
   },
 
   retryLoad() {

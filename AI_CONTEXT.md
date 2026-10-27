@@ -80,6 +80,10 @@ WiFi 版设备走独立的 XT IoT 服务（`iot.boltfox.cn`），按 `docs/wifi/
 
 WiFi 投屏（STEP 3，2026-10-27 按 V1.4 改）：预览页对 WiFi 版不预热蓝牙、导出后 redirect 到 `subpackages/projection/wifi-result`，逐张 `utils/wifi-projection.projectOne`：`POST /api/device/play` 上传进度 → 返回 SENT 即结束（「已发送，屏幕即将刷新」，不等 ack、不查状态，设备成败由服务端写消息通知）；多张时本轮最后一张 `refresh=true`、其余 `refresh=false`（UPLOADED，只上传不刷屏）。每张拿 `binUrl` 经 `api.addWifiAlbumRecord`（`setFileUpload` + `addUserProductImgRecord`，img + imgBle）写老服务相册记录，「我的上传」、轮播选图、删除都认它的 `imgBle`。WiFi 轮播设置页 `subpackages/device/wifi-slideshow`（逻辑在 `utils/wifi-strategy.js`；不选照片不传 `imgUrls`，绝不传空数组），入口为我的设备 WiFi 卡 / WiFi 详情的「轮播设置」（取代「刷新状态」）。「我的上传」WiFi 照片删除：老服务删记录 → IoT `POST /api/device/photo/delete`（imgBle + nextImageUrl），不连蓝牙。状态多 `SHUTDOWN`「已关机」。见 `docs/changes/2026-10-27-WiFi版V1.4对接.md`、`docs/wifi/V1.4对接分析报告.md`。WiFi 投屏结果页有可复制的投屏日志（开发版 / 体验版显示，`projectOne` 的 `onLog`）；已知 WiFi 产品接口宽 > 高时预览竖向 / 横向反了，待定（见同一变更记录）。首页（设备卡云端状态、拍照 / 相册只确认在线）与图库（弹层 WiFi版角标、不连蓝牙）入口已接，共用 `utils/wifi-status.js`；AI 对话入口未接。配网日志已删除。首页设备卡图文整体居中，名称下显示「WiFi版 / 蓝牙版·尺寸」（`sizeModel`，没配 --寸），两类卡的状态与电量同一行（`.status-meta-row`）；我的设备「设备ID」前显示尺寸（不带类型）；两类设备绑定时默认昵称都传完整蓝牙广播名（`broadcast-match.fullBroadcastName`，见 `docs/changes/2026-10-27-首页设备卡居中与昵称尺寸.md`）。详见 `docs/changes/2026-10-27-我的设备按WiFi版蓝牙版分组.md`、`docs/changes/2026-10-27-WiFi版投屏与设备详情.md`。
 
+## WiFi 版休眠设置与消息中心（2026-10-27，`main-wifi`）
+
+WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/POST /api/device/sleep`，逻辑在 `utils/wifi-sleep.js`）与「消息中心」（`subpackages/device/wifi-messages`，未读角标、分页、已读、`notification.new` 刷新，文案在 `utils/wifi-messages.js`）。轮播设置回显 `imgUrls=null` 全选、不选不让存、保存后立即 `refresh=true` 投第一张。见 `docs/changes/2026-10-27-WiFi版休眠设置与消息中心.md`。
+
 ## 联调日志浮窗（2026-10-27，`main-wifi`）
 
 开发版 / 体验版每个页面左下角有「日志 N」浮窗（`components/debug-log`，app.json 全局注册，每个页面 wxml 末尾一个 `<debug-log>`；新增页面记得加），点开可复制 / 清空。数据来自 `utils/debug-log.js`：`app.js` 最先 `install()` 包装 console，另有老服务 `[HTTP]`、IoT `[IoT]`、`[WS]` 摘要；最近 500 行只在内存，token / 密码入库前打码。正式版整套不生效。

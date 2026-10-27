@@ -867,6 +867,8 @@ Page(fold.adapt({
   // WiFi 版删除（V1.4 更新说明 9.4）：① 老服务删相册记录 → ② IoT 删云端 bin（只删记录真删掉了的那些）。
   // 两步互不回滚：记录删了但云端没删，设备拉的播放列表也已经不含它（列表读的就是相册记录），只是 OSS 上留个文件。
   // nextImageUrl 取相册里剩下的第一张：删到屏上当前图时服务端用它换图；删的不是当前图时服务端不动设备。
+  // 轮播中服务端按「被删图是否在本轮轮播范围内」决定是否强切下一张（实现报告反馈四），前端不自己推算当前图，
+  // 结果以响应的 deviceAction / deviceNotified 为准。
   async deleteWifiPhotos(ids, device) {
     const deviceNo = device.productDeviceId || device.deviceNo
     wx.showLoading({ title: '删除中', mask: true })
@@ -891,6 +893,7 @@ Page(fold.adapt({
 
     let cloudError = ''
     let offline = false
+    let switched = false
     for (let start = 0; start < imgUrls.length; start += 200) {
       const payload = { deviceNo, imgUrls: imgUrls.slice(start, start + 200) }
       if (next) {
@@ -901,6 +904,8 @@ Page(fold.adapt({
         console.log('[相册删除][WiFi] 云端删除返回', JSON.stringify(res))
         if (res && res.deviceNotified === false) {
           offline = true
+        } else if (res && res.deviceAction === 'PLAY_NEXT') {
+          switched = true
         }
       } catch (error) {
         console.warn('[相册删除][WiFi] 云端删除失败', error && error.code, error && error.message)
@@ -917,6 +922,8 @@ Page(fold.adapt({
       toast.warn({ title: `已删除 ${deletedIds.length} 张，${failedIds.length} 张未删除成功，请稍后重试`, icon: 'none' })
     } else if (offline) {
       toast.show({ title: '已删除；设备离线，相框换图将在设备联网后进行', icon: 'none' })
+    } else if (switched) {
+      toast.show({ title: '已删除，相框已切换到下一张', icon: 'none' })
     } else {
       toast.show({ title: '已从相框播放列表移除，设备联网后更新', icon: 'none' })
     }

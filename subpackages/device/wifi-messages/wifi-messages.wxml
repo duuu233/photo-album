@@ -1,0 +1,50 @@
+<!-- WiFi 版消息中心（说明见 wifi-messages.js 文件头） -->
+<view class="mock-root wifi-messages-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
+  </view>
+
+  <page-nav title="消息中心"></page-nav>
+
+  <view class="mock-content msg-content">
+    <view class="msg-toolbar glass-panel">
+      <view class="msg-toolbar__left">
+        <text>只看未读</text>
+        <switch checked="{{unreadOnly}}" color="#ff6a20" bindchange="toggleUnreadOnly" />
+      </view>
+      <text class="msg-read-all {{unreadCount ? '' : 'is-disabled'}}" hover-class="none" bindtap="readAll">全部已读{{unreadCount ? '（' + unreadCount + '）' : ''}}</text>
+    </view>
+
+    <view wx:if="{{loading}}" class="page-loading">
+      <view class="page-loading__spinner"></view>
+      <view class="page-loading__text">加载中…</view>
+    </view>
+
+    <view wx:elif="{{loadError}}" class="msg-state glass-panel">
+      <view class="msg-state__title">加载失败</view>
+      <view class="msg-state__desc">{{loadError}}</view>
+      <view class="msg-state__btn" hover-class="none" bindtap="retryLoad">重新加载</view>
+    </view>
+
+    <view wx:elif="{{!items.length}}" class="msg-state glass-panel">
+      <view class="msg-state__title">{{unreadOnly ? '没有未读消息' : '暂无消息'}}</view>
+      <view class="msg-state__desc">设备上下线、电量、投屏结果等消息会出现在这里（保留 90 天）</view>
+    </view>
+
+    <block wx:else>
+      <view wx:for="{{items}}" wx:key="id" class="msg-item glass-panel {{item.read ? 'is-read' : ''}}" hover-class="none" data-index="{{index}}" bindtap="tapItem">
+        <view class="msg-item__head">
+          <view wx:if="{{!item.read}}" class="msg-item__dot"></view>
+          <text class="msg-item__title">{{item.title}}</text>
+          <text class="msg-item__tag is-{{item.category}}">{{item.categoryText}}</text>
+        </view>
+        <view wx:if="{{item.detail}}" class="msg-item__detail">{{item.detail}}</view>
+        <view class="msg-item__time">{{item.createdAt}}</view>
+      </view>
+      <view class="msg-more" hover-class="none" bindtap="loadMore">{{loadingMore ? '加载中…' : (moreError ? '加载失败，点击重试' : (hasMore ? '上拉加载更多' : '没有更多了'))}}</view>
+    </block>
+  </view>
+
+  <global-toast id="globalToast"></global-toast>
+  <debug-log></debug-log>
+</view>

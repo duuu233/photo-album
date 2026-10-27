@@ -307,3 +307,46 @@
   font-size: 36rpx;
   font-weight: 500;
 }
+
+/* 休眠设置 / 消息中心入口（2026-10-27，V1.4 实现报告反馈） */
+.wifi-detail-entries {
+  margin-top: 24rpx;
+  padding: 0 36rpx;
+}
+
+.wifi-detail-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 100rpx;
+}
+
+.wifi-detail-entry + .wifi-detail-entry {
+  border-top: 1rpx solid rgba(42, 43, 43, 0.06);
+}
+
+.wifi-detail-entry__label {
+  color: #33373d;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.wifi-detail-entry__right {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.wifi-detail-badge {
+  min-width: 36rpx;
+  height: 36rpx;
+  padding: 0 10rpx;
+  box-sizing: border-box;
+  color: #ffffff;
+  background: #e5533d;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 700;
+  line-height: 36rpx;
+  text-align: center;
+}
