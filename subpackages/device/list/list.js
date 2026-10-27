@@ -12,6 +12,7 @@ const deviceIdentity = require('../../../utils/device-identity')
 const fold = require('../../../utils/fold-adapt')
 const broadcastMatch = require('../../../utils/broadcast-match')
 const wifiStatus = require('../../../utils/wifi-status')
+const wifiWatch = require('../../../utils/wifi-watch')
 
 const app = getApp()
 const RECENTLY_BOUND_DEVICE_KEY = 'recentlyBoundDeviceId'
@@ -80,7 +81,36 @@ Page(fold.adapt({
     // 不再在本页自动扫描重连：已建立的连接是 device-ble 里的全局会话，切到本页/返回都不会断，
     // loadDevices 用 deviceBle.isConnected 实时显示连接态即可。需要新连接时走列表项的「连接」按钮，
     // 或首页点拍照/相册时按需连接当前选中设备。
+    // WiFi 版状态推送（2026-10-27）：先按已有列表订阅（返回本页 / 回前台时立刻生效），loadDevices 后再按最新列表更新
+    this.watchWifiDevices()
     this.loadDevices()
+  },
+
+  // 隐藏（进下一页、进后台）时退订 WiFi 状态推送，下次 onShow 再订
+  onHide() {
+    this.stopWifiWatch()
+  },
+
+  onUnload() {
+    this.stopWifiWatch()
+  },
+
+  // 订阅列表里 WiFi 版设备的状态推送（utils/wifi-watch）：收到推送重查那一台，长连接重连成功全部重查
+  watchWifiDevices() {
+    if (!this._wifiWatch) {
+      this._wifiWatch = wifiWatch.create(deviceNos => {
+        ;(this.data.devices || [])
+          .filter(item => item && item.isWifi && deviceNos.indexOf(wifiWatch.deviceNoOf(item)) > -1)
+          .forEach(item => this.refreshWifiStatus(item.id))
+      })
+    }
+    this._wifiWatch.update((this.data.devices || []).filter(item => item && item.isWifi))
+  },
+
+  stopWifiWatch() {
+    if (this._wifiWatch) {
+      this._wifiWatch.stop()
+    }
   },
 
   // 加载设备列表，并为每项附加展示用字段（内存百分比、删除提示）
@@ -169,6 +199,7 @@ Page(fold.adapt({
       loadError: false
     })
     this.refreshWifiStatus()
+    this.watchWifiDevices()
     await this.refreshConnectedBattery()
   },
 

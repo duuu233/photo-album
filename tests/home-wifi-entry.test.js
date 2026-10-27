@@ -89,6 +89,18 @@ async function main() {
     assert.equal(fresh.data.currentDevice.wifiStatus, 'online', '当前卡同步更新')
     assert.deepEqual(trace.filter(item => item.startsWith('info:')), ['info:E3:48:C2:1E:D4:28'], '只查 WiFi 版')
     console.log('PASS 设备卡：WiFi 版打标记并按云端状态刷新')
+
+    // 状态推送（2026-10-27，utils/wifi-watch）：推送带去冒号的 deviceNo，只重查那一台
+    trace.length = 0
+    const other = page.tagWifiCard({ id: '22', name: 'WiFi相框2', broadcastId: 'IJ_*', productDeviceId: 'D0:CF:13:F0:2F:F8' })
+    const two = newPage({ deviceList: [wifi, other], currentDeviceIndex: 0, currentDevice: wifi })
+    await two.refreshWifiCards(['D0CF13F02FF8'])
+    assert.deepEqual(trace.filter(item => item.startsWith('info:')), ['info:D0:CF:13:F0:2F:F8'], '推送只重查那一台')
+    const source = fs.readFileSync(path.join(root, 'pages/home/home.js'), 'utf8')
+    assert.ok(/onShow\(\) \{[\s\S]*?this\.watchWifiCards\(\)[\s\S]*?this\.loadHomeState\(\)/.test(source), 'onShow 先按已有设备卡订阅，再拉设备列表')
+    assert.ok(/onHide\(\) \{\s*this\.stopWifiWatch\(\)/.test(source), '隐藏时退订')
+    assert.ok(/this\.refreshWifiCards\(\)\s*this\.watchWifiCards\(\)/.test(source), '设备列表刷新后按最新设备更新订阅')
+    console.log('PASS 设备卡：状态推送只重查那一台，显示时订阅、隐藏时退订')
   }
   {
     trace.length = 0

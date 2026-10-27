@@ -10,6 +10,7 @@ const deviceIdentity = require('../../utils/device-identity')
 const deviceThumb = require('../../utils/device-thumb')
 const broadcastMatch = require('../../utils/broadcast-match')
 const wifiStatus = require('../../utils/wifi-status')
+const wifiWatch = require('../../utils/wifi-watch')
 
 const app = getApp()
 
@@ -360,6 +361,9 @@ Page({
         return
       }
 
+      // WiFi 版状态推送（2026-10-27）：先用页面上已有的设备卡订阅——熄屏回前台时长连接立刻重连，
+      // 重连成功即重查，不必等下面老服务设备列表返回；列表回来后 loadHomeState 再按最新设备更新订阅
+      this.watchWifiCards()
       // 不再进首页就自动扫描重连：连接改为点设备卡片的「连接蓝牙」按钮按需连接当前选中设备
       // （见 connectCurrentDevice）；点「拍照/相册」只校验是否已连接。loadHomeState 仍用真实蓝牙会话显示「已连接」。
       this.loadHomeState()
@@ -407,7 +411,13 @@ Page({
     }
   },
 
+  // 隐藏（切页、进后台）时退订 WiFi 状态推送，下次 onShow 再订
+  onHide() {
+    this.stopWifiWatch()
+  },
+
   onUnload() {
+    this.stopWifiWatch()
     this.clearScanTimer()
     if (this.bgReadyTimer) {
       clearTimeout(this.bgReadyTimer)
@@ -578,8 +588,9 @@ Page({
       this.setScene(hasRealDevice ? SCENES.BOUND : SCENES.UNBOUND, {
         hasDevice: hasRealDevice
       })
-      // WiFi 版卡片的云端状态（不走蓝牙）后台查，回来再替换
+      // WiFi 版卡片的云端状态（不走蓝牙）后台查，回来再替换；并按最新设备更新状态推送订阅
       this.refreshWifiCards()
+      this.watchWifiCards()
       // 页面先展示缓存；15 秒内直接复用，超窗再后台读 0x04，失败保留旧值。
       await this.refreshConnectedBattery()
     } catch (error) {
@@ -619,10 +630,27 @@ Page({
     return Object.assign({}, item, { isWifi: true }, fields)
   },
 
-  // 查首页轮播里每台 WiFi 版设备的在线 / 电量（IoT 设备信息），各自带序号防旧请求覆盖
-  refreshWifiCards() {
+  // 订阅首页 WiFi 版设备的状态推送（utils/wifi-watch）：收到推送重查那一台，长连接重连成功全部重查
+  watchWifiCards() {
+    if (!this._wifiWatch) {
+      this._wifiWatch = wifiWatch.create(deviceNos => this.refreshWifiCards(deviceNos))
+    }
+    this._wifiWatch.update((this.data.deviceList || []).filter(item => item && item.isWifi))
+  },
+
+  stopWifiWatch() {
+    if (this._wifiWatch) {
+      this._wifiWatch.stop()
+    }
+  },
+
+  // 查首页轮播里每台 WiFi 版设备的在线 / 电量（IoT 设备信息），各自带序号防旧请求覆盖。
+  // 传 deviceNos（去冒号）只查这几台（状态推送触发）
+  refreshWifiCards(deviceNos) {
     const seqs = this._wifiCardSeq || (this._wifiCardSeq = {})
-    const targets = (this.data.deviceList || []).filter(item => item && item.isWifi)
+    const targets = (this.data.deviceList || []).filter(item =>
+      item && item.isWifi && (!deviceNos || deviceNos.indexOf(wifiWatch.deviceNoOf(item)) > -1)
+    )
     return Promise.all(targets.map(device => {
       const key = String(device.id)
       const seq = (seqs[key] || 0) + 1

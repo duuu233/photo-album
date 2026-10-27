@@ -3,7 +3,9 @@
 //   ② WiFi 版状态来自 IoT GET /api/device/info：在线 / 离线 / 查不到（状态未知），在线才显示信号格与电量；
 //   ③ WiFi 版按钮：投屏不连蓝牙、直接弹拍照 / 相册（离线先拦）；轮播设置进 WiFi 轮播页（V1.4 取代原「刷新状态」，不拦离线）；
 //      点卡片进 WiFi 详情；选相框模式不让选 WiFi 版；
-//   ④ 模板：两组标题按数量显示，WiFi 卡用 WiFi 按钮，蓝牙卡仍是「投屏 / 连接」原样。
+//   ④ 模板：两组标题按数量显示，WiFi 卡用 WiFi 按钮，蓝牙卡仍是「投屏 / 连接」原样；
+//   ⑤ 状态推送（2026-10-27，utils/wifi-watch）：只订阅 WiFi 版（去冒号），收到 device.status 只重查那一台，
+//      长连接重连成功全部重查，onHide 退订并不再响应；已被别处订阅的不重复订阅、不替它退订。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -18,7 +20,15 @@ const plain = value => JSON.parse(JSON.stringify(value))
 
 function loadListPage(options = {}) {
   let definition
-  const state = { toasts: [], infoCalls: [], navs: [], selected: null }
+  const state = { toasts: [], infoCalls: [], navs: [], selected: null, subs: [], unsubs: [], preSubscribed: options.preSubscribed || [] }
+  const wsHandlers = {}
+  state.emit = (type, payload) => (wsHandlers[type] || []).slice().forEach(fn => fn(payload))
+  const ws = {
+    on(type, fn) { (wsHandlers[type] = wsHandlers[type] || []).push(fn); return () => { wsHandlers[type] = wsHandlers[type].filter(item => item !== fn) } },
+    subscribe(id) { state.subs.push(id) },
+    unsubscribe(id) { state.unsubs.push(id) },
+    getSubscriptions: () => state.preSubscribed.slice()
+  }
   const devices = options.devices || [
     { id: '1', name: '客厅WiFi', broadcastId: 'IJ_*', productDeviceId: 'E3:48:C2:1E:D4:28', deviceNo: 'E3:48:C2:1E:D4:28' },
     { id: '2', name: '卧室蓝牙', broadcastId: 'EF6-370', productDeviceId: 'AA:BB:CC:DD:EE:01', deviceNo: 'AA:BB:CC:DD:EE:01' },
@@ -61,6 +71,9 @@ function loadListPage(options = {}) {
   const statusSandbox = { module: { exports: {} }, require: target => modules[target.split('/').at(-1)], console: { log() {}, warn() {} } }
   vm.runInNewContext(fs.readFileSync(path.join(root, 'utils/wifi-status.js'), 'utf8'), statusSandbox, { filename: 'wifi-status.js' })
   modules['wifi-status'] = statusSandbox.module.exports
+  const watchSandbox = { module: { exports: {} }, require: target => ({ './iot-ws': ws })[target], console: { log() {}, warn() {} } }
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'utils/wifi-watch.js'), 'utf8'), watchSandbox, { filename: 'wifi-watch.js' })
+  modules['wifi-watch'] = watchSandbox.module.exports
   vm.runInNewContext(fs.readFileSync(path.join(root, 'subpackages/device/list/list.js'), 'utf8'), {
     require: target => modules[target.split('/').at(-1)],
     getApp: () => ({ globalData: { selectedDevice: null }, setSelectedDevice: value => { state.selected = value } }),
@@ -152,8 +165,37 @@ async function main() {
     checked('WiFi 版投屏弹拍照 / 相册、离线拦下；卡片进 WiFi 详情；选相框模式不让选')
   }
   {
-    const { page } = loadListPage({ devices: [{ id: '9', name: '蓝牙', broadcastId: 'EB-169', productDeviceId: 'AA:BB:CC:DD:EE:09' }] })
+    // ⑤ 状态推送
+    const { page, state } = loadListPage({ preSubscribed: ['D0CF13F02FF8'] })
     await page.loadDevices()
+    await flush()
+    assert.deepEqual(plain(state.subs), ['E348C21ED428'], '只订阅 WiFi 版、去冒号；已被别处订阅的（D0CF…）不重复订阅')
+    state.infoCalls.length = 0
+    state.emit('device.status', { type: 'device.status', deviceNo: 'D0CF13F02FF8', online: false })
+    await flush()
+    assert.deepEqual(plain(state.infoCalls), [['D0:CF:13:F0:2F:F8', false]], '推送只重查那一台')
+    state.emit('device.status', { type: 'device.status', deviceNo: 'AABBCCDDEE01', online: true })
+    await flush()
+    assert.equal(state.infoCalls.length, 1, '不在本页关心范围（蓝牙版）的推送不理')
+    state.infoCalls.length = 0
+    state.emit('state', { state: 'open', reconnect: false })
+    await flush()
+    assert.equal(state.infoCalls.length, 0, '首次连上不重查（进页已查过）')
+    state.emit('state', { state: 'open', reconnect: true })
+    await flush()
+    assert.equal(state.infoCalls.length, 2, '重连成功全部重查')
+    page.onHide()
+    assert.deepEqual(plain(state.unsubs), ['E348C21ED428'], '隐藏时只退订自己订阅的')
+    state.infoCalls.length = 0
+    state.emit('device.status', { type: 'device.status', deviceNo: 'E348C21ED428', online: false })
+    await flush()
+    assert.equal(state.infoCalls.length, 0, '隐藏后不再响应推送')
+    checked('状态推送：订阅 / 推送重查一台 / 重连全部重查 / 隐藏退订')
+  }
+  {
+    const { page, state } = loadListPage({ devices: [{ id: '9', name: '蓝牙', broadcastId: 'EB-169', productDeviceId: 'AA:BB:CC:DD:EE:09' }] })
+    await page.loadDevices()
+    assert.deepEqual(state.subs, [], '纯蓝牙版用户不订阅、不建长连接')
     assert.equal(page.data.wifiCount, 0, '没有 WiFi 版就不出 WiFi 版标题')
     assert.equal(page.data.bleCount, 1)
     checked('只有蓝牙版时 WiFi 组不显示')

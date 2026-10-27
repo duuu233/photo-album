@@ -72,7 +72,7 @@ WiFi 版设备走独立的 XT IoT 服务（`iot.boltfox.cn`），按 `docs/wifi/
 
 ## WiFi 版休眠状态（2026-10-27，`main-wifi`）
 
-服务端在 `/api/device/online`、`/api/device/info`、WS `device.status` 新增 `status`（ONLINE / OFFLINE / SLEEPING，SLEEPING 时 online=false）。`utils/wifi-status.deviceState` 统一映射为 online / sleeping / offline（缺 status 按 online 回退），`blockedTip` 给休眠 / 离线提示；首页卡、我的设备卡、详情页显示蓝色「休眠中」，投屏入口与投屏 4041（补查为 SLEEPING）提示「设备休眠中，唤醒后可操作」。配网轮询仍只认 online=true。见 `docs/wifi/休眠状态对接说明.md`、`docs/changes/2026-10-27-WiFi版休眠状态.md`。
+状态刷新（2026-10-27）：首页、我的设备列表、WiFi 详情都是「进页查 `/api/device/info` + 订阅 WS `device.status`」，首页 / 列表经 `utils/wifi-watch.js`（推送重查那一台、重连成功全部重查、隐藏退订），不做定时轮询，见 `docs/wifi/WiFi版状态刷新分析.md`。服务端在 `/api/device/online`、`/api/device/info`、WS `device.status` 新增 `status`（ONLINE / OFFLINE / SLEEPING，SLEEPING 时 online=false）。`utils/wifi-status.deviceState` 统一映射为 online / sleeping / offline（缺 status 按 online 回退），`blockedTip` 给休眠 / 离线提示；首页卡、我的设备卡、详情页显示蓝色「休眠中」，投屏入口与投屏 4041（补查为 SLEEPING）提示「设备休眠中，唤醒后可操作」。配网轮询仍只认 online=true。见 `docs/wifi/休眠状态对接说明.md`、`docs/changes/2026-10-27-WiFi版休眠状态.md`。
 
 ## 我的设备分组（2026-10-27，`main-wifi`）
 
