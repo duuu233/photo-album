@@ -15,6 +15,8 @@
 
 ## 操作日志（最新在上）
 
+- **2026-10-27**：绑定页搜索列表尺寸匹配不到或没配时显示「--寸」（原为不显示），`loadProductCatalog` 打 `[搜索尺寸]`
+  日志列出各广播名的 `sizeModel`。关联：`subpackages/device/bind/*`、`tests/search-device-id.test.js`。
 - **2026-10-23（追加）**：绑定页搜索列表的屏幕文案改为按蓝牙广播名匹配 `/Client/Product/getProductList`
   的 `broadcastId`，显示该产品的 `sizeModel`（`api.scanSizeModel` / `api.getProductCatalog`，产品列表会话缓存、
   失败静默），匹配不到或没配不显示。`imageDitheringBinDownload` 的 `type` 数值确认不变（0=5.8寸大设备、
