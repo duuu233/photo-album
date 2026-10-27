@@ -74,7 +74,7 @@ WiFi 版设备走独立的 XT IoT 服务（`iot.boltfox.cn`），按 `docs/wifi/
 
 「我的设备」按所属产品 `broadcastId` 分 WiFi版 / 蓝牙版两组（`broadcast-match.isWifiBroadcastId` / `isWifiDevice`：`*` 模板或 `IJ_` 前缀为 WiFi 版，其余蓝牙版）。蓝牙卡不变；WiFi 卡状态取 IoT `/api/device/info`（在线 / 离线 / 状态未知，在线显示信号格与电量），按钮「投屏」+「刷新状态」，点卡片进 `subpackages/device/wifi-detail`（蓝牙详情页遇 WiFi 版也会 redirect 过去）；选相框模式不让选 WiFi 版。
 
-WiFi 投屏（STEP 3）：预览页对 WiFi 版不预热蓝牙、导出后 redirect 到 `subpackages/projection/wifi-result`，逐张 `utils/wifi-projection.projectOne`（`POST /api/device/play` 上传进度 → SENT → WS `play.result` 按 msgid 缓存 + 3 秒状态查询兜底 → 终态；TIMEOUT 3 秒修正、90 秒结果未知）。WiFi 投屏不写投屏记录（相册归属待定）。首页（设备卡云端状态、拍照 / 相册只确认在线）与图库（弹层 WiFi版角标、不连蓝牙）入口已接，共用 `utils/wifi-status.js`；AI 对话入口未接。配网日志已删除。首页设备卡图文整体居中，名称下显示「WiFi版 / 蓝牙版·尺寸」（`sizeModel`，没配 --寸），WiFi 卡在线状态与电量同一行；我的设备「设备ID」前显示尺寸（不带类型）；两类设备绑定时默认昵称都传完整蓝牙广播名（`broadcast-match.fullBroadcastName`，见 `docs/changes/2026-10-27-首页设备卡居中与昵称尺寸.md`）。详见 `docs/changes/2026-10-27-我的设备按WiFi版蓝牙版分组.md`、`docs/changes/2026-10-27-WiFi版投屏与设备详情.md`。
+WiFi 投屏（STEP 3）：预览页对 WiFi 版不预热蓝牙、导出后 redirect 到 `subpackages/projection/wifi-result`，逐张 `utils/wifi-projection.projectOne`（`POST /api/device/play` 上传进度 → SENT → WS `play.result` 按 msgid 缓存 + 3 秒状态查询兜底 → 终态；TIMEOUT 3 秒修正、90 秒结果未知）。WiFi 投屏不写投屏记录（相册归属待定）。首页（设备卡云端状态、拍照 / 相册只确认在线）与图库（弹层 WiFi版角标、不连蓝牙）入口已接，共用 `utils/wifi-status.js`；AI 对话入口未接。配网日志已删除。首页设备卡图文整体居中，名称下显示「WiFi版 / 蓝牙版·尺寸」（`sizeModel`，没配 --寸），两类卡的状态与电量同一行（`.status-meta-row`）；我的设备「设备ID」前显示尺寸（不带类型）；两类设备绑定时默认昵称都传完整蓝牙广播名（`broadcast-match.fullBroadcastName`，见 `docs/changes/2026-10-27-首页设备卡居中与昵称尺寸.md`）。详见 `docs/changes/2026-10-27-我的设备按WiFi版蓝牙版分组.md`、`docs/changes/2026-10-27-WiFi版投屏与设备详情.md`。
 
 ## 设备图按机型区分（2026-10-22）
 

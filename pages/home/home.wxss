@@ -468,14 +468,15 @@ button {
   height: 26rpx;
 }
 
-/* WiFi 卡：在线状态与电量排一行，状态自身的下边距收掉 */
-.wifi-meta-row {
+/* 状态与电量排一行（蓝牙卡：连接状态 + 电量；WiFi 卡：在线状态 + 电量），状态自身的下边距收掉；
+   蓝牙卡未连接时下面的「连接蓝牙」按钮仍靠自身 margin-top 隔开 */
+.status-meta-row {
   display: flex;
   align-items: center;
   gap: 28rpx;
 }
 
-.wifi-meta-row .device-status {
+.status-meta-row .device-status {
   margin-bottom: 0;
 }
 

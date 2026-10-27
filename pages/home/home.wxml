@@ -118,22 +118,25 @@
                 </view>
                 <!-- 蓝牙版：连接状态 / 电量 / 「连接蓝牙」（原样） -->
                 <block wx:if="{{!item.isWifi}}">
-                  <view class="device-status {{item.connected ? 'is-connected' : ''}}">
-                    <image
-                      class="mini-bluetooth"
-                      src="{{item.connected ? '/assets/images/bluetooth-icon.png' : '/assets/images/bluetooth-icon-not.png'}}"
-                      mode="aspectFill" />
-                    <text>{{item.connected ? '已连接' : '未连接'}}</text>
-                  </view>
-                  <!-- 仅在已连接设备后才展示电量图标与数值。
-                       文案统一由 batteryText 给出（'87%' 或未知时的 '--'），模板不再自己拼 '%'——
-                       电量读不到时旧写法会渲染成假的百分比，用户分辨不出真假 -->
-                  <view wx:if="{{item.connected}}" class="battery-row">
-                    <image
-                      class="battery-level-icon"
-                      src="{{item.batteryIcon}}"
-                      mode="aspectFit" />
-                    <text>{{item.batteryText}}</text>
+                  <!-- 连接状态与电量同一行（2026-10-27，与 WiFi 卡一致） -->
+                  <view class="status-meta-row">
+                    <view class="device-status {{item.connected ? 'is-connected' : ''}}">
+                      <image
+                        class="mini-bluetooth"
+                        src="{{item.connected ? '/assets/images/bluetooth-icon.png' : '/assets/images/bluetooth-icon-not.png'}}"
+                        mode="aspectFill" />
+                      <text>{{item.connected ? '已连接' : '未连接'}}</text>
+                    </view>
+                    <!-- 仅在已连接设备后才展示电量图标与数值。
+                         文案统一由 batteryText 给出（'87%' 或未知时的 '--'），模板不再自己拼 '%'——
+                         电量读不到时旧写法会渲染成假的百分比，用户分辨不出真假 -->
+                    <view wx:if="{{item.connected}}" class="battery-row">
+                      <image
+                        class="battery-level-icon"
+                        src="{{item.batteryIcon}}"
+                        mode="aspectFit" />
+                      <text>{{item.batteryText}}</text>
+                    </view>
                   </view>
                   <!-- 未连接时展示「连接蓝牙」按钮；catchtap 阻止冒泡到卡片的进入设备列表 -->
                   <view
@@ -153,7 +156,7 @@
                 <!-- WiFi 版（2026-10-27）：不走蓝牙，显示云端在线状态与电量（IoT 设备信息），没有「连接蓝牙」。
                      在线状态与电量同一行（同日产品要求） -->
                 <block wx:else>
-                  <view class="wifi-meta-row">
+                  <view class="status-meta-row">
                     <view class="device-status wifi-status is-{{item.wifiStatus}}">
                       <image class="mini-wifi" src="/assets/images/badge-wifi.svg" mode="aspectFit" />
                       <text>{{item.wifiStatusText}}</text>

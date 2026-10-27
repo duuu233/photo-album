@@ -76,10 +76,15 @@ async function main() {
     // 同日追加：首页 WiFi 卡在线状态与电量同一行；我的设备「设备ID」前加尺寸，不带 WiFi版 / 蓝牙版
     const tpl = read('pages/home/home.wxml')
     const wifiBlock = tpl.slice(tpl.indexOf('<block wx:else>'), tpl.indexOf('</swiper-item>'))
-    const row = wifiBlock.slice(wifiBlock.indexOf('class="wifi-meta-row"'))
+    const row = wifiBlock.slice(wifiBlock.indexOf('class="status-meta-row"'))
     assert.ok(row.indexOf('item.wifiStatusText') > -1 && row.indexOf('item.wifiBatteryText') > -1, '状态与电量都在同一行容器里')
     const css = read('pages/home/home.wxss')
-    assert.ok(/\.wifi-meta-row \{\s*display: flex;/.test(css), '同一行横排')
+    assert.ok(/\.status-meta-row \{\s*display: flex;/.test(css), '同一行横排')
+    // 再追加：蓝牙卡连接状态与电量也同一行，「连接蓝牙」按钮在行外
+    const bleBlock = tpl.slice(tpl.indexOf('<block wx:if="{{!item.isWifi}}">'), tpl.indexOf('<block wx:else>'))
+    const bleRow = bleBlock.slice(bleBlock.indexOf('class="status-meta-row"'), bleBlock.indexOf('class="device-connect-btn"'))
+    assert.ok(bleBlock.indexOf('class="status-meta-row"') > -1, '蓝牙卡有同一行容器')
+    assert.ok(bleRow.indexOf("item.connected ? '已连接' : '未连接'") > -1 && bleRow.indexOf('item.batteryText') > -1, '蓝牙卡连接状态与电量在同一行')
 
     const list = read('subpackages/device/list/list.wxml')
     const lines = list.match(/<view class="device-id">[^\n]*<\/view>/g) || []

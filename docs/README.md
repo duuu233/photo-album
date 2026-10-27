@@ -44,7 +44,7 @@
 
 ## 变更记录
 
-- [2026-10-27 首页设备卡居中与昵称尺寸](changes/2026-10-27-首页设备卡居中与昵称尺寸.md)：`main-wifi` 分支。首页设备卡图文整体居中（原两类卡都偏左）；绑定默认昵称改为完整蓝牙广播名（`broadcast-match.fullBroadcastName`，WiFi 版原传产品名）；名称下加「WiFi版 / 蓝牙版·尺寸」标签，尺寸取 `sizeModel`，没配 --寸。同日追加：首页 WiFi 卡在线状态与电量同一行；我的设备「设备ID」前加尺寸（只显示尺寸，不带类型）。本机无 node 测试未跑，未真机。
+- [2026-10-27 首页设备卡居中与昵称尺寸](changes/2026-10-27-首页设备卡居中与昵称尺寸.md)：`main-wifi` 分支。首页设备卡图文整体居中（原两类卡都偏左）；绑定默认昵称改为完整蓝牙广播名（`broadcast-match.fullBroadcastName`，WiFi 版原传产品名）；名称下加「WiFi版 / 蓝牙版·尺寸」标签，尺寸取 `sizeModel`，没配 --寸。同日追加：首页 WiFi 卡、蓝牙卡的状态与电量都排同一行；我的设备「设备ID」前加尺寸（只显示尺寸，不带类型）。本机无 node 测试未跑，未真机。
 - [2026-10-27 WiFi版投屏与设备详情 · 首页与图库入口](changes/2026-10-27-WiFi版投屏与设备详情.md)：同日追加。首页设备卡 WiFi 版显示云端状态、拍照 / 相册不连蓝牙只确认在线；图库「连接并投屏」选 WiFi 版不连蓝牙、弹层挂 WiFi版角标；共用 `utils/wifi-status.js`。AI 对话入口未接。
 - [2026-10-27 WiFi版投屏与设备详情](changes/2026-10-27-WiFi版投屏与设备详情.md)：`main-wifi` 分支，STEP 3。WiFi 版投屏：预览页构图后去 WiFi 投屏结果页，`POST /api/device/play` 上传（真实上传进度）→ SENT → WS `play.result`（按 msgid 缓存、3 秒状态查询兜底）→ 终态，TIMEOUT 3 秒修正窗口、90 秒结果未知；新增 WiFi 设备详情页（IoT 设备信息、`device.status` 自动重查、投屏 / 刷新状态），蓝牙详情页遇 WiFi 版转过去；我的设备 WiFi 卡投屏改为真实投屏。投屏记录未写。
 - [2026-10-27 我的设备按WiFi版蓝牙版分组](changes/2026-10-27-我的设备按WiFi版蓝牙版分组.md)：`main-wifi` 分支。按产品 broadcastId（`IJ_*` / `IJ_`）认 WiFi 版，「我的设备」分 WiFi版 / 蓝牙版两组；蓝牙卡不变；WiFi 卡状态取 IoT `/api/device/info`（在线 / 离线 / 状态未知，在线显示信号与电量），按钮「投屏」（STEP 3 未接，先提示）+「刷新状态」；选相框模式不让选 WiFi 版。
