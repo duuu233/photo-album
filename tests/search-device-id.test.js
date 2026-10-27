@@ -20,7 +20,9 @@ function loadBindPage() {
   let definition
   const state = {}
   const dependencies = {
-    api: {},
+    // 2026-10-23 起 applyScanResult 按广播名补 sizeModel（api.scanSizeModel），桩要提供它，
+    // 否则列表渲染直接抛错；本用例不关心尺寸，按「匹配不到」返回空串
+    api: { scanSizeModel: () => '' },
     toast: { warn() {} },
     permission: { getCurrentLocation: async () => ({ latitude: 0, longitude: 0 }) },
     bluetooth: { openAdapter: async () => {}, stopDiscovery() {}, showEmptyResultGuide() {}, discoverDevices: async options => { state.scanOptions = options; return [] } },
