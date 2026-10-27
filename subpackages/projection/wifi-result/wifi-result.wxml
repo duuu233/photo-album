@@ -25,6 +25,18 @@
         <text class="wifi-result-row__text">{{item.text}}</text>
       </view>
     </view>
+
+    <!-- 投屏日志（开发版 / 体验版显示，正式版不显示）：设备尺寸与旋转字段、每张图尺寸、接口参数与返回、WS 推送、状态查询 -->
+    <view wx:if="{{showLog}}" class="projection-log">
+      <view class="projection-log__head">
+        <text class="projection-log__title">投屏日志</text>
+        <text class="projection-log__copy" hover-class="none" bindtap="copyLogs">复制日志</text>
+      </view>
+      <scroll-view scroll-y class="projection-log__body" scroll-into-view="{{logAnchor}}">
+        <view wx:if="{{!logs.length}}" class="projection-log__line">（暂无）</view>
+        <text wx:for="{{logs}}" wx:key="id" id="{{item.id}}" class="projection-log__line" user-select>{{item.text}}</text>
+      </scroll-view>
+    </view>
   </view>
 
   <view wx:if="{{phase === 'done'}}" class="wifi-result-actions">

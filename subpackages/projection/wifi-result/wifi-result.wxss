@@ -158,3 +158,42 @@
   color: #ff621f;
   font-size: 32rpx;
 }
+
+/* 投屏日志（开发版 / 体验版，2026-10-27）：与当初配网日志同款，深色底等宽小字，固定高度内部滚动，自动滚到最新一行 */
+.projection-log {
+  margin-top: 24rpx;
+  padding: 20rpx 24rpx;
+  background: rgba(30, 33, 38, 0.88);
+  border-radius: 16rpx;
+}
+
+.projection-log__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8rpx;
+}
+
+.projection-log__title {
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.projection-log__copy {
+  color: #ffb48a;
+  font-size: 22rpx;
+}
+
+.projection-log__body {
+  height: 360rpx;
+}
+
+.projection-log__line {
+  display: block;
+  color: #c9f7d8;
+  font-family: Menlo, monospace;
+  font-size: 20rpx;
+  line-height: 1.5;
+  word-break: break-all;
+}

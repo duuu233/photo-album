@@ -9,6 +9,11 @@
 //   ⑤ TIMEOUT 不立即定论：再等 3 秒给迟到的成功 ack（corrected=true 的 SUCCESS），再查一次状态；
 //   ⑥ 客户端兜底 90 秒（服务端 ack 超时 60 秒）仍无终态，查一次状态，仍不是终态按「结果未知」。
 // WS 事件可能早于 HTTP 响应到达（那时还不知道 msgid）：上传前就开始按 msgid 缓存本设备的 play.result，拿到 msgid 后补认。
+//
+// ── 投屏日志（options.onLog，同时打控制台 [WiFi投屏]；结果页开发版 / 体验版显示、可复制，2026-10-27）──
+// 与当初配网日志同口径：每个接口按「接口【名称】方法 路径」+「参数」+「返回 / 失败」三行记；
+// WS 记订阅、连接状态变化、收到的本设备 play.result 原文；阶段只在变化时记一行，上传进度只记 25% 档位。
+// 不记 userToken；图片只记本地路径（尺寸 / 大小由结果页在上传前补一行）。
 const iotApi = require('./iot-api')
 const iotWs = require('./iot-ws')
 
@@ -59,23 +64,57 @@ function errorText(error) {
   return String((error && error.message) || '投屏失败，请稍后重试').replace(/^接口\(IoT\)-/, '')
 }
 
+function json(value) {
+  try {
+    return JSON.stringify(value)
+  } catch (error) {
+    return String(value)
+  }
+}
+
+// 接口失败的日志文案：HTTP 状态、业务码、服务端原文、给用户看的文案
+function errorLine(error) {
+  if (!error) {
+    return '失败（无错误信息）'
+  }
+  const parts = []
+  if (error.statusCode !== undefined) parts.push(`HTTP ${error.statusCode}`)
+  if (error.code !== undefined) parts.push(`code ${error.code}`)
+  if (error.serverMessage) parts.push(`服务端：${error.serverMessage}`)
+  return `失败 ${parts.join(' ')}${parts.length ? '，' : ''}${(error && error.message) || error}`
+}
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 // 投一张图。options：
-//   { deviceNo, filePath, type, onStage({ stage, text, progress }), isCancelled() }
+//   { deviceNo, filePath, type, onStage({ stage, text, progress }), isCancelled(), onLog(text) }
 // resolve { status: SUCCESS / FAILED / TIMEOUT / UNKNOWN / CANCELLED, msgid, message, reason, corrected, error }，不 reject。
 async function projectOne(options) {
   const deviceNo = plainDeviceNo(options.deviceNo)
   const onStage = typeof options.onStage === 'function' ? options.onStage : () => {}
   const isCancelled = typeof options.isCancelled === 'function' ? options.isCancelled : () => false
+  const onLog = typeof options.onLog === 'function' ? options.onLog : () => {}
+  const log = text => {
+    console.log('[WiFi投屏]', text)
+    try {
+      onLog(text)
+    } catch (error) {
+      // 页面日志回调出错不影响投屏
+    }
+  }
 
   let stage = 'UPLOADING'
   let progress = 0
+  let loggedStage = ''
   const report = next => {
     if (next && RANK[next] !== undefined && RANK[next] >= RANK[stage]) {
       stage = next
+    }
+    if (stage !== loggedStage) {
+      loggedStage = stage
+      log(`阶段 → ${stage}（${STAGE_TEXT[stage]}）`)
     }
     onStage({ stage, text: STAGE_TEXT[stage], progress })
   }
@@ -90,6 +129,7 @@ async function projectOne(options) {
         return
       }
       const key = String(event.msgid)
+      log(`WS 收 ← play.result ${json(event)}${msgid ? '' : '（还没拿到 msgid，先缓存）'}`)
       const list = cached[key] || (cached[key] = [])
       list.push(event)
       if (key === msgid && wake) {
@@ -98,6 +138,9 @@ async function projectOne(options) {
     }),
     // 断线重连后立即补查一次（断线期间的事件会丢）
     iotWs.on('state', event => {
+      if (event) {
+        log(`WS 连接状态 → ${event.state}${event.reconnect ? '（重连）' : ''}`)
+      }
       if (event && event.state === 'open' && event.reconnect && wake) {
         wake()
       }
@@ -105,30 +148,49 @@ async function projectOne(options) {
   ]
   const alreadySubscribed = iotWs.getSubscriptions().indexOf(deviceNo) > -1
   iotWs.subscribe(deviceNo)
+  log(
+    `开始投屏：设备 ${deviceNo || '-'}，type=${options.type}，文件 ${options.filePath || '-'}；` +
+      `WS ${typeof iotWs.getState === 'function' ? iotWs.getState() : '-'}，${alreadySubscribed ? '已订阅该设备' : '订阅该设备'}`
+  )
 
   const finish = result => {
     offs.forEach(off => off())
     if (!alreadySubscribed) {
       iotWs.unsubscribe(deviceNo)
     }
+    log(
+      `结束：${result.status}${result.message ? `（${result.message}）` : ''}` +
+        `${result.reason ? `，reason=${result.reason}` : ''}${result.corrected ? '，corrected=true' : ''}，msgid=${msgid || '-'}`
+    )
     return Object.assign({ msgid, text: STAGE_TEXT[result.status] }, result)
   }
 
   try {
     report('UPLOADING')
     let response = null
+    let loggedPercent = -1
+    log('接口【投屏】POST /api/device/play（IoT，multipart 上传）')
+    log(`参数 ${json({ deviceNo, type: String(options.type), file: options.filePath })}`)
+    const startedAt = Date.now()
     try {
       response = await iotApi.play(deviceNo, options.filePath, options.type, {
         showError: false,
         onProgress: percent => {
           progress = Math.max(progress, Math.min(100, Math.round(percent)))
+          const bucket = Math.floor(progress / 25) * 25
+          if (bucket > loggedPercent) {
+            loggedPercent = bucket
+            log(`上传进度 ${bucket}%`)
+          }
           // 传完还没返回：图片处理中
           report(progress >= 100 ? 'PROCESSING' : 'UPLOADING')
         }
       })
     } catch (error) {
+      log(`${errorLine(error)}（耗时 ${Date.now() - startedAt}ms）`)
       return finish({ status: 'FAILED', message: errorText(error), error })
     }
+    log(`返回 ${json(response)}（耗时 ${Date.now() - startedAt}ms）`)
     progress = 100
     msgid = String((response && response.msgid) || '')
     const first = normalizeStatus(response && response.status)
@@ -162,10 +224,14 @@ async function projectOne(options) {
       list.forEach(apply)
     }
     const query = async () => {
+      log(`接口【投屏状态】GET /api/device/play/status 参数 ${json({ msgid })}`)
       try {
-        apply(await iotApi.getPlayStatus(msgid, { showError: false }))
+        const record = await iotApi.getPlayStatus(msgid, { showError: false })
+        log(`返回 ${json(record)}`)
+        apply(record)
         return null
       } catch (error) {
+        log(errorLine(error))
         return error
       }
     }
@@ -189,6 +255,7 @@ async function projectOne(options) {
         return finish({ status: 'CANCELLED', message: STAGE_TEXT.CANCELLED })
       }
       if (latest && latest.status === 'TIMEOUT') {
+        log(`收到 TIMEOUT，等 ${TIMEOUT_GRACE_MS / 1000} 秒修正窗口再确认`)
         // 给迟到的成功 ack 留修正窗口，再查一次确认
         await sleep(TIMEOUT_GRACE_MS)
         drain()
@@ -204,6 +271,7 @@ async function projectOne(options) {
       }
     }
     if (!latest) {
+      log(`客户端兜底 ${OVERALL_TIMEOUT_MS / 1000} 秒到点仍无终态，最后查一次`)
       // 客户端兜底到点：最后查一次；任务过期（4044）或仍无终态都按结果未知
       lastQueryError = await query()
       drain()

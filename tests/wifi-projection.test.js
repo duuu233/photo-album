@@ -145,6 +145,45 @@ async function main() {
     assert.equal(tail, 'SUCCESS', '终态后迟到的低档位不回退')
     checked('结果未知 / 任务过期 / 失败原因 / 只进不退')
   }
+  {
+    // 投屏日志（2026-10-27）：接口三行（调用 / 参数 / 返回）、WS 推送原文、阶段变化、结束结论
+    const lines = []
+    const { projection } = setup({ earlyEvents: [ev('SUCCESS')] })
+    const res = await projection.projectOne({
+      deviceNo: 'E3:48:C2:1E:D4:28', filePath: 'wxfile://a.png', type: '1',
+      onLog: text => lines.push(text)
+    })
+    assert.equal(res.status, 'SUCCESS')
+    const all = lines.join('\n')
+    assert.ok(/^开始投屏：设备 E348C21ED428，type=1，文件 wxfile:\/\/a\.png/.test(lines[0]), '第一行是本次投屏概要')
+    assert.ok(all.includes('接口【投屏】POST /api/device/play'), '记接口')
+    assert.ok(all.includes('参数 {"deviceNo":"E348C21ED428","type":"1","file":"wxfile://a.png"}'), '记参数')
+    assert.ok(/返回 \{"msgid":"m1","status":"SENT"\}/.test(all), '记返回')
+    // 桩只报 30 / 100：按 25% 档位记成 25% 与 100%，中间档不凭空出现
+    assert.ok(all.includes('上传进度 25%') && all.includes('上传进度 100%') && !all.includes('上传进度 50%'), '进度只记 25% 档位')
+    assert.ok(all.includes('WS 收 ← play.result') && all.includes('（还没拿到 msgid，先缓存）'), '记早到的 WS 推送')
+    assert.ok(all.includes('阶段 → SUCCESS（投屏成功）'), '记阶段变化')
+    assert.equal(lines.filter(line => line.startsWith('阶段 → UPLOADING')).length, 1, '同一阶段只记一次')
+    assert.ok(/^结束：SUCCESS（投屏成功），msgid=m1$/.test(lines.at(-1)), '最后一行是结论')
+    assert.equal(/userToken/i.test(all), false, '不记 token')
+
+    const failed = []
+    const err = Object.assign(new Error('设备已离线'), { code: 4041, statusCode: 200, serverMessage: 'device offline' })
+    const broken = setup({ playError: err })
+    await broken.projection.projectOne({ deviceNo: 'E348C21ED428', filePath: 'wxfile://b.png', type: '0', onLog: text => failed.push(text) })
+    assert.ok(failed.some(line => /^失败 HTTP 200 code 4041 服务端：device offline，设备已离线/.test(line)), '失败记 HTTP / 业务码 / 服务端原文')
+    checked('投屏日志：接口参数返回、WS、阶段、结论')
+  }
+  {
+    const tpl = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.wxml'), 'utf8')
+    assert.ok(/wx:if="\{\{showLog\}\}" class="projection-log"/.test(tpl), '日志面板按 showLog 显示')
+    assert.ok(/bindtap="copyLogs"/.test(tpl), '可复制')
+    const page = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.js'), 'utf8')
+    assert.ok(/envVersion !== 'release'/.test(page), '正式版不显示')
+    assert.ok(/onLog: text => this\.appendLog\(text\)/.test(page), '投屏过程接进页面日志')
+    assert.ok(/接口宽高 \$\{d\.width/.test(page) && /verticalRotation/.test(page), '记设备宽高与旋转字段（排查横竖向）')
+    checked('结果页：开发版 / 体验版日志面板，可复制')
+  }
   console.log(`wifi-projection: ${checks} groups passed`)
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

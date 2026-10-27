@@ -1174,6 +1174,9 @@ const createPreviewPage = (overrides = {}) => fold.adapt(Object.assign({
     // 保证 fallback 展示仍是用户构图的样子。
     updated.cropW = dev.width
     updated.cropH = dev.height
+    // 取景方向与导出角随图带走：只供 WiFi 投屏结果页日志排查横竖向（2026-10-27），不参与投屏
+    updated.exportOrientation = g.orientation
+    updated.exportRotation = deviceRotation.exportDegreeFor(this.data.device, g.orientation)
     updated.wrapStyle = this.computeWrapStyle(view.width, view.height)
     updated.imgStyle = this.computeBakedImgStyle(g.orientation, view.width, view.height)
     // 预览缓存已并入正式产物，清掉避免再被当缓存复用（此时 tempFilePath 已是烘焙图）
