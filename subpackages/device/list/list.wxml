@@ -37,7 +37,7 @@
       </view>
       <block wx:for="{{devices}}" wx:key="id" wx:for-index="index">
         <!-- WiFi 版卡片（2026-10-27）：不走蓝牙，状态来自 IoT 设备信息（在线 / 信号 / 电量）；
-             按钮：投屏、轮播设置（V1.4 更新说明 1.5：原「刷新状态」改为「轮播设置」，状态随进页 / 下拉刷新更新）。设备图、改名同蓝牙版。 -->
+             按钮：投屏、轮播设置（V1.4 更新说明 1.5：原「刷新状态」改为「轮播设置」，状态只在进页时查一次，本页没有下拉刷新）。设备图、改名同蓝牙版。 -->
         <view wx:if="{{item.isWifi}}" class="device-card device-card--wifi glass-panel {{item.wifiStatus === 'online' ? '' : 'is-offline'}}" data-id="{{item.id}}" bindtap="selectDevice">
           <view class="device-card__main">
             <view class="device-logo">
