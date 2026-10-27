@@ -405,7 +405,7 @@ async function main() {
     assert.equal(dev.page.data.showRaw, undefined, '页面不再有调试开关')
     const tpl = fs.readFileSync(path.join(root, 'subpackages/device/wifi-list/wifi-list.wxml'), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
     assert.ok(/设备附近的2\.4G WiFi/.test(tpl), '列表标题为「设备附近的2.4G WiFi」')
-    assert.ok(/class="wifi-manual-hint"[^>]*bindtap="manualInput"[^>]*>若列表搜索不到您的wifi，请手动输入</.test(tpl), '提示语下有灰字手动输入入口')
+    assert.ok(/class="wifi-manual-hint"[^>]*bindtap="manualInput"[^>]*>若搜索不到您的wifi，请手动输入</.test(tpl), '提示语下有灰字手动输入入口')
     assert.ok(!/showRaw|logs|rawSummary|wifi-debug-log/.test(tpl), '模板里不再有调试内容')
     // 2026-10-26 再调整：「手动输入WiFi名称」不要按钮样式，回到文字样式、居中（原「底部固定按钮」断言随之改写）
     assert.ok(/class="wifi-manual-text"[^>]*bindtap="manualInput"[^>]*>手动输入WiFi名称</.test(tpl), '「手动输入WiFi名称」为文字入口')
