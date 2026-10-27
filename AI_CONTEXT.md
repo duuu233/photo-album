@@ -66,13 +66,17 @@
 - AI 普通请求超时 15 秒，聊天和生图超时 600 秒（10 分钟）且不自动重试。
 - `app.json` 预加载 device、projection、AI 三个分包；设置和相册分包按需加载。
 
+## WiFi 版对接（2026-10-26 起，`main-wifi` 分支）
+
+WiFi 版设备走独立的 XT IoT 服务（`iot.boltfox.cn`），按 `docs/wifi/对接开发进度.md` 分 STEP 推进。已完成 STEP 0/1：IoT 客户端 `utils/iot-errors.js` / `iot-request.js` / `iot-ws.js` / `iot-api.js` 与老服务 `request.js` 分开（返回 `{code,msg,data}`，401 重登、**503 不登出**）；WebSocket 单例按需连接，退出登录时关闭。搜索设备页传 `includeWifi` 同搜两类设备：后台广播 ID 带 `*` 为 WiFi 模板（`IJ_*` 取中间 12 位 deviceId，见 `utils/broadcast-match.js`），广播名合内置 `IJ_*` 的一律是 WiFi 版，其余扫描入口不收 WiFi 设备；WiFi 设备按 `api.getProductByDevice` 查规格，尺寸直接显示 `sizeModel`（没配 `--寸`），查不到 / 空壳记录 / 失败为「未知设备」，点行或按钮都弹窗禁止连接。STEP 2 配网：`utils/blufi.js`（乐鑫 BluFi，服务 FFFF，未加密，通知经 `ble-notify-hub` 登记）+ `utils/wifi-provision.js`（四步：手机网络 → 下发 WiFi → 等设备 WiFi 状态 → `api.bindWifiDevice` 绑定后带 `since` 轮询在线），信号强弱统一用 `components/signal-bars` 信号格（仿 iPhone，`utils/signal.js` 按 RSSI 给 0~4 格）。页面流程：搜索页 → WiFi 列表页（蓝牙连设备、由设备经 BluFi 0x09/0x11 扫描附近 WiFi，不用手机扫；会话保留给配网复用）→ WiFi 账号密码页 → 配网状态页，交接放内存、WiFi 密码不进路由；`mqtt_config` 按 `config.iotMqttConfig`（EMQX 设备账号，2026-10-26 产品提供）下发，为 null 时跳过；日志里 MQTT 密码与承载帧打码。详见 `docs/changes/2026-10-26-WiFi版联调基础与搜索.md`、`docs/changes/2026-10-26-WiFi版配网STEP2.md`。
+
 ## 设备图按机型区分（2026-10-22）
 
 首页设备卡、我的设备、设备详情、搜索设备、命名弹窗、投屏选设备六处设备图统一由 `utils/device-thumb.js` 按产品 `broadcastId` 决定：EB-169（圆屏）用 `home-device-circle-thumb`，EC-370 用 `home-device-rectangle-thumb`，其余用原 `home-device-thumb`。已绑定记录用设备列表接口下发的 `broadcastId`，缺失或不是产品列表里的广播名时（2026-10-23）由 `api.getDevices/getDeviceDetail` 按 productId 回查产品列表补上，`getDevices` 仍认不出的记录再按 userProductId 静默调详情接口补（会话内复用，2026-10-23），`bindDevice` 按广播名命中产品 broadcastId 加权匹配产品并写入；搜索结果按蓝牙广播名；用户起的设备名不参与；兜底 `shapeType === 1` 视为圆屏。新增机型只需在 `THUMB_BY_BROADCAST_ID` 加一行。详见 `docs/changes/2026-10-22-设备图按机型区分.md`。
 
 ## 设备详情屏幕尺寸（2026-10-23）
 
-设备详情「屏幕尺寸」行直接展示后台产品配置的尺寸型号 `sizeModel`（如“3.6寸”，设备列表/详情接口下发），不再按屏型表或宽高推算分辨率；未配置时整行连同分隔线不展示。搜索设备列表（绑定前）按蓝牙广播名匹配产品列表 broadcastId（`api.scanSizeModel`，与扫描白名单同口径），显示该产品的 `sizeModel`，不再用广播屏型字节；匹配不到或没配显示「--寸」（2026-10-27，原为不显示）。详见 `docs/changes/2026-10-23-屏幕尺寸读sizeModel与抖动出帧迁后端.md`、`docs/changes/2026-10-27-搜索列表尺寸没配显示--寸.md`。
+设备详情「屏幕尺寸」行直接展示后台产品配置的尺寸型号 `sizeModel`（如“3.6寸”，设备列表/详情接口下发），不再按屏型表或宽高推算分辨率；未配置时整行连同分隔线不展示。搜索设备列表（绑定前）按蓝牙广播名匹配产品列表 broadcastId（`api.scanSizeModel`，与扫描白名单同口径），显示该产品的 `sizeModel`，不再用广播屏型字节；匹配不到或没配显示「--寸」（与 WiFi 版同口径；main-wifi 2026-10-26 起、main 2026-10-27 起，原为不显示）。详见 `docs/changes/2026-10-23-屏幕尺寸读sizeModel与抖动出帧迁后端.md`、`docs/changes/2026-10-27-搜索列表尺寸没配显示--寸.md`。
 
 ## 投屏动态尺寸（2026-10-19）
 

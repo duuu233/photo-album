@@ -193,6 +193,28 @@
       <view class="row-tip">这两项<text class="row-tip-strong">直接改设备本体</text>：删除会真的抹掉相框里那张图（不可撤销，且不会同步到后端图库记录），切换会当场刷新相框正在显示的画面。不影响真实投屏的任何参数设置。</view>
     </view>
 
+    <!-- IoT 联调（WiFi 版设备 STEP 0）：鉴权沿用当前登录 token；WebSocket 推送与 HTTP 错误码都打到下面的控制台 -->
+    <view class="card">
+      <view class="card-head">
+        <view class="dot {{iotState === 'open' ? 'dot-on' : 'dot-off'}}"></view>
+        <text class="card-title">IoT 联调 · WS {{iotState === 'open' ? '已连接' : (iotState === 'connecting' ? '连接中…' : '未连接')}}</text>
+        <view wx:if="{{iotState === 'open' || iotState === 'connecting'}}" class="ghost-btn" bindtap="iotClose">断开</view>
+      </view>
+      <view class="btn-grid">
+        <button class="btn btn-soft" bindtap="iotConnect">连接 WS</button>
+        <button class="btn btn-soft" bindtap="iotPing">发 ping</button>
+      </view>
+      <view class="row">
+        <text class="row-label">deviceNo</text>
+        <input class="input" value="{{iotDeviceNo}}" bindinput="onIotDeviceInput" placeholder="12 位，如 D0CF13F02FF8" />
+      </view>
+      <view class="btn-grid">
+        <button class="btn btn-soft" bindtap="iotSubscribe">订阅推送</button>
+        <button class="btn btn-soft" bindtap="iotQueryOnline">查在线（看错误码）</button>
+      </view>
+      <view class="row-tip">未绑定到当前账号的设备查在线应返回 403；token 失效 401（会引导重登）；503 是老服务暂不可用，保留登录态稍后重试。</view>
+    </view>
+
     <!-- 收发日志控制台 -->
     <view class="card">
       <view class="card-head">

@@ -25,6 +25,8 @@ const deviceRotation = require('../../../utils/device-rotation')
 const media = require('../../../utils/media')
 const system = require('../../../utils/system')
 const fold = require('../../../utils/fold-adapt')
+const iotWs = require('../../../utils/iot-ws')
+const iotApi = require('../../../utils/iot-api')
 
 // ── 真实投屏竖向链路用到的常量（与投屏预览页 / 结果页同源，改这里前先核对那两处）────────
 // 画布导出格式：与预览页 _exportCanvas 一致。抖动接口在设备物理分辨率上量化成六色，
@@ -146,6 +148,10 @@ Page(fold.adapt({
     uploadStatus: '', // 图传结果/失败原因（常驻显示，方便排查）
     uploadStatusType: '', // info / ok / err
 
+    // IoT 联调（WiFi 版设备 STEP 0）：WebSocket 状态 + 用来订阅 / 查在线的 12 位 deviceNo
+    iotState: 'idle',
+    iotDeviceNo: '',
+
     logs: [] // 收发日志（最新在最上）
   },
 
@@ -199,6 +205,11 @@ Page(fold.adapt({
   },
 
   onUnload() {
+    // IoT 长连接只在本页手动连过时才收掉（别的页面以后也会用这个单例）
+    ;(this._iotOffs || []).forEach(off => off())
+    if (this._iotOpened) {
+      iotWs.close()
+    }
     deviceBle.setMonitor(null) // 取消监听，避免离开页面后还在往已销毁的页面 setData
     bluetooth.stopDiscovery()
     wx.setKeepScreenOn && wx.setKeepScreenOn({ keepScreenOn: false }) // 离开页面恢复正常息屏
@@ -239,6 +250,84 @@ Page(fold.adapt({
 
   clearLogs() {
     this.setData({ logs: [] })
+  },
+
+  // ── IoT 联调（WiFi 版设备 STEP 0：鉴权 / WebSocket / 统一错误码）────────────
+  // 鉴权沿用当前登录 token（Header userToken）；连上后可订阅设备、发 ping，推送原文打到下面的控制台。
+  // 查在线用来核对统一错误码：设备未绑定当前账号应得 403，token 失效 401，老服务不可用 503。
+  hookIot() {
+    if (this._iotOffs) {
+      return
+    }
+    this._iotOffs = [
+      iotWs.on('state', event => {
+        this.setData({ iotState: event.state })
+        const extra = [
+          event.reason ? `原因 ${event.reason}` : '',
+          event.message ? event.message : '',
+          event.retryIn ? `${event.retryIn}ms 后重连` : '',
+          event.reconnect ? '（重连成功，需补查状态）' : ''
+        ]
+          .filter(Boolean)
+          .join(' · ')
+        this.appendLog({
+          type: event.state === 'open' ? 'ok' : event.state === 'closed' ? 'err' : 'act',
+          text: `[IoT WS] ${event.state}${extra ? ' · ' + extra : ''}`
+        })
+      }),
+      iotWs.on('message', message => {
+        this.appendLog({ type: 'rx', text: `[IoT WS] ${JSON.stringify(message)}` })
+      })
+    ]
+  },
+
+  onIotDeviceInput(e) {
+    this.setData({ iotDeviceNo: String(e.detail.value || '').trim().toUpperCase() })
+  },
+
+  iotConnect() {
+    this.hookIot()
+    this._iotOpened = true
+    iotWs.connect()
+  },
+
+  iotClose() {
+    iotWs.close()
+  },
+
+  iotPing() {
+    const sent = iotWs.ping()
+    this.appendLog({ type: sent ? 'tx' : 'err', text: sent ? '[IoT WS] ping' : '[IoT WS] 未连接，ping 未发送' })
+  },
+
+  iotSubscribe() {
+    const deviceNo = this.data.iotDeviceNo
+    if (!deviceNo) {
+      toast.warn({ title: '先填 deviceNo', icon: 'none' })
+      return
+    }
+    this.hookIot()
+    this._iotOpened = true
+    iotWs.subscribe(deviceNo)
+    this.appendLog({ type: 'tx', text: `[IoT WS] subscribe ${deviceNo}` })
+  },
+
+  async iotQueryOnline() {
+    const deviceNo = this.data.iotDeviceNo
+    if (!deviceNo) {
+      toast.warn({ title: '先填 deviceNo', icon: 'none' })
+      return
+    }
+    this.appendLog({ type: 'tx', text: `[IoT HTTP] GET /api/device/online?deviceNo=${deviceNo}` })
+    try {
+      const data = await iotApi.getDeviceOnline(deviceNo, undefined, { showError: false })
+      this.appendLog({ type: 'ok', text: `[IoT HTTP] ${JSON.stringify(data)}` })
+    } catch (error) {
+      this.appendLog({
+        type: 'err',
+        text: `[IoT HTTP] code=${error.code} · HTTP ${error.statusCode} · ${error.message} · 处理=${error.action}${error.retryAfter ? ' · retryAfter=' + error.retryAfter + 's' : ''}${error.serverMessage ? ' · msg=' + error.serverMessage : ''}`
+      })
+    }
   },
 
   // device-ble 上报的每一帧原始字节。图传数据包(0x21)与其应答(0x23)数量巨大，不逐条刷屏，用进度条体现。

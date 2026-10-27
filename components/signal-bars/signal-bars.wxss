@@ -1,0 +1,63 @@
+/* 组件外层节点（页面里的 <signal-bars> 标签）默认是行内元素：它会在自己里面撑出一行文字行高、把竖条落在基线上，
+   放进文字行里就和左边的「信号」二字上下错开（2026-10-26 反馈没对齐）。这里把它变成不占行高的 inline-flex、
+   内容垂直居中，父级行（align-items: center）再居中它，竖条整体中线就和文字中线对齐。 */
+:host {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+
+/* 4 根竖条底部对齐、高度 1/4 → 满高递增；未亮为浅灰。点亮颜色按设备类型（2026-10-26 产品要求）：
+   WiFi（默认）绿色，与 WiFi 图标 / 「WiFi版」标签同色；蓝牙版蓝色，与「蓝牙版」标签同色 */
+.signal-bars {
+  display: flex;
+  align-items: flex-end;
+}
+
+.signal-bars__bar {
+  background: #d5d9df;
+  border-radius: 2rpx;
+}
+
+.signal-bars__bar.is-on {
+  background: #0e9f87;
+}
+
+.signal-bars--ble .signal-bars__bar.is-on {
+  background: #2f6feb;
+}
+
+.signal-bars--normal {
+  height: 26rpx;
+}
+
+.signal-bars--normal .signal-bars__bar {
+  width: 6rpx;
+  margin-left: 4rpx;
+}
+
+.signal-bars--small {
+  height: 20rpx;
+}
+
+.signal-bars--small .signal-bars__bar {
+  width: 5rpx;
+  margin-left: 3rpx;
+}
+
+.signal-bars__bar:nth-child(1) {
+  height: 25%;
+  margin-left: 0;
+}
+
+.signal-bars__bar:nth-child(2) {
+  height: 50%;
+}
+
+.signal-bars__bar:nth-child(3) {
+  height: 75%;
+}
+
+.signal-bars__bar:nth-child(4) {
+  height: 100%;
+}

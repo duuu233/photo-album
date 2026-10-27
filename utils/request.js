@@ -141,6 +141,7 @@ function parseResponseData(data) {
 // key 取 url 路径最后一段（方法名），兼容 /auth/reset-password 这类带路径参数的地址；映射不到就只带 url。
 const API_NAME_MAP = {
   getProductList: '产品列表',
+  getProductByDevice: 'WiFi设备产品规格',
   getProductFaqList: '常见问题列表',
   getProductFaqDetail: '常见问题详情',
   sendEmail: '发送邮件',
@@ -388,7 +389,8 @@ function request(rawOptions) {
     timeout: options.timeout || config.timeout
   }
 
-  return requestWithRetry(sendOptions, NETWORK_RETRY_MAX)
+  // retry:false：网络失败不静默重试、立即按失败处理（如 WiFi 产品规格查询：失败就按「未知设备」展示，见 api.getProductByDevice）
+  return requestWithRetry(sendOptions, options.retry === false ? 0 : NETWORK_RETRY_MAX)
     .then(res => {
       done()
       return res

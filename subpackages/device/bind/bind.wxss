@@ -259,6 +259,62 @@
   white-space: nowrap;
 }
 
+/* 设备名 + 通信类型标签同一行（2026-10-26）：名字过长先省略名字，标签始终完整露出。
+   标签 32rpx 高，不超过设备名一行的行高（32rpx × 1.2~1.4），卡片高度与 4.5 张的推算不变。 */
+.nearby-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.nearby-title .nearby-name {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.comm-badge {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 32rpx;
+  margin-left: 12rpx;
+  padding: 0 12rpx 0 8rpx;
+  border-radius: 999rpx;
+  box-sizing: border-box;
+}
+
+.comm-badge__icon {
+  width: 22rpx;
+  height: 22rpx;
+  margin-right: 4rpx;
+}
+
+.comm-badge__text {
+  font-size: 20rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* WiFi 版：青绿渐变浅底 + 描边 */
+.comm-badge--wifi {
+  background: linear-gradient(135deg, rgba(18, 184, 150, 0.16), rgba(56, 189, 248, 0.12));
+  border: 1rpx solid rgba(14, 159, 135, 0.32);
+}
+
+.comm-badge--wifi .comm-badge__text {
+  color: #0e9f87;
+}
+
+/* 蓝牙版：蓝色浅底 + 描边（与首页 / 设备列表的蓝牙连接图标同色系） */
+.comm-badge--ble {
+  background: linear-gradient(135deg, rgba(47, 111, 235, 0.14), rgba(99, 102, 241, 0.1));
+  border: 1rpx solid rgba(47, 111, 235, 0.3);
+}
+
+.comm-badge--ble .comm-badge__text {
+  color: #2f6feb;
+}
+
 .nearby-sub {
   display: block;
   margin-top: 8rpx;
@@ -268,6 +324,39 @@
   /* 截断兜底：设备ID 那行在广播解析失败时会退化成 iOS 的 36 位 UUID，不截断会把整行撑破 */
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 信号格紧跟「信号」二字 */
+.nearby-signal {
+  margin-left: 8rpx;
+}
+
+/* WiFi 行第二行：尺寸位置在查询中换成小圆圈 loading，与后面的「· 信号」同一行排开 */
+.nearby-sub--row {
+  display: flex;
+  align-items: center;
+}
+
+.spec-spinner {
+  flex: 0 0 auto;
+  width: 20rpx;
+  height: 20rpx;
+  box-sizing: border-box;
+  border: 3rpx solid rgba(255, 98, 31, 0.2);
+  border-top-color: #ff621f;
+  border-radius: 50%;
+  animation: specSpin 0.8s linear infinite;
+}
+
+@keyframes specSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* WiFi 版查不到产品规格：「未知设备」用警示色，选中后按「立即配网」会被弹窗拦下 */
+.nearby-sub--unknown {
+  color: #e5533d;
 }
 
 /* 右侧单选指示：选中显示对勾图标，未选显示空心圆 */
@@ -367,4 +456,45 @@
   color: #555c66;
   font-size: 24rpx;
   line-height: 1.24;
+}
+
+/* 未知 WiFi 设备提示（2026-10-26）：版式取首页「设备连接失败」提示弹层（pages/home/home.wxss
+   .prompt-sheet / .prompt-title / .prompt-desc）——上留白给右上角 ×，标题、说明居中，底部橙色主按钮。
+   底板、遮罩、关闭钮直接复用本页 .scan-help-sheet / .bind-mask / .sheet-close。 */
+.prompt-sheet {
+  padding-top: 104rpx;
+}
+
+.prompt-title {
+  color: #2a2d32;
+  font-size: 36rpx;
+  font-weight: 500;
+  line-height: 1;
+  text-align: center;
+}
+
+.prompt-desc {
+  margin-top: 24rpx;
+  color: #747b85;
+  font-size: 24rpx;
+  line-height: 1.45;
+  text-align: center;
+}
+
+/* 联调原因：灰色小字，左对齐便于看长串 */
+.prompt-reason {
+  margin-top: 20rpx;
+  padding: 16rpx 20rpx;
+  color: #8b9098;
+  background: #f5f6f8;
+  border-radius: 12rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  text-align: left;
+  word-break: break-all;
+}
+
+.prompt-action {
+  width: auto;
+  margin-top: 88rpx;
 }

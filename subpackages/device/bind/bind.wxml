@@ -51,9 +51,29 @@
                ⚠️ 2026-08-21 前它叫 home-icon02.png，首页改版的新素材占了这个名字，故文件更名、图没换。 -->
           <view class="nearby-icon"><image class="nearby-icon__img" src="{{item.thumb || '/assets/images/home-device-thumb.png'}}" mode="aspectFit"></image></view>
           <view class="nearby-copy">
-            <text class="nearby-name">{{item.name}}</text>
-            <!-- 尺寸直接显示后台产品配置的 sizeModel（按广播名匹配产品列表，api.scanSizeModel），没配显示 --寸（2026-10-27） -->
-            <text class="nearby-sub">{{item.sizeModel || '--寸'}} · {{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号 {{item.signalText || '--'}}</text>
+            <!-- 广播名后挂通信类型标签（2026-10-26 WiFi 版接入）：WiFi 版青绿、蓝牙版蓝，与选中态的橙色错开。
+                 标签高度不超过设备名一行，卡片高度不变（列表 4.5 张的版式见 bind.wxss .device-list）。 -->
+            <view class="nearby-title">
+              <text class="nearby-name">{{item.name}}</text>
+              <view class="comm-badge {{item.commType === 'WIFI' ? 'comm-badge--wifi' : 'comm-badge--ble'}}">
+                <image class="comm-badge__icon" src="{{item.commType === 'WIFI' ? '/assets/images/badge-wifi.svg' : '/assets/images/badge-bluetooth.svg'}}" mode="aspectFit"></image>
+                <text class="comm-badge__text">{{item.commType === 'WIFI' ? 'WiFi版' : '蓝牙版'}}</text>
+              </view>
+            </view>
+            <!-- 尺寸两类设备同一口径（2026-10-26）：直接显示后台产品配置的 sizeModel，没配显示 --寸。
+                 WiFi 版尺寸来自 getProductByDevice（查询中显示小圆圈 loading / 查不到为未知设备），广播里没有电量；
+                 蓝牙版尺寸按广播名匹配产品列表（api.scanSizeModel）。 -->
+            <view wx:if="{{item.commType === 'WIFI'}}" class="nearby-sub nearby-sub--row {{item.wifiStatus === 'unknown' ? 'nearby-sub--unknown' : ''}}">
+              <view wx:if="{{item.wifiStatus === 'loading'}}" class="spec-spinner"></view>
+              <text wx:else>{{item.specText}}</text>
+              <text> · 信号</text>
+              <signal-bars class="nearby-signal" level="{{item.signalLevel}}" size="small"></signal-bars>
+            </view>
+            <!-- 信号强弱用信号格显示（仿 iPhone：满格 4 格、最弱 1 格、未知全灰），不再写「强 / 弱」文字 -->
+            <view wx:else class="nearby-sub nearby-sub--row">
+              <text>{{item.sizeModel || '--寸'}} · {{item.battery !== undefined ? '电量' + item.battery + '% · ' : ''}}信号</text>
+              <signal-bars class="nearby-signal" level="{{item.signalLevel}}" size="small" tone="ble"></signal-bars>
+            </view>
             <!-- 设备ID：本次广播里的 6 字节 Device_ID，用来区分同型号同名设备，安卓/iOS 同一来源；
                  取不到显示 --（见 bind.js displayDeviceCode）。
                  判重/身份匹配仍只认连上后 0x01 读到的完整 6 字节 ID，与这里的展示无关。 -->
@@ -64,7 +84,7 @@
         </view>
       </scroll-view>
       <view class="primary-action bind-bottom" hover-class="none" bindtap="confirmBind">
-        立即绑定
+        {{selectedIsWifi ? '立即配网' : '立即绑定'}}
       </view>
     </block>
 
@@ -103,6 +123,19 @@
         <text>3.电子纸设备蓝牙是否工作正常，手机或小程序蓝牙开关是否打开</text>
         <text>4.电子纸设备是否与手机距离过远，隔离或有其他遮挡物</text>
       </view>
+    </view>
+  </view>
+
+  <!-- 未知 WiFi 设备提示：复用首页「设备连接失败」那套底部弹层（× 关闭 + 居中标题 / 说明 + 橙色主按钮），
+       遮罩、弹层底板、关闭钮沿用本页「扫描不到怎么办」的样式 -->
+  <view wx:if="{{showUnknownTip}}" class="bind-mask" catchtouchmove="noop" bindtap="closeUnknownTip">
+    <view class="scan-help-sheet prompt-sheet {{unknownTipClosing ? 'pop-closing-sheet' : ''}}" catchtap="noop">
+      <view class="sheet-close" hover-class="none" bindtap="closeUnknownTip">×</view>
+      <view class="prompt-title">无法连接该设备</view>
+      <view class="prompt-desc">{{unknownTipText}}</view>
+      <!-- 联调：没查到产品的原因（开发版 / 体验版才有值），如「E348C21ED428：接口失败：xxx」「…：返回里没有产品 ID 和产品名称」 -->
+      <view wx:if="{{unknownTipReason}}" class="prompt-reason" user-select>原因：{{unknownTipReason}}</view>
+      <view class="primary-action prompt-action" hover-class="none" bindtap="closeUnknownTip">我知道了</view>
     </view>
   </view>
 

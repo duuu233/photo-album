@@ -1,0 +1,135 @@
+.wifi-content {
+  padding-bottom: calc(200rpx + var(--safe-bottom));
+}
+
+.wifi-art {
+  display: block;
+  width: 600rpx;
+  height: 240rpx;
+  margin: 40rpx auto 0;
+}
+
+.wifi-device {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 28rpx;
+  color: #2a2d32;
+}
+
+.wifi-device__name {
+  overflow: hidden;
+  max-width: 420rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wifi-device__spec {
+  margin-left: 12rpx;
+  color: #8b9098;
+  font-size: 24rpx;
+}
+
+.wifi-tip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 24rpx 0 36rpx;
+  color: #ff6421;
+  font-size: 26rpx;
+}
+
+.wifi-tip__icon {
+  width: 30rpx;
+  height: 30rpx;
+  margin-right: 10rpx;
+  color: #ffffff;
+  background: #ff6421;
+  border-radius: 50%;
+  font-size: 20rpx;
+  font-weight: 700;
+  line-height: 30rpx;
+  text-align: center;
+}
+
+.wifi-form {
+  padding: 12rpx 32rpx 36rpx;
+}
+
+.wifi-field {
+  margin-top: 24rpx;
+}
+
+.wifi-field__label {
+  display: block;
+  margin-bottom: 14rpx;
+  color: #2a2d32;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.wifi-field__box {
+  display: flex;
+  align-items: center;
+  height: 96rpx;
+  padding: 0 8rpx 0 28rpx;
+  background: rgba(255, 255, 255, 0.86);
+  border: 2rpx solid rgba(42, 43, 43, 0.06);
+  border-radius: 20rpx;
+}
+
+.wifi-field__input {
+  flex: 1;
+  min-width: 0;
+  height: 96rpx;
+  color: #2a2d32;
+  font-size: 30rpx;
+}
+
+.wifi-field__placeholder {
+  color: #b3b8c0;
+}
+
+.wifi-field__switch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 80rpx;
+  width: 80rpx;
+  height: 80rpx;
+}
+
+.wifi-field__switch-icon {
+  width: 44rpx;
+  height: 44rpx;
+}
+
+/* 密码显示 / 隐藏的小眼睛：与名称后的切换图标同一个点击区 */
+.wifi-field__eye-icon {
+  width: 40rpx;
+  height: 40rpx;
+}
+
+/* 主按钮：与全站主按钮同一套橙色渐变 + 外发光（见 tests/primary-button-style.test.js 的口径） */
+.wifi-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 112rpx;
+  color: #ffffff;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
+  border-radius: 999rpx;
+  box-shadow: 0 18rpx 36rpx rgba(255, 98, 31, 0.2);
+  font-size: 36rpx;
+  font-weight: 700;
+}
+
+.wifi-bottom {
+  position: fixed;
+  left: 48rpx;
+  right: 48rpx;
+  bottom: calc(48rpx + var(--safe-bottom));
+  z-index: 2;
+}

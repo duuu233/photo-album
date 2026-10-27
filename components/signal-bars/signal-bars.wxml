@@ -1,0 +1,6 @@
+<view class="signal-bars signal-bars--{{size}} signal-bars--{{tone}}" aria-role="img" aria-label="信号 {{level}} 格">
+  <view class="signal-bars__bar {{level >= 1 ? 'is-on' : ''}}"></view>
+  <view class="signal-bars__bar {{level >= 2 ? 'is-on' : ''}}"></view>
+  <view class="signal-bars__bar {{level >= 3 ? 'is-on' : ''}}"></view>
+  <view class="signal-bars__bar {{level >= 4 ? 'is-on' : ''}}"></view>
+</view>

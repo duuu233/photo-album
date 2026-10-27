@@ -1,6 +1,7 @@
 // 业务接口集中定义层：每个方法对应一个后端接口，统一通过 request.js 发起。
 // 第三个参数为请求选项，常用：loading 显示加载、auth:false 免登录、showError:false 静默错误。
 const http = require('./request')
+const config = require('./config')
 const deviceIdUtil = require('./device-id')
 const deviceThumb = require('./device-thumb')
 const { md5 } = require('./md5')
@@ -437,6 +438,66 @@ function scanSizeModel(scan, products) {
   return best ? String(best.sizeModel || '').trim() : ''
 }
 
+// getProductByDevice 的返回归一成产品对象；查不到返回 null。兼容直接回对象或回列表（取第一条）两种形状。
+// 「查到」只认产品身份：有效的 productId（非空、非 0）或非空的产品名。空数据、空对象、字段全是
+// null / 0 的空壳记录一律算查不到（2026-10-26 收紧：原先只要 sizeModel 有值、或 productId 为 0 也算查到，
+// 后端对未开通设备回一条默认值记录时会被当成已开通，「未知设备」就拦不住）。
+// 还没拿到真实返回样例，外面再包一层的常见形状一并兼容：分页（list / records / rows）、
+// 或包在 product / productInfo / data 字段里。
+function unwrapWifiProduct(data) {
+  let raw = data
+  for (let depth = 0; depth < 3 && raw && typeof raw === 'object'; depth++) {
+    if (Array.isArray(raw)) {
+      raw = raw[0]
+      continue
+    }
+    const list = [raw.list, raw.records, raw.rows].find(Array.isArray)
+    if (list) {
+      raw = list[0]
+      continue
+    }
+    const inner = [raw.product, raw.productInfo, raw.data].find(
+      value => value && typeof value === 'object'
+    )
+    if (inner && raw.productId === undefined && raw.sizeModel === undefined) {
+      raw = inner
+      continue
+    }
+    break
+  }
+  return raw
+}
+
+// 接口成功但算「没查到」时的原因（给联调看，见 lookupProductByDevice）
+function describeWifiProductMiss(data) {
+  const raw = unwrapWifiProduct(data)
+  if (raw === null || raw === undefined || raw === '') {
+    return '返回为空'
+  }
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return `返回格式不认识：${JSON.stringify(data)}`
+  }
+  if (!Object.keys(raw).length) {
+    return '返回为空对象'
+  }
+  return `返回里没有产品 ID 和产品名称：${JSON.stringify(data).slice(0, 200)}`
+}
+
+function normalizeWifiProduct(data) {
+  const raw = unwrapWifiProduct(data)
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return null
+  }
+  const productName = String(firstValue(raw.productName, raw.name, raw.model, '')).trim()
+  const sizeModel = String(firstValue(raw.sizeModel, '')).trim()
+  const productId = firstValue(raw.productId, raw.id, '')
+  const hasProductId = productId !== '' && String(productId).trim() !== '0'
+  if (!hasProductId && !productName) {
+    return null
+  }
+  return Object.assign({}, raw, { productId, productName, sizeModel })
+}
+
 function productScore(product, scan) {
   const text = [
     product.productName,
@@ -471,6 +532,7 @@ function productScore(product, scan) {
 module.exports = {
   resolveCarouselIntervalSeconds,
   scanSizeModel,
+  normalizeWifiProduct,
   // 产品列表（会话缓存、失败静默返回空数组，见 loadProductCatalog）
   getProductCatalog() {
     return loadProductCatalog()
@@ -479,6 +541,54 @@ module.exports = {
     return http.get('/Client/Product/getProductList', params, {
       mock: false
     })
+  },
+
+  // WiFi 版设备按 deviceId 查产品规格（尺寸、旋转、方向等，老服务接口，2026-10-26），带上没查到的原因。
+  // 返回 { product, reason }：查到时 product 为产品对象、reason 为空；没查到时 product 为 null，reason 逐个写法说明原因，
+  // 如「E348C21ED428：接口失败：500 系统异常；E3:48:C2:1E:D4:28：返回里没有产品 ID 和产品名称」。不抛错。
+  // 静默（不弹错误）、不做网络重试：失败 / 超时由调用方直接按「未知设备」处理。
+  // 设备 ID 两种写法都查（2026-10-26 产品要求）：先不带冒号的 12 位（E348C21ED428，即广播名里取出的 deviceNo），
+  // 查不到再查带冒号的（E3:48:C2:1E:D4:28，与蓝牙版 / 绑定时的写法一致）——后台登记用哪种写法以实际为准。
+  // 不做结果缓存，每次都实时查（2026-10-26 产品口径，与老接口一致）；同一次搜索里每台只查一次由
+  // 搜索页自己按 deviceNo 记账（见 bind.js lookupWifiProduct），重新搜索全部重查。
+  async lookupProductByDevice(deviceNo) {
+    const plain = String(deviceNo || '').replace(/[:\-\s]/g, '').trim().toUpperCase()
+    if (!plain) {
+      return { product: null, reason: '设备ID为空' }
+    }
+    const colon = deviceIdUtil.canonical(plain)
+    const keys = colon && colon !== plain ? [plain, colon] : [plain]
+    const reasons = []
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]
+      let data = null
+      try {
+        data = await http.get(
+          '/Client/Product/getProductByDevice',
+          { deviceNo: key },
+          { mock: false, showError: false, retry: false }
+        )
+      } catch (error) {
+        const code = error && error.code !== undefined ? `${error.code} ` : ''
+        const message = String((error && error.message) || error || '').replace(/^接口-/, '')
+        reasons.push(`${key}：接口失败：${code}${message}`)
+        console.warn('[WiFi规格查询]', key, '接口失败', code, message)
+        continue
+      }
+      const product = normalizeWifiProduct(data)
+      // 联调期保留：原始返回与归一结果一起打出来，规格显示不对时直接对照（真机 vConsole / 开发者工具可见）
+      console.log('[WiFi规格查询]', key, JSON.stringify(data), product ? `→ 查到 sizeModel=${product.sizeModel || '(空)'}` : '→ 这种写法没查到')
+      if (product) {
+        return { product, reason: '' }
+      }
+      reasons.push(`${key}：${describeWifiProductMiss(data)}`)
+    }
+    return { product: null, reason: reasons.join('；') }
+  },
+
+  // 只要产品对象的简写：查到返回产品，没查到返回 null（原因见 lookupProductByDevice）
+  async getProductByDevice(deviceNo) {
+    return (await module.exports.lookupProductByDevice(deviceNo)).product
   },
 
   // 拉取产品列表里每个产品的 broadcastId（广播名），用于蓝牙搜索时按它过滤目标相框。
@@ -1009,6 +1119,89 @@ module.exports = {
       merged.name = savedName
     }
     return normalizeDevice(merged)
+  },
+
+  // 绑定 WiFi 版设备（2026-10-26，配网 STEP 2）：走老服务同一个 addUserProduct。
+  //   · deviceId 用 12 位 deviceNo 转成的 AA:BB:CC:DD:EE:FF（产品确认与蓝牙版同口径）；
+  //   · productId / 产品名取搜索时 getProductByDevice 查到的产品，不再按广播名打分匹配；
+  //   · 先查已绑定列表：同一台已绑定过（重配网 / 上次绑定成功但联网失败）就复用那条，不重复绑定；
+  //   · 新绑定后回查列表补真实 userProductId（addUserProduct 的返回不含可靠主键，同蓝牙版 bind.js 的处理）。
+  // 不弹 loading / 错误提示：配网状态页自己展示进度和错误。返回归一化后的设备记录（带 commType: 'WIFI'）。
+  // options.onLog(text)：可选，配网日志用——每个接口调用记「接口【名称】方法 完整地址」「参数」「返回 / 失败」三行
+  // （名称取老服务接口中文名，同 request.js API_NAME_MAP；格式见 wifi-provision.run 的日志说明）。
+  async bindWifiDevice(options = {}) {
+    const log = typeof options.onLog === 'function' ? options.onLog : () => {}
+    const productDeviceId = deviceIdUtil.requireComplete(
+      options.deviceNo,
+      '设备ID格式不正确，无法绑定'
+    )
+    const serial = productDeviceId.replace(/:/g, '')
+    const sameDevice = item =>
+      [item && item.deviceNo, item && item.productDeviceId].some(
+        value => String(value || '').replace(/[:\-\s]/g, '').toUpperCase() === serial
+      )
+    const listParams = { pageIndex: 1, pageSize: 100 }
+    const findBound = async purpose => {
+      log(`接口【电子纸设备列表】GET ${config.baseURL}/Client/UserProduct/getUserProductList（老服务；${purpose}；经 api.getDevices 归一，自动带 terminal/language/device/userToken）`)
+      log(`参数 ${JSON.stringify(listParams)}`)
+      try {
+        const list = await module.exports.getDevices()
+        const matched = list.find(sameDevice) || null
+        log(
+          `返回 共 ${list.length} 台；` +
+            (matched
+              ? `匹配到这台：${JSON.stringify({ id: matched.id, userProductId: matched.userProductId, deviceNo: matched.deviceNo, productId: matched.productId, name: matched.name })}`
+              : `没有 deviceNo=${productDeviceId} 的记录`)
+        )
+        return matched
+      } catch (error) {
+        log(`失败 code ${error && error.code}：${(error && error.message) || error}（按未绑定处理）`)
+        return null
+      }
+    }
+    const wifiFields = {
+      commType: 'WIFI',
+      wifiDeviceNo: serial,
+      broadcastName: options.broadcastName || ''
+    }
+
+    const existed = await findBound('查是否已绑定')
+    if (existed) {
+      log('已绑定过这台设备，复用原记录，不再调 addUserProduct')
+      return Object.assign({}, existed, wifiFields)
+    }
+
+    const productName = String(options.productName || options.broadcastName || '智能相框').trim()
+    const addParams = { productId: options.productId, productName, deviceId: productDeviceId }
+    log(`接口【绑定电子纸设备】POST ${config.baseURL}/Client/UserProduct/addUserProduct（老服务；WiFi 设备 deviceId 用带冒号的 12 位 deviceNo）`)
+    log(`参数 ${JSON.stringify(addParams)}`)
+    let saved = null
+    try {
+      saved = await http.post('/Client/UserProduct/addUserProduct', addParams, { mock: false, showError: false })
+    } catch (error) {
+      log(`失败 code ${error && error.code}：${(error && error.message) || error}`)
+      throw error
+    }
+    log(`返回 ${JSON.stringify(saved)}`)
+    const savedName = String((saved && saved.productName) || '').trim()
+    let device = normalizeDevice(
+      Object.assign({}, saved, {
+        productId: options.productId,
+        productDeviceId,
+        deviceNo: productDeviceId,
+        productName: savedName || productName,
+        name: savedName || productName,
+        sizeModel: options.sizeModel || (saved && saved.sizeModel) || ''
+      })
+    )
+    const persisted = await findBound('绑定后回查真实 userProductId')
+    if (persisted && persisted.id) {
+      device = Object.assign({}, device, {
+        id: String(persisted.id),
+        userProductId: persisted.userProductId || persisted.id
+      })
+    }
+    return Object.assign(device, wifiFields)
   },
 
   // 重命名设备（纯后端存储：名称以用户为维度，不写设备固件、不影响蓝牙连接/广播，连不连接都可改）。

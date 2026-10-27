@@ -46,7 +46,9 @@ function loadBindPage() {
 
 function loadBluetooth() {
   let handler
-  const sandbox = { module: { exports: {} }, require: target => target === './frame-protocol' ? protocol : {}, console, setTimeout, clearTimeout, wx: {
+  // 广播名匹配规则（含 WiFi 版 IJ_* 模板，2026-10-26）是白名单过滤的一部分，注入真实模块（纯函数）
+  const modules = { './frame-protocol': protocol, './broadcast-match': require('../utils/broadcast-match'), './signal': require('../utils/signal') }
+  const sandbox = { module: { exports: {} }, require: target => modules[target] || {}, console, setTimeout, clearTimeout, wx: {
     openBluetoothAdapter() {},
     onBluetoothDeviceFound: value => { handler = value }, offBluetoothDeviceFound() {},
     startBluetoothDevicesDiscovery: options => options.success({}),

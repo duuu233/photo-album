@@ -1,5 +1,7 @@
 const protocol = require('./frame-protocol')
 const api = require('./api')
+const broadcastMatch = require('./broadcast-match')
+const signal = require('./signal')
 
 // 共享扫描会话：硬件扫描全局只有一路（activeScan），并发的 discoverDevices 调用作为「订阅者」
 // 挂到同一会话上，各自带自己的 onUpdate/until/timeout，各自命中/到点各自 resolve；
@@ -19,9 +21,10 @@ let stopDiscoveryPromise = null
 // 仅保留目标相框：按广播名（name / localName）做白名单筛选，其余蓝牙设备一律不进搜索结果。
 // 白名单不再写死，而是取自产品列表接口(/Client/Product/getProductList)里每个产品的 broadcastId 字段，
 // 后端新增/调整支持的机型时无需改前端。拉取失败（未登录/网络异常）时退回内置广播名兜底，保证仍能搜到设备。
-//   兜底：3.7 寸 EF6-370 / 5.89 寸 EF6-589
+//   兜底：3.7 寸 EF6-370 / 5.89 寸 EF6-589；WiFi 版模板 IJ_*（2026-10-26，只对 includeWifi 的订阅者生效）
 // 屏幕类型/电量/设备ID若广播包带了厂商数据就顺带解析出来（frame-protocol.parseAdvertising）。
-const FALLBACK_BROADCAST_IDS = ['EF6-370', 'EF6-589']
+// WiFi 版广播 ID 是带 `*` 的模板（如 IJ_*），匹配规则见 utils/broadcast-match.js。
+const FALLBACK_BROADCAST_IDS = ['EF6-370', 'EF6-589', 'IJ_*']
 
 // 停扫等待上限(ms)：个别机型 stopBluetoothDevicesDiscovery 不回调，超时即当已停，别把连接无限拖住。
 const SCAN_STOP_TIMEOUT_MS = 600
@@ -59,12 +62,39 @@ async function loadAllowedBroadcastIds() {
 // 而调试台(allowAll)却看得见，正是这次 OTA 后的现场观感。
 // 放行条件：厂商数据带 0xFFFF Company_ID 且长度符合本产品格式（parseAdvertising 的 companyMatched），
 // 不会把附近的其它蓝牙设备放进列表。不再要求屏型认识（2026-10-22）：新屏型（如 0x04）设备照样放行。
-function isAllowedFrame(device, allowedIds) {
+//
+// WiFi 版（2026-10-26）：广播名合 WiFi 模板（后台 `*` 模板或内置 IJ_*，见 utils/broadcast-match.js）的设备
+// 只给 includeWifi 的订阅者（搜索设备页）；其余入口（连接前扫描、自动重连、调试台白名单模式）一律不收——
+// 哪怕后台把广播 ID 写成能包含匹配上的 `IJ_`、或厂商数据凑巧对上，也不能把 WiFi 设备当候选去连 FF00 会话。
+// 带 `*` 的广播 ID 不参与下面的包含匹配。
+function isAllowedFrame(device, allowedIds, includeWifi) {
+  if (wifiMatchOf(device, allowedIds)) {
+    return !!includeWifi
+  }
   const name = `${device.name || ''} ${device.localName || ''}`.toUpperCase()
-  if ((allowedIds || []).some(allowed => allowed && name.indexOf(allowed) > -1)) {
+  if (
+    (allowedIds || []).some(
+      allowed => allowed && !broadcastMatch.isWildcard(allowed) && name.indexOf(allowed) > -1
+    )
+  ) {
     return true
   }
   return !!(device && device.broadcastCompanyMatched)
+}
+
+function wifiMatchOf(device, allowedIds) {
+  return broadcastMatch.wifiMatch(device, allowedIds)
+}
+
+// includeWifi 订阅者看到的每台设备都标上通信类型：commType 'WIFI'（带 wifiDeviceId，12 位 deviceNo）
+// 或 'BLE'（按名字命中蓝牙版广播 ID，或靠 0xFFFF 厂商数据放行的自家蓝牙设备）。
+// 返回新对象，不改共享会话里的原始记录（别的订阅者看到的仍是原样）。
+function withCommType(device, allowedIds) {
+  const wifi = wifiMatchOf(device, allowedIds)
+  return Object.assign({}, device, {
+    commType: wifi ? broadcastMatch.COMM_WIFI : broadcastMatch.COMM_BLE,
+    wifiDeviceId: wifi ? wifi.wifiDeviceId : ''
+  })
 }
 
 // 检测当前微信运行环境是否具备完整的蓝牙搜索能力
@@ -263,11 +293,18 @@ async function whenScanStopped() {
 // freshOnly 订阅只列出加入后收到过新广播的设备。按信号强度降序。白名单按「当前累计到的名称」判——设备名/localName 常在后续广播包才带全，
 // 旧实现首包没名字就永远进不了名单（名字包晚到被丢弃），这里后到的名字包一样能让设备入列。
 function subscriberList(scan, subscriber) {
-  return Object.keys(scan.foundMap)
+  const list = Object.keys(scan.foundMap)
     .filter(id => !subscriber.seenDeviceIds || subscriber.seenDeviceIds.has(id))
     .map(id => scan.foundMap[id])
-    .filter(device => subscriber.allowAll || isAllowedFrame(device, subscriber.allowedIds))
+    .filter(
+      device =>
+        subscriber.allowAll ||
+        isAllowedFrame(device, subscriber.allowedIds, subscriber.includeWifi)
+    )
     .sort((a, b) => b.RSSI - a.RSSI)
+  return subscriber.includeWifi
+    ? list.map(device => withCommType(device, subscriber.allowedIds))
+    : list
 }
 
 // 结算一位订阅者（到点/until 命中/被 failScan 拒绝之外的正常路径）：resolve 自己的过滤视图，
@@ -320,6 +357,7 @@ function subscribeScan(scan, options) {
     const subscriber = {
       allowAll: options.allowAll,
       allowedIds: options.allowedIds,
+      includeWifi: options.includeWifi,
       onUpdate: options.onUpdate,
       until: options.until,
       // 搜索页展示设备ID要求本次新收到的广播，不复用订阅之前累计到的设备
@@ -437,6 +475,8 @@ function normalizeDevice(device) {
     RSSI: device.RSSI || 0,
     // 信号强度展示档位（强/正常/偏弱/弱，已按产品口径保守下调一级）
     signalText: rssiToSignalText(device.RSSI),
+    // 信号格数 0~4（仿 iPhone 信号格，页面用 signal-bars 组件画；与 signalText 同一组门槛，见 utils/signal.js）
+    signalLevel: signal.rssiToLevel(device.RSSI),
     localName: device.localName || '',
     advertisServiceUUIDs: device.advertisServiceUUIDs || [],
     realBluetooth: true
@@ -468,7 +508,10 @@ async function discoverDevices(options) {
   }
 
   const freshOnly = !!(options && options.freshOnly)
-  const subscriberOptions = { timeout, allowAll, allowedIds, onUpdate, until, freshOnly }
+  // includeWifi：同时收录 WiFi 版设备（广播名按 IJ_* 模板命中），并给每台标上 commType。只有搜索设备页传；
+  // 不传时与接入 WiFi 版之前完全一致（见 isAllowedFrame）。
+  const includeWifi = !!(options && options.includeWifi)
+  const subscriberOptions = { timeout, allowAll, allowedIds, onUpdate, until, freshOnly, includeWifi }
 
   // 已有在途扫描：直接订阅共享会话——绝不并行起第二路硬件扫描，也不会 stop 掉别人的那路
   if (activeScan && !activeScan.stopped) {
