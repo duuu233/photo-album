@@ -458,9 +458,13 @@ button {
   color: #2f6feb;
 }
 
-/* WiFi 版设备卡（2026-10-27）：在线青绿（与 WiFi版 角标同色），离线 / 未知 / 查询中灰，图标随之变淡 */
+/* WiFi 版设备卡（2026-10-27）：在线青绿（与 WiFi版 角标同色），休眠中蓝，离线 / 未知 / 查询中灰，图标随之变淡 */
 .device-status.wifi-status.is-online {
   color: #0e9f87;
+}
+
+.device-status.wifi-status.is-sleeping {
+  color: #2f80ed;
 }
 
 .mini-wifi {

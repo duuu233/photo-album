@@ -222,8 +222,9 @@ Page(fold.adapt({
     if (!device || !device.isWifi) {
       return
     }
-    if (device.wifiStatus === 'offline') {
-      toast.show({ title: '设备已离线，请检查设备网络', icon: 'none' })
+    const tip = wifiStatus.blockedTip(device.wifiStatus) // 离线 / 休眠中先拦
+    if (tip) {
+      toast.show({ title: tip, icon: 'none' })
       return
     }
     this._projectionDevice = device

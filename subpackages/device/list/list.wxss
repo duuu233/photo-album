@@ -285,7 +285,7 @@
   height: 30rpx;
 }
 
-/* ── WiFi 版卡片：在线青绿（与 WiFi版 角标同色）、离线 / 未知灰 ── */
+/* ── WiFi 版卡片：在线青绿（与 WiFi版 角标同色）、休眠中蓝、离线 / 未知灰 ── */
 .wifi-state {
   display: flex;
   align-items: center;
@@ -297,6 +297,10 @@
   color: #0e9f87;
 }
 
+.wifi-state.is-sleeping {
+  color: #2f80ed;
+}
+
 .meta-wifi-icon {
   flex: 0 0 auto;
   width: 26rpx;
@@ -304,6 +308,7 @@
 }
 
 .is-offline .meta-wifi-icon,
+.is-sleeping .meta-wifi-icon,
 .is-unknown .meta-wifi-icon {
   opacity: 0.45;
   filter: grayscale(1);

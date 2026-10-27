@@ -7,6 +7,7 @@ const fold = require('../../../utils/fold-adapt')
 const media = require('../../../utils/media')
 const batteryUtil = require('../../../utils/battery')
 const signal = require('../../../utils/signal')
+const wifiStatus = require('../../../utils/wifi-status')
 
 // WiFi 版设备详情（2026-10-27，对接进度 STEP 4 设备查询 + STEP 3 投屏入口）。
 // 蓝牙版详情（detail 页）全是蓝牙能力（连接、读 0x01、轮播、清空、OTA），WiFi 版一个都用不上，单独成页：
@@ -45,7 +46,8 @@ function statusFields(info) {
     return { status: 'unknown', statusText: '状态未知', rows: [] }
   }
   const shadow = info.shadow || {}
-  const online = !!info.online
+  const status = wifiStatus.deviceState(info) // online / sleeping / offline（休眠中 online=false，电量 / 信号同离线不显示）
+  const online = status === 'online'
   const battery = batteryUtil.normalizeBattery(shadow.battery)
   const rssi = Number(shadow.wifiRssi)
   const rows = [
@@ -58,7 +60,7 @@ function statusFields(info) {
     { key: 'lastOnline', label: '最后上线', value: info.lastOnlineAt || '' },
     { key: 'lastHeart', label: '最后心跳', value: shadow.lastHeartAt || '' }
   ].map(row => Object.assign(row, { value: row.value || '--' }))
-  return { status: online ? 'online' : 'offline', statusText: online ? '在线' : '离线', rows }
+  return { status, statusText: wifiStatus.STATUS_TEXT[status], rows }
 }
 
 Page(fold.adapt({
@@ -69,7 +71,7 @@ Page(fold.adapt({
     loading: true,
     loadError: false,
     device: null,
-    status: 'loading', // loading / online / offline / unknown
+    status: 'loading', // loading / online / sleeping / offline / unknown
     statusText: '查询中',
     rows: [],
     showMediaSheet: false,
@@ -167,13 +169,14 @@ Page(fold.adapt({
     this.refreshStatus()
   },
 
-  // 「投屏」：离线先拦；在线 / 状态未知照常弹拍照 / 相册（未知时让接口裁决，离线会返回 4041）
+  // 「投屏」：离线 / 休眠先拦；在线 / 状态未知照常弹拍照 / 相册（未知时让接口裁决，离线会返回 4041）
   startProjection() {
     if (!this.data.device) {
       return
     }
-    if (this.data.status === 'offline') {
-      toast.show({ title: '设备已离线，请检查设备网络', icon: 'none' })
+    const tip = wifiStatus.blockedTip(this.data.status)
+    if (tip) {
+      toast.show({ title: tip, icon: 'none' })
       return
     }
     this.setData({ showMediaSheet: true, mediaSheetClosing: false })

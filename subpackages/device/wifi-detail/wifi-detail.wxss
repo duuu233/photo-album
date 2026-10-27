@@ -82,6 +82,11 @@
   color: #0e9f87;
 }
 
+/* 休眠中（2026-10-27）：蓝色，与离线的灰区分 */
+.wifi-detail-state.is-sleeping {
+  color: #2f80ed;
+}
+
 .wifi-detail-state__dot {
   width: 14rpx;
   height: 14rpx;

@@ -5,7 +5,8 @@
 //   ④ 没有 WS 时靠 GET /api/device/play/status 轮询走完；
 //   ⑤ TIMEOUT 等 3 秒修正窗口：迟到的 corrected SUCCESS 算成功；仍超时则 TIMEOUT；
 //   ⑥ 90 秒无终态 → 结果未知（4044 为任务已过期）；失败原因按 reason 翻译；
-//   ⑦ 自己订阅的设备结束后退订，原本就订阅着的不动。
+//   ⑦ 自己订阅的设备结束后退订，原本就订阅着的不动；
+//   ⑧ 4041 时补查在线状态：SLEEPING 提示「设备休眠中，唤醒后可操作」，其余 / 补查失败仍是离线文案（2026-10-27 休眠状态对接）。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -41,6 +42,13 @@ function setup(options = {}) {
       if (typeof next === 'function') return next(emit)
       if (next instanceof Error || (next && next.code)) throw next
       return next || { msgid, status: 'SENT' }
+    }
+  }
+  if (options.onlineReply !== undefined) {
+    api.getDeviceOnline = async deviceNo => {
+      log.onlineCalls = (log.onlineCalls || []).concat(deviceNo)
+      if (options.onlineReply instanceof Error) throw options.onlineReply
+      return options.onlineReply
     }
   }
   const sandbox = {
@@ -105,6 +113,22 @@ async function main() {
     assert.equal(res2.status, 'FAILED')
     assert.equal(res2.message, '设备已离线，请检查设备网络', '错误码文案去掉前缀')
     checked('接口返回 FAILED / 上传报错直接失败')
+  }
+  {
+    const offlineError = () => Object.assign(new Error('接口(IoT)-设备已离线，请检查设备网络'), { code: 4041 })
+    const sleeping = setup({ playError: offlineError(), onlineReply: { online: false, status: 'SLEEPING' } })
+    const r1 = await sleeping.run()
+    assert.equal(r1.status, 'FAILED')
+    assert.equal(r1.message, '设备休眠中，唤醒后可操作', '休眠中不提示检查网络')
+    assert.deepEqual(sleeping.log.onlineCalls, ['E348C21ED428'], '补查用去冒号的设备号')
+    const off = setup({ playError: offlineError(), onlineReply: { online: false, status: 'OFFLINE' } })
+    assert.equal((await off.run()).message, '设备已离线，请检查设备网络', '真离线仍是离线文案')
+    const broken = setup({ playError: offlineError(), onlineReply: new Error('网络') })
+    assert.equal((await broken.run()).message, '设备已离线，请检查设备网络', '补查失败按离线')
+    const other = setup({ playError: Object.assign(new Error('接口(IoT)-图片过大'), { code: 4130 }), onlineReply: { online: false, status: 'SLEEPING' } })
+    assert.equal((await other.run()).message, '图片过大', '非 4041 不补查')
+    assert.equal(other.log.onlineCalls, undefined)
+    checked('4041 补查：休眠中改提示')
   }
   {
     const { run } = setup({ status: [{ status: 'DOWNLOADING' }, { status: 'FLASHING' }, { status: 'SUCCESS' }] })

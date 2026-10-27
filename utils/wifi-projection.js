@@ -64,6 +64,23 @@ function errorText(error) {
   return String((error && error.message) || '投屏失败，请稍后重试').replace(/^接口\(IoT\)-/, '')
 }
 
+// 4041（设备已离线）时补查一次在线状态：休眠中的设备也回 4041，此时改提示「设备休眠中，唤醒后可操作」（休眠状态对接说明 4.2）
+async function offlineText(deviceNo, error, log) {
+  if (!error || Number(error.code) !== 4041 || typeof iotApi.getDeviceOnline !== 'function') {
+    return errorText(error)
+  }
+  try {
+    const res = await iotApi.getDeviceOnline(deviceNo, undefined, { showError: false })
+    log(`4041 补查【在线状态】${json(res)}`)
+    if (String((res && res.status) || '').toUpperCase() === 'SLEEPING') {
+      return '设备休眠中，唤醒后可操作'
+    }
+  } catch (queryError) {
+    log(`4041 补查【在线状态】失败 ${(queryError && queryError.message) || queryError}`)
+  }
+  return errorText(error)
+}
+
 function json(value) {
   try {
     return JSON.stringify(value)
@@ -188,7 +205,7 @@ async function projectOne(options) {
       })
     } catch (error) {
       log(`${errorLine(error)}（耗时 ${Date.now() - startedAt}ms）`)
-      return finish({ status: 'FAILED', message: errorText(error), error })
+      return finish({ status: 'FAILED', message: await offlineText(deviceNo, error, log), error })
     }
     log(`返回 ${json(response)}（耗时 ${Date.now() - startedAt}ms）`)
     progress = 100
