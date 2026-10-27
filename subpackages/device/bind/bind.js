@@ -53,10 +53,15 @@ Page(fold.adapt({
 
   // 搜索列表的屏幕尺寸按蓝牙广播名匹配产品，显示该产品后台配置的 sizeModel（2026-10-23，见
   // api.scanSizeModel），不再用广播里的屏型字节推算。产品列表与扫描并行拉取，回来后补到已搜到的设备上；
-  // 拉不到或匹配不到就不显示尺寸。
+  // 拉不到、匹配不到或没配显示「--寸」（2026-10-27）。
   loadProductCatalog() {
     api.getProductCatalog().then(list => {
       this.productCatalog = list
+      // 联调期保留：尺寸显示 --寸 时，对照产品列表里各广播名配的 sizeModel 是不是空的
+      console.log(
+        '[搜索尺寸] 产品列表 broadcastId=sizeModel：',
+        (list || []).map(item => `${item.broadcastId || '(无广播名)'}=${item.sizeModel || '(空)'}`).join(', ') || '(产品列表为空)'
+      )
       if (this.unloaded || !this.data.devices.length) {
         return
       }

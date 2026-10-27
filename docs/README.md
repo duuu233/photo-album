@@ -42,6 +42,7 @@
 
 ## 变更记录
 
+- [2026-10-27 搜索列表尺寸没配显示--寸](changes/2026-10-27-搜索列表尺寸没配显示--寸.md)：搜索设备列表尺寸直接显示按广播名匹配到的 `sizeModel`，没配 / 匹配不到显示「--寸」（原为不显示），加 `[搜索尺寸]` 日志；搜索页测试桩补 scanSizeModel。设备详情口径不变。本机无node测试未跑，未真机。
 - [2026-10-23 屏幕尺寸读sizeModel与抖动出帧迁后端](changes/2026-10-23-屏幕尺寸读sizeModel与抖动出帧迁后端.md)：设备详情「屏幕尺寸」直接展示后台 `sizeModel`，没配不展示；抖动出帧由第三方 seekink 改调 `/Client/Basic/imageDitheringBinDownload`（用户自己的 userToken），删 getXTYUserToken 及调试台 Token 卡片。同日追加：搜索列表按广播名匹配产品显示 sizeModel；type 数值不变由后端对齐。本机无node测试未跑，未真机。
 - [2026-10-23 设备容量按机型区分](changes/2026-10-23-设备容量按机型区分.md)：按规格书 v1.6 §5.2，容量先按机型（broadcastId：EF6-370 95、EF6-589 51、EB-169 25、EC-370 11）再按屏型（新增 0x04→25）；修复 EB-169、EC-370 最大照片数量显示 --，投屏选槽同口径。本机无node测试未跑，未真机。
 - [2026-10-22 设备图按机型区分](changes/2026-10-22-设备图按机型区分.md)：六处设备图统一走 `utils/device-thumb.js`，EB-169 圆屏图、EC-370 矩形图、其余原图；已绑定记录用设备列表下发的 broadcastId（缺失按 productId 回查产品列表），搜索结果按广播名，兜底 shapeType=1。绑定匹配产品按广播名命中 broadcastId 加权。10-23 追加：记录的 broadcastId 缺失或不是产品广播名时按 productId 回查；绑错产品的设备需重新绑定。10-23 再追加：列表记录仍认不出机型时按 userProductId 静默调详情补（EC-370 首页/我的设备错、详情对）。本机无node测试未跑，未真机。
