@@ -1,5 +1,5 @@
 // WiFi 设备产品规格查询（2026-10-26）：
-//   ① 设备 ID 两种写法都查：先不带冒号的 12 位，查不到再查带冒号的（后台登记用哪种以实际为准）；
+//   ① 设备 ID 只传不带冒号的 12 位（2026-10-27 产品：传给后端查询的设备ID不加冒号；原「查不到再用带冒号的查」已取消）；
 //   ② 没查到时给出原因（接口失败 / 返回为空 / 返回里没有产品 ID 和产品名称），搜索页在开发版 / 体验版把它写到未知设备提示上；
 //   ③ 不抛错；getProductByDevice 只是取 product 的简写。
 const assert = require('node:assert/strict')
@@ -44,24 +44,26 @@ async function main() {
   {
     const { api, calls } = loadApi({ E348C21ED428: null, 'E3:48:C2:1E:D4:28': { productId: 21, productName: 'WiFi相框' } })
     const result = await api.lookupProductByDevice('E3:48:C2:1E:D4:28')
-    assert.equal(result.product.productId, 21)
-    assert.deepEqual(calls, ['E348C21ED428', 'E3:48:C2:1E:D4:28'], '传进来带不带冒号都先查不带的，再查带冒号的')
-    checked('不带冒号没查到，再用带冒号的写法查到')
+    assert.equal(result.product, null, '不再用带冒号的写法补查')
+    assert.deepEqual(calls, ['E348C21ED428'], '传进来带冒号也去掉冒号再查，只查一次')
+    checked('只传不带冒号的设备ID，不再补查带冒号的')
   }
   {
     const failure = Object.assign(new Error('接口-系统异常'), { code: 500 })
-    const { api } = loadApi({ E348C21ED428: failure, 'E3:48:C2:1E:D4:28': { sizeModel: '13.3寸', width: 1600 } })
+    const { api } = loadApi({ E348C21ED428: failure })
     const result = await api.lookupProductByDevice('E348C21ED428')
     assert.equal(result.product, null)
     assert.ok(/E348C21ED428：接口失败：500 系统异常/.test(result.reason), result.reason)
-    assert.ok(/E3:48:C2:1E:D4:28：返回里没有产品 ID 和产品名称/.test(result.reason), result.reason)
     assert.equal(await api.getProductByDevice('E348C21ED428'), null, 'getProductByDevice 只取 product')
-    checked('两种写法都没查到：逐个写法给出原因，不抛错')
+    const { api: noName } = loadApi({ E348C21ED428: { sizeModel: '13.3寸', width: 1600 } })
+    assert.ok(/E348C21ED428：返回里没有产品 ID 和产品名称/.test((await noName.lookupProductByDevice('E348C21ED428')).reason))
+    checked('没查到：给出原因，不抛错')
   }
   {
-    const { api } = loadApi({ E348C21ED428: null, 'E3:48:C2:1E:D4:28': {} })
-    const result = await api.lookupProductByDevice('E348C21ED428')
-    assert.ok(/E348C21ED428：返回为空/.test(result.reason) && /E3:48:C2:1E:D4:28：返回为空对象/.test(result.reason), result.reason)
+    const { api } = loadApi({ E348C21ED428: null })
+    assert.ok(/E348C21ED428：返回为空/.test((await api.lookupProductByDevice('E348C21ED428')).reason))
+    const { api: empty } = loadApi({ E348C21ED428: {} })
+    assert.ok(/E348C21ED428：返回为空对象/.test((await empty.lookupProductByDevice('E348C21ED428')).reason))
     checked('返回为空 / 空对象的原因')
   }
   console.log(`wifi-product-lookup: ${checks} groups passed`)

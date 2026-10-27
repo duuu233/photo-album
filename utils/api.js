@@ -544,11 +544,11 @@ module.exports = {
   },
 
   // WiFi 版设备按 deviceId 查产品规格（尺寸、旋转、方向等，老服务接口，2026-10-26），带上没查到的原因。
-  // 返回 { product, reason }：查到时 product 为产品对象、reason 为空；没查到时 product 为 null，reason 逐个写法说明原因，
-  // 如「E348C21ED428：接口失败：500 系统异常；E3:48:C2:1E:D4:28：返回里没有产品 ID 和产品名称」。不抛错。
+  // 返回 { product, reason }：查到时 product 为产品对象、reason 为空；没查到时 product 为 null，reason 说明原因，
+  // 如「E348C21ED428：接口失败：500 系统异常」。不抛错。
   // 静默（不弹错误）、不做网络重试：失败 / 超时由调用方直接按「未知设备」处理。
-  // 设备 ID 两种写法都查（2026-10-26 产品要求）：先不带冒号的 12 位（E348C21ED428，即广播名里取出的 deviceNo），
-  // 查不到再查带冒号的（E3:48:C2:1E:D4:28，与蓝牙版 / 绑定时的写法一致）——后台登记用哪种写法以实际为准。
+  // 设备 ID 只传不带冒号的 12 位（E348C21ED428，即广播名里取出的 deviceNo）：2026-10-27 产品定传给后端查询的设备ID
+  // 不加冒号（原 10-26 口径为查不到再用带冒号的写法查一次，已取消）；传进来带冒号也先去掉。
   // 不做结果缓存，每次都实时查（2026-10-26 产品口径，与老接口一致）；同一次搜索里每台只查一次由
   // 搜索页自己按 deviceNo 记账（见 bind.js lookupWifiProduct），重新搜索全部重查。
   async lookupProductByDevice(deviceNo) {
@@ -556,8 +556,7 @@ module.exports = {
     if (!plain) {
       return { product: null, reason: '设备ID为空' }
     }
-    const colon = deviceIdUtil.canonical(plain)
-    const keys = colon && colon !== plain ? [plain, colon] : [plain]
+    const keys = [plain]
     const reasons = []
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i]
@@ -1122,8 +1121,8 @@ module.exports = {
   },
 
   // 绑定 WiFi 版设备（2026-10-26，配网 STEP 2）：走老服务同一个 addUserProduct。
-  //   · deviceId 用 12 位大写十六进制、不带冒号（如 A61F5AE3A12D）：设备入网流程约束 7（2026-10-27）要求广播名、绑定、
-  //     MQTT clientid、deviceNo 同一格式，IoT 在线接口按它调老服务 checkPermission（原 10-26 口径为带冒号，与蓝牙版相同）；
+  //   · deviceId 用 12 位 deviceNo 转成的 AA:BB:CC:DD:EE:FF（与蓝牙版同口径；2026-10-27 产品再次确认统一加冒号）。
+  //     查询类接口（getProductByDevice、IoT 在线 / 设备信息）仍传不带冒号的 12 位；
   //   · productId / 产品名取搜索时 getProductByDevice 查到的产品，不再按广播名打分匹配；
   //   · 先查已绑定列表：同一台已绑定过（重配网 / 上次绑定成功但联网失败）就复用那条，不重复绑定；
   //   · 新绑定后回查列表补真实 userProductId（addUserProduct 的返回不含可靠主键，同蓝牙版 bind.js 的处理）。
@@ -1173,8 +1172,8 @@ module.exports = {
     }
 
     const productName = String(options.productName || options.broadcastName || '智能相框').trim()
-    const addParams = { productId: options.productId, productName, deviceId: serial }
-    log(`接口【绑定电子纸设备】POST ${config.baseURL}/Client/UserProduct/addUserProduct（老服务；WiFi 设备 deviceId 用不带冒号的 12 位大写 deviceNo）`)
+    const addParams = { productId: options.productId, productName, deviceId: productDeviceId }
+    log(`接口【绑定电子纸设备】POST ${config.baseURL}/Client/UserProduct/addUserProduct（老服务；WiFi 设备 deviceId 用带冒号的 12 位 deviceNo）`)
     log(`参数 ${JSON.stringify(addParams)}`)
     let saved = null
     try {

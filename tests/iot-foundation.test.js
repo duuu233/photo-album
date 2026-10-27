@@ -179,6 +179,21 @@ async function main() {
     checked('握手 401 停止重连，close 清空订阅')
   }
 
+  // ── 查询接口的设备ID不加冒号（2026-10-27 产品口径）──
+  {
+    const sent = []
+    const iotApi = load('utils/iot-api.js', {
+      './iot-request': { get: (url, params) => { sent.push([url, params]); return Promise.resolve({}) } }
+    })
+    await iotApi.getDeviceOnline('E3:48:C2:1E:D4:28', 1000)
+    await iotApi.getDeviceInfo('e348c21ed428')
+    assert.deepEqual(JSON.parse(JSON.stringify(sent)), [
+      ['/api/device/online', { deviceNo: 'E348C21ED428', since: 1000 }],
+      ['/api/device/info', { deviceNo: 'E348C21ED428' }]
+    ], '带冒号 / 小写都转成 12 位大写不带冒号')
+    checked('IoT 查询接口的 deviceNo 去冒号')
+  }
+
   console.log(`iot-foundation: ${checks} groups passed`)
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

@@ -261,7 +261,8 @@ Page(fold.adapt({
     return !!device && device.commType === COMM_WIFI
   },
 
-  // WiFi 行的展示字段：设备ID 用广播名里解析出的 12 位 deviceNo；规格行按查询状态显示
+  // WiFi 行的展示字段：设备ID 显示广播名里解析出的 12 位 deviceNo 加冒号（E3:48:C2:1E:D4:28，2026-10-27 与蓝牙版统一）；
+  // 查规格、配网交接仍用不带冒号的 wifiDeviceNo（传给后端查询的设备ID不加冒号）。规格行按查询状态显示
   // 「查询中（小圆圈 loading）/ 尺寸 / 未知设备」。首次见到这台就发起查询（每台只查一次）。
   wifiRowFields(item) {
     const deviceNo = item.wifiDeviceId || ''
@@ -270,7 +271,8 @@ Page(fold.adapt({
     return Object.assign(
       {
         commType: COMM_WIFI,
-        deviceCode: deviceNo || '--',
+        wifiDeviceNo: deviceNo,
+        deviceCode: deviceIdUtil.canonical(deviceNo) || deviceNo || '--',
         thumb: deviceThumb.thumbOf(item)
       },
       this.wifiSpecFields(lookup)
@@ -326,7 +328,7 @@ Page(fold.adapt({
         const fields = this.wifiSpecFields(result)
         this.setData({
           devices: this.data.devices.map(item =>
-            item.commType === COMM_WIFI && item.deviceCode === deviceNo
+            item.commType === COMM_WIFI && item.wifiDeviceNo === deviceNo
               ? Object.assign({}, item, fields)
               : item
           )
@@ -372,15 +374,15 @@ Page(fold.adapt({
     }
     wx.hideLoading()
     this._wifiConnecting = false
-    // 配网要用的设备信息走内存交接（BLE 句柄、deviceNo、查到的产品），url 只带展示用的字段
+    // 配网要用的设备信息走内存交接（BLE 句柄、不带冒号的 deviceNo、查到的产品），url 只带展示用的字段
     wifiProvision.setTarget({
       bleDeviceId: device.deviceId,
-      deviceNo: device.deviceCode,
+      deviceNo: device.wifiDeviceNo,
       name: device.name || '',
       product: device.wifiProduct || null
     })
     const query = [
-      `deviceNo=${encodeURIComponent(device.deviceCode)}`,
+      `deviceNo=${encodeURIComponent(device.wifiDeviceNo)}`,
       `name=${encodeURIComponent(device.name || '')}`,
       `spec=${encodeURIComponent(device.specText || '')}`
     ].join('&')
