@@ -468,6 +468,17 @@ button {
   height: 26rpx;
 }
 
+/* WiFi 卡：在线状态与电量排一行，状态自身的下边距收掉 */
+.wifi-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 28rpx;
+}
+
+.wifi-meta-row .device-status {
+  margin-bottom: 0;
+}
+
 .wifi-status:not(.is-online) .mini-wifi {
   opacity: 0.45;
   filter: grayscale(1);

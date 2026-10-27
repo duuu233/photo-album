@@ -150,15 +150,18 @@
                     <text>连接蓝牙</text>
                   </view>
                 </block>
-                <!-- WiFi 版（2026-10-27）：不走蓝牙，显示云端在线状态与电量（IoT 设备信息），没有「连接蓝牙」 -->
+                <!-- WiFi 版（2026-10-27）：不走蓝牙，显示云端在线状态与电量（IoT 设备信息），没有「连接蓝牙」。
+                     在线状态与电量同一行（同日产品要求） -->
                 <block wx:else>
-                  <view class="device-status wifi-status is-{{item.wifiStatus}}">
-                    <image class="mini-wifi" src="/assets/images/badge-wifi.svg" mode="aspectFit" />
-                    <text>{{item.wifiStatusText}}</text>
-                  </view>
-                  <view wx:if="{{item.wifiBatteryText}}" class="battery-row">
-                    <image class="battery-level-icon" src="{{item.wifiBatteryIcon}}" mode="aspectFit" />
-                    <text>{{item.wifiBatteryText}}</text>
+                  <view class="wifi-meta-row">
+                    <view class="device-status wifi-status is-{{item.wifiStatus}}">
+                      <image class="mini-wifi" src="/assets/images/badge-wifi.svg" mode="aspectFit" />
+                      <text>{{item.wifiStatusText}}</text>
+                    </view>
+                    <view wx:if="{{item.wifiBatteryText}}" class="battery-row">
+                      <image class="battery-level-icon" src="{{item.wifiBatteryIcon}}" mode="aspectFit" />
+                      <text>{{item.wifiBatteryText}}</text>
+                    </view>
                   </view>
                 </block>
               </view>

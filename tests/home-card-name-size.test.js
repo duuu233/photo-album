@@ -72,6 +72,25 @@ async function main() {
     assert.ok(/flex: 0 0 auto;/.test(orbit), '设备图不被长名称挤小')
     console.log('PASS 版式：设备卡内容居中')
   }
+  {
+    // 同日追加：首页 WiFi 卡在线状态与电量同一行；我的设备「设备ID」前加尺寸，不带 WiFi版 / 蓝牙版
+    const tpl = read('pages/home/home.wxml')
+    const wifiBlock = tpl.slice(tpl.indexOf('<block wx:else>'), tpl.indexOf('</swiper-item>'))
+    const row = wifiBlock.slice(wifiBlock.indexOf('class="wifi-meta-row"'))
+    assert.ok(row.indexOf('item.wifiStatusText') > -1 && row.indexOf('item.wifiBatteryText') > -1, '状态与电量都在同一行容器里')
+    const css = read('pages/home/home.wxss')
+    assert.ok(/\.wifi-meta-row \{\s*display: flex;/.test(css), '同一行横排')
+
+    const list = read('subpackages/device/list/list.wxml')
+    const lines = list.match(/<view class="device-id">[^\n]*<\/view>/g) || []
+    assert.equal(lines.length, 2, 'WiFi 卡、蓝牙卡都有')
+    lines.forEach(line => {
+      assert.ok(line.indexOf("<text>{{item.sizeModel || '--寸'}}</text>") > -1, '尺寸在设备ID前，没配 --寸')
+      assert.ok(line.indexOf('sizeModel') < line.indexOf('设备ID'), '尺寸在前')
+      assert.equal(/WiFi版|蓝牙版/.test(line), false, '只显示尺寸，不带类型')
+    })
+    console.log('PASS 同日追加：WiFi 卡状态电量同行、我的设备设备ID前加尺寸')
+  }
   console.log('home-card-name-size: all passed')
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

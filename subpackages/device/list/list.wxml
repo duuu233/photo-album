@@ -51,7 +51,8 @@
                   <image class="edit-name-icon" src="/assets/images/edit-icon01.png" mode="aspectFit"></image>
                 </view>
               </view>
-              <text wx:if="{{item.productDeviceId}}" class="device-id">设备ID {{item.productDeviceId}}</text>
+              <!-- 设备ID 前加尺寸（2026-10-27）：只显示后台产品配置的 sizeModel，不带 WiFi版 / 蓝牙版（分组标题已区分），没配 --寸 -->
+              <view class="device-id"><text>{{item.sizeModel || '--寸'}}</text><text wx:if="{{item.productDeviceId}}"> · 设备ID {{item.productDeviceId}}</text></view>
               <view class="device-meta">
                 <view class="wifi-state is-{{item.wifiStatus}}">
                   <view wx:if="{{item.wifiStatus === 'loading'}}" class="wifi-state__spinner"></view>
@@ -107,8 +108,9 @@
                   <image class="edit-name-icon" src="/assets/images/edit-icon01.png" mode="aspectFit"></image>
                 </view>
               </view>
-              <!-- productDeviceId 来自 getUserProductList.deviceId，经 API 层校验为完整 6 字节后展示；空值不占位 -->
-              <text wx:if="{{item.productDeviceId}}" class="device-id">设备ID {{item.productDeviceId}}</text>
+              <!-- productDeviceId 来自 getUserProductList.deviceId，经 API 层校验为完整 6 字节后展示；空值时只剩尺寸。
+                   设备ID 前加尺寸（2026-10-27）：只显示 sizeModel，不带 WiFi版 / 蓝牙版，没配 --寸 -->
+              <view class="device-id"><text>{{item.sizeModel || '--寸'}}</text><text wx:if="{{item.productDeviceId}}"> · 设备ID {{item.productDeviceId}}</text></view>
               <view class="device-meta">
                 <view class="connection {{item.connected ? 'is-connected' : ''}}">
                   <image class="meta-bt-icon" src="{{item.connected ? '/assets/images/bluetooth-icon.png' : '/assets/images/bluetooth-icon-not.png'}}" mode="aspectFit"></image>
