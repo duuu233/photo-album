@@ -18,6 +18,7 @@ const config = require('../../../utils/config')
 // 每张（含只上传的）都带 addToCarousel=true；有任何一张成功投出但 carouselUpdated=false，结束后在结果下方追加
 // 「未成功加入轮播，请前往轮播设置添加」；true / null 不额外提示。相册记录照常写（全部相册轮播靠它才拉得到这张）。
 // 投屏日志（2026-10-27，与当初配网日志同款）：开发版 / 体验版在页面下方显示、可一键复制；正式版不显示，只打控制台 [WiFi投屏]。
+// 渲染模式 renderMode（2026-10-28）：首轮投屏前按设备取一次后台产品配置（api.resolveRenderMode），每张原样带上，重试复用。
 // 本页记设备信息（尺寸 / 旋转字段，排查横竖向用）与每张图上传前的像素尺寸、文件大小；接口与 WS 过程由 projectOne 的 onLog 给出。
 // 重试不清空，一次进页面的全部过程都在一份日志里。
 const LOG_LIMIT = 500
@@ -204,6 +205,10 @@ Page(fold.adapt({
     const deviceNo = device.productDeviceId || device.deviceNo
     // type 与蓝牙版抖动出帧同口径：480×720 传 1，其余 0（评审回复 8.1）
     const type = dithering.typeForDevice(device)
+    if (this.renderMode === undefined) {
+      this.renderMode = await api.resolveRenderMode(device)
+      this.appendLog(`渲染模式 renderMode=${this.renderMode || '（产品未配置，不传）'}`)
+    }
     for (let n = 0; n < indexes.length; n += 1) {
       if (this.unloaded) {
         return
@@ -229,6 +234,7 @@ Page(fold.adapt({
           deviceNo,
           filePath,
           type,
+          renderMode: this.renderMode,
           refresh,
           addToCarousel: this.addToCarousel,
           isCancelled: () => this.unloaded,

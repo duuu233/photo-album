@@ -86,6 +86,8 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 2026-10-28：轮播选图上限 100（`wifi-strategy.MAX_IMG_URLS`，「已选 X/100」、选满置灰）；投屏预览页 WiFi 版进页查轮播，`running` 时显示「同时加入轮播」开关，经 `pendingProjection.addToCarousel` 让结果页每张带 `addToCarousel`，`carouselUpdated=false` 提示「未成功加入轮播」；「我的上传」WiFi 删除提示「若相框未更新，请手动切换或重新设置轮播」。见 `docs/changes/2026-10-28-WiFi版轮播上限100与同时加入轮播.md`。
 
+2026-10-28：WiFi 投屏带后台产品配置的渲染模式 `renderMode`（esp32 / fpga16），`api.resolveRenderMode` 取（设备记录自带 → productId 查产品列表 → `getProductByDevice`，取不到不传），`iot-api.play` 有值才带、原样传；结果页一次进页查一次，轮播设置页投第一张同样带。见 `docs/changes/2026-10-28-WiFi版投屏带产品渲染模式.md`。
+
 ## 联调日志浮窗（2026-10-27，`main-wifi`）
 
 开发版 / 体验版每个页面左下角有「日志 N」浮窗（`components/debug-log`，app.json 全局注册，每个页面 wxml 末尾一个 `<debug-log>`；新增页面记得加），点开可复制 / 清空。数据来自 `utils/debug-log.js`：`app.js` 最先 `install()` 包装 console，另有老服务 `[HTTP]`、IoT `[IoT]`、`[WS]` 摘要；最近 500 行只在内存，token / 密码入库前打码。正式版整套不生效。

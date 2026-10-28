@@ -32,6 +32,7 @@ module.exports = {
   // addToCarousel（2026-10-27 追加内容第二节，可选，默认 false）：true 把本次图片加入当前轮播选择，与 refresh 独立；
   // 返回多 carouselUpdated：null 没传 / true 已加入（全部相册时为清缓存）/ false 未加入（未开轮播、已满 100、锁冲突等），
   // 未加入不影响投屏本身。
+  // renderMode（2026-10-28）：后台产品配置的渲染模式（esp32 / fpga16），有值才带、原样传（见 api.resolveRenderMode）。
   play(deviceNo, filePath, type, options) {
     const opts = options || {}
     const formData = { deviceNo: plainDeviceNo(deviceNo), type: String(type) }
@@ -40,6 +41,9 @@ module.exports = {
     }
     if (opts.addToCarousel === true) {
       formData.addToCarousel = 'true'
+    }
+    if (opts.renderMode) {
+      formData.renderMode = String(opts.renderMode)
     }
     return iot.upload('/api/device/play', {
       filePath,

@@ -35,7 +35,7 @@ flowchart TB
     W2["点「开始投屏」（不需要 BLE 句柄）"]
     W3["构图导出：设备 width × height 物理分辨率<br/>addToCarousel 写入 pendingProjection"]
     W4["redirectTo wifi-result 页"]
-    W5["逐张顺序 POST /api/device/play<br/>multipart：deviceNo、type、file、refresh、addToCarousel<br/>服务端转 bin → OSS → MQTT 下发"]
+    W5["逐张顺序 POST /api/device/play<br/>multipart：deviceNo、type、file、refresh、addToCarousel、renderMode<br/>服务端转 bin → OSS → MQTT 下发"]
     W6["refresh：本轮最后一张 true，其余 false<br/>返回 SENT（已下发）/ UPLOADED（只上传）/ FAILED<br/>4041 → 补查在线状态：休眠中 / 已关机"]
     W7["成功的张：addWifiAlbumRecord<br/>setFileUpload + addUserProductImgRecord（img + imgBle=binUrl）"]
     W8["结束：carouselUpdated=false 提示未加入轮播<br/>失败的张可「重试」（同样最后一张刷屏）<br/>设备是否刷屏成功由服务端消息通知"]

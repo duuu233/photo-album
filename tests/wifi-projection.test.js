@@ -9,6 +9,8 @@
 //   ⑧ 同时加入轮播（2026-10-27 追加内容第二节）：iot-api.play 只在 addToCarousel=true 时带字段；projectOne 透传并交回
 //      carouselUpdated；结果页每张都带，有一张 carouselUpdated=false 就追加「未成功加入轮播，请前往轮播设置添加」；
 //      预览页只在轮播运行中显示开关，开关状态经 pendingProjection.addToCarousel 交给结果页。
+//   ⑨ 渲染模式 renderMode（2026-10-28）：iot-api.play 有值才带、原样传；projectOne 透传；结果页按设备取一次（api.resolveRenderMode），
+//      每张都带，重试不再查。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -25,6 +27,7 @@ function setup(options = {}) {
     async play(deviceNo, filePath, type, opts) {
       log.plays.push({ deviceNo, filePath, type, showError: opts.showError, refresh: opts.refresh })
       if (opts.addToCarousel) log.plays[log.plays.length - 1].addToCarousel = true
+      if (opts.renderMode) log.plays[log.plays.length - 1].renderMode = opts.renderMode
       ;[30, 100].forEach(p => opts.onProgress(p))
       if (options.playError) throw options.playError
       return options.response || { msgid: 'm1', status: 'SENT', binUrl: 'https://oss/a.bin', binSize: 10 }
@@ -69,6 +72,14 @@ async function main() {
     assert.ok(log.stages.includes('UPLOADING:30'), '上传进度真实透出')
     assert.equal(log.statusCalls, 0, '不再轮询投屏状态')
     checked('返回 SENT 即结束：已发送，屏幕即将刷新')
+  }
+  {
+    const { run, log } = setup()
+    await run({ renderMode: ' fpga16 ' })
+    assert.equal(log.plays[0].renderMode, 'fpga16', 'renderMode 透传给接口')
+    await run({ renderMode: '' })
+    assert.equal(log.plays[1].renderMode, undefined, '空 renderMode 不传')
+    checked('projectOne：renderMode 透传')
   }
   {
     const { run, log } = setup({ response: { msgid: null, status: 'UPLOADED', binUrl: 'https://oss/b.bin' } })
@@ -158,16 +169,25 @@ async function main() {
     await iotApi.play('E3:48:C2:1E:D4:28', 'wxfile://a.png', 0, { addToCarousel: false })
     assert.deepEqual(plain(uploads[2].opts.formData), { deviceNo: 'E348C21ED428', type: '0', refresh: 'false', addToCarousel: 'true' }, 'addToCarousel 与 refresh 独立')
     assert.deepEqual(plain(uploads[3].opts.formData), { deviceNo: 'E348C21ED428', type: '0' }, 'addToCarousel=false 不带')
-    checked('iot-api.play：refresh / addToCarousel 字段')
+    await iotApi.play('E3:48:C2:1E:D4:28', 'wxfile://a.png', 0, { renderMode: 'esp32' })
+    await iotApi.play('E3:48:C2:1E:D4:28', 'wxfile://a.png', 0, { renderMode: '' })
+    assert.deepEqual(plain(uploads[4].opts.formData), { deviceNo: 'E348C21ED428', type: '0', renderMode: 'esp32' }, 'renderMode 原样带')
+    assert.deepEqual(plain(uploads[5].opts.formData), { deviceNo: 'E348C21ED428', type: '0' }, '空 renderMode 不带')
+    checked('iot-api.play：refresh / addToCarousel / renderMode 字段')
   }
   {
     // 结果页：按真实源码装配，projectOne / 写相册记录用桩
     let definition
-    const calls = { plays: [], records: [] }
+    const calls = { plays: [], records: [], renderModeLookups: 0 }
     const failIndex = { value: -1 }
     const carouselFailIndex = { value: -1 }
     const modules = {
       api: {
+        resolveRenderMode: async device => {
+          calls.renderModeLookups++
+          assert.equal(device.productDeviceId, 'E3:48:C2:1E:D4:28', '按当前设备查渲染模式')
+          return 'fpga16'
+        },
         addWifiAlbumRecord: async data => {
           calls.records.push(data)
           if (data.filePath === 'wxfile://2.png' && calls.records.length === 2) throw new Error('上传失败')
@@ -180,7 +200,7 @@ async function main() {
       'wifi-projection': {
         projectOne: async opts => {
           const n = calls.plays.length
-          calls.plays.push({ file: opts.filePath, refresh: opts.refresh, addToCarousel: opts.addToCarousel })
+          calls.plays.push({ file: opts.filePath, refresh: opts.refresh, addToCarousel: opts.addToCarousel, renderMode: opts.renderMode })
           if (n === failIndex.value) return { status: 'FAILED', message: '投屏失败' }
           const carouselUpdated = opts.addToCarousel ? n !== carouselFailIndex.value : null
           return opts.refresh
@@ -229,6 +249,8 @@ async function main() {
     assert.equal(page.data.retryable, false)
     assert.ok(calls.plays.every(item => item.addToCarousel === false), '没勾同时加入轮播：都不带')
     assert.equal(page.data.carouselTip, '')
+    assert.ok(calls.plays.every(item => item.renderMode === 'fpga16'), '每张都带产品的 renderMode（含重试）')
+    assert.equal(calls.renderModeLookups, 1, '渲染模式一次进页面只查一次，重试复用')
     checked('结果页：最后一张刷屏、写相册记录、重试')
 
     // 勾了「同时加入轮播」：每张都带；第二张没加进去 → 结束后追加提示

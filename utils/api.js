@@ -589,6 +589,32 @@ module.exports = {
     return (await module.exports.lookupProductByDevice(deviceNo)).product
   },
 
+  // WiFi 投屏的渲染模式（2026-10-28）：后台产品配置的 renderMode（esp32 / fpga16），原样传给 POST /api/device/play。
+  // 设备记录自带就用（绑定详情接口下发）；设备列表接口不带，按 productId 查产品列表，仍没有再按设备ID查
+  // getProductByDevice（产品列表最多等 PRODUCT_CATALOG_WAIT_MS，冷启动未缓存时不拖住投屏）。
+  // 都取不到返回空串，由调用方不传该字段。不抛错。
+  async resolveRenderMode(device) {
+    const own = String((device && device.renderMode) || '').trim()
+    if (own) {
+      return own
+    }
+    const productId = device && device.productId
+    if (productId !== undefined && productId !== null && productId !== '') {
+      const products = await productCatalogWithin(PRODUCT_CATALOG_WAIT_MS)
+      const matched = products.find(item => item && String(item.productId) === String(productId))
+      const fromCatalog = String((matched && matched.renderMode) || '').trim()
+      if (fromCatalog) {
+        return fromCatalog
+      }
+    }
+    const deviceNo = device && (device.productDeviceId || device.deviceNo)
+    if (!deviceNo) {
+      return ''
+    }
+    const product = await module.exports.getProductByDevice(deviceNo)
+    return String((product && product.renderMode) || '').trim()
+  },
+
   // 拉取产品列表里每个产品的 broadcastId（广播名），用于蓝牙搜索时按它过滤目标相框。
   // 返回去重后的非空字符串数组；拉取失败由调用方兜底（不在此处吞错）。
   async getProductBroadcastIds() {
