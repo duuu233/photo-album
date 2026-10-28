@@ -39,6 +39,7 @@
 | [照片预览独立截图 Demo](preview-demo.md) | 微信开发者工具启动条件、圆/方形参数、同源编辑逻辑与演示隔离 |
 | [WiFi 版前端对接文档（草稿）](前端对接文档_草稿.md) | XT IoT 服务（`iot.boltfox.cn`）接口草稿 v0.27：投屏、设备查询与控制、WebSocket、消息通知；draft，以后端最新版为准 |
 | [WiFi 版设备入网流程](wifi/设备入网流程.md) | 2026-10-27 最终入网流程：BLE 三条指令（WiFi → `mqtt_config` → 国家码）、绑定先于在线查询、配网 4 步时序、接口返回与错误码 |
+| [WiFi 版投屏画质问题分析](wifi/WiFi版投屏画质问题分析.md) | WiFi 版投屏效果差的可疑点（服务端转换参数、`type`、导出尺寸与缺铁闸、横竖向、色序）、定位步骤与待后端 / 固件确认项；draft |
 | [蓝牙版与 WiFi 版投屏流程对比](wifi/蓝牙版与WiFi版投屏流程对比.md) | 进入照片预览后两条主线的接口调用与处理逻辑流程图（预热 / 查轮播、出帧、传输、记录、刷屏、失败处理）及区别速查表 |
 | [WiFi 版对接开发进度](wifi/对接开发进度.md) | WiFi 版分步骤推进计划（STEP 0~9）、各步接口与验收标准、当前进度 |
 | [WiFi 版休眠状态对接说明](wifi/休眠状态对接说明.md) | 服务端 v1.0：`/api/device/online`、`/api/device/info`、WS `device.status` 新增 `status`（ONLINE / OFFLINE / SLEEPING）、判定规则、前端展示与验收清单 |
