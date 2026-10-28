@@ -54,6 +54,7 @@
 
 ## 变更记录
 
+- [2026-10-28 投屏type改取产品屏幕方向](changes/2026-10-28-投屏type改取产品屏幕方向.md)：`main-wifi` 分支。抖动出帧 / WiFi `play` 的 `type` 不再按分辨率写死，改取后台产品配置的屏幕方向 `screenType`（0=竖屏、1=横屏）原样传：按 productId 查产品列表，再按设备ID查 `getProductByDevice`；产品没配 / 查不到才回退旧口径。蓝牙版结果页、WiFi 结果页、轮播投第一张三处。本机无 node 测试未跑，未真机。
 - [2026-10-28 WiFi版投屏带产品渲染模式](changes/2026-10-28-WiFi版投屏带产品渲染模式.md)：`main-wifi` 分支。后台 wifi 版产品新增必选 `renderMode`（esp32 / fpga16），投屏 `POST /api/device/play` 原样带上：设备记录自带就用，否则按 productId 查产品列表、再按设备ID查 `getProductByDevice`，取不到不传；结果页一次进页查一次，轮播设置页投第一张同样带。本机无 node 测试未跑，未真机。
 - [2026-10-28 WiFi配网去掉2.4G提示与频段过滤](changes/2026-10-28-WiFi配网去掉2.4G提示与频段过滤.md)：`main-wifi` 分支。账号密码页删掉「设备仅支持 2.4G WiFi 配网」提示条，选择 WiFi 页搜不到时的提示去掉 2.4G；WiFi 列表不再按信道只留 2.4G，5G、2.4G 都列出。本机无 node 测试未跑，未真机。
 - [2026-10-28 WiFi版轮播上限100 · 投屏同时加入轮播 · 删除提示](changes/2026-10-28-WiFi版轮播上限100与同时加入轮播.md)：`main-wifi` 分支，按服务端反馈追加内容。轮播选图上限改 100（「已选 X/100」、选满置灰、全选只选前 100、4000 明确提示）；投屏预览页在设备轮播中显示「同时加入轮播」开关（带 `addToCarousel`，`carouselUpdated=false` 时结果页提示）；「我的上传」WiFi 照片删除加「可能需手动切换」提示。本机无 node 测试未跑，未真机。

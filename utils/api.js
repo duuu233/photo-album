@@ -497,6 +497,12 @@ function normalizeWifiProduct(data) {
   return Object.assign({}, raw, { productId, productName, sizeModel })
 }
 
+// 产品的屏幕方向 screenType（0=竖屏、1=横屏）归一成字符串；没配（缺字段 / null / 空串）返回空串，0 照常返回 '0'
+function productScreenType(product) {
+  const value = product && product.screenType
+  return value === undefined || value === null ? '' : String(value).trim()
+}
+
 function productScore(product, scan) {
   const text = [
     product.productName,
@@ -613,6 +619,27 @@ module.exports = {
     }
     const product = await module.exports.getProductByDevice(deviceNo)
     return String((product && product.renderMode) || '').trim()
+  },
+
+  // 投屏 type（2026-10-28 用户口径）：后台产品配置的屏幕方向 screenType（0=竖屏、1=横屏），原样传给抖动出帧接口
+  // 与 WiFi 的 POST /api/device/play，不再按分辨率写死。只读产品接口的字段：设备对象上同名的 screenType 可能是
+  // 固件 0x01 / 蓝牙广播里的型号字节，不拿来用。查找顺序同 resolveRenderMode：按 productId 查产品列表，
+  // 没有再按设备ID查 getProductByDevice。都取不到返回空串，不抛错（调用方按分辨率回退旧口径）。
+  async resolveScreenType(device) {
+    const productId = device && device.productId
+    if (productId !== undefined && productId !== null && productId !== '') {
+      const products = await productCatalogWithin(PRODUCT_CATALOG_WAIT_MS)
+      const matched = products.find(item => item && String(item.productId) === String(productId))
+      const fromCatalog = productScreenType(matched)
+      if (fromCatalog) {
+        return fromCatalog
+      }
+    }
+    const deviceNo = device && (device.productDeviceId || device.deviceNo)
+    if (!deviceNo) {
+      return ''
+    }
+    return productScreenType(await module.exports.getProductByDevice(deviceNo))
   },
 
   // 拉取产品列表里每个产品的 broadcastId（广播名），用于蓝牙搜索时按它过滤目标相框。

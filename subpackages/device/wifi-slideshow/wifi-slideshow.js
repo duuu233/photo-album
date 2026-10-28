@@ -304,7 +304,8 @@ Page(fold.adapt({
       const result = await wifiProjection.projectOne({
         deviceNo: this.deviceNo(),
         filePath,
-        type: dithering.typeForDevice(this.data.device),
+        // type 取产品屏幕方向 screenType（2026-10-28），产品没配才按分辨率回退
+        type: (await api.resolveScreenType(this.data.device)) || dithering.typeForDevice(this.data.device),
         renderMode: await api.resolveRenderMode(this.data.device),
         refresh: true,
         isCancelled: () => this.unloaded

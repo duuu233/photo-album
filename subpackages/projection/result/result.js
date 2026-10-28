@@ -329,6 +329,7 @@ Page(fold.adapt({
     let device = pending.device || {}
     // 记住本次投屏的设备，供成功后「继续投屏」复用（成功会清掉 pendingProjection）
     this._sessionDevice = device
+    this._screenTypePromise = null
     // 只投有真实图片文件的照片（相册占位图 url 为空，无法图传）
     const images = (pending.images || []).filter(
       item => item && (item.tempFilePath || item.url)
@@ -834,7 +835,7 @@ Page(fold.adapt({
     // 注意：帧失败时记录可能已按「未成功(0)」建好，与旧链路「转码成功后图传失败」同态，无需回滚。
     const [record, dithered] = await Promise.all([
       this.uploadOriginalForRecord(image, device, info),
-      this.fetchDitheringFrame(image, info)
+      this.fetchDitheringFrame(image, device, info)
     ])
     const prepared = await this.prepareTransfer(device, dithered.frameData)
     return {
@@ -933,10 +934,29 @@ Page(fold.adapt({
     }
   },
 
+  // 抖动出帧 type（2026-10-28）：后台产品配置的屏幕方向 screenType（0=竖屏、1=横屏）原样传，不再按分辨率写死；
+  // 一轮投屏只查一次（预取与主循环共用，runRealProjection 开头清掉）。device 是设备列表记录（产品口径），
+  // 不用 info.screenType——那是固件 0x01 的型号字节。产品没配 / 查不到才按分辨率回退旧口径（480×720 传 1，其余 0）。
+  ditherTypeFor(device, info) {
+    if (!this._screenTypePromise) {
+      this._screenTypePromise = api
+        .resolveScreenType(device)
+        .catch(() => '')
+        .then(screenType => {
+          const type = screenType || dithering.typeForDevice(info)
+          console.log(
+            `[投屏][出帧] type=${type}（${screenType ? '产品屏幕方向 screenType' : '产品未配置 screenType，按分辨率回退'}）`
+          )
+          return type
+        })
+    }
+    return this._screenTypePromise
+  },
+
   // 本张的设备帧（2026-07-22 起）：预览处理后的图（已是设备分辨率）→ 与记录上传同一套统一压缩
   //（compressForUpload 对「已不大于设备尺寸」的图原样通过，不会二次降质/改尺寸）→ 抖动接口出
   // 六色 4bpp 帧。字节数是否 = 宽×高÷2 由主循环铁闸校验，错帧绝不会发往设备。
-  async fetchDitheringFrame(image, info) {
+  async fetchDitheringFrame(image, device, info) {
     const filePath = await this.resolveLocalFilePath(image)
     if (!filePath) {
       throw new Error('图片文件不可用，无法转换')
@@ -965,7 +985,7 @@ Page(fold.adapt({
     }
     const frameData = await dithering.requestFrameBin({
       filePath: shrunk.filePath,
-      type: dithering.typeForDevice(info)
+      type: await this.ditherTypeFor(device, info)
     })
     return {
       frameData,

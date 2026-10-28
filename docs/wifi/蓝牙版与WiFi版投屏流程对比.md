@@ -54,7 +54,7 @@ flowchart TB
 | --- | --- | --- |
 | 进预览页 | 预热 BLE 连接 | 查轮播状态（决定是否显示「同时加入轮播」） |
 | 开始投屏前 | 必须拿到本机 BLE 句柄 | 不连蓝牙 |
-| 构图导出 | 相同：设备物理分辨率 | 相同；`type` 也同口径（`dithering.typeForDevice`） |
+| 构图导出 | 相同：设备物理分辨率 | 相同；`type` 也同口径（2026-10-28 起取产品屏幕方向 `screenType`，没配才按分辨率回退） |
 | 结果页 | `result` | `wifi-result` |
 | 出帧 | 小程序调 `imageDitheringBinDownload` 拿帧，端上校验帧长 | 服务端在 `/api/device/play` 里转 bin，端上不碰帧 |
 | 传到设备 | BLE 0x20~0x22 分包，端上选槽位 | 服务端经 MQTT 下发，端上不选槽位 |

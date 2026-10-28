@@ -178,7 +178,7 @@ async function main() {
   {
     // 结果页：按真实源码装配，projectOne / 写相册记录用桩
     let definition
-    const calls = { plays: [], records: [], renderModeLookups: 0 }
+    const calls = { plays: [], records: [], renderModeLookups: 0, screenTypeLookups: 0 }
     const failIndex = { value: -1 }
     const carouselFailIndex = { value: -1 }
     const modules = {
@@ -188,6 +188,11 @@ async function main() {
           assert.equal(device.productDeviceId, 'E3:48:C2:1E:D4:28', '按当前设备查渲染模式')
           return 'fpga16'
         },
+        resolveScreenType: async device => {
+          calls.screenTypeLookups++
+          assert.equal(device.productDeviceId, 'E3:48:C2:1E:D4:28', '按当前设备查屏幕方向')
+          return '1'
+        },
         addWifiAlbumRecord: async data => {
           calls.records.push(data)
           if (data.filePath === 'wxfile://2.png' && calls.records.length === 2) throw new Error('上传失败')
@@ -196,11 +201,11 @@ async function main() {
       },
       system: { getLayoutMetrics: () => ({}) },
       'fold-adapt': { adapt: value => value },
-      dithering: { typeForDevice: () => 0 },
+      dithering: { typeForDevice: () => '0' },
       'wifi-projection': {
         projectOne: async opts => {
           const n = calls.plays.length
-          calls.plays.push({ file: opts.filePath, refresh: opts.refresh, addToCarousel: opts.addToCarousel, renderMode: opts.renderMode })
+          calls.plays.push({ file: opts.filePath, type: opts.type, refresh: opts.refresh, addToCarousel: opts.addToCarousel, renderMode: opts.renderMode })
           if (n === failIndex.value) return { status: 'FAILED', message: '投屏失败' }
           const carouselUpdated = opts.addToCarousel ? n !== carouselFailIndex.value : null
           return opts.refresh
@@ -251,6 +256,8 @@ async function main() {
     assert.equal(page.data.carouselTip, '')
     assert.ok(calls.plays.every(item => item.renderMode === 'fpga16'), '每张都带产品的 renderMode（含重试）')
     assert.equal(calls.renderModeLookups, 1, '渲染模式一次进页面只查一次，重试复用')
+    assert.ok(calls.plays.every(item => item.type === '1'), 'type 取产品屏幕方向 screenType，不按分辨率（2026-10-28）')
+    assert.equal(calls.screenTypeLookups, 1, '屏幕方向一次进页面只查一次，重试复用')
     checked('结果页：最后一张刷屏、写相册记录、重试')
 
     // 勾了「同时加入轮播」：每张都带；第二张没加进去 → 结束后追加提示

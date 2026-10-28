@@ -88,6 +88,8 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 2026-10-28：WiFi 投屏带后台产品配置的渲染模式 `renderMode`（esp32 / fpga16），`api.resolveRenderMode` 取（设备记录自带 → productId 查产品列表 → `getProductByDevice`，取不到不传），`iot-api.play` 有值才带、原样传；结果页一次进页查一次，轮播设置页投第一张同样带。见 `docs/changes/2026-10-28-WiFi版投屏带产品渲染模式.md`。
 
+2026-10-28：投屏 `type` 改取后台产品屏幕方向 `screenType`（`api.resolveScreenType`），蓝牙 / WiFi 同口径，产品没配才按分辨率回退。见 `docs/changes/2026-10-28-投屏type改取产品屏幕方向.md`。
+
 ## 联调日志浮窗（2026-10-27，`main-wifi`）
 
 开发版 / 体验版每个页面左下角有「日志 N」浮窗（`components/debug-log`，app.json 全局注册，每个页面 wxml 末尾一个 `<debug-log>`；新增页面记得加），点开可复制 / 清空。数据来自 `utils/debug-log.js`：`app.js` 最先 `install()` 包装 console，另有老服务 `[HTTP]`、IoT `[IoT]`、`[WS]` 摘要；最近 500 行只在内存，token / 密码入库前打码。正式版整套不生效。
@@ -684,6 +686,7 @@ AI 侧 `user_id` 取登录用户 `id/userNo/userId` 后加 `boltfox_` 前缀；�
 - AI 小程序入口已开放；支付/Token 后端接口与官方图库仍未接入。
 - `WechatSI` 插件是否已在小程序后台获批：**待确认**。
 - 抖动出帧后端接口（2026-10-23 迁入）的 `type` 按原定义取值不变：0=5.8寸大设备、1=3.7寸小设备（480×720 传 1，其余 0），是出帧策略不是旋转角；后端 Swagger 当时描述成屏幕旋转，用户确认由后端对齐。后端上线后的真机出帧：**待确认**。
+- 2026-10-28（`main-wifi`）起 `type` 改取后台产品配置的屏幕方向 `screenType`（0=竖屏、1=横屏）原样传，`api.resolveScreenType` 取（productId 查产品列表 → `getProductByDevice`），蓝牙版出帧、WiFi `play`、轮播投第一张三处同口径；产品没配 / 查不到才按上面的分辨率口径回退。设备对象上同名的 `screenType` 是固件 / 广播型号字节，不能拿来当 `type`。见 `docs/changes/2026-10-28-投屏type改取产品屏幕方向.md`。
 - 微信后台 request/upload/download 合法域名、插件权限和隐私配置是否与当前代码一致：**待确认**。
 - OTA 是否需要显式最低电量门槛：当前页面会读取并展示电量，但未发现阻断升级的阈值判断，产品/固件要求：**待确认**。
 - OTA 最终结果帧布局、重复尾包容忍、不同手机 MTU/Notify/断连行为：仍需真机确认。
