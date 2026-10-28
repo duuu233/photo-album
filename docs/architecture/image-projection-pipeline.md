@@ -26,8 +26,9 @@
 
 WiFi 版不走上面的蓝牙链路：预览页同样按设备 `width/height` 构图导出，之后 redirect 到 `subpackages/projection/wifi-result`，
 由 `utils/wifi-projection.js` 把导出图经 IoT `POST /api/device/play` 上传（服务端转 bin、上传 OSS、MQTT 下发），
-再按 WS `play.result` / `GET /api/device/play/status` 跟到终态。不读 0x01、不算帧长、不选槽位、不写 `setUserProductUpload` 记录。
-`type` 与蓝牙版同口径（`dithering.typeForDevice`）。详见 [变更记录](../changes/2026-10-27-WiFi版投屏与设备详情.md)。
+2026-10-27 起按 V1.4 接口返回 SENT / UPLOADED 即结束（不再跟 WS `play.result` / 轮询状态），多张时只有最后一张 `refresh=true`，
+成功后经 `addWifiAlbumRecord` 写相册记录。不读 0x01、不算帧长、不选槽位、不写 `setUserProductUpload` 记录。
+`type` 与蓝牙版同口径（`dithering.typeForDevice`）。两条主线对照见 [蓝牙版与 WiFi 版投屏流程对比](../wifi/蓝牙版与WiFi版投屏流程对比.md)。
 
 ## 组件职责
 
