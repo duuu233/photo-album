@@ -6,6 +6,9 @@
 //   ⑤ 投屏日志：接口三行、阶段变化、结论（带 binUrl），不记 token；
 //   ⑥ iot-api.play：refresh=false 才带 refresh 字段，默认不带（服务端默认 true）；
 //   ⑦ 结果页：多张时本轮最后一张 refresh=true、其余 false；每张拿 binUrl 写相册记录，写失败只注明不算投屏失败；重试同样「最后一张刷屏」。
+//   ⑧ 同时加入轮播（2026-10-27 追加内容第二节）：iot-api.play 只在 addToCarousel=true 时带字段；projectOne 透传并交回
+//      carouselUpdated；结果页每张都带，有一张 carouselUpdated=false 就追加「未成功加入轮播，请前往轮播设置添加」；
+//      预览页只在轮播运行中显示开关，开关状态经 pendingProjection.addToCarousel 交给结果页。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -21,6 +24,7 @@ function setup(options = {}) {
   const api = {
     async play(deviceNo, filePath, type, opts) {
       log.plays.push({ deviceNo, filePath, type, showError: opts.showError, refresh: opts.refresh })
+      if (opts.addToCarousel) log.plays[log.plays.length - 1].addToCarousel = true
       ;[30, 100].forEach(p => opts.onProgress(p))
       if (options.playError) throw options.playError
       return options.response || { msgid: 'm1', status: 'SENT', binUrl: 'https://oss/a.bin', binSize: 10 }
@@ -75,6 +79,17 @@ async function main() {
     assert.equal(result.msgid, '', 'msgid=null 不当任务号')
     assert.equal(result.binUrl, 'https://oss/b.bin')
     checked('refresh=false：只上传，UPLOADED')
+  }
+  {
+    const { run, log } = setup({ response: { msgid: 'm1', status: 'SENT', binUrl: 'https://oss/a.bin', carouselUpdated: false } })
+    const result = await run({ addToCarousel: true })
+    assert.equal(log.plays[0].addToCarousel, true, 'addToCarousel 透传给接口')
+    assert.equal(result.carouselUpdated, false, '交回 carouselUpdated')
+    assert.equal(result.status, 'SENT', '没加进轮播不影响投屏')
+    const plainRun = setup()
+    assert.equal((await plainRun.run()).carouselUpdated, null, '没给 carouselUpdated → null')
+    assert.equal('addToCarousel' in plainRun.log.plays[0], false, '默认不加入轮播')
+    checked('addToCarousel：透传、交回 carouselUpdated')
   }
   {
     const failed = setup({ response: { msgid: 'm1', status: 'FAILED' } })
@@ -139,13 +154,18 @@ async function main() {
     await iotApi.play('E3:48:C2:1E:D4:28', 'wxfile://a.png', 0, { refresh: false })
     assert.deepEqual(plain(uploads[0].opts.formData), { deviceNo: 'E348C21ED428', type: '0' }, '默认不带 refresh（服务端默认 true）')
     assert.deepEqual(plain(uploads[1].opts.formData), { deviceNo: 'E348C21ED428', type: '0', refresh: 'false' }, 'refresh=false 才带')
-    checked('iot-api.play：refresh 字段')
+    await iotApi.play('E3:48:C2:1E:D4:28', 'wxfile://a.png', 0, { refresh: false, addToCarousel: true })
+    await iotApi.play('E3:48:C2:1E:D4:28', 'wxfile://a.png', 0, { addToCarousel: false })
+    assert.deepEqual(plain(uploads[2].opts.formData), { deviceNo: 'E348C21ED428', type: '0', refresh: 'false', addToCarousel: 'true' }, 'addToCarousel 与 refresh 独立')
+    assert.deepEqual(plain(uploads[3].opts.formData), { deviceNo: 'E348C21ED428', type: '0' }, 'addToCarousel=false 不带')
+    checked('iot-api.play：refresh / addToCarousel 字段')
   }
   {
     // 结果页：按真实源码装配，projectOne / 写相册记录用桩
     let definition
     const calls = { plays: [], records: [] }
     const failIndex = { value: -1 }
+    const carouselFailIndex = { value: -1 }
     const modules = {
       api: {
         addWifiAlbumRecord: async data => {
@@ -160,11 +180,12 @@ async function main() {
       'wifi-projection': {
         projectOne: async opts => {
           const n = calls.plays.length
-          calls.plays.push({ file: opts.filePath, refresh: opts.refresh })
+          calls.plays.push({ file: opts.filePath, refresh: opts.refresh, addToCarousel: opts.addToCarousel })
           if (n === failIndex.value) return { status: 'FAILED', message: '投屏失败' }
+          const carouselUpdated = opts.addToCarousel ? n !== carouselFailIndex.value : null
           return opts.refresh
-            ? { status: 'SENT', message: '已发送，屏幕即将刷新', binUrl: `https://oss/${n}.bin` }
-            : { status: 'UPLOADED', message: '已上传', binUrl: `https://oss/${n}.bin` }
+            ? { status: 'SENT', message: '已发送，屏幕即将刷新', binUrl: `https://oss/${n}.bin`, carouselUpdated }
+            : { status: 'UPLOADED', message: '已上传', binUrl: `https://oss/${n}.bin`, carouselUpdated }
         }
       },
       config: { iotBaseURL: 'https://iot' }
@@ -206,7 +227,30 @@ async function main() {
     assert.equal(page.data.items[2].status, 'SENT')
     assert.equal(page.data.stageText, '已发送 3 张，屏幕即将刷新')
     assert.equal(page.data.retryable, false)
+    assert.ok(calls.plays.every(item => item.addToCarousel === false), '没勾同时加入轮播：都不带')
+    assert.equal(page.data.carouselTip, '')
     checked('结果页：最后一张刷屏、写相册记录、重试')
+
+    // 勾了「同时加入轮播」：每张都带；第二张没加进去 → 结束后追加提示
+    calls.plays.length = 0
+    calls.records.length = 0
+    pending.addToCarousel = true
+    carouselFailIndex.value = 1
+    const page2 = { ...definition, data: plain(definition.data), setData: page.setData }
+    page2.onLoad()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    assert.deepEqual(calls.plays.map(item => [item.refresh, item.addToCarousel]), [[false, true], [false, true], [true, true]], '每张都带 addToCarousel，与 refresh 独立')
+    assert.equal(calls.records.length, 3, '相册记录照常写')
+    assert.equal(page2.data.carouselTip, '未成功加入轮播，请前往轮播设置添加')
+    calls.plays.length = 0
+    carouselFailIndex.value = -1
+    const page3 = { ...definition, data: plain(definition.data), setData: page.setData }
+    page3.onLoad()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    assert.equal(page3.data.carouselTip, '', 'carouselUpdated=true 不额外提示')
+    const resultTpl = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.wxml'), 'utf8')
+    assert.ok(/wx:if="\{\{phase === 'done' && carouselTip\}\}"/.test(resultTpl), '结果下方追加一行')
+    checked('结果页：同时加入轮播，未加入时提示')
   }
   {
     const tpl = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.wxml'), 'utf8')

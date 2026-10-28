@@ -145,6 +145,11 @@
     </view>
   </view>
   <view class="gesture-tip" wx:if="{{imageCount}}">长按0.5秒后可拖拽图片，双指可自由缩放与旋转</view>
+  <!-- WiFi 版设备正在轮播时才显示：打开后本次投屏的照片同时加入轮播（默认关） -->
+  <view class="carousel-toggle" wx:if="{{carouselRunning}}">
+    <text>同时加入轮播</text>
+    <switch class="carousel-toggle__switch" checked="{{addToCarousel}}" color="#ff6a20" bindchange="toggleAddToCarousel" />
+  </view>
   <view
     class="preview-submit {{projecting ? 'is-disabled' : ''}}"
     hover-class="none"

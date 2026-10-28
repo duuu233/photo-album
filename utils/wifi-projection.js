@@ -10,6 +10,8 @@
 //      · status=FAILED → MQTT 下发失败；
 //      · 设备真正刷屏成功 / 失败由服务端写消息通知（PLAY_SUCCESS / PLAY_DOWNLOAD_FAILED / PLAY_STORAGE_ERROR / PLAY_FAILED）。
 //   ④ 批量：接口仍是一次一张，前 N-1 张 refresh=false、最后一张 refresh=true，只刷一次屏（更新说明 2.4，由结果页决定）。
+//   ⑤ addToCarousel=true（2026-10-27 追加内容第二节，预览页「同时加入轮播」）：每张都带，返回的 carouselUpdated 原样交回，
+//      false = 没加进轮播（投屏本身照常成功），由结果页提示。
 // 返回里带 binUrl：结果页拿它写老服务相册记录（imgBle），「我的上传」、轮播选图、删除都靠这条记录。
 //
 // ── 投屏日志（options.onLog，同时打控制台 [WiFi投屏]；结果页开发版 / 体验版显示、可复制）──
@@ -97,11 +99,12 @@ function resultStatus(response, refresh) {
 }
 
 // 投一张图。options：
-//   { deviceNo, filePath, type, refresh（默认 true）, onStage({ stage, text, progress }), isCancelled(), onLog(text) }
-// resolve { status: SENT / UPLOADED / FAILED / CANCELLED, text, message, msgid, binUrl, error }，不 reject。
+//   { deviceNo, filePath, type, refresh（默认 true）, addToCarousel（默认 false）, onStage({ stage, text, progress }), isCancelled(), onLog(text) }
+// resolve { status: SENT / UPLOADED / FAILED / CANCELLED, text, message, msgid, binUrl, carouselUpdated（true / false / null）, error }，不 reject。
 async function projectOne(options) {
   const deviceNo = plainDeviceNo(options.deviceNo)
   const refresh = options.refresh !== false
+  const addToCarousel = options.addToCarousel === true
   const onStage = typeof options.onStage === 'function' ? options.onStage : () => {}
   const isCancelled = typeof options.isCancelled === 'function' ? options.isCancelled : () => false
   const onLog = typeof options.onLog === 'function' ? options.onLog : () => {}
@@ -129,14 +132,15 @@ async function projectOne(options) {
   }
 
   const finish = result => {
-    const done = Object.assign({ msgid: '', binUrl: '', text: STAGE_TEXT[result.status] }, result)
+    const done = Object.assign({ msgid: '', binUrl: '', carouselUpdated: null, text: STAGE_TEXT[result.status] }, result)
     log(
-      `结束：${done.status}${done.message ? `（${done.message}）` : ''}，msgid=${done.msgid || '-'}，binUrl=${done.binUrl || '-'}`
+      `结束：${done.status}${done.message ? `（${done.message}）` : ''}，msgid=${done.msgid || '-'}，binUrl=${done.binUrl || '-'}` +
+        (addToCarousel ? `，carouselUpdated=${done.carouselUpdated}` : '')
     )
     return done
   }
 
-  log(`开始投屏：设备 ${deviceNo || '-'}，type=${options.type}，refresh=${refresh}，文件 ${options.filePath || '-'}`)
+  log(`开始投屏：设备 ${deviceNo || '-'}，type=${options.type}，refresh=${refresh}${addToCarousel ? '，addToCarousel=true' : ''}，文件 ${options.filePath || '-'}`)
   if (isCancelled()) {
     return finish({ status: 'CANCELLED', message: STAGE_TEXT.CANCELLED })
   }
@@ -144,12 +148,13 @@ async function projectOne(options) {
   let response = null
   let loggedPercent = -1
   log('接口【投屏】POST /api/device/play（IoT，multipart 上传）')
-  log(`参数 ${json({ deviceNo, type: String(options.type), refresh, file: options.filePath })}`)
+  log(`参数 ${json(Object.assign({ deviceNo, type: String(options.type), refresh }, addToCarousel ? { addToCarousel } : {}, { file: options.filePath }))}`)
   const startedAt = Date.now()
   try {
     response = await iotApi.play(deviceNo, options.filePath, options.type, {
       showError: false,
       refresh,
+      addToCarousel,
       onProgress: percent => {
         progress = Math.max(progress, Math.min(100, Math.round(percent)))
         const bucket = Math.floor(progress / 25) * 25
@@ -173,7 +178,8 @@ async function projectOne(options) {
     status,
     message: STAGE_TEXT[status],
     msgid: String((response && response.msgid) || ''),
-    binUrl: String((response && response.binUrl) || '')
+    binUrl: String((response && response.binUrl) || ''),
+    carouselUpdated: response && typeof response.carouselUpdated === 'boolean' ? response.carouselUpdated : null
   })
 }
 

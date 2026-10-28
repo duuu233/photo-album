@@ -109,6 +109,7 @@
       <view class="confirm-copy">
         <view class="confirm-title">删除照片</view>
         <view class="confirm-desc">确认删除已选的{{selectedCount}}张照片吗？删除后将同时从电子纸设备与我的相册中移除，且无法恢复</view>
+        <view wx:if="{{deleteWifi}}" class="confirm-desc">删除后相框可能需手动切换才会更新。</view>
       </view>
       <view class="confirm-actions">
         <view class="confirm-cancel" hover-class="none" bindtap="hideDeleteDialog">取消</view>

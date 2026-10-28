@@ -52,6 +52,19 @@
   line-height: 1.5;
 }
 
+/* 已选 X/100：选满变橙色 */
+.ws-count {
+  margin-top: 8rpx;
+  color: #25282d;
+  font-size: 26rpx;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.ws-count.is-full {
+  color: #ff6a20;
+}
+
 .ws-segment {
   display: flex;
   gap: 20rpx;
@@ -158,6 +171,11 @@
 
 .ws-tile.is-selected {
   border-color: #ff6a20;
+}
+
+/* 选满 100 张后未选的置灰（点了提示先取消部分照片） */
+.ws-tile.is-disabled {
+  opacity: 0.4;
 }
 
 .ws-tile__img {

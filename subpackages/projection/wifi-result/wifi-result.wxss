@@ -39,6 +39,15 @@
   color: #e5533d;
 }
 
+/* 勾了「同时加入轮播」但没加进去：结果下方追加一行 */
+.wifi-result-carousel {
+  margin-top: 12rpx;
+  color: #e5533d;
+  font-size: 26rpx;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .wifi-result-progress {
   display: flex;
   align-items: center;

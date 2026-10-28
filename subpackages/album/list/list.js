@@ -32,6 +32,8 @@
 //    删除与再次投屏都不连蓝牙，按照片所属设备的类型分开走（见 deleteWifiPhotos / doRetryProjection）：
 //    · 删除 = 先删老服务相册记录，再把删掉的那些记录的 imgBle 交给 IoT POST /api/device/photo/delete 删云端 bin；
 //      同时带 nextImageUrl（相册里剩下的第一张），删到的若正是屏上那张，服务端自动换图；
+//      服务端靠设备下载记录反推当前图，反推不到就不切图（2026-10-27 追加内容第三节），所以确认弹窗多一句
+//      「删除后相框可能需手动切换才会更新」，没自动切图时提示「若相框未更新，请手动切换或重新设置轮播」；
 //    · 再次投屏 = 确认在线后进预览页，导出后去 WiFi 投屏结果页（会写一条新的相册记录）。
 //
 // ⚠️ 多手机共用一台设备（2026-08-10 下午补）：另一部手机删过图后，本机列表里那条记录还在，
@@ -207,6 +209,7 @@ Page(fold.adapt({
     totalCount: 0,
     showDeleteConfirm: false,
     deleteClosing: false, // 删除确认弹窗是否正在播放退场动画
+    deleteWifi: false, // 待删照片属于 WiFi 版设备：确认弹窗多一句「可能需手动切换」
     loading: true, // 首屏接口返回前为 true，避免空态先闪一下
     loadError: false // 接口失败标记：走「加载失败+重新加载」空态，不再伪装成「暂无照片」
   },
@@ -608,7 +611,8 @@ Page(fold.adapt({
 
     // 连接判断/自动重连移到「确认删除」时(confirmDeleteSelected)，避免弹确认框前先干等数秒扫描重连。
     this.setData({
-      showDeleteConfirm: true
+      showDeleteConfirm: true,
+      deleteWifi: !!this.ownerIfWifi(this.selectedIdsInOrder())
     })
   },
 
@@ -925,7 +929,7 @@ Page(fold.adapt({
     } else if (switched) {
       toast.show({ title: '已删除，相框已切换到下一张', icon: 'none' })
     } else {
-      toast.show({ title: '已从相框播放列表移除，设备联网后更新', icon: 'none' })
+      toast.show({ title: '已删除；若相框未更新，请手动切换或重新设置轮播', icon: 'none' })
     }
     this.loadPhotos()
   },

@@ -14,10 +14,14 @@ const config = require('../../../utils/config')
 // 每张拿到 binUrl 后写老服务相册记录（api.addWifiAlbumRecord，img + imgBle），「我的上传」、轮播选图、删除都靠它；
 // 写记录失败不算投屏失败，只在这一张的文案后注明「未存入我的上传」并记日志。
 // 结束后：全部成功只给「完成」；有失败给「重试未成功的」+「完成」。
+// 同时加入轮播（2026-10-27 追加内容第二节）：预览页勾了「同时加入轮播」时 pendingProjection.addToCarousel=true，
+// 每张（含只上传的）都带 addToCarousel=true；有任何一张成功投出但 carouselUpdated=false，结束后在结果下方追加
+// 「未成功加入轮播，请前往轮播设置添加」；true / null 不额外提示。相册记录照常写（全部相册轮播靠它才拉得到这张）。
 // 投屏日志（2026-10-27，与当初配网日志同款）：开发版 / 体验版在页面下方显示、可一键复制；正式版不显示，只打控制台 [WiFi投屏]。
 // 本页记设备信息（尺寸 / 旋转字段，排查横竖向用）与每张图上传前的像素尺寸、文件大小；接口与 WS 过程由 projectOne 的 onLog 给出。
 // 重试不清空，一次进页面的全部过程都在一份日志里。
 const LOG_LIMIT = 500
+const CAROUSEL_FAILED_TIP = '未成功加入轮播，请前往轮播设置添加'
 
 function showLogPanel() {
   try {
@@ -102,6 +106,7 @@ Page(fold.adapt({
     items: [], // [{ key, src, status: pending / running / SENT / UPLOADED / FAILED, text }]
     successCount: 0,
     retryable: false,
+    carouselTip: '',
     showLog: false,
     logs: [],
     logAnchor: ''
@@ -112,6 +117,7 @@ Page(fold.adapt({
     const pending = wx.getStorageSync('pendingProjection') || {}
     this.device = pending.device || null
     this.images = (pending.images || []).filter(image => imageSrc(image))
+    this.addToCarousel = pending.addToCarousel === true
     this.setData({
       deviceName: (this.device && (this.device.name || this.device.productName)) || '',
       total: this.images.length,
@@ -124,7 +130,7 @@ Page(fold.adapt({
       return
     }
     const d = this.device
-    this.appendLog(`IoT 服务 ${config.iotBaseURL}，共 ${this.images.length} 张`)
+    this.appendLog(`IoT 服务 ${config.iotBaseURL}，共 ${this.images.length} 张${this.addToCarousel ? '，同时加入轮播' : ''}`)
     this.appendLog(
       `设备：${d.name || '-'}，deviceNo ${d.productDeviceId || d.deviceNo || '-'}，broadcastId ${d.broadcastId || '-'}，` +
         `尺寸 ${d.sizeModel || '-'}，接口宽高 ${d.width || '-'}×${d.height || '-'}，` +
@@ -190,7 +196,7 @@ Page(fold.adapt({
 
   // 按顺序投 indexes 里的这些张：本轮最后一张刷屏，前面的只上传
   async run(indexes) {
-    this.setData({ phase: 'running', retryable: false })
+    this.setData({ phase: 'running', retryable: false, carouselTip: '' })
     if (wx.setKeepScreenOn) {
       wx.setKeepScreenOn({ keepScreenOn: true })
     }
@@ -224,6 +230,7 @@ Page(fold.adapt({
           filePath,
           type,
           refresh,
+          addToCarousel: this.addToCarousel,
           isCancelled: () => this.unloaded,
           onLog: text => this.appendLog(text),
           onStage: ({ text, progress }) => {
@@ -250,7 +257,8 @@ Page(fold.adapt({
           text = `${text}（未存入我的上传）`
         }
       }
-      this.setItem(index, { status: result.status, text })
+      // carouselFailed：这张投出去了但没加进轮播（只认 carouselUpdated=false）
+      this.setItem(index, { status: result.status, text, carouselFailed: isSent(result.status) && result.carouselUpdated === false })
       this.setData({ stageText: text })
     }
     const successCount = this.data.items.filter(item => isSent(item.status)).length
@@ -259,7 +267,8 @@ Page(fold.adapt({
       phase: 'done',
       successCount,
       retryable: successCount < total,
-      stageText: doneText(successCount, total, this.data.stageText)
+      stageText: doneText(successCount, total, this.data.stageText),
+      carouselTip: this.addToCarousel && this.data.items.some(item => isSent(item.status) && item.carouselFailed) ? CAROUSEL_FAILED_TIP : ''
     })
     if (wx.setKeepScreenOn) {
       wx.setKeepScreenOn({ keepScreenOn: false })

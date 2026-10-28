@@ -76,13 +76,14 @@
         <text class="ws-title">轮播照片</text>
         <view wx:if="{{tiles.length}}" class="ws-select-all" hover-class="none" bindtap="toggleAll">{{allSelected ? '取消全选' : '全选'}}</view>
       </view>
-      <view class="ws-sub">从「我的上传」选择，按选择顺序轮播；全选即轮播全部照片（含之后新上传的）。已选 {{selectedCount}} 张</view>
+      <view class="ws-sub">从「我的上传」选择，按选择顺序轮播；全选即轮播全部照片（含之后新上传的）。最多 {{maxCount}} 张</view>
+      <view class="ws-count {{selectedCount >= maxCount ? 'is-full' : ''}}">已选 {{selectedCount}}/{{maxCount}}</view>
       <view wx:if="{{selectionHint}}" class="ws-hint">{{selectionHint}}</view>
 
       <view wx:if="{{photosError}}" class="ws-empty">「我的上传」加载失败，请返回重试</view>
       <view wx:elif="{{!tiles.length}}" class="ws-empty">还没有可轮播的照片，先投屏几张吧</view>
       <view wx:else class="ws-grid">
-        <view wx:for="{{tiles}}" wx:key="id" class="ws-tile {{item.order ? 'is-selected' : ''}}" hover-class="none" data-url="{{item.url}}" bindtap="toggleTile">
+        <view wx:for="{{tiles}}" wx:key="id" class="ws-tile {{item.order ? 'is-selected' : ''}} {{item.disabled ? 'is-disabled' : ''}}" hover-class="none" data-url="{{item.url}}" bindtap="toggleTile">
           <image wx:if="{{item.thumb}}" class="ws-tile__img" src="{{item.thumb}}" mode="aspectFill" lazy-load></image>
           <view class="ws-tile__badge">{{item.order || ''}}</view>
         </view>

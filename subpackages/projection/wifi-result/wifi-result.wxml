@@ -11,6 +11,7 @@
       <image wx:if="{{items[current].src}}" class="wifi-result-image" src="{{items[current].src}}" mode="aspectFit"></image>
       <view class="wifi-result-device">{{deviceName}}<text wx:if="{{total > 1}}">　第 {{current + 1}} / {{total}} 张</text></view>
       <view class="wifi-result-stage {{phase === 'done' && successCount === total ? 'is-success' : ''}} {{phase === 'done' && successCount < total ? 'is-failed' : ''}}">{{stageText}}</view>
+      <view wx:if="{{phase === 'done' && carouselTip}}" class="wifi-result-carousel">{{carouselTip}}</view>
       <view wx:if="{{phase === 'running'}}" class="wifi-result-progress">
         <view class="wifi-result-progress__bar"><view class="wifi-result-progress__fill" style="width: {{progress}}%;"></view></view>
         <text class="wifi-result-progress__num">{{progress}}%</text>

@@ -4,14 +4,15 @@
 // 接口：GET /api/device/strategy 回显，POST /api/device/strategy 保存（utils/iot-api getStrategy / setStrategy）。
 //   · updateType 2 = 间隔（beginTime / endTime HH:mm + timingTime 秒），1 = 固定时间（updateDays 1~365 + updateTimeList HH:mm[]）；
 //   · mode 1 顺序 / 2 随机；idle 0 轮播后休眠 / 1 不休眠；
-//   · imgUrls：「我的上传」里选中照片的 imgBle，按选择顺序，最多 200；不传 = 轮播全部相册；
+//   · imgUrls：「我的上传」里选中照片的 imgBle，按选择顺序，最多 100（2026-10-27 追加内容第一节，原 200）；不传 = 轮播全部相册；
 //     **不能传空数组**（服务端回 4000）：一张都没选时不让保存（2026-10-27 实现报告反馈六）；
 //     按相册顺序全选时不带 imgUrls（= 全部相册，之后新上传的照片也会进轮播）。
-//   · 回显 imgUrls：null = 没选过（全部相册，页面上全选）；[] = 选过但照片都删了（提示重新选择）。
+//   · 回显 imgUrls：null = 没选过（全部相册，页面上全选；相册超过 100 张只选前 100 张）；[] = 选过但照片都删了（提示重新选择）。
+//   · 超过 100 张服务端回 4000：前端选满即拦截，保存时再挡一次，4000 给明确提示（saveErrorText）。
 
 const UPDATE_INTERVAL = 2
 const UPDATE_FIXED = 1
-const MAX_IMG_URLS = 200
+const MAX_IMG_URLS = 100
 const MAX_TIME_POINTS = 24
 // 间隔可选档位（分钟）；服务端按分钟取整，最小 1 分钟
 const INTERVAL_OPTIONS = [1, 5, 10, 15, 30, 60, 120, 180, 360, 720, 1440]
@@ -89,16 +90,25 @@ function formFromStrategy(strategy) {
 
 // 回显的 imgUrls 与当前相册对一下：只留相册里还在的、保持原顺序。
 // 返回 { selected, hint }：hint 是给用户看的一行说明（已全部失效 / 部分已删除）。
-// imgUrls=null（没选过 = 全部相册）按相册顺序全选；查询失败（strategy 为空）不选
+// imgUrls=null（没选过 = 全部相册）按相册顺序全选，超过上限只选前 MAX_IMG_URLS 张并说明；查询失败（strategy 为空）不选
 function selectionFromStrategy(strategy, albumUrls) {
   const urls = strategy && strategy.imgUrls
   const album = Array.isArray(albumUrls) ? albumUrls : []
   if (!Array.isArray(urls)) {
-    return { selected: strategy ? album.slice() : [], hint: '' }
+    if (!strategy) {
+      return { selected: [], hint: '' }
+    }
+    if (album.length > MAX_IMG_URLS) {
+      return {
+        selected: album.slice(0, MAX_IMG_URLS),
+        hint: `当前轮播全部照片；最多选择 ${MAX_IMG_URLS} 张，已选前 ${MAX_IMG_URLS} 张，保存后只轮播所选`
+      }
+    }
+    return { selected: album.slice(), hint: '' }
   }
   const selected = []
   urls.forEach(url => {
-    if (album.indexOf(url) > -1 && selected.indexOf(url) === -1) {
+    if (album.indexOf(url) > -1 && selected.indexOf(url) === -1 && selected.length < MAX_IMG_URLS) {
       selected.push(url)
     }
   })
@@ -129,11 +139,23 @@ function toggleSelection(selected, url) {
   return { selected: list, overflow: false }
 }
 
-// 全选 / 取消全选：已全选则清空；否则保留已选顺序，把没选的按网格顺序追加（截到上限）
+// 已选满上限（未选的置灰、点了只提示）
+function isFull(selected) {
+  return (selected || []).length >= MAX_IMG_URLS
+}
+
+// 全选按钮的状态：相册全选了，或已选满上限（相册超过上限时选不全，此时按钮给「取消全选」）
+function isAllSelected(selected, albumUrls) {
+  const album = Array.isArray(albumUrls) ? albumUrls : []
+  const list = selected || []
+  return !!album.length && (isFull(list) || album.every(url => list.indexOf(url) > -1))
+}
+
+// 全选 / 取消全选：已全选（或已选满）则清空；否则保留已选顺序，把没选的按网格顺序追加（截到上限）
 function toggleAll(selected, albumUrls) {
   const album = Array.isArray(albumUrls) ? albumUrls : []
   const list = (selected || []).slice()
-  if (album.length && album.every(url => list.indexOf(url) > -1)) {
+  if (isAllSelected(list, album)) {
     return []
   }
   album.forEach(url => {
@@ -188,8 +210,11 @@ function buildPayload(deviceNo, form, selected, albumUrls) {
   if (!urls.length) {
     return { error: '请至少选择一张照片' }
   }
+  if (urls.length > MAX_IMG_URLS) {
+    return { error: `最多选择 ${MAX_IMG_URLS} 张，请先取消部分照片` }
+  }
   if (!isWholeAlbum(urls, albumUrls)) {
-    payload.imgUrls = urls.slice(0, MAX_IMG_URLS)
+    payload.imgUrls = urls.slice()
   }
   return { payload }
 }
@@ -200,6 +225,19 @@ function firstImageUrl(payload, albumUrls) {
     return payload.imgUrls[0]
   }
   return (Array.isArray(albumUrls) && albumUrls[0]) || ''
+}
+
+// 保存失败的提示：4000（参数错误，含超过 100 张）给明确文案，其余返回 '' 由页面按通用错误处理
+function saveErrorText(error, payload) {
+  if (!error || Number(error.code) !== 4000) {
+    return ''
+  }
+  const count = payload && Array.isArray(payload.imgUrls) ? payload.imgUrls.length : 0
+  if (count >= MAX_IMG_URLS) {
+    return `轮播照片最多 ${MAX_IMG_URLS} 张，请先取消部分照片后再保存`
+  }
+  const server = String(error.serverMessage || '').trim()
+  return server ? `保存失败：${server}` : '保存失败：轮播设置有误，请检查后重试'
 }
 
 module.exports = {
@@ -216,8 +254,11 @@ module.exports = {
   formFromStrategy,
   selectionFromStrategy,
   toggleSelection,
+  isFull,
+  isAllSelected,
   toggleAll,
   isWholeAlbum,
   buildPayload,
-  firstImageUrl
+  firstImageUrl,
+  saveErrorText
 }

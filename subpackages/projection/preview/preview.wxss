@@ -313,6 +313,24 @@
   text-align: center;
 }
 
+/* WiFi 版「同时加入轮播」开关（只在设备正在轮播时出现） */
+.carousel-toggle {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  margin: 16rpx 46rpx 0;
+  color: #25282d;
+  font-size: 28rpx;
+}
+
+.carousel-toggle__switch {
+  transform: scale(0.8);
+}
+
 .preview-submit {
   position: relative;
   z-index: 9;

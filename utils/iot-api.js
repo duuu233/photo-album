@@ -29,11 +29,17 @@ module.exports = {
   // 返回 { msgid, binUrl, binSize, status }：status=SENT（旧版为 DOWNLOADING）表示指令已下发，FAILED 表示 MQTT 下发失败。
   // refresh（V1.4，可选，默认 true）：false 只转 bin + 上传 OSS、不下发 play，返回 status=UPLOADED、msgid=null，
   // 不校验在线、不建任务、不发消息；批量投屏前 N-1 张传 false、最后一张 true（V1.4 更新说明 2.4）。
+  // addToCarousel（2026-10-27 追加内容第二节，可选，默认 false）：true 把本次图片加入当前轮播选择，与 refresh 独立；
+  // 返回多 carouselUpdated：null 没传 / true 已加入（全部相册时为清缓存）/ false 未加入（未开轮播、已满 100、锁冲突等），
+  // 未加入不影响投屏本身。
   play(deviceNo, filePath, type, options) {
     const opts = options || {}
     const formData = { deviceNo: plainDeviceNo(deviceNo), type: String(type) }
     if (opts.refresh === false) {
       formData.refresh = 'false'
+    }
+    if (opts.addToCarousel === true) {
+      formData.addToCarousel = 'true'
     }
     return iot.upload('/api/device/play', {
       filePath,
@@ -59,7 +65,8 @@ module.exports = {
 
   // 轮播设置（V1.4）：updateType 2 = 间隔（beginTime / endTime / timingTime 秒），1 = 固定时间（updateDays 1~365 /
   // updateTimeList HH:mm 数组）；mode 1 顺序 / 2 随机；idle 0 轮播后休眠 / 1 不休眠；
-  // imgUrls 可选：相册 imgBle，最多 200，按选择顺序；不传 = 全部相册，传空数组会被拒（4000），由调用方保证不传空。
+  // imgUrls 可选：相册 imgBle，最多 100（2026-10-27 追加内容，原 200，超过回 4000），按选择顺序；
+  // 不传 = 全部相册，传空数组会被拒（4000），由调用方保证不传空。
   // 要求设备在线（离线 4041）。返回 { msgid }。
   setStrategy(payload, options) {
     return iot.post('/api/device/strategy', Object.assign({}, payload, { deviceNo: plainDeviceNo(payload && payload.deviceNo) }), options)

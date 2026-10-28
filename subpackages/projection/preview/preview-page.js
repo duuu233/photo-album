@@ -4,6 +4,7 @@ const activeDevice = require('../../../utils/active-device')
 const deviceRotation = require('../../../utils/device-rotation')
 const fold = require('../../../utils/fold-adapt')
 const broadcastMatch = require('../../../utils/broadcast-match')
+const iotApi = require('../../../utils/iot-api')
 
 // 设备屏幕分辨率（width×height）：列表/详情接口都会返回，取景框据此锁定宽高比（如 500x500 → 1:1）。
 // 接口暂未返回该字段，这里先给默认值便于联调测试（如需 1:1 改成 { width: 500, height: 500 }）。
@@ -135,7 +136,12 @@ const createPreviewPage = (overrides = {}) => fold.adapt(Object.assign({
     frame: null, // 可视区域 {left,top,width,height}(px，相对编辑层)，锁定当前方向比例、居中不动；
     // 定位 .edit-clip（区外内容被它 overflow:hidden 裁掉）与右上角转90°按钮
 
-    deviceWrapStyle: '' // 编辑层没起来时 fallback 展示用：按设备（竖向）比例铺
+    deviceWrapStyle: '', // 编辑层没起来时 fallback 展示用：按设备（竖向）比例铺
+
+    // WiFi 版「同时加入轮播」（2026-10-27 追加内容第二节）：进页查轮播，running=true 才显示开关，默认关；
+    // 打开后结果页每张投屏都带 addToCarousel=true（经 pendingProjection.addToCarousel 交接）
+    carouselRunning: false,
+    addToCarousel: false
   },
 
   onLoad(query) {
@@ -187,8 +193,9 @@ const createPreviewPage = (overrides = {}) => fold.adapt(Object.assign({
   },
 
   warmupPreview(device) {
-    // WiFi 版不走蓝牙（2026-10-27）：投屏经 IoT 服务上传，不用预热连接
+    // WiFi 版不走蓝牙（2026-10-27）：投屏经 IoT 服务上传，不用预热连接；改为查一次轮播是否在运行
     if (broadcastMatch.isWifiDevice(device)) {
+      this.checkCarousel(device)
       return
     }
     // 预热连接：必须按设备记录的完整身份查找/连接，不能直接复用 Storage 里的 BLE 句柄。
@@ -218,6 +225,28 @@ const createPreviewPage = (overrides = {}) => fold.adapt(Object.assign({
         })
         .catch(() => {})
     }
+  },
+
+  // GET /api/device/strategy 只看 running：在轮播才显示「同时加入轮播」；查询失败按未开轮播处理（不显示开关）
+  checkCarousel(device) {
+    const deviceNo = device && (device.productDeviceId || device.deviceNo)
+    if (!deviceNo) {
+      return
+    }
+    this._carouselCheck = iotApi
+      .getStrategy(deviceNo, { showError: false })
+      .then(res => {
+        if (!this._unloaded) {
+          this.setData({ carouselRunning: !!(res && res.running) })
+        }
+      })
+      .catch(error => {
+        console.warn('[投屏预览][WiFi] 查询轮播失败，不显示同时加入轮播', error && error.code, error && error.message)
+      })
+  },
+
+  toggleAddToCarousel(e) {
+    this.setData({ addToCarousel: !!(e && e.detail && e.detail.value) })
   },
 
   onReady() {
@@ -1489,6 +1518,8 @@ const createPreviewPage = (overrides = {}) => fold.adapt(Object.assign({
     pending.device = this.data.device || pending.device
     // 构图状态随图一起落盘：投屏失败后「重新投屏」把图还原成原图跳回本页，靠它恢复上次的构图
     pending.editStates = this._states || {}
+    // 只有轮播在运行且用户打开了开关才加入轮播（WiFi 结果页读它）
+    pending.addToCarousel = !!(this.data.carouselRunning && this.data.addToCarousel)
     if (performance) {
       pending.performance = Object.assign({}, pending.performance, performance)
     }

@@ -15,6 +15,8 @@ const dithering = require('../../../utils/dithering')
 //   · 选图：「我的上传」里这台设备的照片（老服务投屏成功记录，只取带 imgBle 的），单选 / 多选 / 全选，
 //     按选择顺序作为 imgUrls 提交；回显 imgUrls=null（全部相册）时全选；一张不选不让保存（空数组会回 4000）；
 //     按相册顺序全选时不带 imgUrls，保持「全部相册」（之后新上传的也进轮播）；
+//     最多 100 张（2026-10-27 追加内容第一节）：显示「已选 X/100」，选满后未选的置灰、点了提示，已选的仍可取消；
+//     全选时相册超过 100 张只选前 100 张并提示；超过 100 张服务端回 4000，给明确提示；
 //   · 保存：IoT POST /api/device/strategy，要求设备在线（4041 时补查是休眠 / 关机 / 离线给对应提示）；
 //     轮播中改选图不用先暂停，直接保存（实现报告反馈六）；
 //   · 保存成功后立即投第一张（选中的第一张；全部相册取相册第一张）：下载这张图 → POST /api/device/play refresh=true，
@@ -41,9 +43,13 @@ function errorText(error, fallback) {
   return String((error && error.message) || fallback).replace(/^接口\(IoT\)-/, '')
 }
 
-// 选图网格：tile 带上它在已选里的序号（1 起，0 = 未选）
+// 选图网格：tile 带上它在已选里的序号（1 起，0 = 未选）；选满后未选的置灰（disabled）
 function decorateTiles(tiles, selected) {
-  return tiles.map(tile => Object.assign({}, tile, { order: selected.indexOf(tile.url) + 1 }))
+  const full = strategy.isFull(selected)
+  return tiles.map(tile => {
+    const order = selected.indexOf(tile.url) + 1
+    return Object.assign({}, tile, { order, disabled: full && !order })
+  })
 }
 
 Page(fold.adapt({
@@ -64,6 +70,7 @@ Page(fold.adapt({
     newTime: '12:00',
     tiles: [], // [{ id, url(imgBle), thumb, order }]
     selectedCount: 0,
+    maxCount: strategy.MAX_IMG_URLS,
     allSelected: false,
     selectionHint: '',
     photosError: false,
@@ -153,7 +160,7 @@ Page(fold.adapt({
     this.setData({
       tiles: decorateTiles(this.tiles || [], this.selected),
       selectedCount: this.selected.length,
-      allSelected: !!urls.length && urls.every(url => this.selected.indexOf(url) > -1)
+      allSelected: strategy.isAllSelected(this.selected, urls)
     })
   },
 
@@ -216,7 +223,7 @@ Page(fold.adapt({
     const url = e.currentTarget.dataset.url
     const next = strategy.toggleSelection(this.selected, url)
     if (next.overflow) {
-      toast.show({ title: `最多选择 ${strategy.MAX_IMG_URLS} 张`, icon: 'none' })
+      toast.show({ title: `最多选择 ${strategy.MAX_IMG_URLS} 张，请先取消部分照片`, icon: 'none' })
       return
     }
     this.selected = next.selected
@@ -230,7 +237,7 @@ Page(fold.adapt({
     }
     this.selected = strategy.toggleAll(this.selected, urls)
     if (urls.length > strategy.MAX_IMG_URLS && this.selected.length) {
-      toast.show({ title: `最多选择 ${strategy.MAX_IMG_URLS} 张，已选前 ${strategy.MAX_IMG_URLS} 张`, icon: 'none' })
+      toast.show({ title: `最多选择 ${strategy.MAX_IMG_URLS} 张`, icon: 'none' })
     }
     this.renderSelection()
   },
@@ -264,7 +271,7 @@ Page(fold.adapt({
       await iotApi.setStrategy(built.payload, { showError: false })
     } catch (error) {
       console.warn('[WiFi轮播] 保存失败', error && error.code, error && error.message)
-      const tip = (await this.offlineTip(error)) || errorText(error, '保存失败，请稍后重试')
+      const tip = strategy.saveErrorText(error, built.payload) || (await this.offlineTip(error)) || errorText(error, '保存失败，请稍后重试')
       if (!this.unloaded) {
         this.setData({ saving: false })
         toast.show({ title: tip, icon: 'none' })

@@ -1,7 +1,9 @@
 // 「我的上传」WiFi 版照片（2026-10-27，docs/wifi/XT相框通讯协议_V1.4_更新说明.md 第九节）：
 //   ① 删除不连蓝牙、不认槽位：先删老服务相册记录，再把**真删掉了的**那些记录的 imgBle 交给 IoT 删云端 bin；
 //      带 nextImageUrl = 相册里剩下的第一张（删到屏上当前图时服务端自动换图）；
-//   ② 提示：全成功「已从相框播放列表移除，设备联网后更新」；deviceAction=PLAY_NEXT「已切换到下一张」；
+//   ② 提示：全成功但没切图「已删除；若相框未更新，请手动切换或重新设置轮播」（2026-10-27 追加内容第三节：
+//      服务端反推不到当前图时不切图）；确认弹窗对 WiFi 照片多一句「删除后相框可能需手动切换才会更新」；
+//      deviceAction=PLAY_NEXT「已切换到下一张」；
 //      deviceNotified=false 提示设备离线；部分记录失败报张数；
 //      云端删除失败单独说；
 //   ③ 再次投屏：确认在线后带 isWifi 进预览页，不走蓝牙连接；休眠 / 离线被 ensureOnline 拦下；
@@ -113,9 +115,25 @@ const reset = () => {
       assert.deepEqual(calls.records, [['a', 'b']], '先删老服务记录')
       assert.deepEqual(calls.cloud, [{ deviceNo: 'D0:CF:13:F0:2F:F8', imgUrls: ['https://oss/a.bin', 'https://oss/b.bin'], nextImageUrl: 'https://oss/c.bin' }], '再删云端 bin，带下一张')
       assert.equal(calls.ble, 0, '不碰蓝牙')
-      assert.deepEqual(toasts, ['已从相框播放列表移除，设备联网后更新'])
+      assert.deepEqual(toasts, ['已删除；若相框未更新，请手动切换或重新设置轮播'])
       assert.equal(page.reloaded, 1)
       log('PASS WiFi 删除：先记录后云端，带 nextImageUrl，不连蓝牙')
+    }
+    {
+      reset()
+      const page = makePage(wifiRecords(), ['a'])
+      page.data.showDeleteConfirm = false
+      page.data.selectedCount = 1
+      page.showDeleteDialog()
+      assert.equal(page.data.showDeleteConfirm, true)
+      assert.equal(page.data.deleteWifi, true, 'WiFi 照片：确认弹窗多一句')
+      const ble = makePage([rec('p', 'B1', { imgIndex: '0' })], ['p'])
+      ble.data.selectedCount = 1
+      ble.showDeleteDialog()
+      assert.equal(ble.data.deleteWifi, false, '蓝牙照片不加')
+      const tpl = require('fs').readFileSync(require('path').join(__dirname, '../subpackages/album/list/list.wxml'), 'utf8')
+      assert.ok(/wx:if="\{\{deleteWifi\}\}" class="confirm-desc">删除后相框可能需手动切换才会更新。/.test(tpl))
+      log('PASS WiFi 删除确认弹窗提示可能需手动切换')
     }
     {
       reset()
@@ -178,5 +196,5 @@ const reset = () => {
     console.log = log
     console.warn = warn
   }
-  console.log('album-wifi-delete: 4 groups passed')
+  console.log('album-wifi-delete: 5 groups passed')
 })().catch(error => { console.error(error); process.exitCode = 1 })
