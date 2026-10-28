@@ -10,7 +10,7 @@ const signal = require('../../../utils/signal')
 //   → 用户选中进 WiFi 账号密码页 → 配网状态页下发 WiFi 参数（+ MQTT 参数，来源未定前不发）。
 //
 //   · 列表来自**设备扫描**（BluFi 0x09，设备回 0x11 或自定义文本，见 utils/blufi.js），不用手机扫：iOS 微信拿不到
-//     附近列表、手机扫到的也不一定是设备那边收得到的；本设备是双频芯片，按回包里的信道只留 2.4G（ch 1~14，国内外通用）；
+//     附近列表、手机扫到的也不一定是设备那边收得到的；本设备是双频芯片，5G、2.4G 都列出（2026-10-28 取消原「按信道只留 2.4G」）；
 //   · 设备分批回就边收边显示，最后一批后再等 5 秒才结束转圈；
 //   · 同名去重取信号强的，信号强的在前；隐藏网络（名称为空）不列；
 //   · 点一行即选中该网络，直接带名称进账号密码页（2026-10-26 一度改为「选中 + 连接」两步，按产品要求改回一步）；
@@ -23,14 +23,13 @@ const signal = require('../../../utils/signal')
 // 等设备回 WiFi 列表的上限 60 秒（2026-10-26，原 12 秒嫌短）；设备报错会立即结束，不必等满
 const SCAN_TIMEOUT_MS = 60000
 
-// 设备回的列表整理成页面数据：只留 2.4G、去掉名称为空的隐藏网络、同名取信号强的、按信号排序。
-// 只留 2.4G：信道 1~14 为 2.4G（国内外通用），其余（36 起的 5G）去掉；设备没回信道（乐鑫标准格式）时
-// 无从判断，照常列出（这类设备多为单 2.4G 芯片）。
+// 设备回的列表整理成页面数据：去掉名称为空的隐藏网络、同名取信号强的、按信号排序。
+// 不按频段过滤（2026-10-28 产品要求 5G、2.4G 都显示）。
 function toWifiList(list) {
   const best = {}
   ;(list || []).forEach(item => {
     const ssid = String((item && item.ssid) || '').trim()
-    if (!ssid || blufi.is24GChannel(item.channel) === false) {
+    if (!ssid) {
       return
     }
     if (!best[ssid] || Number(item.rssi) > Number(best[ssid].rssi)) {
@@ -143,11 +142,11 @@ Page(fold.adapt({
       return
     }
     const wifiList = toWifiList(list)
-    console.log('[WiFi列表] 设备返回', list.length, '条，显示 2.4G', wifiList.length, '条')
+    console.log('[WiFi列表] 设备返回', list.length, '条，显示', wifiList.length, '条')
     this.setData({
       scanning: false,
       wifiList,
-      tip: wifiList.length ? '' : '设备附近没有搜到2.4G WiFi，请重新搜索或手动输入WiFi名称'
+      tip: wifiList.length ? '' : '设备附近没有搜到WiFi，请重新搜索或手动输入WiFi名称'
     })
   },
 
