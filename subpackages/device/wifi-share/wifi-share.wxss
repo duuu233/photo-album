@@ -116,6 +116,15 @@ button.share-action::after {
   text-align: center;
 }
 
+.share-dev-copy {
+  margin-top: 24rpx;
+  color: #ff6a20;
+  font-size: 24rpx;
+  line-height: 1.5;
+  text-align: center;
+  text-decoration: underline;
+}
+
 .share-action {
   display: flex;
   align-items: center;

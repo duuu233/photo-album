@@ -11,6 +11,8 @@ const wifiShare = require('../../../utils/wifi-share')
 // 分享（简化版，无邀请码）：底部按钮 open-type="share" 发微信卡片，卡片路径带设备号 / 产品 / 所有者 userId，
 //   对方在接受页确认后以非所有者身份绑定（见 utils/wifi-share.js）。拿不到自己的 userId 或产品 ID 时不让分享。
 // 移除：确认后 delUserProduct 删成员那条记录，再刷新列表。服务端暂无加入时间字段，显示「--」。
+// 仅开发版：底部多一个「复制测试参数」，复制卡片参数，粘到开发者工具自定义编译的启动参数里，预览二维码即可在开发版打开接受页
+//   （开发版发出的卡片别人点开进的是正式版，正式版没有接受页会提示「页面不存在」）。
 Page(fold.adapt({
   data: {
     statusBarHeight: 20,
@@ -20,7 +22,8 @@ Page(fold.adapt({
     loadError: false,
     owner: null,
     members: [],
-    canShare: false
+    canShare: false,
+    showDevCopy: false
   },
 
   onLoad(options) {
@@ -64,12 +67,14 @@ Page(fold.adapt({
     }
     const profile = { userProductId: device.userProductId, userName: user && user.nickName, avatar: user && user.avatarUrl }
     const split = wifiShare.splitMembers(list, profile)
+    const canShare = !!(user && user.userId && device.productId && device.productDeviceId)
     this.setData({
       loading: false,
       loadError: false,
       owner: split.owner,
       members: split.members,
-      canShare: !!(user && user.userId && device.productId && device.productDeviceId)
+      canShare,
+      showDevCopy: canShare && system.isDevEnv()
     })
   },
 
@@ -118,6 +123,26 @@ Page(fold.adapt({
     toast.show({ title: '暂时无法分享，请稍后重试', icon: 'none' })
   },
 
+  acceptPath() {
+    const device = this.device || {}
+    const user = this.user || {}
+    return wifiShare.buildAcceptPath({
+      deviceId: device.productDeviceId,
+      productId: device.productId,
+      ownerUserId: user.userId,
+      deviceName: device.name,
+      ownerName: user.nickName || ''
+    })
+  },
+
+  // 开发版「复制测试参数」：只复制 ? 后面那段，启动页面固定为 wifiShare.ACCEPT_PAGE
+  copyTestQuery() {
+    if (!this.data.showDevCopy) {
+      return
+    }
+    wx.setClipboardData({ data: this.acceptPath().split('?')[1] || '' })
+  },
+
   // 底部「分享设备」（open-type="share"）与右上角菜单都走这里；不能分享时退回小程序首页卡片
   onShareAppMessage() {
     const device = this.device || {}
@@ -125,16 +150,9 @@ Page(fold.adapt({
     if (!this.data.canShare) {
       return { title: 'BoltStar 智能相框', path: '/pages/home/home' }
     }
-    const ownerName = user.nickName || ''
     return {
-      title: `${ownerName || '好友'}邀请你共用电子纸设备「${device.name || '智能相框'}」`,
-      path: wifiShare.buildAcceptPath({
-        deviceId: device.productDeviceId,
-        productId: device.productId,
-        ownerUserId: user.userId,
-        deviceName: device.name,
-        ownerName
-      })
+      title: `${user.nickName || '好友'}邀请你共用电子纸设备「${device.name || '智能相框'}」`,
+      path: this.acceptPath()
     }
   }
 }))

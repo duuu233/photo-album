@@ -3,7 +3,7 @@
 //   ② 接口：个人信息读出 userId（与展示用的 userNo 分开）；自己绑定默认 isToHave=1、shareUserId=0；
 //      接受分享 isToHave=0、shareUserId=所有者；移除成员调 delUserProduct（成员那条 userProductId）；
 //   ③ 接受页：自己分享的不接受；已在列表直接进详情；否则接受后进详情；未登录先记下卡片再去登录；
-//   ④ 分享列表：能分享时卡片路径指向接受页，拿不到 userId 退回首页卡片；
+//   ④ 分享列表：能分享时卡片路径指向接受页，拿不到 userId 退回首页卡片；仅开发版能复制卡片参数；
 //   ⑤ 登录页：登录成功后回接受页；页面已注册。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -137,29 +137,45 @@ async function main() {
   {
     const user = { userId: 34, nickName: '小明' }
     const device = { id: '7', userProductId: 7, productId: 12, productDeviceId: 'E3:48:C2:1E:D4:28', name: '客厅相框' }
+    let devEnv = true
+    const clips = []
     const modules = {
       api: { getDeviceDetail: async () => device, getShareUsers: async () => [{ userProductId: 7, userName: '小明', isToHave: 1 }], getUserProfile: async () => user },
       toast: { show() {} },
-      system: { getLayoutMetrics: () => ({}) },
+      system: { getLayoutMetrics: () => ({}), isDevEnv: () => devEnv },
       'fold-adapt': { adapt: value => value },
       'wifi-share': share
     }
-    let page = loadPage('subpackages/device/wifi-share/wifi-share.js', modules, { wx: {} })
+    const wx = { setClipboardData: options => clips.push(options.data) }
+    let page = loadPage('subpackages/device/wifi-share/wifi-share.js', modules, { wx })
     page.onLoad({ id: '7' })
     await page.load()
     assert.equal(page.data.canShare, true)
     const card = page.onShareAppMessage()
     assert.ok(card.path.indexOf(share.ACCEPT_PAGE + '?') === 0, '卡片进接受页')
     assert.ok(/u=34/.test(card.path) && /p=12/.test(card.path), '带所有者 userId 与产品')
+    assert.equal(page.data.showDevCopy, true, '开发版显示复制测试参数')
+    page.copyTestQuery()
+    assert.deepEqual(clips, [card.path.split('?')[1]], '复制的就是卡片 ? 后面的参数')
+    devEnv = false
+    page = loadPage('subpackages/device/wifi-share/wifi-share.js', modules, { wx })
+    page.onLoad({ id: '7' })
+    await page.load()
+    assert.equal(page.data.showDevCopy, false, '体验版 / 正式版不显示')
+    page.copyTestQuery()
+    assert.equal(clips.length, 1, '非开发版不复制')
+    devEnv = true
     delete user.userId
     page = loadPage('subpackages/device/wifi-share/wifi-share.js', modules, { wx: {} })
     page.onLoad({ id: '7' })
     await page.load()
     assert.equal(page.data.canShare, false, '拿不到 userId 不能分享')
+    assert.equal(page.data.showDevCopy, false, '不能分享时也不给复制')
     assert.equal(page.onShareAppMessage().path, '/pages/home/home')
     const tpl = read('subpackages/device/wifi-share/wifi-share.wxml')
     assert.ok(/wx:if="\{\{canShare\}\}"[^>]*open-type="share"/.test(tpl), '分享按钮走微信卡片')
     assert.ok(/bindtap="removeMember"/.test(tpl))
+    assert.ok(/wx:if="\{\{showDevCopy\}\}"[^>]*bindtap="copyTestQuery"/.test(tpl), '复制测试参数只按 showDevCopy 渲染')
     checked('分享列表')
   }
   {
