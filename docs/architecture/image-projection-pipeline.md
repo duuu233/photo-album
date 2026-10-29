@@ -35,7 +35,7 @@ WiFi 版不走上面的蓝牙链路：预览页同样按设备 `width/height` �
 | 组件 | 职责 |
 | --- | --- |
 | 预览页 | 非破坏性构图、横竖向取景、按设备物理分辨率导出 |
-| `utils/dithering.js` | 调我方后端 `/Client/Basic/imageDitheringBinDownload`（2026-10-23 起，原第三方 seekink 接口与其 token 停用）上传图片并取得设备帧；公共参数与 userToken 由 `request.clientRequestParts` 注入，401/406 走 `request.expireSession` |
+| `utils/dithering.js` | 调我方后端 `/Client/Basic/imageDitheringBinDownload`（2026-10-23 起，原第三方 seekink 接口与其 token 停用；2026-10-29 起域名为 `https://api.yikaltd.com/api`，参数不变）上传图片并取得设备帧；公共参数与 userToken 由 `request.clientRequestParts` 注入，401/406 走 `request.expireSession` |
 | `setUserProductUpload` | 保存图库/投屏记录所需图片并返回 `taskId/upirId`；返回的旧 `.bin` URL 不再用于设备图传 |
 | `result.js` | 并行调度出帧与建记录、校验帧、预取下一张、收敛记账 |
 | `device-ble.js` | BLE 协议发送、ACK 累计、重传、CRC 和预组包 |

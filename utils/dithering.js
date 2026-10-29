@@ -3,6 +3,8 @@
 // 2026-10-23 起改调我方后端 /Client/Basic/imageDitheringBinDownload（form-data，参数与原第三方
 // seekink 接口一致：color / imageDitheringModes / type / file），原第三方接口及其 token
 // （/Client/Basic/getXTYUserToken）不再使用。
+// 2026-10-29 起地址改为 https://api.yikaltd.com/api/Client/Basic/imageDitheringBinDownload，参数（公共参数、
+// 鉴权头、form-data 字段）全部不变，只换域名与前缀。
 // 实现要点/注意：
 //   · 公共参数 device/terminal/language/userToken 与其它接口同口径注入（request.clientRequestParts），
 //     userToken 是本 App 用户自己的登录令牌；登录过期（401/406）走 request 统一登出引导；
@@ -13,6 +15,7 @@
 const protocol = require('./frame-protocol')
 const http = require('./request')
 
+const DITHERING_BASE_URL = 'https://api.yikaltd.com/api'
 const DITHERING_PATH = '/Client/Basic/imageDitheringBinDownload'
 
 // 网络类失败的用户侧文案：微信透传的英文原文（`request:fail fail:time out` 之类）用户看不懂，
@@ -129,9 +132,11 @@ function readFileBytes(filePath) {
 
 function requestOnce(body, boundary) {
   // 每次发送现取公共参数：重试期间登录态若变化，以当前为准
-  const parts = http.clientRequestParts(DITHERING_PATH, {
-    'content-type': `multipart/form-data; boundary=${boundary}`
-  })
+  const parts = http.clientRequestParts(
+    DITHERING_PATH,
+    { 'content-type': `multipart/form-data; boundary=${boundary}` },
+    { baseURL: DITHERING_BASE_URL }
+  )
   return new Promise((resolve, reject) => {
     wx.request({
       url: parts.url,

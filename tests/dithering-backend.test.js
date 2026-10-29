@@ -1,7 +1,8 @@
-// 抖动出帧 2026-10-23 起改调我方后端 /Client/Basic/imageDitheringBinDownload（参数同原第三方接口）。
+// 抖动出帧 2026-10-23 起改调我方后端 /Client/Basic/imageDitheringBinDownload（参数同原第三方接口）；
+// 2026-10-29 起地址改为 https://api.yikaltd.com/api 下同一路径，参数不变。
 //
 // 锁四件事：
-//   ① 请求发到 request.clientRequestParts 给的地址与 header（公共参数 + 用户自己的 userToken），
+//   ① 请求发到 request.clientRequestParts 给的地址与 header（公共参数 + 用户自己的 userToken；baseURL 换成 api.yikaltd.com/api），
 //      不再带第三方 token，也不再去取 getXTYUserToken；multipart 里 color/imageDitheringModes/type/file 原样；
 //   ② 二进制响应原样交回；
 //   ③ 业务 JSON 报错：抛「接口-」+ retMsg，不当成帧、不重试；401/406 走统一登出；
@@ -17,8 +18,8 @@ function stub(request, exports) {
 }
 
 stub('../utils/request', {
-  clientRequestParts: (url, header) => ({
-    url: `https://api.example.test${url}?userToken=user-token`,
+  clientRequestParts: (url, header, options) => ({
+    url: `${(options && options.baseURL) || 'https://api.example.test'}${url}?userToken=user-token`,
     header: Object.assign({ userToken: 'user-token' }, header)
   }),
   expireSession: () => effects.push(['expire'])
@@ -54,7 +55,7 @@ async function main() {
   const sent = requests()
   assert.equal(sent.length, 1)
   assert.equal(sent[0].method, 'POST')
-  assert.equal(sent[0].url, 'https://api.example.test/Client/Basic/imageDitheringBinDownload?userToken=user-token')
+  assert.equal(sent[0].url, 'https://api.yikaltd.com/api/Client/Basic/imageDitheringBinDownload?userToken=user-token', '2026-10-29 起走 api.yikaltd.com/api，公共参数照常带')
   assert.equal(sent[0].responseType, 'arraybuffer')
   assert.equal(sent[0].header.userToken, 'user-token')
   assert.match(sent[0].header['content-type'], /^multipart\/form-data; boundary=/)
