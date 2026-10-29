@@ -15,6 +15,11 @@
       <text wx:if="{{spec}}" class="wifi-device__spec">{{spec}}</text>
     </view>
 
+    <view class="wifi-tip">
+      <view class="wifi-tip__icon">i</view>
+      <text>设备仅支持 2.4G WiFi 配网</text>
+    </view>
+
     <view class="wifi-form glass-panel">
       <view class="wifi-field">
         <text class="wifi-field__label">WiFi名称</text>

@@ -1,10 +1,32 @@
-/* 选择 WiFi 页（2026-10-26 整体优化）：顶部灰字入口，下面是列表卡片，卡片末尾居中的「手动输入WiFi名称」橙字。
-   列表项沿用原 WiFi 列表弹层的样式。2026-10-27 去掉顶部「设备仅支持 2.4G WiFi 配网」提示条及其样式。 */
+/* 选择 WiFi 页（2026-10-26 整体优化）：提示语 + 灰字入口一组，下面是列表卡片，卡片末尾居中的「手动输入WiFi名称」橙字。
+   提示条、列表项沿用 WiFi 账号密码页 / 原 WiFi 列表弹层的样式。
+   10-27 曾去掉「设备仅支持 2.4G WiFi 配网」提示条，2026-10-29 按产品口径恢复。 */
 .wifi-list-content {
   padding-top: 24rpx;
 }
 
-/* 顶部的手动输入入口：灰色小字，居中 */
+.wifi-tip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ff6421;
+  font-size: 26rpx;
+}
+
+.wifi-tip__icon {
+  width: 30rpx;
+  height: 30rpx;
+  margin-right: 10rpx;
+  color: #ffffff;
+  background: #ff6421;
+  border-radius: 50%;
+  font-size: 20rpx;
+  font-weight: 700;
+  line-height: 30rpx;
+  text-align: center;
+}
+
+/* 提示语下的手动输入入口：灰色小字，居中 */
 .wifi-manual-hint {
   margin: 10rpx 0 32rpx;
   padding: 6rpx 0;

@@ -312,7 +312,8 @@ async function main() {
       'fold-adapt': { adapt: value => value },
       bluetooth: { async openAdapter() {}, async whenScanStopped() {} },
       blufi: {
-        async connect(id) { world.connects.push(id); if (options.connectError) throw new Error('fail'); return session }
+        async connect(id) { world.connects.push(id); if (options.connectError) throw new Error('fail'); return session },
+        is24GChannel: require('../utils/blufi').is24GChannel
       },
       signal: require('../utils/signal'),
       'wifi-provision': { getTarget: () => (options.noTarget ? null : { bleDeviceId: 'ble-w1', deviceNo: 'E348C21ED428' }) }
@@ -321,7 +322,7 @@ async function main() {
     return Object.assign(loaded, { world })
   }
   {
-    // 分批回时边收边显示；2026-10-28 取消按信道只留 2.4G，5G、2.4G 都列出（原「5G 被过滤」断言随之改写）
+    // 本设备回信道：只留 2.4G（ch 1~14），5G 去掉；分批回时边收边显示（10-28 曾改为 5G、2.4G 都列出，2026-10-29 恢复）
     const batched = loadList({ batches: [
       [{ ssid: 'starhc520', rssi: -27, channel: 1 }, { ssid: 'starhc520_5G', rssi: -29, channel: 48 }],
       [{ ssid: 'tyw-1308', rssi: -47, channel: 6 }, { ssid: '1308_5G', rssi: -60, channel: 157 }, { ssid: 'EricRachel', rssi: -84, channel: 13 }]
@@ -329,20 +330,20 @@ async function main() {
     batched.page.onLoad({})
     await flush()
     await flush()
-    assert.deepEqual(batched.world.seen, [['starhc520', 'starhc520_5G'], ['starhc520', 'starhc520_5G', 'tyw-1308', '1308_5G', 'EricRachel']], '每收到一批就刷新列表（边扫边显示）')
-    assert.deepEqual(batched.page.data.wifiList.map(item => item.ssid), ['starhc520', 'starhc520_5G', 'tyw-1308', '1308_5G', 'EricRachel'], '5G（ch 48 / 157）与 2.4G 都列出，按信号排序')
+    assert.deepEqual(batched.world.seen, [['starhc520'], ['starhc520', 'tyw-1308', 'EricRachel']], '每收到一批就刷新列表（边扫边显示）')
+    assert.deepEqual(batched.page.data.wifiList.map(item => item.ssid), ['starhc520', 'tyw-1308', 'EricRachel'], '5G（ch 48 / 157）被过滤，只留 2.4G')
     assert.equal(batched.page.data.scanning, false)
-    checked('5G、2.4G 都列出，分批回时边收边显示')
+    checked('按信道只留 2.4G，分批回时边收边显示')
   }
   {
-    // 2026-10-28 页面上不再提 2.4G：设备回了空列表时的提示也不写 2.4G
+    // 设备回了空列表时给提示：2026-10-29 恢复写明 2.4G（10-28 曾去掉）
     const empty = loadList({ list: [] })
     empty.page.onLoad({})
     await flush()
     await flush()
     assert.deepEqual(empty.page.data.wifiList, [])
-    assert.equal(empty.page.data.tip, '设备附近没有搜到WiFi，请重新搜索或手动输入WiFi名称')
-    checked('设备附近没搜到 WiFi 时给提示，提示里不写 2.4G')
+    assert.equal(empty.page.data.tip, '设备附近没有搜到2.4G WiFi，请重新搜索或手动输入WiFi名称')
+    checked('设备附近没搜到 2.4G WiFi 时给提示')
   }
   {
     const { page: list, state: listState, world } = loadList({ list: [
@@ -413,14 +414,15 @@ async function main() {
     assert.deepEqual(dev.page.data.wifiList.map(item => item.ssid), ['Home'], '开发版也不列隐藏网络、不出调试字段')
     assert.equal(dev.page.data.showRaw, undefined, '页面不再有调试开关')
     const tpl = fs.readFileSync(path.join(root, 'subpackages/device/wifi-list/wifi-list.wxml'), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
-    // 2026-10-27 去掉页面上的 2.4G 字样：顶部「设备仅支持 2.4G WiFi 配网」提示条删除，标题改为「设备附近的WiFi」
-    assert.ok(/设备附近的WiFi/.test(tpl), '列表标题为「设备附近的WiFi」')
-    assert.ok(!/2\.4G/.test(tpl) && !/wifi-tip/.test(tpl), '页面不再出现 2.4G 提示')
-    // 2026-10-28 WiFi 账号密码页同样删掉「设备仅支持 2.4G WiFi 配网」提示条（连同 .wifi-tip 样式）
+    // 10-27 曾去掉页面上的 2.4G 字样，2026-10-29 按产品口径恢复：顶部「设备仅支持 2.4G WiFi 配网」提示条，标题「设备附近的2.4G WiFi」
+    const listCss = fs.readFileSync(path.join(root, 'subpackages/device/wifi-list/wifi-list.wxss'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    assert.ok(/设备附近的2\.4G WiFi/.test(tpl), '列表标题为「设备附近的2.4G WiFi」')
+    assert.ok(/class="wifi-tip"[\s\S]*设备仅支持 2\.4G WiFi 配网/.test(tpl) && /\.wifi-tip\s*\{/.test(listCss), '选择WiFi页顶部有 2.4G 提示条')
+    // 10-28 曾删掉 WiFi 账号密码页的同款提示条，2026-10-29 恢复（连同 .wifi-tip 样式）
     const configTpl = fs.readFileSync(path.join(root, 'subpackages/device/wifi-config/wifi-config.wxml'), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
     const configCss = fs.readFileSync(path.join(root, 'subpackages/device/wifi-config/wifi-config.wxss'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
-    assert.ok(!/2\.4G/.test(configTpl) && !/wifi-tip/.test(configTpl) && !/\.wifi-tip/.test(configCss), '账号密码页不再出现 2.4G 提示')
-    assert.ok(/class="wifi-manual-hint"[^>]*bindtap="manualInput"[^>]*>若搜索不到您的wifi，请手动输入</.test(tpl), '顶部有灰字手动输入入口')
+    assert.ok(/class="wifi-tip"[\s\S]*设备仅支持 2\.4G WiFi 配网/.test(configTpl) && /\.wifi-tip\s*\{/.test(configCss), '账号密码页有 2.4G 提示条')
+    assert.ok(/class="wifi-manual-hint"[^>]*bindtap="manualInput"[^>]*>若搜索不到您的wifi，请手动输入</.test(tpl), '提示语下有灰字手动输入入口')
     assert.ok(!/showRaw|logs|rawSummary|wifi-debug-log/.test(tpl), '模板里不再有调试内容')
     // 2026-10-26 再调整：「手动输入WiFi名称」不要按钮样式，回到文字样式、居中（原「底部固定按钮」断言随之改写）
     assert.ok(/class="wifi-manual-text"[^>]*bindtap="manualInput"[^>]*>手动输入WiFi名称</.test(tpl), '「手动输入WiFi名称」为文字入口')

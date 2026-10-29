@@ -7,12 +7,16 @@
   <page-nav title="选择WiFi" bind:measure="onNavMeasure"></page-nav>
 
   <view class="mock-content wifi-list-content">
+    <view class="wifi-tip">
+      <view class="wifi-tip__icon">i</view>
+      <text>设备仅支持 2.4G WiFi 配网</text>
+    </view>
     <!-- 搜不到时的手动入口：灰字，点击进账号密码页手动填名称 -->
     <view class="wifi-manual-hint" hover-class="none" aria-role="button" bindtap="manualInput">若搜索不到您的wifi，请手动输入</view>
 
     <view class="wifi-list-panel glass-panel">
       <view class="wifi-list-head">
-        <text class="wifi-list-head__title">设备附近的WiFi</text>
+        <text class="wifi-list-head__title">设备附近的2.4G WiFi</text>
         <view wx:if="{{!scanning}}" class="wifi-list-head__rescan" hover-class="none" aria-role="button" bindtap="rescan">
           <image class="wifi-list-head__rescan-icon" src="/assets/images/refresh-icon.png" mode="aspectFit"></image>
           <text>重新搜索</text>

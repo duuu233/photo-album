@@ -32,9 +32,30 @@
   font-size: 24rpx;
 }
 
-/* 2026-10-28 去掉「设备仅支持 2.4G WiFi 配网」提示条及其样式，表单上方的间距由表单自己留 */
+/* 「设备仅支持 2.4G WiFi 配网」提示条：10-28 曾删除，2026-10-29 按产品口径恢复 */
+.wifi-tip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 24rpx 0 36rpx;
+  color: #ff6421;
+  font-size: 26rpx;
+}
+
+.wifi-tip__icon {
+  width: 30rpx;
+  height: 30rpx;
+  margin-right: 10rpx;
+  color: #ffffff;
+  background: #ff6421;
+  border-radius: 50%;
+  font-size: 20rpx;
+  font-weight: 700;
+  line-height: 30rpx;
+  text-align: center;
+}
+
 .wifi-form {
-  margin-top: 36rpx;
   padding: 12rpx 32rpx 36rpx;
 }
 
