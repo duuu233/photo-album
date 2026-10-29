@@ -10,7 +10,7 @@ const wifiShare = require('../../../utils/wifi-share')
 // 数据：老服务 getShareUserProductList（按后端设备号）；列表里没有所有者时用当前用户资料兜底。
 // 分享（简化版，无邀请码）：底部按钮 open-type="share" 发微信卡片，卡片路径带设备号 / 产品 / 所有者 userId，
 //   对方在接受页确认后以非所有者身份绑定（见 utils/wifi-share.js）。拿不到自己的 userId 或产品 ID 时不让分享。
-// 移除：确认后 delUserProduct 删成员那条记录，再刷新列表。服务端暂无加入时间字段，显示「--」。
+// 移除：确认后 delUserProduct 删成员那条记录，再刷新列表。加入时间取接口 joinTime，为空时显示「--」。
 // 仅开发版：底部多一个「复制测试参数」，复制卡片参数，粘到开发者工具自定义编译的启动参数里，预览二维码即可在开发版打开接受页
 //   （开发版发出的卡片别人点开进的是正式版，正式版没有接受页会提示「页面不存在」）。
 Page(fold.adapt({

@@ -106,11 +106,13 @@ async function main() {
     assert.equal(wifiShare.isOwner({ isToHave: 0, shareUserId: 5 }), false, '有分享者的是接收者')
     assert.equal(wifiShare.isOwner({}), true, '分享上线前的老记录按所有者')
     const split = wifiShare.splitMembers([
-      { userProductId: 2, userName: 'B', avatar: 'b.png', isToHave: 0 },
+      { userProductId: 2, userName: 'B', avatar: 'b.png', isToHave: 0, joinTime: '2026-10-29 10:00', createTime: '2026-01-01 00:00' },
       { userProductId: 1, userName: 'A', avatar: 'a.png', isToHave: 1 }
     ])
     assert.equal(split.owner.name, 'A', '所有者固定第一栏')
     assert.deepEqual(split.members.map(item => item.name), ['B'])
+    assert.equal(split.members[0].joinedAt, '2026-10-29 10:00', '加入时间取 joinTime')
+    assert.equal(wifiShare.toMember({ userProductId: 3, createTime: 'x' }).joinedAt, '', '没有 joinTime 不拿别的时间顶替')
     const fallback = wifiShare.splitMembers([], { userProductId: 1, userName: '我', avatar: '' })
     assert.equal(fallback.owner.name, '我', '列表没有所有者时用当前用户')
     assert.equal(messages.toItem({ id: 1, type: 'TF_LOCAL_MODE', payload: {} }).title, '设备已进入本地模式')

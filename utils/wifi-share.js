@@ -19,7 +19,7 @@ function toMember(raw) {
     id: String(r.userProductId != null ? r.userProductId : ''),
     name: r.userName || r.nickName || '微信用户',
     avatar: r.avatar || r.avatarUrl || '',
-    joinedAt: r.createTime || r.joinTime || r.addTime || ''
+    joinedAt: r.joinTime || '' // 分享列表接口的加入时间，原样显示
   }
 }
 
