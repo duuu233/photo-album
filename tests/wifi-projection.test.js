@@ -11,6 +11,8 @@
 //      预览页只在轮播运行中显示开关，开关状态经 pendingProjection.addToCarousel 交给结果页。
 //   ⑨ 渲染模式 renderMode（2026-10-28）：iot-api.play 有值才带、原样传；projectOne 透传；结果页按设备取一次（api.resolveRenderMode），
 //      每张都带，重试不再查。
+//   ⑩ 进度条（2026-10-29）：上传折算到 0~50%，处理阶段按时间爬向 99、不到 100；100% 只在 SENT / UPLOADED 时给出，失败停在原处；
+//      结果页写相册记录时不改文案（100% 只显示「已发送，屏幕即将刷新」）。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -29,6 +31,7 @@ function setup(options = {}) {
       if (opts.addToCarousel) log.plays[log.plays.length - 1].addToCarousel = true
       if (opts.renderMode) log.plays[log.plays.length - 1].renderMode = opts.renderMode
       ;[30, 100].forEach(p => opts.onProgress(p))
+      if (options.delayMs) await new Promise(resolve => setTimeout(resolve, options.delayMs))
       if (options.playError) throw options.playError
       return options.response || { msgid: 'm1', status: 'SENT', binUrl: 'https://oss/a.bin', binSize: 10 }
     },
@@ -47,7 +50,9 @@ function setup(options = {}) {
   const sandbox = {
     module: { exports: {} },
     require: target => ({ './iot-api': api })[target],
-    console: { log() {}, warn() {} }
+    console: { log() {}, warn() {} },
+    setInterval,
+    clearInterval
   }
   vm.runInNewContext(fs.readFileSync(path.join(root, 'utils/wifi-projection.js'), 'utf8'), sandbox, { filename: 'wifi-projection.js' })
   const projection = sandbox.module.exports
@@ -69,7 +74,10 @@ async function main() {
     assert.deepEqual(plain(log.plays[0]), { deviceNo: 'E348C21ED428', filePath: 'wxfile://a.png', type: '1', showError: false, refresh: true }, 'deviceNo 去冒号、type 原样、静默、默认刷屏')
     const order = log.stages.map(item => item.split(':')[0]).filter((item, i, all) => item !== all[i - 1])
     assert.deepEqual(order, ['UPLOADING', 'PROCESSING', 'SENT'], `阶段顺序：${order}`)
-    assert.ok(log.stages.includes('UPLOADING:30'), '上传进度真实透出')
+    assert.ok(log.stages.includes('UPLOADING:15'), '上传进度折算到前半段（真实 30% → 15%）')
+    assert.ok(log.stages.includes('PROCESSING:50'), '上传完进入处理，停在 50% 起爬')
+    assert.equal(log.stages.at(-1), 'SENT:100', '100% 只给 SENT')
+    assert.ok(log.stages.filter(item => !item.startsWith('SENT')).every(item => Number(item.split(':')[1]) < 100), '上传 / 处理阶段都不到 100%')
     assert.equal(log.statusCalls, 0, '不再轮询投屏状态')
     checked('返回 SENT 即结束：已发送，屏幕即将刷新')
   }
@@ -101,6 +109,26 @@ async function main() {
     assert.equal((await plainRun.run()).carouselUpdated, null, '没给 carouselUpdated → null')
     assert.equal('addToCarousel' in plainRun.log.plays[0], false, '默认不加入轮播')
     checked('addToCarousel：透传、交回 carouselUpdated')
+  }
+  {
+    const { run, log } = setup({ delayMs: 700 })
+    const result = await run()
+    const processing = log.stages.filter(item => item.startsWith('PROCESSING')).map(item => Number(item.split(':')[1]))
+    assert.ok(processing.length > 1 && processing.at(-1) > 50, `处理阶段进度随时间往上爬：${processing}`)
+    assert.ok(processing.every((value, i) => value < 99 && (i === 0 || value >= processing[i - 1])), '只增不减、不到 99')
+    assert.equal(result.status, 'SENT')
+    assert.equal(log.stages.at(-1), 'SENT:100')
+    const after = log.stages.length
+    await new Promise(resolve => setTimeout(resolve, 450))
+    assert.equal(log.stages.length, after, '接口返回后停表，不再报进度')
+    const failed = setup({ delayMs: 450, playError: Object.assign(new Error('接口(IoT)-图片过大'), { code: 4130 }) })
+    await failed.run()
+    const last = failed.log.stages.at(-1)
+    assert.ok(last.startsWith('PROCESSING') && Number(last.split(':')[1]) < 100, `报错停在原处：${last}`)
+    const failedStatus = setup({ response: { msgid: 'm1', status: 'FAILED' } })
+    await failedStatus.run()
+    assert.equal(failedStatus.log.stages.at(-1), 'FAILED:50', '接口 FAILED 不到 100%')
+    checked('进度条：处理阶段渐近爬升，成功才到 100%，失败停在原处')
   }
   {
     const failed = setup({ response: { msgid: 'm1', status: 'FAILED' } })
@@ -245,6 +273,7 @@ async function main() {
     assert.equal(page.data.successCount, 2)
     assert.equal(page.data.retryable, true)
     assert.equal(page.data.stageText, '成功 2 张，1 张未成功')
+    assert.equal(/正在存入我的上传/.test(fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.js'), 'utf8')), false, '写相册记录时不改文案')
     failIndex.value = -1
     page.retryFailed()
     await new Promise(resolve => setTimeout(resolve, 20))

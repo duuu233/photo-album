@@ -2,8 +2,10 @@
 // 2026-10-27 起按 docs/wifi/XT相框通讯协议_V1.4_更新说明.md 第二节改为「不等 ack」）。
 //
 // 一张图的完整过程（projectOne）：
-//   ① 上传 POST /api/device/play（multipart：deviceNo、type、file、refresh、renderMode），进度 = 真实上传进度 0~100；
-//   ② 上传到 100% 但接口未返回：「图片处理中」（服务端转 bin + 上传 OSS + 下发，最长约 8 秒）；
+//   ① 上传 POST /api/device/play（multipart：deviceNo、type、file、refresh、renderMode），「图片上传中」；
+//   ② 上传完但接口未返回：「图片处理中」（服务端转 bin + 上传 OSS + 下发，最长约 8 秒）；
+//      进度条（2026-10-29）：上传与处理合占 0~99%——真实上传进度折算到 0~UPLOAD_SHARE，处理阶段按时间渐近爬向 99；
+//      100% 只在接口返回 SENT / UPLOADED 时给出，失败停在当时的位置；
 //   ③ 接口返回即结束，不再轮询 /api/device/play/status、也不等 WS play.result：
 //      · status=SENT（旧版 DOWNLOADING）→ 指令已下发，提示「已发送，屏幕即将刷新」；
 //      · status=UPLOADED（refresh=false）→ 只上传了 bin、不刷屏，msgid 为 null，不能拿来查状态；
@@ -32,6 +34,13 @@ const STAGE_TEXT = {
 
 // 上传阶段只进不退（迟到的进度回调不把「处理中」拉回「上传中」）
 const RANK = { UPLOADING: 0, PROCESSING: 1 }
+
+// 进度条分段（2026-10-29）：真实上传进度 0~100 折算到 0~UPLOAD_SHARE；处理阶段没有真实进度，
+// 从 UPLOAD_SHARE 按 1 - e^(-t/τ) 渐近爬向 PROCESSING_CAP（τ=3 秒：1 秒约 64%、3 秒约 81%、8 秒约 95%），永不到 100
+const UPLOAD_SHARE = 50
+const PROCESSING_CAP = 99
+const PROCESSING_TAU_MS = 3000
+const PROCESSING_TICK_MS = 200
 
 function plainDeviceNo(deviceNo) {
   return String(deviceNo == null ? '' : deviceNo).replace(/[:\-\s]/g, '').toUpperCase()
@@ -120,7 +129,7 @@ async function projectOne(options) {
   }
 
   let stage = 'UPLOADING'
-  let progress = 0
+  let progress = 0 // 进度条显示值（见 UPLOAD_SHARE），不是上传百分比
   let loggedStage = ''
   const report = next => {
     if (RANK[next] === undefined || RANK[stage] === undefined || RANK[next] >= RANK[stage]) {
@@ -131,6 +140,29 @@ async function projectOne(options) {
       log(`阶段 → ${stage}（${STAGE_TEXT[stage]}）`)
     }
     onStage({ stage, text: STAGE_TEXT[stage], progress })
+  }
+
+  // 处理阶段的进度爬升：上传完开表，接口返回 / 报错即停
+  let processingTimer = null
+  const startProcessing = () => {
+    if (processingTimer) {
+      return
+    }
+    const startedAt = Date.now()
+    const base = Math.max(progress, UPLOAD_SHARE)
+    processingTimer = setInterval(() => {
+      const next = Math.floor(base + (PROCESSING_CAP - base) * (1 - Math.exp(-(Date.now() - startedAt) / PROCESSING_TAU_MS)))
+      if (next > progress) {
+        progress = next
+        report('PROCESSING')
+      }
+    }, PROCESSING_TICK_MS)
+  }
+  const stopProcessing = () => {
+    if (processingTimer) {
+      clearInterval(processingTimer)
+      processingTimer = null
+    }
   }
 
   const finish = result => {
@@ -159,23 +191,32 @@ async function projectOne(options) {
       addToCarousel,
       renderMode,
       onProgress: percent => {
-        progress = Math.max(progress, Math.min(100, Math.round(percent)))
-        const bucket = Math.floor(progress / 25) * 25
+        const uploaded = Math.max(0, Math.min(100, Math.round(percent)))
+        const bucket = Math.floor(uploaded / 25) * 25
         if (bucket > loggedPercent) {
           loggedPercent = bucket
           log(`上传进度 ${bucket}%`)
         }
-        // 传完还没返回：图片处理中
-        report(progress >= 100 ? 'PROCESSING' : 'UPLOADING')
+        progress = Math.max(progress, Math.floor((uploaded * UPLOAD_SHARE) / 100))
+        // 传完还没返回：图片处理中，进度接着往 99 爬
+        report(uploaded >= 100 ? 'PROCESSING' : 'UPLOADING')
+        if (uploaded >= 100) {
+          startProcessing()
+        }
       }
     })
   } catch (error) {
+    stopProcessing()
     log(`${errorLine(error)}（耗时 ${Date.now() - startedAt}ms）`)
     return finish({ status: 'FAILED', message: await offlineText(deviceNo, error, log), error })
   }
+  stopProcessing()
   log(`返回 ${json(response)}（耗时 ${Date.now() - startedAt}ms）`)
-  progress = 100
   const status = resultStatus(response, refresh)
+  // 100% 只给成功（SENT / UPLOADED）；FAILED 停在当时的位置
+  if (status !== 'FAILED') {
+    progress = 100
+  }
   report(status)
   return finish({
     status,

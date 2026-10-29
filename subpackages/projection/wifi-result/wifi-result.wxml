@@ -16,7 +16,7 @@
         <view class="wifi-result-progress__bar"><view class="wifi-result-progress__fill" style="width: {{progress}}%;"></view></view>
         <text class="wifi-result-progress__num">{{progress}}%</text>
       </view>
-      <view class="wifi-result-note">进度为图片上传进度；发送后设备会自行下载并刷新屏幕，多张时只在最后一张刷屏</view>
+      <view class="wifi-result-note">进度含图片上传与处理；发送后设备会自行下载并刷新屏幕，多张时只在最后一张刷屏</view>
     </view>
 
     <view wx:if="{{total > 1}}" class="wifi-result-list glass-panel">

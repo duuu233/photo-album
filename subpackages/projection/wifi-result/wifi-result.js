@@ -6,7 +6,7 @@ const wifiProjection = require('../../../utils/wifi-projection')
 const config = require('../../../utils/config')
 
 // WiFi 版投屏结果页（2026-10-27，对接进度 STEP 3）：预览页构图导出后 redirectTo 到这里（蓝牙版去 result 页）。
-// 逐张调 utils/wifi-projection.projectOne：上传进度条 0~100（真实上传进度）→ 图片处理中 → 接口返回即结束。
+// 逐张调 utils/wifi-projection.projectOne：图片上传中 → 图片处理中（两段合占进度条 0~99%）→ 接口返回成功才到 100%。
 // V1.4（docs/wifi/XT相框通讯协议_V1.4_更新说明.md 第二节）起不再等设备 ack：返回 SENT 就提示「已发送，屏幕即将刷新」，
 // 设备真正的成功 / 失败由服务端写消息通知。
 // 多张按顺序一张一张传：本轮最后一张 refresh=true（刷屏），前面的 refresh=false（只上传、返回 UPLOADED、不刷屏），
@@ -262,8 +262,8 @@ Page(fold.adapt({
         return
       }
       let text = result.message || result.text || ''
+      // 写相册记录时不改阶段文案：100% 只显示「已发送，屏幕即将刷新」（2026-10-29），过程只进日志
       if (isSent(result.status)) {
-        this.setData({ stageText: '正在存入我的上传' })
         const saved = await this.saveAlbumRecord(filePath, result.binUrl)
         if (this.unloaded) {
           return
