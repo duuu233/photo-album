@@ -16,7 +16,10 @@
         "wifi-detail/wifi-detail",
         "wifi-slideshow/wifi-slideshow",
         "wifi-sleep/wifi-sleep",
-        "wifi-messages/wifi-messages"
+        "wifi-messages/wifi-messages",
+        "wifi-info/wifi-info",
+        "wifi-tf/wifi-tf",
+        "wifi-share/wifi-share"
       ]
     },
     {

@@ -90,6 +90,10 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 2026-10-28：投屏 `type` 改取后台产品屏幕方向 `screenType`（`api.resolveScreenType`），蓝牙 / WiFi 同口径，产品没配才按分辨率回退。见 `docs/changes/2026-10-28-投屏type改取产品屏幕方向.md`。
 
+## WiFi 版 TF 卡本地模式与详情改版（2026-10-29，`main-wifi`）
+
+`status=LOCAL_TF` 映射为 `local`「本地模式」（`utils/wifi-status.js`；不认识的状态值按 unknown 降级，缺 status 仍按 online 回退）。本地模式下投屏 / 轮播设置 / TF卡 / 轮播保存只提示「当前设备状态：本地模式，请恢复设备网络再试」。投屏严格口径 `projectBlockedTip`（我的上传投屏、预览页开始投屏：只放行在线，离线 / 本地模式 / 查不到提示「设备不在线」）；AI 生图与官方图库的选择设备列表经 `filterPickable` 过滤离线 / 本地模式 / 未知的 WiFi 版，AI 生图选 WiFi 版不连蓝牙。WiFi 详情：设备卡（状态 + 电量同栏）→ 投屏 / 轮播设置 → 设备信息（`wifi-info`）、休眠设置、消息中心、TF卡（`wifi-tf`，`utils/wifi-tf.js`：play-tf + 按 msgid 等 `command.result`，开关只看状态不存本地）、分享设备（仅所有者，`wifi-share`，老服务 `getShareUserProductList`；邀请 / 移除接口未提供）、解除绑定（只 `delUserProduct`）→ 删除设备（仅所有者：`clearUserProductImg` → IoT `photo/delete all=true` → `delUserProduct`）。所有者判定见 `utils/wifi-share.js`。见 `docs/changes/2026-10-29-WiFi版TF卡本地模式与详情页改版.md`。
+
 ## 联调日志浮窗（2026-10-27，`main-wifi`）
 
 开发版 / 体验版每个页面左下角有「日志 N」浮窗（`components/debug-log`，app.json 全局注册，每个页面 wxml 末尾一个 `<debug-log>`；新增页面记得加），点开可复制 / 清空。数据来自 `utils/debug-log.js`：`app.js` 最先 `install()` 包装 console，另有老服务 `[HTTP]`、IoT `[IoT]`、`[WS]` 摘要；最近 500 行只在内存，token / 密码入库前打码。正式版整套不生效。

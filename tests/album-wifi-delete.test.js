@@ -6,7 +6,9 @@
 //      deviceAction=PLAY_NEXT「已切换到下一张」；
 //      deviceNotified=false 提示设备离线；部分记录失败报张数；
 //      云端删除失败单独说；
-//   ③ 再次投屏：确认在线后带 isWifi 进预览页，不走蓝牙连接；休眠 / 离线被 ensureOnline 拦下；
+//   ③ 再次投屏：确认在线后带 isWifi 进预览页，不走蓝牙连接；离线 / 本地模式 / 状态未知被拦下
+//      （2026-10-29 起改走 wifiStatus.projectBlockedTip，提示「设备不在线」；原 ensureOnline 对「查不到」放行，
+//      产品要求「我的上传」切到这类设备点投屏要提示不在线，所以换了判据，拦截断言不变）；
 //   ④ 蓝牙版照片仍走原链路（ensureConnectedDevice）。
 const assert = require('assert')
 
@@ -49,7 +51,7 @@ stubModule('../utils/iot-api', {
   }
 })
 stubModule('../utils/wifi-status', {
-  ensureOnline: device => { calls.online.push(device.id); return Promise.resolve(onlineReply) }
+  projectBlockedTip: device => { calls.online.push(device.id); return Promise.resolve(onlineReply ? '' : '设备不在线') }
 })
 stubModule('../utils/device-ble', { deleteImage: () => { calls.ble++; return Promise.resolve() } })
 stubModule('../utils/device-info', { read: () => { calls.ble++; return Promise.resolve({}) } })
@@ -178,7 +180,8 @@ const reset = () => {
       reset()
       onlineReply = false
       await makePage(wifiRecords(), ['a']).retryProjection()
-      assert.deepEqual(navs, [], '休眠 / 离线被拦下（提示由 ensureOnline 弹）')
+      assert.deepEqual(navs, [], '离线 / 本地模式 / 状态未知被拦下')
+      assert.deepEqual(toasts, ['设备不在线'], '提示设备不在线')
       log('PASS WiFi 再次投屏：确认在线、不连蓝牙')
     }
     {

@@ -7,6 +7,7 @@ const TYPE_TEXT = {
   LOW_BATTERY: '设备电量低',
   WIFI_WEAK: '设备 WiFi 信号弱',
   TF_FULL: 'TF 卡容量将满',
+  TF_LOCAL_MODE: '设备已进入本地模式', // 2026-10-29：切到 TF 卡本地播放，payload 为空；此时不再发 DEVICE_OFFLINE
   PLAY_SUCCESS: '投屏成功',
   PLAY_DOWNLOAD_FAILED: '投屏失败：设备下载图片失败',
   PLAY_STORAGE_ERROR: '投屏失败：设备存储异常',

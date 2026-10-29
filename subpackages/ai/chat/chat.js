@@ -30,6 +30,8 @@ const toast = require('../../../utils/toast')
 const downloadError = require('../../../utils/download-error')
 const activeDevice = require('../../../utils/active-device')
 const lowBattery = require('../../../utils/low-battery')
+const broadcastMatch = require('../../../utils/broadcast-match')
+const wifiStatus = require('../../../utils/wifi-status')
 const language = require('../../../utils/language')
 const aiServiceConsent = require('../../../utils/ai-service-consent')
 const aiLastSession = require('../../../utils/ai-last-session')
@@ -2724,19 +2726,28 @@ Page(fold.adapt({
       }
     })
     try {
-      const devices = await api.getDevices()
-      if (!devices.length) {
+      const bound = await api.getDevices()
+      if (!bound.length) {
         this.setData({ 'devicePicker.show': false })
         toast.show({ title: '暂无已绑定电子纸设备，请先绑定电子纸设备', icon: 'none' })
         return
       }
+      // 2026-10-29：离线 / 本地模式 / 状态未知的 WiFi 版不进列表（蓝牙版不受影响）
+      const devices = await wifiStatus.filterPickable(bound, item => broadcastMatch.isWifiDevice(item))
+      if (!devices.length) {
+        this.setData({ 'devicePicker.show': false })
+        toast.show({ title: '暂无可投屏的电子纸设备', icon: 'none' })
+        return
+      }
+      // isWifi：WiFi 版行挂「WiFi版」角标，选中后不连蓝牙（同官方图库）
       const pickerDevices = devices.map((item, index) =>
         Object.assign({}, item, {
           pickerId: String(
             item.id != null
               ? item.id
               : (item.deviceId || item.deviceNo || item.name || index)
-          )
+          ),
+          isWifi: broadcastMatch.isWifiDevice(item)
         })
       )
       this.setData({
@@ -2766,6 +2777,15 @@ Page(fold.adapt({
   },
 
   async startProjection(device, url) {
+    // WiFi 版（2026-10-29）：不连蓝牙，确认云端在线（明确不可投时提示并停下）后带 isWifi 进预览，
+    // 预览页导出后去 WiFi 投屏结果页；同官方图库 connectForProjection
+    if (broadcastMatch.isWifiDevice(device)) {
+      if (!(await wifiStatus.ensureOnline(device))) {
+        return
+      }
+      this.openProjectionPreview(Object.assign({}, device, { isWifi: true }), url)
+      return
+    }
     // 「连接并投屏」要**真的先连上**再进预览（2026-09-21，与官方图库同一处报障）：弹层里的设备来自
     // 后端列表，记录里没有本机 BLE 句柄，原来原样塞进 pendingProjection、指望预览页后台预热去连，
     // 预热没连完或静默失败时，预览页一点「开始投屏」就报「未连接」。
@@ -2780,7 +2800,11 @@ Page(fold.adapt({
         return
       }
     }
-    const target = activeDevice.applyConnectedIdentity(device, deviceId)
+    this.openProjectionPreview(activeDevice.applyConnectedIdentity(device, deviceId), url)
+  },
+
+  // 下载 AI 生成图并进投屏预览页（蓝牙版带本机句柄、WiFi 版带 isWifi）
+  async openProjectionPreview(target, url) {
     wx.showLoading({ title: '准备投屏', mask: true })
     let tempFilePath
     try {

@@ -160,10 +160,17 @@ Page(fold.adapt({
       devicePicker: { show: true, loading: true, devices: [] }
     })
     try {
-      const devices = await api.getDevices()
-      if (!devices.length) {
+      const bound = await api.getDevices()
+      if (!bound.length) {
         this.setData({ 'devicePicker.show': false })
         toast.show('暂无已绑定电子纸设备，请先绑定电子纸设备')
+        return
+      }
+      // 2026-10-29：离线 / 本地模式 / 状态未知的 WiFi 版不进列表（蓝牙版不受影响）
+      const devices = await wifiStatus.filterPickable(bound, item => broadcastMatch.isWifiDevice(item))
+      if (!devices.length) {
+        this.setData({ 'devicePicker.show': false })
+        toast.show('暂无可投屏的电子纸设备')
         return
       }
       // pickerId 兜底链与 AI 对话页一致：后端记录主键缺失时才退到 deviceId/名称，

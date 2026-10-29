@@ -1,0 +1,49 @@
+<!-- WiFi 版分享列表（说明见 wifi-share.js 文件头） -->
+<view class="mock-root wifi-share-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
+  </view>
+
+  <page-nav title="分享设备"></page-nav>
+
+  <view wx:if="{{loading}}" class="page-loading">
+    <view class="page-loading__spinner"></view>
+    <view class="page-loading__text">加载中…</view>
+  </view>
+
+  <view wx:elif="{{loadError}}" class="mock-content share-content">
+    <view class="share-error glass-panel">
+      <view class="share-error__title">加载失败</view>
+      <view class="share-error__desc">网络异常或服务出错，请稍后重试。</view>
+      <view class="share-error__btn" hover-class="none" bindtap="retryLoad">重新加载</view>
+    </view>
+  </view>
+
+  <view wx:else class="mock-content share-content">
+    <view wx:if="{{owner}}" class="share-owner">
+      <image class="share-avatar" src="{{owner.avatar || '/assets/images/mine-header.jpg'}}" mode="aspectFill"></image>
+      <view class="share-copy">
+        <text class="share-name">{{owner.name}}</text>
+      </view>
+      <text class="share-role">所有者</text>
+    </view>
+
+    <view class="share-list glass-panel">
+      <view class="share-list__title">已分享</view>
+      <view wx:if="{{!members.length}}" class="share-empty">暂未分享给其他人</view>
+      <view wx:for="{{members}}" wx:key="id" class="share-member">
+        <image class="share-avatar" src="{{item.avatar || '/assets/images/mine-header.jpg'}}" mode="aspectFill"></image>
+        <view class="share-copy">
+          <text class="share-name">{{item.name}}</text>
+          <text class="share-time">加入时间 {{item.joinedAt || '--'}}</text>
+        </view>
+        <view class="share-remove" hover-class="none" data-id="{{item.id}}" bindtap="removeMember">移除</view>
+      </view>
+    </view>
+
+    <view class="share-action" hover-class="none" bindtap="shareDevice">分享设备</view>
+  </view>
+
+  <global-toast id="globalToast"></global-toast>
+  <debug-log></debug-log>
+</view>

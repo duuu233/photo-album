@@ -1,0 +1,134 @@
+.share-content {
+  padding-top: 32rpx;
+  padding-bottom: calc(48rpx + var(--safe-bottom));
+}
+
+/* 所有者固定第一栏：暖橙底，与下面白色的接收者列表区分 */
+.share-owner {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  padding: 32rpx 36rpx;
+  background: linear-gradient(135deg, rgba(255, 145, 64, 0.18), rgba(255, 106, 32, 0.1));
+  border: 1rpx solid rgba(255, 106, 32, 0.28);
+  border-radius: 32rpx;
+}
+
+.share-avatar {
+  flex: 0 0 88rpx;
+  width: 88rpx;
+  height: 88rpx;
+  background: #eef1f5;
+  border-radius: 50%;
+}
+
+.share-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.share-name {
+  overflow: hidden;
+  color: #2a2d32;
+  font-size: 30rpx;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-time {
+  margin-top: 8rpx;
+  color: #8b9098;
+  font-size: 22rpx;
+}
+
+.share-role {
+  flex: 0 0 auto;
+  padding: 6rpx 18rpx;
+  color: #ffffff;
+  background: linear-gradient(180deg, #ff9140 0%, #ff6a20 100%);
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.share-list {
+  margin-top: 24rpx;
+  padding: 28rpx 36rpx 8rpx;
+}
+
+.share-list__title {
+  color: #33373d;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.share-empty {
+  padding: 40rpx 0 36rpx;
+  color: #9ba2ad;
+  font-size: 26rpx;
+  text-align: center;
+}
+
+.share-member {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  min-height: 128rpx;
+}
+
+.share-member + .share-member {
+  border-top: 1rpx solid rgba(42, 43, 43, 0.06);
+}
+
+.share-remove {
+  flex: 0 0 auto;
+  padding: 10rpx 26rpx;
+  color: #ff3045;
+  border: 1rpx solid rgba(255, 48, 69, 0.4);
+  border-radius: 999rpx;
+  font-size: 24rpx;
+}
+
+.share-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 96rpx;
+  margin-top: 48rpx;
+  color: #ffffff;
+  background: linear-gradient(180deg, #ff9140 0%, #ff6a20 100%);
+  border-radius: 999rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.share-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 76rpx 36rpx;
+}
+
+.share-error__title {
+  color: #2a2d32;
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.share-error__desc {
+  margin-top: 16rpx;
+  color: #8b9098;
+  font-size: 24rpx;
+}
+
+.share-error__btn {
+  margin-top: 36rpx;
+  padding: 20rpx 64rpx;
+  color: #ffffff;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
+  border-radius: 999rpx;
+  font-size: 28rpx;
+}

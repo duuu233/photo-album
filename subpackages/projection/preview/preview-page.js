@@ -5,6 +5,7 @@ const deviceRotation = require('../../../utils/device-rotation')
 const fold = require('../../../utils/fold-adapt')
 const broadcastMatch = require('../../../utils/broadcast-match')
 const iotApi = require('../../../utils/iot-api')
+const wifiStatus = require('../../../utils/wifi-status')
 
 // 设备屏幕分辨率（width×height）：列表/详情接口都会返回，取景框据此锁定宽高比（如 500x500 → 1:1）。
 // 接口暂未返回该字段，这里先给默认值便于联调测试（如需 1:1 改成 { width: 500, height: 500 }）。
@@ -1553,6 +1554,15 @@ const createPreviewPage = (overrides = {}) => fold.adapt(Object.assign({
     //（带 loading、连不上如实提示原因），连上了照常往下走。
     // WiFi 版不需要蓝牙句柄，构图导出后去 WiFi 投屏结果页（2026-10-27）
     const isWifi = broadcastMatch.isWifiDevice(this.data.device)
+    // WiFi 版（2026-10-29）：点「开始投屏」再查一次状态，离线 / 本地模式 / 状态未知不允许（休眠 / 关机沿用各自提示）
+    if (isWifi) {
+      const blocked = await wifiStatus.projectBlockedTip(this.data.device)
+      if (blocked) {
+        this.setData({ projecting: false })
+        toast.warn({ title: blocked, icon: 'none' })
+        return
+      }
+    }
     if (!isWifi && !this.data.device.deviceId) {
       const connected = await this.ensureDeviceHandle()
       if (!connected) {

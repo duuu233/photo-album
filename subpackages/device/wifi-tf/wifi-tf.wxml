@@ -1,0 +1,38 @@
+<!-- WiFi 版 TF 卡设置（说明见 wifi-tf.js 文件头） -->
+<view class="mock-root wifi-tf-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
+  </view>
+
+  <page-nav title="TF卡设置"></page-nav>
+
+  <view wx:if="{{loading}}" class="page-loading">
+    <view class="page-loading__spinner"></view>
+    <view class="page-loading__text">加载中…</view>
+  </view>
+
+  <view wx:elif="{{loadError}}" class="mock-content tf-content">
+    <view class="tf-error glass-panel">
+      <view class="tf-error__title">加载失败</view>
+      <view class="tf-error__desc">网络异常或服务出错，请稍后重试。</view>
+      <view class="tf-error__btn" hover-class="none" bindtap="retryLoad">重新加载</view>
+    </view>
+  </view>
+
+  <view wx:else class="mock-content tf-content">
+    <view class="tf-card glass-panel">
+      <view class="tf-row">
+        <text class="tf-row__label">TF卡容量</text>
+        <text class="tf-row__value">{{tfText}}</text>
+      </view>
+      <view class="tf-row">
+        <text class="tf-row__label">TF卡播放</text>
+        <switch checked="{{tfOn}}" disabled="{{switching}}" color="#ff6a20" bindchange="toggleTf" />
+      </view>
+    </view>
+    <view class="tf-tip">开启后设备将进入本地模式，无法进行APP投屏和取消本地模式，如需恢复请将设备重新入网。</view>
+  </view>
+
+  <global-toast id="globalToast"></global-toast>
+  <debug-log></debug-log>
+</view>

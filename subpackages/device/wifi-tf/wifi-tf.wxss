@@ -1,0 +1,66 @@
+.tf-content {
+  padding-top: 32rpx;
+  padding-bottom: calc(48rpx + var(--safe-bottom));
+}
+
+.tf-card {
+  padding: 0 36rpx;
+}
+
+.tf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 100rpx;
+}
+
+.tf-row + .tf-row {
+  border-top: 1rpx solid rgba(42, 43, 43, 0.06);
+}
+
+.tf-row__label {
+  color: #33373d;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.tf-row__value {
+  color: #777e88;
+  font-size: 28rpx;
+}
+
+.tf-tip {
+  margin-top: 20rpx;
+  padding: 0 12rpx;
+  color: #8b9098;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+
+.tf-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 76rpx 36rpx;
+}
+
+.tf-error__title {
+  color: #2a2d32;
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.tf-error__desc {
+  margin-top: 16rpx;
+  color: #8b9098;
+  font-size: 24rpx;
+}
+
+.tf-error__btn {
+  margin-top: 36rpx;
+  padding: 20rpx 64rpx;
+  color: #ffffff;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
+  border-radius: 999rpx;
+  font-size: 28rpx;
+}

@@ -467,6 +467,11 @@ button {
   color: #2f80ed;
 }
 
+/* 本地模式（2026-10-29，TF 卡本地播放）：紫色 */
+.device-status.wifi-status.is-local {
+  color: #8e5bd9;
+}
+
 .mini-wifi {
   width: 26rpx;
   height: 26rpx;

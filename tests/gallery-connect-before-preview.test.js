@@ -72,11 +72,13 @@ stubModule('../utils/toast', {
 })
 stubModule('../utils/fold-adapt', { adapt: options => options })
 let wifiOnline = true
+let pickerHidden = [] // 2026-10-29：选择设备列表过滤掉离线 / 本地模式 / 状态未知的 WiFi 版（这里按 id 模拟）
 stubModule('../utils/wifi-status', {
   ensureOnline: async device => {
     trace.push(`wifiOnline:${device.id}`)
     return wifiOnline
-  }
+  },
+  filterPickable: async (devices, isWifi) => devices.filter(item => !(isWifi(item) && pickerHidden.indexOf(item.id) > -1))
 })
 
 let pageOptions = null
@@ -195,6 +197,23 @@ async function main() {
     const rows = page.data.devicePicker.devices
     assert.deepStrictEqual(rows.map(item => item.isWifi), [false, true], '弹层里 WiFi 行带 isWifi（挂角标）')
   }
+  reset()
+  pickerHidden = ['21']
+  {
+    const page = newPage()
+    await page.onProject()
+    const rows = page.data.devicePicker.devices
+    assert.deepStrictEqual(rows.map(item => item.id), ['12'], '不可投的 WiFi 版不进选择列表，蓝牙版保留')
+  }
+  reset()
+  backendList = [wifiDevice]
+  {
+    const page = newPage()
+    await page.onProject()
+    assert.strictEqual(page.data.devicePicker.show, false, '一台可投的都没有：不弹列表')
+    assert.deepStrictEqual(toasts, ['暂无可投屏的电子纸设备'])
+  }
+  pickerHidden = []
 
   console.log('gallery-connect-before-preview.test.js: all passed')
 }

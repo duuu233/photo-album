@@ -881,6 +881,19 @@ module.exports = {
     })
   },
 
+  // 设备分享的用户（2026-10-29，WiFi 版分享列表）：deviceId 为后端设备号（原样，不去冒号）。
+  // retData 为分页，这里只取 pageData：[{ avatar, userName, isToHave(1=所有者), userProductId }]，暂无加入时间字段。
+  getShareUsers(params = {}) {
+    return http.get('/Client/UserProduct/getShareUserProductList', {
+      deviceId: params.deviceId,
+      pageIndex: params.pageIndex || 1,
+      pageSize: params.pageSize || 50
+    }, {
+      mock: false,
+      showError: false
+    }).then(data => pageData(data))
+  },
+
   // 编辑设备信息（重命名）。data: { userProductId, productName }
   editUserProduct(data = {}) {
     return http.post('/Client/UserProduct/editUserProduct', data, {

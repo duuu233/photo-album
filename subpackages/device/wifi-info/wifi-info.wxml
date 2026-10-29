@@ -1,0 +1,36 @@
+<!-- WiFi 版设备信息（说明见 wifi-info.js 文件头） -->
+<view class="mock-root wifi-info-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
+  </view>
+
+  <page-nav title="设备信息"></page-nav>
+
+  <view wx:if="{{loading}}" class="page-loading">
+    <view class="page-loading__spinner"></view>
+    <view class="page-loading__text">加载中…</view>
+  </view>
+
+  <view wx:elif="{{loadError}}" class="mock-content info-content">
+    <view class="info-error glass-panel">
+      <view class="info-error__title">加载失败</view>
+      <view class="info-error__desc">网络异常或服务出错，请稍后重试。</view>
+      <view class="info-error__btn" hover-class="none" bindtap="retryLoad">重新加载</view>
+    </view>
+  </view>
+
+  <view wx:else class="mock-content info-content">
+    <view class="info-rows glass-panel">
+      <view wx:for="{{rows}}" wx:key="key" class="info-row">
+        <text class="info-row__label">{{item.label}}</text>
+        <view class="info-row__value">
+          <signal-bars wx:if="{{item.key === 'signal' && item.level}}" level="{{item.level}}" size="small"></signal-bars>
+          <text>{{item.value}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <global-toast id="globalToast"></global-toast>
+  <debug-log></debug-log>
+</view>

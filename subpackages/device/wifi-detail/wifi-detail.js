@@ -6,64 +6,44 @@ const system = require('../../../utils/system')
 const fold = require('../../../utils/fold-adapt')
 const media = require('../../../utils/media')
 const batteryUtil = require('../../../utils/battery')
-const signal = require('../../../utils/signal')
+const deviceIdentity = require('../../../utils/device-identity')
 const wifiStatus = require('../../../utils/wifi-status')
+const wifiTf = require('../../../utils/wifi-tf')
+const wifiShare = require('../../../utils/wifi-share')
 
-// WiFi 版设备详情（2026-10-27，对接进度 STEP 4 设备查询 + STEP 3 投屏入口）。
-// 蓝牙版详情（detail 页）全是蓝牙能力（连接、读 0x01、轮播、清空、OTA），WiFi 版一个都用不上，单独成页：
-//   · 设备记录：老服务 getDeviceDetail（名称、设备 ID、尺寸、设备图）；
-//   · 状态：IoT GET /api/device/info（在线、最后上线、固件版本、影子：电量 / WiFi 信号与名称 / TF / 国家码 / 最后心跳）；
-//     订阅 WS device.status，上下线时自动重查（只推信号不推详情，文档 1.6）；
-//   · 操作：「投屏」（弹拍照 / 相册 → 预览构图 → WiFi 投屏结果页）、「轮播设置」（V1.4 更新说明 1.5，取代原「刷新状态」，
-//     进 wifi-slideshow 页；状态随进页与 WS device.status 自动重查）。
-//   · 入口（V1.4 实现报告反馈二 / 三）：「休眠设置」进 wifi-sleep；「消息中心」进 wifi-messages，带未读角标
-//    （IoT GET /api/notification/unread-count，进页时查，收到本设备 WS notification.new 再查）。
-// 刷新屏幕、TF、休眠、OTA 等设备控制属于 STEP 5/6，未接；App 也没有删除 / 重新配网操作（设备入网流程 2.2）。
+const app = getApp()
+
+// WiFi 版设备详情（2026-10-27 建页；2026-10-29 按产品要求改版，布局与蓝牙版详情对齐）。
+// 蓝牙版详情（detail 页）全是蓝牙能力，WiFi 版单独成页：
+//   · 设备记录：老服务 getDeviceDetail（名称、设备 ID、尺寸、设备图、isToHave / shareUserId）；
+//   · 状态：IoT GET /api/device/info，订阅 WS device.status，上下线时自动重查（只推信号不推详情）；
+//     电量放在在线状态那一栏（与蓝牙版一致，仅在线时显示）。
+//   · 顶部卡片下方：「投屏」「轮播设置」（与蓝牙版位置一致）；
+//   · 功能栏依次：设备信息（二级页 wifi-info：WiFi信号 / WiFi名称 / 最后上线 / 最后心跳 / 固件版本）、休眠设置、
+//     消息中心（未读角标）、TF卡（未插卡不可点；有卡显示已用 / 总量，进 wifi-tf）、分享设备（仅所有者，进 wifi-share）、
+//     解除绑定（只删设备）；页底「删除设备」（仅所有者，样式同蓝牙版：先删云端图片再删设备）。
+//   · 本地模式（status=LOCAL_TF，2026-10-29）：投屏 / 轮播设置 / TF卡 可以点，但只提示「当前设备状态：本地模式，
+//     请恢复设备网络再试」；设备信息、休眠设置、消息中心、分享、解绑、删除照常。WiFi 版暂无 OTA 入口。
 function plainDeviceNo(value) {
   return String(value || '').replace(/[:\-\s]/g, '').toUpperCase()
-}
-
-function countryText(code) {
-  const value = String(code == null ? '' : code).trim()
-  if (!value) {
-    return ''
-  }
-  return value === '1' || value === '01' ? '世界通用模式' : value
-}
-
-function tfText(shadow) {
-  if (shadow.tfStatus === 'absent') {
-    return '未插卡'
-  }
-  if (shadow.tfStatus !== 'present') {
-    return ''
-  }
-  const total = Number(shadow.tfTotal)
-  const used = Number(shadow.tfUsed)
-  return total > 0 ? `已用 ${Number.isFinite(used) ? used : 0}MB / 共 ${total}MB` : '已插卡'
 }
 
 // 设备信息 → 页面字段。info 为 null 表示查不到（403 / 503 / 网络）
 function statusFields(info) {
   if (!info) {
-    return { status: 'unknown', statusText: '状态未知', rows: [] }
+    return { status: 'unknown', statusText: '状态未知', batteryText: '', batteryIcon: '', tfState: 'unknown', tfText: '--' }
   }
-  const shadow = info.shadow || {}
-  const status = wifiStatus.deviceState(info) // online / sleeping / shutdown / offline（非在线时电量 / 信号不显示）
-  const online = status === 'online'
-  const battery = batteryUtil.normalizeBattery(shadow.battery)
-  const rssi = Number(shadow.wifiRssi)
-  const rows = [
-    { key: 'battery', label: '电量', value: online && battery !== null ? `${battery}%` : '', icon: online && battery !== null ? batteryUtil.getBatteryIcon(battery) : '' },
-    { key: 'signal', label: 'WiFi信号', value: online && rssi < 0 ? `${rssi}dBm` : '', level: online ? signal.rssiToLevel(rssi) : 0 },
-    { key: 'wifiName', label: 'WiFi名称', value: shadow.wifiName || '' },
-    { key: 'version', label: '固件版本', value: info.firmwareVersion || shadow.espVersion || shadow.version || '' },
-    { key: 'tf', label: 'TF卡', value: tfText(shadow) },
-    { key: 'country', label: '国家码', value: countryText(shadow.countryCode) },
-    { key: 'lastOnline', label: '最后上线', value: info.lastOnlineAt || '' },
-    { key: 'lastHeart', label: '最后心跳', value: shadow.lastHeartAt || '' }
-  ].map(row => Object.assign(row, { value: row.value || '--' }))
-  return { status, statusText: wifiStatus.STATUS_TEXT[status], rows }
+  const status = wifiStatus.deviceState(info) // 非在线时电量不显示（本地模式影子冻结）
+  const battery = status === 'online' ? batteryUtil.normalizeBattery((info.shadow || {}).battery) : null
+  const tf = wifiTf.tfState(info.shadow)
+  return {
+    status,
+    statusText: wifiStatus.STATUS_TEXT[status] || wifiStatus.STATUS_TEXT.unknown,
+    batteryText: battery === null ? '' : `${battery}%`,
+    batteryIcon: battery === null ? '' : batteryUtil.getBatteryIcon(battery),
+    tfState: tf.state,
+    tfText: tf.text
+  }
 }
 
 Page(fold.adapt({
@@ -74,13 +54,23 @@ Page(fold.adapt({
     loading: true,
     loadError: false,
     device: null,
-    status: 'loading', // loading / online / sleeping / shutdown / offline / unknown
+    isOwner: false,
+    status: 'loading', // loading / online / sleeping / shutdown / local / offline / unknown
     statusText: '查询中',
-    rows: [],
+    batteryText: '',
+    batteryIcon: '',
+    tfState: 'unknown', // absent / present / unknown
+    tfText: '--',
     unreadCount: 0,
     unreadText: '',
     showMediaSheet: false,
-    mediaSheetClosing: false
+    mediaSheetClosing: false,
+    showUnbindConfirm: false,
+    unbindClosing: false,
+    showDeleteConfirm: false,
+    deleteClosing: false,
+    showDeleteConfirm2: false,
+    deleteClosing2: false
   },
 
   noop() {},
@@ -102,7 +92,9 @@ Page(fold.adapt({
   },
 
   onShow() {
-    this.load()
+    if (!this._removed) {
+      this.load()
+    }
   },
 
   onUnload() {
@@ -139,7 +131,7 @@ Page(fold.adapt({
     if (this.unloaded) {
       return
     }
-    this.setData({ device, loading: false, loadError: false })
+    this.setData({ device, isOwner: wifiShare.isOwner(device), loading: false, loadError: false })
     const deviceNo = this.deviceNo()
     if (deviceNo && this._subscribed !== deviceNo && iotWs.getSubscriptions().indexOf(deviceNo) === -1) {
       iotWs.subscribe(deviceNo)
@@ -165,18 +157,6 @@ Page(fold.adapt({
     }
     if (!this.unloaded) {
       this.setData({ unreadCount: count, unreadText: count > 99 ? '99+' : String(count) })
-    }
-  },
-
-  openSleep() {
-    if (this.data.device) {
-      wx.navigateTo({ url: `/subpackages/device/wifi-sleep/wifi-sleep?id=${this.data.id}` })
-    }
-  },
-
-  openMessages() {
-    if (this.data.device) {
-      wx.navigateTo({ url: `/subpackages/device/wifi-messages/wifi-messages?deviceNo=${this.deviceNo()}` })
     }
   },
 
@@ -206,15 +186,56 @@ Page(fold.adapt({
     this.setData(statusFields(info))
   },
 
-  // 「轮播设置」：查询离线也能看，不拦状态；保存时由接口裁决
+  // 本地模式下的远程操作（投屏、轮播设置、TF卡）：按钮可点，只提示；拦下返回 true
+  blockedByLocal() {
+    if (this.data.status !== 'local') {
+      return false
+    }
+    toast.show({ title: wifiStatus.LOCAL_TIP, icon: 'none' })
+    return true
+  },
+
+  openInfo() {
+    if (this.data.device) {
+      wx.navigateTo({ url: `/subpackages/device/wifi-info/wifi-info?id=${this.data.id}` })
+    }
+  },
+
+  openSleep() {
+    if (this.data.device) {
+      wx.navigateTo({ url: `/subpackages/device/wifi-sleep/wifi-sleep?id=${this.data.id}` })
+    }
+  },
+
+  openMessages() {
+    if (this.data.device) {
+      wx.navigateTo({ url: `/subpackages/device/wifi-messages/wifi-messages?deviceNo=${this.deviceNo()}` })
+    }
+  },
+
+  // 「TF卡」：未插卡 / 没上报过不可点；有卡进 TF 卡设置
+  openTf() {
+    if (!this.data.device || this.data.tfState !== 'present' || this.blockedByLocal()) {
+      return
+    }
+    wx.navigateTo({ url: `/subpackages/device/wifi-tf/wifi-tf?id=${this.data.id}` })
+  },
+
+  openShare() {
+    if (this.data.device && this.data.isOwner) {
+      wx.navigateTo({ url: `/subpackages/device/wifi-share/wifi-share?id=${this.data.id}` })
+    }
+  },
+
+  // 「轮播设置」：离线也能查看，不拦；本地模式只提示。保存时轮播页会再判断设备状态
   openSlideshow() {
-    if (!this.data.device) {
+    if (!this.data.device || this.blockedByLocal()) {
       return
     }
     wx.navigateTo({ url: `/subpackages/device/wifi-slideshow/wifi-slideshow?id=${this.data.id}` })
   },
 
-  // 「投屏」：离线 / 休眠先拦；在线 / 状态未知照常弹拍照 / 相册（未知时让接口裁决，离线会返回 4041）
+  // 「投屏」：本地模式 / 离线 / 休眠 / 关机先拦；在线 / 状态未知照常弹拍照 / 相册（预览页「开始投屏」再严格判断）
   startProjection() {
     if (!this.data.device) {
       return
@@ -263,5 +284,121 @@ Page(fold.adapt({
     this.setData({ showMediaSheet: false, mediaSheetClosing: false })
     wx.setStorageSync('pendingProjection', { device: Object.assign({}, this.data.device, { isWifi: true }), images })
     wx.navigateTo({ url: '/subpackages/projection/preview/preview' })
+  },
+
+  // ── 解除绑定 / 删除设备（与蓝牙版同一做法；WiFi 版设备端不存图，图片只处理云端）──────────
+
+  // 设备记录删掉之后的收尾：清身份登记与当前选中、退订，返回上一页
+  afterRemoved() {
+    this._removed = true
+    deviceIdentity.forget(this.data.id)
+    if (app.globalData.selectedDevice && String(app.globalData.selectedDevice.id) === String(this.data.id)) {
+      app.setSelectedDevice(null)
+    }
+    if (this._subscribed) {
+      iotWs.unsubscribe(this._subscribed)
+      this._subscribed = ''
+    }
+    setTimeout(() => wx.navigateBack(), 500)
+  },
+
+  showUnbindConfirm() {
+    this.setData({ showUnbindConfirm: true, unbindClosing: false })
+  },
+
+  hideUnbindConfirm() {
+    if (this.data.unbindClosing) {
+      return
+    }
+    this.setData({ unbindClosing: true })
+    setTimeout(() => {
+      this.setData({ showUnbindConfirm: false, unbindClosing: false })
+    }, 220)
+  },
+
+  // 解除绑定：只删设备记录，不动照片
+  async confirmUnbind() {
+    if (!this.data.device || this._unbinding) {
+      return
+    }
+    this._unbinding = true
+    try {
+      await api.deleteDevice(this.data.id)
+    } catch (error) {
+      this._unbinding = false
+      return // 失败已由接口层统一提示，确认弹窗保留供重试
+    }
+    this.hideUnbindConfirm()
+    this.afterRemoved()
+  },
+
+  // 删除设备（仅所有者）：两级确认 → 清「我的上传」记录 → 删该设备全部云端图片 → 删设备记录
+  showDeleteConfirm() {
+    if (this.data.isOwner) {
+      this.setData({ showDeleteConfirm: true, deleteClosing: false })
+    }
+  },
+
+  hideDeleteConfirm() {
+    if (this.data.deleteClosing) {
+      return
+    }
+    this.setData({ deleteClosing: true })
+    setTimeout(() => {
+      this.setData({ showDeleteConfirm: false, deleteClosing: false })
+    }, 220)
+  },
+
+  openDeleteStep2() {
+    this.setData({ showDeleteConfirm: false, deleteClosing: false, showDeleteConfirm2: true, deleteClosing2: false })
+  },
+
+  hideDeleteConfirm2() {
+    if (this.data.deleteClosing2) {
+      return
+    }
+    this.setData({ deleteClosing2: true })
+    setTimeout(() => {
+      this.setData({ showDeleteConfirm2: false, deleteClosing2: false })
+    }, 220)
+  },
+
+  async confirmDeleteDevice() {
+    if (!this.data.device || this._deleting) {
+      return
+    }
+    this._deleting = true
+    const deviceNo = this.deviceNo()
+    // ① 老服务清这台设备的相册记录（含级联删投屏记录，同蓝牙版一键清空的后端那一步）；失败已由接口层提示
+    try {
+      await api.clearUserProductImg(this.data.id)
+    } catch (error) {
+      this._deleting = false
+      return
+    }
+    // ② IoT 删该设备全部云端 bin（V1.4 更新说明九 all=true；设备离线照删，有 TF 卡时服务端顺带清 TF 里的云端图）
+    wx.showLoading({ title: '删除中', mask: true })
+    try {
+      const res = await iotApi.deletePhotos({ deviceNo, all: true }, { showError: false })
+      console.log('[WiFi删除设备] 云端图片删除返回', JSON.stringify(res))
+    } catch (error) {
+      wx.hideLoading()
+      this._deleting = false
+      console.warn('[WiFi删除设备] 云端图片删除失败', error && error.code, error && error.message)
+      toast.warn({ title: `云端照片删除失败：${String((error && error.message) || '请稍后重试').replace(/^接口\(IoT\)-/, '')}`, icon: 'none' })
+      return
+    }
+    // ③ 删设备记录
+    try {
+      await api.deleteDevice(this.data.id)
+    } catch (error) {
+      this._deleting = false
+      return
+    } finally {
+      wx.hideLoading()
+    }
+    this.setData({ showDeleteConfirm2: false })
+    toast.show({ title: '电子纸设备已删除', icon: 'none' })
+    this.afterRemoved()
   }
 }))

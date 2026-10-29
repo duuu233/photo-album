@@ -1003,11 +1003,14 @@ Page(fold.adapt({
       return
     }
 
-    // WiFi 版（2026-10-27）：不连蓝牙，确认在线（休眠 / 关机 / 离线先拦）后带 isWifi 进预览页，导出后去 WiFi 投屏结果页
+    // WiFi 版（2026-10-27）：不连蓝牙，确认在线后带 isWifi 进预览页，导出后去 WiFi 投屏结果页。
+    // 2026-10-29：离线 / 本地模式 / 状态未知一律提示「设备不在线」（休眠 / 关机沿用各自提示）；删除照片不受影响。
     const wifiOwner = this.ownerIfWifi(ids)
     let device
     if (wifiOwner) {
-      if (!(await wifiStatus.ensureOnline(wifiOwner))) {
+      const blocked = await wifiStatus.projectBlockedTip(wifiOwner)
+      if (blocked) {
+        toast.show({ title: blocked, icon: 'none' })
         return
       }
       device = Object.assign({}, wifiOwner, { isWifi: true })

@@ -267,6 +267,16 @@ Page(fold.adapt({
     }
     console.log('[WiFi轮播] 保存', JSON.stringify(built.payload))
     this.setData({ saving: true })
+    // 保存前判断设备状态（2026-10-29）：本地模式 / 离线 / 休眠 / 关机直接提示，不发请求；查不到交给接口裁决
+    const blocked = await wifiStatus.queryBlockedTip(this.data.device)
+    if (this.unloaded) {
+      return
+    }
+    if (blocked) {
+      this.setData({ saving: false })
+      toast.show({ title: blocked, icon: 'none' })
+      return
+    }
     try {
       await iotApi.setStrategy(built.payload, { showError: false })
     } catch (error) {

@@ -1,5 +1,6 @@
 // WiFi 版休眠状态（2026-10-27，docs/wifi/休眠状态对接说明.md）utils/wifi-status：
-//   ① status=ONLINE / SLEEPING / OFFLINE 映射为 online / sleeping / offline，缺 status 按 online 回退；
+//   ① status=ONLINE / SLEEPING / OFFLINE 映射为 online / sleeping / offline，缺 status 按 online 回退
+//      （不认识的值 2026-10-29 起按状态未知降级）；
 //   ② 卡片字段：休眠中显示「休眠中」，电量 / 信号同离线不显示；
 //   ③ 投屏入口 ensureOnline：休眠中提示「设备休眠中，唤醒后可操作」并拦下，离线仍是离线提示，查不到放行；
 //   ④ 各页模板 / 样式：休眠中有单独的蓝色，详情页与我的设备卡的投屏入口按 blockedTip 拦。
@@ -36,7 +37,9 @@ async function main() {
     assert.equal(s({ online: false, status: 'sleeping' }), 'sleeping', '大小写容错')
     assert.equal(s({ online: true }), 'online', '缺 status 按 online 回退')
     assert.equal(s({ online: false }), 'offline')
-    assert.equal(s({ online: true, status: 'WHATEVER' }), 'online', '不认识的值按 online 回退')
+    // 2026-10-29 起改口径（docs/wifi/前端对接20261029.md 一.4：未识别的新枚举值按「未知状态」降级）：
+    // 原先按 online 回退，现在 status 有值但不认识 → unknown；缺 status 仍按 online 回退（上面两条）
+    assert.equal(s({ online: true, status: 'WHATEVER' }), 'unknown', '不认识的值按状态未知降级')
     assert.equal(s(null), 'offline')
     checked('status 映射与按 online 回退')
   }

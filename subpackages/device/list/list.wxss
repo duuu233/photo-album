@@ -301,6 +301,11 @@
   color: #2f80ed;
 }
 
+/* 本地模式（2026-10-29，TF 卡本地播放）：紫色 */
+.wifi-state.is-local {
+  color: #8e5bd9;
+}
+
 .meta-wifi-icon {
   flex: 0 0 auto;
   width: 26rpx;
@@ -310,6 +315,7 @@
 .is-offline .meta-wifi-icon,
 .is-sleeping .meta-wifi-icon,
 .is-shutdown .meta-wifi-icon,
+.is-local .meta-wifi-icon,
 .is-unknown .meta-wifi-icon {
   opacity: 0.45;
   filter: grayscale(1);
