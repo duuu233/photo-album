@@ -148,6 +148,11 @@
   font-weight: 700;
 }
 
+/* 失败态上下排：列方向下 flex: 1 的 flex-basis 会顶掉 height，按钮高度不对；这里不伸缩，按 112rpx 走 */
+.provision-actions--stack .provision-primary {
+  flex: none;
+}
+
 /* 取消：无按钮底框，只留橙色文字（点击区仍有 88rpx 高） */
 .provision-cancel {
   display: flex;
