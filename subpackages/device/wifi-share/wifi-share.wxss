@@ -92,6 +92,30 @@
   font-size: 24rpx;
 }
 
+/* button 默认样式清掉（open-type="share" 只能挂在 button 上） */
+button.share-action {
+  width: auto;
+  padding: 0;
+  line-height: 96rpx;
+  border: none;
+}
+
+button.share-action::after {
+  border: none;
+}
+
+.share-action.is-disabled {
+  opacity: 0.5;
+}
+
+.share-tip {
+  margin-top: 20rpx;
+  color: #8b9098;
+  font-size: 24rpx;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .share-action {
   display: flex;
   align-items: center;

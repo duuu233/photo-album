@@ -92,7 +92,11 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 ## WiFi 版 TF 卡本地模式与详情改版（2026-10-29，`main-wifi`）
 
-`status=LOCAL_TF` 映射为 `local`「本地模式」（`utils/wifi-status.js`；不认识的状态值按 unknown 降级，缺 status 仍按 online 回退）。本地模式下投屏 / 轮播设置 / TF卡 / 轮播保存只提示「当前设备状态：本地模式，请恢复设备网络再试」。投屏严格口径 `projectBlockedTip`（我的上传投屏、预览页开始投屏：只放行在线，离线 / 本地模式 / 查不到提示「设备不在线」）；AI 生图与官方图库的选择设备列表经 `filterPickable` 过滤离线 / 本地模式 / 未知的 WiFi 版，AI 生图选 WiFi 版不连蓝牙。WiFi 详情：设备卡（状态 + 电量同栏）→ 投屏 / 轮播设置 → 设备信息（`wifi-info`）、休眠设置、消息中心、TF卡（`wifi-tf`，`utils/wifi-tf.js`：play-tf + 按 msgid 等 `command.result`，开关只看状态不存本地）、分享设备（仅所有者，`wifi-share`，老服务 `getShareUserProductList`；邀请 / 移除接口未提供）、解除绑定（只 `delUserProduct`）→ 删除设备（仅所有者：`clearUserProductImg` → IoT `photo/delete all=true` → `delUserProduct`）。所有者判定见 `utils/wifi-share.js`。见 `docs/changes/2026-10-29-WiFi版TF卡本地模式与详情页改版.md`。
+`status=LOCAL_TF` 映射为 `local`「本地模式」（`utils/wifi-status.js`；不认识的状态值按 unknown 降级，缺 status 仍按 online 回退）。本地模式下投屏 / 轮播设置 / TF卡 / 轮播保存只提示「当前设备状态：本地模式，请恢复设备网络再试」。投屏严格口径 `projectBlockedTip`（我的上传投屏、预览页开始投屏：只放行在线，离线 / 本地模式 / 查不到提示「设备不在线」）；AI 生图与官方图库的选择设备列表经 `filterPickable` 过滤离线 / 本地模式 / 未知的 WiFi 版，AI 生图选 WiFi 版不连蓝牙。WiFi 详情：设备卡（状态 + 电量同栏）→ 投屏 / 轮播设置 → 设备信息（`wifi-info`）、休眠设置、消息中心、TF卡（`wifi-tf`，`utils/wifi-tf.js`：play-tf + 按 msgid 等 `command.result`，开关只看状态不存本地）、分享设备（仅所有者，`wifi-share`，老服务 `getShareUserProductList`；简化版分享见下）、解除绑定（只 `delUserProduct`）→ 删除设备（仅所有者：`clearUserProductImg` → IoT `photo/delete all=true` → `delUserProduct`）。所有者判定见 `utils/wifi-share.js`。见 `docs/changes/2026-10-29-WiFi版TF卡本地模式与详情页改版.md`。
+
+## WiFi 版设备分享·简化版（2026-10-29，`main-wifi`）
+
+服务端无邀请码，先用微信卡片：分享列表 `open-type="share"`，路径 `wifi-share-accept?d=设备号&p=产品ID&u=所有者userId&n=设备名&o=昵称`（`utils/wifi-share.js` 编解码）；接受页调 `api.acceptSharedDevice`（`addUserProduct`，`isToHave=0`、`shareUserId`），未登录先存 `pendingShareAccept` 再登录，登录页成功后 `reLaunch` 回来。自己绑定（蓝牙 / WiFi）一律 `isToHave=1, shareUserId=0`；`getUserProfile().userId` 是数字主键（`id` / `userNo` 仍是展示编号）。移除成员 `api.removeShareUser` = `delUserProduct(成员 userProductId)`。拿到卡片即可加入，靠服务端校验兜底。见 `docs/changes/2026-10-29-WiFi版设备分享简化版.md`。
 
 ## 联调日志浮窗（2026-10-27，`main-wifi`）
 

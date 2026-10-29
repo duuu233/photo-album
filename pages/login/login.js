@@ -1,7 +1,23 @@
 const toast = require('../../utils/toast')
 const api = require('../../utils/api')
 const fold = require('../../utils/fold-adapt')
+const wifiShare = require('../../utils/wifi-share')
 const app = getApp()
+
+// 取出并清掉「登录后回设备分享接受页」的记录；超过有效期或不是接受页路径就当没有
+function takePendingShareAccept() {
+  let pending = null
+  try {
+    pending = wx.getStorageSync(wifiShare.PENDING_KEY)
+    wx.removeStorageSync(wifiShare.PENDING_KEY)
+  } catch (error) {
+    return ''
+  }
+  if (!pending || !pending.path || Date.now() - Number(pending.at || 0) > wifiShare.PENDING_TTL_MS) {
+    return ''
+  }
+  return String(pending.path).indexOf(wifiShare.ACCEPT_PAGE + '?') === 0 ? String(pending.path) : ''
+}
 
 // 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
 // styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
@@ -95,6 +111,15 @@ Page(fold.adapt({
         app.globalData.prefetchedDevices = await api.getDevices()
       } catch (error) {
         // 预取失败不阻塞进入首页：首页会自行重新拉取
+      }
+      // 从设备分享卡片过来、点了「登录并接受」（2026-10-29）：登录后回接受页，不进首页
+      const shareBack = takePendingShareAccept()
+      if (shareBack) {
+        wx.reLaunch({
+          url: shareBack,
+          fail: () => wx.switchTab({ url: '/pages/home/home' })
+        })
+        return
       }
       wx.switchTab({
         url: '/pages/home/home',

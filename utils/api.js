@@ -100,6 +100,9 @@ function normalizeUserProfile(user = {}) {
   return {
     id: firstValue(user.userNo, user.userId, user.id),
     userNo: firstValue(user.userNo, user.userId, user.id),
+    // 老服务数字主键 userId（2026-10-29 getUserInfo 新增出参）：设备分享时作 addUserProduct 的 shareUserId；
+    // 与上面的 id / userNo（展示用编号）不是一回事，不要混用
+    userId: firstValue(user.userId, ''),
     nickName: firstValue(user.nickName, user.nickname, ''),
     avatar: firstValue(user.avatar, user.avatarUrl, ''),
     avatarUrl: firstValue(user.avatar, user.avatarUrl, ''),
@@ -848,9 +851,11 @@ module.exports = {
   },
 
   // —— 设备接口（UserProduct）——
-  // 添加/绑定用户设备。data: { productId(必传), productName, deviceId }
+  // 添加/绑定用户设备。data: { productId(必传), productName, deviceId, isToHave?, shareUserId? }
+  // isToHave / shareUserId（2026-10-29 新增）：自己配网 / 蓝牙绑定 = 所有者（1 / 0，默认）；
+  // 接受别人分享 = 非所有者（0 / 分享者 userId），见 acceptSharedDevice。
   addUserProduct(data = {}) {
-    const payload = Object.assign({}, data, {
+    const payload = Object.assign({ isToHave: 1, shareUserId: 0 }, data, {
       // 绑定入库只允许 0x01 返回的完整 6 字节 Device_ID；禁止广播短 ID / BLE 句柄兜底。
       deviceId: deviceIdUtil.requireComplete(
         data.deviceId,
@@ -892,6 +897,27 @@ module.exports = {
       mock: false,
       showError: false
     }).then(data => pageData(data))
+  },
+
+  // 接受分享的设备（2026-10-29，简化版分享：微信卡片带设备号 / 产品 / 分享者 userId，无邀请码）：
+  // 走 addUserProduct，isToHave=0、shareUserId=分享者 userId，接受后设备出现在自己的列表里。
+  acceptSharedDevice(options = {}) {
+    return module.exports.addUserProduct({
+      productId: options.productId,
+      productName: options.productName,
+      deviceId: options.deviceId,
+      isToHave: 0,
+      shareUserId: options.shareUserId
+    })
+  },
+
+  // 所有者移除分享成员：删成员自己的那条设备记录（分享列表返回的 userProductId），沿用 delUserProduct
+  removeShareUser(userProductId) {
+    return http.post('/Client/UserProduct/delUserProduct', { id: userProductId }, {
+      mock: false,
+      loading: true,
+      loadingText: '移除中'
+    })
   },
 
   // 编辑设备信息（重命名）。data: { userProductId, productName }
@@ -1255,7 +1281,8 @@ module.exports = {
     const productName = String(options.broadcastName || options.productName || '智能相框').trim()
     const saved = await http.post(
       '/Client/UserProduct/addUserProduct',
-      { productId: options.productId, productName, deviceId: productDeviceId },
+      // 自己配网绑定 = 所有者（2026-10-29 新增参数）
+      { productId: options.productId, productName, deviceId: productDeviceId, isToHave: 1, shareUserId: 0 },
       { mock: false, showError: false }
     )
     const savedName = String((saved && saved.productName) || '').trim()

@@ -41,7 +41,10 @@
       </view>
     </view>
 
-    <view class="share-action" hover-class="none" bindtap="shareDevice">分享设备</view>
+    <!-- 微信卡片分享（简化版，无邀请码）：对方点卡片进接受页 -->
+    <button wx:if="{{canShare}}" class="share-action" open-type="share" hover-class="none">分享设备</button>
+    <view wx:else class="share-action is-disabled" hover-class="none" bindtap="shareUnavailable">分享设备</view>
+    <view class="share-tip">通过微信发送给对方，对方在小程序中确认后即可共用这台设备</view>
   </view>
 
   <global-toast id="globalToast"></global-toast>

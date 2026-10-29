@@ -1,0 +1,27 @@
+<!-- 接受设备分享（说明见 wifi-share-accept.js 文件头） -->
+<view class="mock-root wifi-share-accept-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
+  </view>
+
+  <page-nav title="设备分享"></page-nav>
+
+  <view class="mock-content accept-content">
+    <view wx:if="{{invalid}}" class="accept-card glass-panel">
+      <view class="accept-title">分享链接无效</view>
+      <view class="accept-desc">请让对方重新分享设备给你。</view>
+      <view class="accept-btn" hover-class="none" bindtap="goHome">返回首页</view>
+    </view>
+
+    <view wx:else class="accept-card glass-panel">
+      <image class="accept-thumb" src="/assets/images/home-device-thumb.png" mode="aspectFit"></image>
+      <view class="accept-title">{{info.deviceName}}</view>
+      <view class="accept-desc">{{info.ownerName || '好友'}} 邀请你共用这台电子纸设备，接受后可在设备列表中直接使用，无需配网。</view>
+      <view class="accept-btn {{accepting ? 'is-busy' : ''}}" hover-class="none" bindtap="accept">{{accepting ? '处理中…' : (loggedIn ? '接受' : '登录并接受')}}</view>
+      <view class="accept-sub" hover-class="none" bindtap="goHome">暂不接受</view>
+    </view>
+  </view>
+
+  <global-toast id="globalToast"></global-toast>
+  <debug-log></debug-log>
+</view>
