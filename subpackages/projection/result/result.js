@@ -1,6 +1,7 @@
 // 投屏结果页：进入时（status=progress）真实连接设备并走 BLE 图传，进度条与张数为真实进度；
 // 传完按真实结果切到「成功 / 失败」。正常投屏链路（2026-07-22 起设备帧改由抖动接口生成，
-// 2026-10-23 起该接口由第三方迁到我方后端 /Client/Basic/imageDitheringBinDownload；
+// 2026-10-23 起该接口由第三方迁到我方后端 /Client/Basic/imageDitheringBinDownload，2026-10-29 起地址为
+// https://api.yikaltd.com/api/Client/Basic/imageDitheringBinDownload（参数不变）；
 // 不再下载 setUserProductUpload 转码的 .bin，见 utils/dithering.js 与 docs/architecture/image-projection-pipeline.md）：
 //   连接 → 读真实设备信息(0x01) → 逐张（两路网络并行，见 acquireFrame）：
 //     ① 设备帧：预览处理后的设备分辨率图 → 统一压缩(compressForUpload) → 抖动接口 → 六色4bpp帧

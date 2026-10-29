@@ -308,7 +308,8 @@ function handleSessionExpired() {
 
 // 给必须自己发 wx.request 的调用方（抖动出帧要 arraybuffer 响应 + 手拼 multipart，见 dithering.js）：
 // 与 request() 同口径带上公共参数 device/terminal/language/userToken（header + /Client/ query）与鉴权头。
-function clientRequestParts(url, extraHeader) {
+// options.baseURL（2026-10-29）：换掉默认的 config.baseURL（抖动出帧改调 api.yikaltd.com/api），公共参数照常拼。
+function clientRequestParts(url, extraHeader, options) {
   const token = getToken()
   const jwtToken = getJwtToken()
   const header = appendClientHeaders(extraHeader, token)
@@ -319,8 +320,10 @@ function clientRequestParts(url, extraHeader) {
     header.Authentication = `Bearer ${jwtToken}`
   }
   const clientQuery = isClientApi(url) ? getClientQuery(token, header) : {}
+  const path = appendQuery(url, clientQuery)
+  const baseURL = options && options.baseURL
   return {
-    url: buildUrl(appendQuery(url, clientQuery)),
+    url: baseURL ? `${baseURL}${path}` : buildUrl(path),
     header
   }
 }

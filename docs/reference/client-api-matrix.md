@@ -188,7 +188,7 @@
 | 获取基础数据 | 配置/字典等（看实际情况） | `GET /Client/Basic/getBasicData` | ✅ | `getBasicData` | 按需取用 |
 | 文件上传 | 基础上传（无关业务） | `POST /Client/Basic/setFileUpload` | ✅ | `setFileUpload` | form-data，字段名 `fileParam`，如头像等通用文件 |
 | 文件上传 | BLE 图片转换上传 | `POST /Client/Basic/setUserProductUpload` | ✅ | `setUserProductUpload` | form-data 上传原图，带 `targetWidth/targetHeight`，后端转换帧并存 OSS，返回 `url/taskId/upirId`。**2026-07-22 起客户端只用它建投屏记录（传「进预览页前的原图」，拿 `taskId/upirId`）**，返回的 `url`(.bin) 不再下载——设备帧改由 seekink 抖动接口生成（`utils/dithering.js`）。（2026-07-23 定夺：后端不再生成/返回 .bin，`imgBle` 直传链路已在端上删除，再次投屏改走正常链路，见 07-23 操作日志。）旧实况注(2026-07-17，后端按上传图像素出帧)仍适用于它自己的转码 |
-| 文件上传 | 图片上传且抖动出帧（2026-10-23） | `POST /Client/Basic/imageDitheringBinDownload` | ✅ | `utils/dithering.js` `requestFrameBin` | form-data：`color` / `imageDitheringModes` / `type` / `file`，参数与原第三方 seekink 接口一致；公共参数（含用户自己的 userToken）同口径注入；响应体为二进制六色 4bpp 帧（.bin），业务报错回 JSON。替代第三方接口与 `getXTYUserToken` |
+| 文件上传 | 图片上传且抖动出帧（2026-10-23；2026-10-29 起域名 `https://api.yikaltd.com/api`，参数不变） | `POST /Client/Basic/imageDitheringBinDownload` | ✅ | `utils/dithering.js` `requestFrameBin` | form-data：`color` / `imageDitheringModes` / `type` / `file`，参数与原第三方 seekink 接口一致；公共参数（含用户自己的 userToken）同口径注入；响应体为二进制六色 4bpp 帧（.bin），业务报错回 JSON。替代第三方接口与 `getXTYUserToken` |
 | 投屏记录 | 编辑投屏记录 | `POST /Client/UserProduct/editUserProductImgRecord` | ✅ | `editUserProductImgRecord` | 设备图传成功后置 `deviceUploadState:1`，body 传 `upirId/taskId/deviceUploadState/imgIndex`。`imgIndex`(String，**0 合法**)=这张图写入设备的物理槽位，供图库删除/刷屏定位，见 `docs/decisions/image-slot-index.md` |
 
 ## 首页
