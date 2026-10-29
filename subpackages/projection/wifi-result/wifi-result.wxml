@@ -8,7 +8,8 @@
 
   <view class="mock-content wifi-result-content">
     <view class="wifi-result-card glass-panel">
-      <image wx:if="{{items[current].src}}" class="wifi-result-image" src="{{items[current].src}}" mode="aspectFit"></image>
+      <!-- 2026-10-29：中间不再放投屏图片，改为状态图标（与蓝牙版结果页同一组：进行中 / 成功 / 失败） -->
+      <image class="wifi-result-art" src="{{phase !== 'done' ? '/assets/images/upload-icon01.png' : (total > 0 && successCount === total ? '/assets/images/upload-icon03.png' : '/assets/images/upload-icon02.png')}}" mode="aspectFit"></image>
       <view class="wifi-result-device">{{deviceName}}<text wx:if="{{total > 1}}">　第 {{current + 1}} / {{total}} 张</text></view>
       <view class="wifi-result-stage {{phase === 'done' && successCount === total ? 'is-success' : ''}} {{phase === 'done' && successCount < total ? 'is-failed' : ''}}">{{stageText}}</view>
       <view wx:if="{{phase === 'done' && carouselTip}}" class="wifi-result-carousel">{{carouselTip}}</view>

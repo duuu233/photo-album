@@ -6,7 +6,7 @@
 //   ④ 消息类型 TF_LOCAL_MODE 有文案；
 //   ⑤ WiFi 详情：本地模式下投屏 / 轮播设置 / TF卡 只提示；未插卡不可点；解除绑定只删设备；
 //      删除设备按「清相册记录 → 删全部云端 bin → 删设备」顺序，任一步失败不删设备；
-//   ⑥ 模板：功能栏顺序、分享 / 删除仅所有者、电量在状态栏、新页面已注册。
+//   ⑥ 模板：功能栏顺序、分享 / 删除仅所有者、电量在状态栏、新页面已注册；投屏进度页中间改为状态图标。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -225,6 +225,9 @@ async function main() {
     assert.ok(/wifiStatus\.projectBlockedTip/.test(read('subpackages/projection/preview/preview-page.js')), '预览页开始投屏判断设备状态')
     assert.ok(/wifiStatus\.filterPickable/.test(read('subpackages/ai/chat/chat.js')), 'AI 生图选择设备过滤')
     assert.ok(/wifiStatus\.filterPickable/.test(read('subpackages/gallery/detail/detail.js')), '官方图库选择设备过滤')
+    const resultTpl = read('subpackages/projection/wifi-result/wifi-result.wxml')
+    assert.equal(resultTpl.indexOf('src="{{items[current].src}}"'), -1, '投屏进度页中间不再放投屏图片')
+    assert.ok(/class="wifi-result-art"[^>]*upload-icon01\.png/.test(resultTpl), '改为状态图标')
     checked('模板与入口')
   }
   console.log(`wifi-tf-local-mode: ${checks} groups passed`)

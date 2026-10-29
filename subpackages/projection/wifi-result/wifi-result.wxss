@@ -11,10 +11,12 @@
   padding: 40rpx 36rpx 36rpx;
 }
 
-.wifi-result-image {
-  width: 400rpx;
-  height: 520rpx;
-  border-radius: 16rpx;
+/* 状态图标（2026-10-29，原为投屏图片）：尺寸同蓝牙版结果页 .result-art */
+.wifi-result-art {
+  display: block;
+  width: 260rpx;
+  height: 220rpx;
+  margin: 16rpx auto 8rpx;
 }
 
 .wifi-result-device {
