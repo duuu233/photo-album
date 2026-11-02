@@ -40,6 +40,7 @@
 
 ## 变更记录
 
+- [2026-11-02 投屏进度页显示出帧地址（调试）](changes/2026-11-02-投屏进度页显示出帧地址（调试）.md)：`main` / `main-wifi` 两支。蓝牙投屏进度页显示本次出帧地址的来源（接口下发 / 缓存 / 回落默认）、基地址、请求地址（不带 userToken）与返回概要，点击复制；仅开发版 / 体验版显示。
 - [2026-11-02 抖动出帧基地址改由 download-endpoint 下发 / 设备列表连接后回顶](changes/2026-11-02-抖动出帧基地址下发与设备列表连接后回顶.md)：`main` / `main-wifi` 两支。先 `GET https://iot.boltfox.cn/api/device/download-endpoint` 取基地址（`data`，如 `https://api.boltfox.cn/`），再请求 基地址 + `/Client/Basic/imageDitheringBinDownload`，参数不变，取不到回落 `https://api.boltfox.cn`；「我的设备」蓝牙设备连接成功后页面平滑滚回顶部。本机无 node 测试未跑，未真机。
 - [2026-10-29 抖动出帧接口改调 api.yikaltd.com](changes/2026-10-29-抖动出帧接口改调yikaltd.md)：`main` / `main-wifi` 两支。抖动出帧地址改为 `https://api.yikaltd.com/api/Client/Basic/imageDitheringBinDownload`，参数全部不变（`clientRequestParts` 新增 `baseURL` 覆盖）；小程序后台需加 request 合法域名。本机无 node 测试未跑，未真机。
 - [2026-10-27 搜索列表尺寸没配显示--寸](changes/2026-10-27-搜索列表尺寸没配显示--寸.md)：搜索设备列表尺寸直接显示按广播名匹配到的 `sizeModel`，没配 / 匹配不到显示「--寸」（原为不显示），加 `[搜索尺寸]` 日志；搜索页测试桩补 scanSizeModel。设备详情口径不变。本机无node测试未跑，未真机。

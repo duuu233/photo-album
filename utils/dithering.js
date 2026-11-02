@@ -28,6 +28,11 @@ const ENDPOINT_TIMEOUT_MS = 5000
 const DITHERING_PATH = '/Client/Basic/imageDitheringBinDownload'
 
 let endpointCache = null // { baseURL, at }
+// 最近一次取出帧地址的情况（2026-11-02，投屏进度页调试显示用）：
+// { source: 'endpoint' 接口下发 / 'cache' 缓存 / 'fallback' 回落默认, baseURL, requestURL, detail, at }
+// detail 是 download-endpoint 的返回概要或失败原因；requestURL 不含公共参数（不带 userToken）
+let lastEndpoint = null
+let lastFetchDetail = ''
 
 // 基地址规整：去掉末尾的 /，路径统一由 DITHERING_PATH 带 /；只认 http(s) 绝对地址
 function normalizeBaseURL(value) {
@@ -51,12 +56,14 @@ function fetchEndpointOnce() {
         const body = res && res.data && typeof res.data === 'object' ? res.data : {}
         const ok = res.statusCode >= 200 && res.statusCode < 300 && Number(body.code) === 0
         const baseURL = ok ? normalizeBaseURL(body.data) : ''
+        lastFetchDetail = `HTTP ${res.statusCode} code=${body.code} data=${JSON.stringify(body.data === undefined ? null : body.data)}`
         if (!baseURL) {
           console.warn('[抖动bin] 取出帧地址失败，回落默认域名：', `HTTP ${res.statusCode}`, body)
         }
         resolve(baseURL)
       },
       fail: (err) => {
+        lastFetchDetail = `网络失败：${(err && err.errMsg) || '网络异常'}`
         console.warn('[抖动bin] 取出帧地址网络失败，回落默认域名：', (err && err.errMsg) || '网络异常')
         resolve('')
       }
@@ -64,16 +71,24 @@ function fetchEndpointOnce() {
   })
 }
 
+function noteEndpoint(source, baseURL, detail) {
+  lastEndpoint = { source, baseURL, requestURL: baseURL + DITHERING_PATH, detail: detail || '', at: Date.now() }
+}
+
 async function resolveBaseURL() {
   if (endpointCache && Date.now() - endpointCache.at < ENDPOINT_CACHE_MS) {
+    noteEndpoint('cache', endpointCache.baseURL, `缓存于 ${new Date(endpointCache.at).toLocaleTimeString()}`)
     return endpointCache.baseURL
   }
+  lastFetchDetail = ''
   const baseURL = await fetchEndpointOnce()
   if (baseURL) {
     endpointCache = { baseURL, at: Date.now() }
     console.log('[抖动bin] 出帧地址：', baseURL)
+    noteEndpoint('endpoint', baseURL, lastFetchDetail)
     return baseURL
   }
+  noteEndpoint('fallback', FALLBACK_BASE_URL, lastFetchDetail)
   return FALLBACK_BASE_URL
 }
 
@@ -286,6 +301,11 @@ async function requestFrameBin({ filePath, type }) {
 module.exports = {
   typeForDevice,
   requestFrameBin,
+  ENDPOINT_URL,
+  // 最近一次出帧地址的来源与结果（投屏进度页调试显示用）；还没取过返回 null
+  getLastEndpoint() {
+    return lastEndpoint ? Object.assign({}, lastEndpoint) : null
+  },
   // 单测用：清掉出帧地址缓存
   _resetEndpointCache() {
     endpointCache = null

@@ -16,6 +16,15 @@
     <view class="result-title">{{title}}</view>
     <view class="result-desc">{{desc}}</view>
 
+    <!-- 调试（2026-11-02）：本次出帧地址，开发版 / 体验版才有；点一下复制 -->
+    <view wx:if="{{endpointDebug}}" class="endpoint-debug" hover-class="none" bindtap="copyEndpointDebug">
+      <view class="endpoint-debug__title">出帧地址（调试，点击复制）</view>
+      <text class="endpoint-debug__line" user-select="{{true}}">来源：{{endpointDebug.sourceText}}</text>
+      <text class="endpoint-debug__line" user-select="{{true}}">基地址：{{endpointDebug.baseURL}}</text>
+      <text class="endpoint-debug__line" user-select="{{true}}">请求地址：{{endpointDebug.requestURL}}</text>
+      <text class="endpoint-debug__line" user-select="{{true}}">返回：{{endpointDebug.detail || '--'}}</text>
+    </view>
+
     <block wx:if="{{status === 'progress'}}">
       <view class="progress-percent">{{progressPercent}}<text class="progress-percent__sign">%</text></view>
       <view class="progress-wrap">
