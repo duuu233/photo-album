@@ -336,27 +336,3 @@
   font-size: 36rpx;
   font-weight: 500;
 }
-
-/* 调试：出帧地址（2026-11-02，开发版 / 体验版才显示） */
-.endpoint-debug {
-  margin: 20rpx 48rpx 0;
-  padding: 16rpx 20rpx;
-  background: rgba(0, 0, 0, 0.05);
-  border: 1rpx dashed rgba(0, 0, 0, 0.18);
-  border-radius: 16rpx;
-  text-align: left;
-}
-
-.endpoint-debug__title {
-  margin-bottom: 8rpx;
-  color: #8b9098;
-  font-size: 22rpx;
-}
-
-.endpoint-debug__line {
-  display: block;
-  color: #33373d;
-  font-size: 22rpx;
-  line-height: 1.5;
-  word-break: break-all;
-}

@@ -18,16 +18,6 @@ const system = require('../../../utils/system')
 const api = require('../../../utils/api')
 const deviceBle = require('../../../utils/device-ble')
 const dithering = require('../../../utils/dithering')
-
-// 开发版 / 体验版（非正式版）：调试信息只在这两种环境显示；取不到环境信息按正式版处理（不显示）
-function isNonReleaseEnv() {
-  try {
-    const env = wx.getAccountInfoSync().miniProgram.envVersion
-    return env === 'develop' || env === 'trial'
-  } catch (error) {
-    return false
-  }
-}
 const protocol = require('../../../utils/frame-protocol')
 const projectionDevice = require('../../../utils/projection-device')
 const toast = require('../../../utils/toast')
@@ -181,8 +171,6 @@ Page(fold.adapt({
     progressPercent: 0,
     // 「继续投屏」在当前页弹出的「拍照/相册」选择弹层显隐 + 退场动画标记
     showMediaSheet: false,
-    // 调试（2026-11-02）：本次出帧用的地址，开发版 / 体验版显示在页面上，正式版不显示
-    endpointDebug: null,
     mediaSheetClosing: false
   },
 
@@ -997,16 +985,10 @@ Page(fold.adapt({
           `（看 [预览][出图] / [预览][coverCrop] / [预览][导出]），不是抖动接口的问题`
       )
     }
-    let frameData
-    try {
-      frameData = await dithering.requestFrameBin({
-        filePath: shrunk.filePath,
-        type: await this.ditherTypeFor(device, info)
-      })
-    } finally {
-      // 成功失败都把这次实际用的出帧地址显示出来，方便调试
-      this.showEndpointDebug()
-    }
+    const frameData = await dithering.requestFrameBin({
+      filePath: shrunk.filePath,
+      type: await this.ditherTypeFor(device, info)
+    })
     return {
       frameData,
       timings: {
@@ -1015,38 +997,6 @@ Page(fold.adapt({
         ditherMs: Date.now() - ditherStartedAt
       }
     }
-  },
-
-  // 调试显示出帧地址（2026-11-02）：download-endpoint 下发的基地址 / 缓存 / 回落默认，以及最终请求地址。
-  // 只在开发版 / 体验版显示；正式版或取不到环境信息时不显示。地址不带公共参数（不含 userToken）。
-  showEndpointDebug() {
-    if (!isNonReleaseEnv()) {
-      return
-    }
-    const info = dithering.getLastEndpoint()
-    if (!info) {
-      return
-    }
-    const sourceText = { endpoint: '接口下发', cache: '缓存（10 分钟内）', fallback: '取不到，回落默认' }[info.source] || info.source
-    this.setData({
-      endpointDebug: {
-        sourceText,
-        baseURL: info.baseURL,
-        requestURL: info.requestURL,
-        endpointURL: dithering.ENDPOINT_URL,
-        detail: info.detail
-      }
-    })
-  },
-
-  copyEndpointDebug() {
-    const info = this.data.endpointDebug
-    if (!info) {
-      return
-    }
-    wx.setClipboardData({
-      data: `来源：${info.sourceText}\n基地址：${info.baseURL}\n请求地址：${info.requestURL}\n取地址接口：${info.endpointURL}\n返回：${info.detail}`
-    })
   },
 
   // 统一的上传前压缩（2026-07-22 起两路上传共用）：把要上传的图长边缩到「设备长边」、只缩分辨率
