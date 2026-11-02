@@ -1,6 +1,7 @@
 // 抖动出帧 2026-10-23 起改调我方后端 /Client/Basic/imageDitheringBinDownload（参数同原第三方接口）；
 // 2026-10-29 起地址改为 https://api.yikaltd.com/api 下同一路径，参数不变；
-// 2026-11-02 起基地址由 GET https://iot.boltfox.cn/api/device/download-endpoint 的 data 下发（如 https://api.boltfox.cn/），
+// 2026-11-02 起基地址由 GET https://iot.boltfox.cn/api/device/download-endpoint 的 data.endpoint 下发
+// （data 形如 { region: 'CN', endpoint: 'https://apirp.boltstar.net' }；data 直接是地址字符串也兼容），
 // 请求 基地址 + /Client/Basic/imageDitheringBinDownload，参数不变。
 //
 // 锁五件事：
@@ -9,7 +10,7 @@
 //   ② 二进制响应原样交回；
 //   ③ 业务 JSON 报错：抛「接口-」+ retMsg，不当成帧、不重试；401/406 走统一登出；
 //   ④ 网络失败退避重试，共 3 次；
-//   ⑤ 取基地址：Header 带 userToken、data 去尾 /、成功缓存；失败（网络 / code≠0 / data 非 http 地址）回落 https://api.boltfox.cn 且不缓存。
+//   ⑤ 取基地址：Header 带 userToken、取 data.endpoint（兼容字符串）去尾 /、成功缓存；失败（网络 / code≠0 / data 非 http 地址）回落 https://api.boltfox.cn 且不缓存。
 //   ⑥ getLastEndpoint（投屏进度页调试显示）：来源 endpoint / cache / fallback、基地址、请求地址（不带 userToken）、返回概要。
 const assert = require('node:assert/strict')
 
@@ -17,7 +18,7 @@ const effects = []
 let respond = null
 const ENDPOINT_URL = 'https://iot.boltfox.cn/api/device/download-endpoint'
 let endpointRespond = options =>
-  options.success({ statusCode: 200, data: { code: 0, msg: 'ok', data: 'https://api.boltfox.cn/' } })
+  options.success({ statusCode: 200, data: { code: 0, msg: 'ok', data: { region: 'CN', endpoint: 'https://api.boltfox.cn/' } } })
 
 function stub(request, exports) {
   const filename = require.resolve(request)
@@ -72,7 +73,7 @@ async function main() {
   const sent = requests()
   assert.equal(sent.length, 1)
   assert.equal(sent[0].method, 'POST')
-  assert.equal(sent[0].url, 'https://api.boltfox.cn/Client/Basic/imageDitheringBinDownload?userToken=user-token', '基地址取自 download-endpoint 的 data（去尾 /），公共参数照常带')
+  assert.equal(sent[0].url, 'https://api.boltfox.cn/Client/Basic/imageDitheringBinDownload?userToken=user-token', '基地址取自 download-endpoint 的 data.endpoint（去尾 /），公共参数照常带')
   assert.equal(endpointCalls().length, 1, '先取一次出帧基地址')
   assert.equal(endpointCalls()[0].method, 'GET')
   assert.equal(endpointCalls()[0].header.userToken, 'user-token', 'IoT 接口 Header 带 userToken')
@@ -132,7 +133,7 @@ async function main() {
   effects.length = 0
   dithering._resetEndpointCache()
   endpointRespond = options =>
-    options.success({ statusCode: 200, data: { code: 0, msg: 'ok', data: 'https://proxy.example.com/api/' } })
+    options.success({ statusCode: 200, data: { code: 0, msg: 'ok', data: { region: 'CN', endpoint: 'https://proxy.example.com/api/' } } })
   await dithering.requestFrameBin({ filePath: 'wxfile://image.jpg', type: '0' })
   assert.equal(requests()[0].url, 'https://proxy.example.com/api/Client/Basic/imageDitheringBinDownload?userToken=user-token', '反代域名带路径也照拼')
   // ⑥ 调试显示（2026-11-02）：记下来源与地址，请求地址不带公共参数（不含 userToken）
@@ -143,6 +144,29 @@ async function main() {
   assert.ok(/code=0/.test(last.detail) && /proxy\.example\.com/.test(last.detail), '返回概要带 code 与 data')
   await dithering.requestFrameBin({ filePath: 'wxfile://image.jpg', type: '0' })
   assert.equal(dithering.getLastEndpoint().source, 'cache', '缓存命中标为缓存')
+
+  // 联调实测的返回（2026-11-02）：data 为 { region, endpoint }
+  effects.length = 0
+  dithering._resetEndpointCache()
+  endpointRespond = options =>
+    options.success({ statusCode: 200, data: { code: 0, msg: 'ok', data: { region: 'CN', endpoint: 'https://apirp.boltstar.net' } } })
+  await dithering.requestFrameBin({ filePath: 'wxfile://image.jpg', type: '0' })
+  assert.equal(requests()[0].url, 'https://apirp.boltstar.net/Client/Basic/imageDitheringBinDownload?userToken=user-token', '取 data.endpoint 拼出帧路径')
+
+  // 兼容：data 直接是地址字符串
+  effects.length = 0
+  dithering._resetEndpointCache()
+  endpointRespond = options =>
+    options.success({ statusCode: 200, data: { code: 0, msg: 'ok', data: 'https://str.example.com/' } })
+  await dithering.requestFrameBin({ filePath: 'wxfile://image.jpg', type: '0' })
+  assert.equal(requests()[0].url, 'https://str.example.com/Client/Basic/imageDitheringBinDownload?userToken=user-token', 'data 是字符串也认')
+
+  // data 对象里没有 endpoint：回落默认
+  effects.length = 0
+  dithering._resetEndpointCache()
+  endpointRespond = options => options.success({ statusCode: 200, data: { code: 0, data: { region: 'CN' } } })
+  await dithering.requestFrameBin({ filePath: 'wxfile://image.jpg', type: '0' })
+  assert.ok(requests()[0].url.startsWith('https://api.boltfox.cn/Client/'), 'data 没有 endpoint 时回落默认域名')
 
   effects.length = 0
   dithering._resetEndpointCache()
