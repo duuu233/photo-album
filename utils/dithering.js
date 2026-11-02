@@ -5,6 +5,10 @@
 // （/Client/Basic/getXTYUserToken）不再使用。
 // 2026-10-29 起地址改为 https://api.yikaltd.com/api/Client/Basic/imageDitheringBinDownload，参数（公共参数、
 // 鉴权头、form-data 字段）全部不变，只换域名与前缀。
+// 2026-11-02 起域名不再写死：先 GET https://iot.boltfox.cn/api/device/download-endpoint 取出帧服务基地址
+// （返回结构 { code: 0, msg, data }，data 即基地址，如 https://api.boltfox.cn/ 或其它反代域名），
+// 再按 基地址 + /Client/Basic/imageDitheringBinDownload 请求，参数全部不变。取地址失败时回落
+// config.baseURL（https://api.boltfox.cn），不缓存失败结果；成功结果缓存 10 分钟。
 // 实现要点/注意：
 //   · 公共参数 device/terminal/language/userToken 与其它接口同口径注入（request.clientRequestParts），
 //     userToken 是本 App 用户自己的登录令牌；登录过期（401/406）走 request 统一登出引导；
@@ -14,9 +18,64 @@
 //   · 调用方必须继续用「字节数 = 宽×高÷2」铁闸校验返回帧。
 const protocol = require('./frame-protocol')
 const http = require('./request')
+const config = require('./config')
 
-const DITHERING_BASE_URL = 'https://api.yikaltd.com/api'
+// 出帧服务基地址由该接口下发（data 字段）；拿不到时回落默认业务域名
+const ENDPOINT_URL = 'https://iot.boltfox.cn/api/device/download-endpoint'
+const FALLBACK_BASE_URL = config.baseURL
+const ENDPOINT_CACHE_MS = 10 * 60 * 1000
+const ENDPOINT_TIMEOUT_MS = 5000
 const DITHERING_PATH = '/Client/Basic/imageDitheringBinDownload'
+
+let endpointCache = null // { baseURL, at }
+
+// 基地址规整：去掉末尾的 /，路径统一由 DITHERING_PATH 带 /；只认 http(s) 绝对地址
+function normalizeBaseURL(value) {
+  const text = typeof value === 'string' ? value.trim() : ''
+  if (!/^https?:\/\/[^/\s]+/i.test(text)) {
+    return ''
+  }
+  return text.replace(/\/+$/, '')
+}
+
+// 取出帧服务基地址：IoT 接口 Header 带 userToken（与老服务同一个登录 token），{ code: 0, data: '基地址' } 为成功
+function fetchEndpointOnce() {
+  return new Promise((resolve) => {
+    const token = wx.getStorageSync('token') || ''
+    wx.request({
+      url: ENDPOINT_URL,
+      method: 'GET',
+      header: token ? { userToken: token } : {},
+      timeout: ENDPOINT_TIMEOUT_MS,
+      success: (res) => {
+        const body = res && res.data && typeof res.data === 'object' ? res.data : {}
+        const ok = res.statusCode >= 200 && res.statusCode < 300 && Number(body.code) === 0
+        const baseURL = ok ? normalizeBaseURL(body.data) : ''
+        if (!baseURL) {
+          console.warn('[抖动bin] 取出帧地址失败，回落默认域名：', `HTTP ${res.statusCode}`, body)
+        }
+        resolve(baseURL)
+      },
+      fail: (err) => {
+        console.warn('[抖动bin] 取出帧地址网络失败，回落默认域名：', (err && err.errMsg) || '网络异常')
+        resolve('')
+      }
+    })
+  })
+}
+
+async function resolveBaseURL() {
+  if (endpointCache && Date.now() - endpointCache.at < ENDPOINT_CACHE_MS) {
+    return endpointCache.baseURL
+  }
+  const baseURL = await fetchEndpointOnce()
+  if (baseURL) {
+    endpointCache = { baseURL, at: Date.now() }
+    console.log('[抖动bin] 出帧地址：', baseURL)
+    return baseURL
+  }
+  return FALLBACK_BASE_URL
+}
 
 // 网络类失败的用户侧文案：微信透传的英文原文（`request:fail fail:time out` 之类）用户看不懂，
 // 原文写进 error.raw 并打日志，排查看 vConsole（判读表见 docs/architecture/image-projection-pipeline.md）。
@@ -128,12 +187,12 @@ function readFileBytes(filePath) {
   })
 }
 
-function requestOnce(body, boundary) {
+function requestOnce(body, boundary, baseURL) {
   // 每次发送现取公共参数：重试期间登录态若变化，以当前为准
   const parts = http.clientRequestParts(
     DITHERING_PATH,
     { 'content-type': `multipart/form-data; boundary=${boundary}` },
-    { baseURL: DITHERING_BASE_URL }
+    { baseURL }
   )
   return new Promise((resolve, reject) => {
     wx.request({
@@ -175,10 +234,11 @@ async function requestFrameBin({ filePath, type }) {
     { name: 'file', filename: 'image.jpg', contentType: 'image/jpeg', data: fileBytes }
   )
 
+  const baseURL = await resolveBaseURL()
   const run = async (left) => {
     let res
     try {
-      res = await requestOnce(body, boundary)
+      res = await requestOnce(body, boundary, baseURL)
     } catch (error) {
       // wx.request fail = 没拿到响应（超时/断网/域名拦截），弱网下退避重试。
       // 判定必须看 error.raw（微信原文），message 已被归一成中文；`time\s*-?out` 是因为安卓
@@ -225,5 +285,9 @@ async function requestFrameBin({ filePath, type }) {
 
 module.exports = {
   typeForDevice,
-  requestFrameBin
+  requestFrameBin,
+  // 单测用：清掉出帧地址缓存
+  _resetEndpointCache() {
+    endpointCache = null
+  }
 }

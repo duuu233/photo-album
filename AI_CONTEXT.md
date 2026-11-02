@@ -46,7 +46,7 @@
   - 小程序管理后台是否已批准并启用该插件：**待确认**。
 - 网络服务：
   - BoltFox API：`https://api.boltfox.cn`；
-  - 图片抖动出帧：2026-10-23 起走 BoltFox `POST /Client/Basic/imageDitheringBinDownload`（原第三方 seekink 接口与 `getXTYUserToken` 停用）；2026-10-29 起地址改为 `https://api.yikaltd.com/api/Client/Basic/imageDitheringBinDownload`，参数不变（`dithering.js` 经 `clientRequestParts` 的 `baseURL` 换域名，公共参数照常带）；
+  - 图片抖动出帧：2026-10-23 起走 BoltFox `POST /Client/Basic/imageDitheringBinDownload`（原第三方 seekink 接口与 `getXTYUserToken` 停用）；2026-10-29 起地址改为 `https://api.yikaltd.com/api/Client/Basic/imageDitheringBinDownload`，参数不变（`dithering.js` 经 `clientRequestParts` 的 `baseURL` 换域名，公共参数照常带）；2026-11-02 起域名不再写死：先 `GET https://iot.boltfox.cn/api/device/download-endpoint`（Header `userToken`，返回 `{ code: 0, data: 基地址 }`，如 `https://api.boltfox.cn/` 或反代域名）取基地址，再请求 基地址 + `/Client/Basic/imageDitheringBinDownload`，参数不变；取不到回落 `config.baseURL`，成功缓存 10 分钟；
   - BoltStar AI 服务：阿里云 FC 独立域名，定义在 `utils/ai-api.js`；2026-08-06 起切到流式版部署 `boltstagent-web-...`；
   - `/chat` 走 SSE：`wx.request` 开 `enableChunked`、`onChunkReceived` 收流，事件为 `pre_text`/`progress`/`image`/`text`/`done`；
   - 基础库拿不到 `onChunkReceived` 时降级回旧的非流式部署（完整 JSON + 客户端打字机）。
