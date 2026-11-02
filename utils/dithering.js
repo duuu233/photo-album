@@ -6,7 +6,8 @@
 // 2026-10-29 起地址改为 https://api.yikaltd.com/api/Client/Basic/imageDitheringBinDownload，参数（公共参数、
 // 鉴权头、form-data 字段）全部不变，只换域名与前缀。
 // 2026-11-02 起域名不再写死：先 GET https://iot.boltfox.cn/api/device/download-endpoint 取出帧服务基地址
-// （返回结构 { code: 0, msg, data }，data 即基地址，如 https://api.boltfox.cn/ 或其它反代域名），
+// （返回结构 { code: 0, msg, data: { region, endpoint } }，取 data.endpoint 为基地址，如 https://apirp.boltstar.net；
+// 同日联调确认，data 是对象而非字符串——兼容起见 data 直接是地址字符串也认），
 // 再按 基地址 + /Client/Basic/imageDitheringBinDownload 请求，参数全部不变。取地址失败时回落
 // config.baseURL（https://api.boltfox.cn），不缓存失败结果；成功结果缓存 10 分钟。
 // 实现要点/注意：
@@ -43,7 +44,15 @@ function normalizeBaseURL(value) {
   return text.replace(/\/+$/, '')
 }
 
-// 取出帧服务基地址：IoT 接口 Header 带 userToken（与老服务同一个登录 token），{ code: 0, data: '基地址' } 为成功
+// download-endpoint 的 data → 基地址：{ region: 'CN', endpoint: 'https://apirp.boltstar.net' } 取 endpoint；字符串原样
+function endpointOf(data) {
+  if (typeof data === 'string') {
+    return data
+  }
+  return data && typeof data === 'object' ? data.endpoint : ''
+}
+
+// 取出帧服务基地址：IoT 接口 Header 带 userToken（与老服务同一个登录 token），{ code: 0, data: { endpoint } } 为成功
 function fetchEndpointOnce() {
   return new Promise((resolve) => {
     const token = wx.getStorageSync('token') || ''
@@ -55,7 +64,7 @@ function fetchEndpointOnce() {
       success: (res) => {
         const body = res && res.data && typeof res.data === 'object' ? res.data : {}
         const ok = res.statusCode >= 200 && res.statusCode < 300 && Number(body.code) === 0
-        const baseURL = ok ? normalizeBaseURL(body.data) : ''
+        const baseURL = ok ? normalizeBaseURL(endpointOf(body.data)) : ''
         lastFetchDetail = `HTTP ${res.statusCode} code=${body.code} data=${JSON.stringify(body.data === undefined ? null : body.data)}`
         if (!baseURL) {
           console.warn('[抖动bin] 取出帧地址失败，回落默认域名：', `HTTP ${res.statusCode}`, body)
