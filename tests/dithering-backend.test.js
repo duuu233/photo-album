@@ -1,12 +1,14 @@
 // 抖动出帧 2026-10-23 起改调我方后端 /Client/Basic/imageDitheringBinDownload（参数同原第三方接口）；
-// 2026-10-29 起地址改为 https://api.yikaltd.com/api 下同一路径，参数不变。
+// 2026-10-29 起地址改为 https://api.yikaltd.com/api 下同一路径，参数不变；
+// 2026-11-02 起接口成功时可回帧地址（JSON），帧到 https://iot.boltfox.cn/api/device/download-endpoint + 地址 下载。
 //
 // 锁四件事：
 //   ① 请求发到 request.clientRequestParts 给的地址与 header（公共参数 + 用户自己的 userToken；baseURL 换成 api.yikaltd.com/api），
 //      不再带第三方 token，也不再去取 getXTYUserToken；multipart 里 color/imageDitheringModes/type/file 原样；
 //   ② 二进制响应原样交回；
 //   ③ 业务 JSON 报错：抛「接口-」+ retMsg，不当成帧、不重试；401/406 走统一登出；
-//   ④ 网络失败退避重试，共 3 次。
+//   ④ 网络失败退避重试，共 3 次；
+//   ⑤ 成功 JSON 带地址 → GET download-endpoint + 地址（直接拼接）取帧；成功却没地址按失败处理。
 const assert = require('node:assert/strict')
 
 const effects = []
@@ -101,6 +103,72 @@ async function main() {
     error => error.message === '接口-网络超时，图片转化失败，请重新尝试'
   )
   assert.equal(requests().length, 3)
+
+  // ── ⑤ 返回帧地址 → 拼 download-endpoint 下载 ───────────
+  effects.length = 0
+  respond = options => {
+    if (options.method === 'POST') {
+      options.success({
+        statusCode: 200,
+        header: { 'Content-Type': 'application/json' },
+        data: jsonBody({ retCode: 200, retMsg: '成功', retData: '/frames/abc.bin' })
+      })
+      return
+    }
+    options.success({ statusCode: 200, header: { 'Content-Type': 'application/octet-stream' }, data: frame.buffer })
+  }
+  const downloaded = await dithering.requestFrameBin({ filePath: 'wxfile://image.jpg', type: '0' })
+  assert.deepEqual(Array.from(downloaded), Array.from(frame))
+  assert.equal(requests().length, 2)
+  assert.equal(requests()[1].method, 'GET')
+  assert.equal(requests()[1].url, 'https://iot.boltfox.cn/api/device/download-endpoint/frames/abc.bin', '返回地址直接拼在 download-endpoint 后')
+  assert.equal(requests()[1].responseType, 'arraybuffer')
+
+  // 地址在 retData 对象字段里也认
+  effects.length = 0
+  respond = options => {
+    if (options.method === 'POST') {
+      options.success({
+        statusCode: 200,
+        header: { 'Content-Type': 'application/json' },
+        data: jsonBody({ retCode: 200, retData: { url: '?file=x.bin' } })
+      })
+      return
+    }
+    options.success({ statusCode: 200, header: {}, data: frame.buffer })
+  }
+  await dithering.requestFrameBin({ filePath: 'wxfile://image.jpg', type: '0' })
+  assert.equal(requests()[1].url, 'https://iot.boltfox.cn/api/device/download-endpoint?file=x.bin')
+
+  // 成功却没有地址：按失败处理，不发下载
+  effects.length = 0
+  respond = options =>
+    options.success({
+      statusCode: 200,
+      header: { 'Content-Type': 'application/json' },
+      data: jsonBody({ retCode: 200, retMsg: '成功' })
+    })
+  await assert.rejects(
+    dithering.requestFrameBin({ filePath: 'wxfile://image.jpg', type: '0' }),
+    error => error.message === '接口-图片转化失败，请重新尝试'
+  )
+  assert.equal(requests().length, 1)
+
+  // 下载网络失败重试 3 次
+  effects.length = 0
+  respond = options => {
+    if (options.method === 'POST') {
+      options.success({
+        statusCode: 200,
+        header: { 'Content-Type': 'application/json' },
+        data: jsonBody({ retCode: 200, retData: '/frames/abc.bin' })
+      })
+      return
+    }
+    options.fail({ errMsg: 'request:fail timeout' })
+  }
+  await assert.rejects(dithering.requestFrameBin({ filePath: 'wxfile://image.jpg', type: '0' }))
+  assert.equal(requests().length, 4, '上传 1 次 + 下载 3 次')
 
   console.log('dithering-backend: ok')
 }
