@@ -5,8 +5,10 @@
 // （/Client/Basic/getXTYUserToken）不再使用。
 // 2026-10-29 起地址改为 https://api.yikaltd.com/api/Client/Basic/imageDitheringBinDownload，参数（公共参数、
 // 鉴权头、form-data 字段）全部不变，只换域名与前缀。
-// 2026-11-02 起该接口成功时可返回帧文件地址（JSON），帧要到
-// DOWNLOAD_ENDPOINT + 返回的地址 下载（直接拼接，不做编码）；接口仍直接回二进制时照旧原样使用。
+// 2026-11-02 起域名不再写死：先 GET https://iot.boltfox.cn/api/device/download-endpoint 取出帧服务基地址
+// （返回结构 { code: 0, msg, data }，data 即基地址，如 https://api.boltfox.cn/ 或其它反代域名），
+// 再按 基地址 + /Client/Basic/imageDitheringBinDownload 请求，参数全部不变。取地址失败时回落
+// config.baseURL（https://api.boltfox.cn），不缓存失败结果；成功结果缓存 10 分钟。
 // 实现要点/注意：
 //   · 公共参数 device/terminal/language/userToken 与其它接口同口径注入（request.clientRequestParts），
 //     userToken 是本 App 用户自己的登录令牌；登录过期（401/406）走 request 统一登出引导；
@@ -16,11 +18,64 @@
 //   · 调用方必须继续用「字节数 = 宽×高÷2」铁闸校验返回帧。
 const protocol = require('./frame-protocol')
 const http = require('./request')
+const config = require('./config')
 
-const DITHERING_BASE_URL = 'https://api.yikaltd.com/api'
+// 出帧服务基地址由该接口下发（data 字段）；拿不到时回落默认业务域名
+const ENDPOINT_URL = 'https://iot.boltfox.cn/api/device/download-endpoint'
+const FALLBACK_BASE_URL = config.baseURL
+const ENDPOINT_CACHE_MS = 10 * 60 * 1000
+const ENDPOINT_TIMEOUT_MS = 5000
 const DITHERING_PATH = '/Client/Basic/imageDitheringBinDownload'
-// 帧文件下载前缀：抖动接口返回的地址直接拼在它后面
-const DOWNLOAD_ENDPOINT = 'https://iot.boltfox.cn/api/device/download-endpoint'
+
+let endpointCache = null // { baseURL, at }
+
+// 基地址规整：去掉末尾的 /，路径统一由 DITHERING_PATH 带 /；只认 http(s) 绝对地址
+function normalizeBaseURL(value) {
+  const text = typeof value === 'string' ? value.trim() : ''
+  if (!/^https?:\/\/[^/\s]+/i.test(text)) {
+    return ''
+  }
+  return text.replace(/\/+$/, '')
+}
+
+// 取出帧服务基地址：IoT 接口 Header 带 userToken（与老服务同一个登录 token），{ code: 0, data: '基地址' } 为成功
+function fetchEndpointOnce() {
+  return new Promise((resolve) => {
+    const token = wx.getStorageSync('token') || ''
+    wx.request({
+      url: ENDPOINT_URL,
+      method: 'GET',
+      header: token ? { userToken: token } : {},
+      timeout: ENDPOINT_TIMEOUT_MS,
+      success: (res) => {
+        const body = res && res.data && typeof res.data === 'object' ? res.data : {}
+        const ok = res.statusCode >= 200 && res.statusCode < 300 && Number(body.code) === 0
+        const baseURL = ok ? normalizeBaseURL(body.data) : ''
+        if (!baseURL) {
+          console.warn('[抖动bin] 取出帧地址失败，回落默认域名：', `HTTP ${res.statusCode}`, body)
+        }
+        resolve(baseURL)
+      },
+      fail: (err) => {
+        console.warn('[抖动bin] 取出帧地址网络失败，回落默认域名：', (err && err.errMsg) || '网络异常')
+        resolve('')
+      }
+    })
+  })
+}
+
+async function resolveBaseURL() {
+  if (endpointCache && Date.now() - endpointCache.at < ENDPOINT_CACHE_MS) {
+    return endpointCache.baseURL
+  }
+  const baseURL = await fetchEndpointOnce()
+  if (baseURL) {
+    endpointCache = { baseURL, at: Date.now() }
+    console.log('[抖动bin] 出帧地址：', baseURL)
+    return baseURL
+  }
+  return FALLBACK_BASE_URL
+}
 
 // 网络类失败的用户侧文案：微信透传的英文原文（`request:fail fail:time out` 之类）用户看不懂，
 // 原文写进 error.raw 并打日志，排查看 vConsole（判读表见 docs/architecture/image-projection-pipeline.md）。
@@ -134,12 +189,12 @@ function readFileBytes(filePath) {
   })
 }
 
-function requestOnce(body, boundary) {
+function requestOnce(body, boundary, baseURL) {
   // 每次发送现取公共参数：重试期间登录态若变化，以当前为准
   const parts = http.clientRequestParts(
     DITHERING_PATH,
     { 'content-type': `multipart/form-data; boundary=${boundary}` },
-    { baseURL: DITHERING_BASE_URL }
+    { baseURL }
   )
   return new Promise((resolve, reject) => {
     wx.request({
@@ -155,86 +210,6 @@ function requestOnce(body, boundary) {
   })
 }
 
-// 网络类失败（超时/连接/域名拦截）才重试；判定看 error.raw（微信原文），message 已被归一成中文。
-// `time\s*-?out` 是因为安卓报的是 `request:fail fail:time out`（带空格）。
-function isRetryableNetworkError(error) {
-  const raw = error.raw || error.message || ''
-  return /time\s*-?out|connect|网络|ERR_/i.test(raw)
-}
-
-// 成功体里的帧文件地址：retData / data 本身是字符串，或其中的 url / path 类字段（字段名以后端实际为准，
-// 这里按常见写法兜住）。取不到返回 ''。
-function frameAddressOf(json) {
-  const candidates = [json.retData, json.data]
-  for (let i = 0; i < candidates.length; i++) {
-    const value = candidates[i]
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim()
-    }
-    if (value && typeof value === 'object') {
-      const keys = ['url', 'path', 'binUrl', 'fileUrl', 'downloadUrl', 'filePath', 'fileName']
-      for (let k = 0; k < keys.length; k++) {
-        const field = value[keys[k]]
-        if (typeof field === 'string' && field.trim()) {
-          return field.trim()
-        }
-      }
-    }
-  }
-  return ''
-}
-
-function isSuccessBody(json) {
-  if (Object.prototype.hasOwnProperty.call(json, 'retCode')) {
-    return json.retCode === 200
-  }
-  return json.code === 0 || json.code === 200
-}
-
-// 按地址下载帧 bin：wx.request(arraybuffer) 走 request 合法域名（iot.boltfox.cn）；下载无副作用，网络失败退避重试。
-async function downloadFrameBin(address) {
-  const url = `${DOWNLOAD_ENDPOINT}${address}`
-  const once = () =>
-    new Promise((resolve, reject) => {
-      wx.request({
-        url,
-        method: 'GET',
-        responseType: 'arraybuffer',
-        timeout: REQUEST_TIMEOUT_MS,
-        success: resolve,
-        fail: (err) => reject(ditheringError(NETWORK_FAIL_TEXT, (err && err.errMsg) || '网络异常'))
-      })
-    })
-  const run = async (left) => {
-    let res
-    try {
-      res = await once()
-    } catch (error) {
-      if (left > 1 && isRetryableNetworkError(error)) {
-        console.warn(`[抖动bin] 帧下载网络失败，将重试（剩余 ${left - 1} 次）：`, error.raw)
-        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS))
-        return run(left - 1)
-      }
-      throw error
-    }
-    const bytes = res.data instanceof ArrayBuffer ? new Uint8Array(res.data) : new Uint8Array(0)
-    console.log(
-      `[抖动bin] 帧下载：${url} statusCode=${res.statusCode} 字节数=${bytes.length} ` +
-        `头16=${protocol.bytesToHex(bytes.subarray(0, 16))}`
-    )
-    const looksJson = bytes.length > 0 && bytes.length < 4096 && (bytes[0] === 0x7b || bytes[0] === 0x5b)
-    if (res.statusCode !== 200 || !bytes.length || looksJson) {
-      const text = looksJson ? utf8BytesToString(bytes) : ''
-      const json = text ? parseJsonBody(text) : null
-      const retMsg = json ? String(json.retMsg || json.message || '').trim() : ''
-      console.warn('[抖动bin] 帧下载失败:', text || `HTTP ${res.statusCode} 字节数=${bytes.length}`)
-      throw ditheringError(retMsg ? `接口-${retMsg}` : BUSINESS_FAIL_TEXT, text.slice(0, 200) || `HTTP ${res.statusCode}`)
-    }
-    return bytes
-  }
-  return run(RETRY_ATTEMPTS)
-}
-
 // 业务报错的 JSON 体（{ retCode, retMsg }）；解析不了返回 null
 function parseJsonBody(text) {
   try {
@@ -245,9 +220,8 @@ function parseJsonBody(text) {
   }
 }
 
-// 图片文件 → 设备帧 bin(Uint8Array)。{ filePath, type } 必传；接口回二进制直接用；回成功 JSON 带帧地址时
-// 到 DOWNLOAD_ENDPOINT + 地址 下载帧；其余 JSON/文本（业务报错）解码打日志并抛错（确定性失败不重试），
-// 网络类失败（timeout/连接）自动退避重试（上传与下载各自最多 3 次）。
+// 图片文件 → 设备帧 bin(Uint8Array)。{ filePath, type } 必传；接口回 JSON/文本（业务报错）时
+// 解码打日志并抛错（确定性失败不重试），网络类失败（timeout/连接）自动退避重试。
 async function requestFrameBin({ filePath, type }) {
   const fileBytes = await readFileBytes(filePath)
   console.log(`[抖动bin] 请求：color=BWRYGB imageDitheringModes=2 type=${type} 上传=${fileBytes.length}字节`)
@@ -262,14 +236,18 @@ async function requestFrameBin({ filePath, type }) {
     { name: 'file', filename: 'image.jpg', contentType: 'image/jpeg', data: fileBytes }
   )
 
+  const baseURL = await resolveBaseURL()
   const run = async (left) => {
     let res
     try {
-      res = await requestOnce(body, boundary)
+      res = await requestOnce(body, boundary, baseURL)
     } catch (error) {
       // wx.request fail = 没拿到响应（超时/断网/域名拦截），弱网下退避重试。
-      if (left > 1 && isRetryableNetworkError(error)) {
-        console.warn(`[抖动bin] 网络失败，将重试（剩余 ${left - 1} 次）：`, error.raw || error.message)
+      // 判定必须看 error.raw（微信原文），message 已被归一成中文；`time\s*-?out` 是因为安卓
+      // 报的是 `request:fail fail:time out`（带空格）。
+      const raw = error.raw || error.message || ''
+      if (left > 1 && /time\s*-?out|connect|网络|ERR_/i.test(raw)) {
+        console.warn(`[抖动bin] 网络失败，将重试（剩余 ${left - 1} 次）：`, raw)
         await new Promise((r) => setTimeout(r, RETRY_DELAY_MS))
         return run(left - 1)
       }
@@ -295,16 +273,6 @@ async function requestFrameBin({ filePath, type }) {
       http.expireSession()
       throw ditheringError(`接口-${retMsg || '登录已过期'}`, text || `HTTP ${res.statusCode}`)
     }
-    // 成功体带帧文件地址：拼到 DOWNLOAD_ENDPOINT 后下载真正的帧
-    const address = json && isSuccessBody(json) ? frameAddressOf(json) : ''
-    if (address) {
-      console.log('[抖动bin] 返回帧地址:', address)
-      return { address }
-    }
-    if (json && isSuccessBody(json)) {
-      console.warn('[抖动bin] 返回成功但没有帧地址:', text)
-      throw ditheringError(BUSINESS_FAIL_TEXT, text.slice(0, 200))
-    }
     if (looksText) {
       console.warn('[抖动bin] 返回文本(业务报错):', text)
       throw ditheringError(retMsg ? `接口-${retMsg}` : BUSINESS_FAIL_TEXT, text.slice(0, 200) || `HTTP ${res.statusCode}`)
@@ -314,14 +282,14 @@ async function requestFrameBin({ filePath, type }) {
     }
     return bytes
   }
-  const result = await run(RETRY_ATTEMPTS)
-  if (result instanceof Uint8Array) {
-    return result
-  }
-  return downloadFrameBin(result.address)
+  return run(RETRY_ATTEMPTS)
 }
 
 module.exports = {
   typeForDevice,
-  requestFrameBin
+  requestFrameBin,
+  // 单测用：清掉出帧地址缓存
+  _resetEndpointCache() {
+    endpointCache = null
+  }
 }
