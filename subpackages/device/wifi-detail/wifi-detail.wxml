@@ -29,7 +29,6 @@
               <text class="comm-badge__text">WiFi版</text>
             </view>
           </view>
-          <text wx:if="{{device.productDeviceId}}" class="wifi-detail-head__id">设备ID {{device.productDeviceId}}</text>
           <view class="wifi-detail-meta">
             <view class="wifi-detail-state is-{{status}}">
               <view wx:if="{{status === 'loading'}}" class="wifi-detail-state__spinner"></view>
@@ -71,7 +70,7 @@
           <view class="ui-chevron"></view>
         </view>
         <!-- 设备ID / 屏幕尺寸（2026-11-02，同蓝牙版详情）：只展示、不可点；屏幕尺寸取后台产品配置 sizeModel，没配整行不展示。
-             顶部卡片原来的「屏幕尺寸」一行已去掉，改在这里显示 -->
+             顶部卡片原来的「屏幕尺寸」「设备ID」两行已去掉（与这里重复），改在这里显示 -->
         <view class="wifi-detail-entry device-id-entry">
           <text class="wifi-detail-entry__label">设备ID</text>
           <text class="wifi-detail-entry__value wifi-detail-entry__value--plain">{{device.productDeviceId || '--'}}</text>

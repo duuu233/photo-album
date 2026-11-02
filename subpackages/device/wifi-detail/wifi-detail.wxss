@@ -35,13 +35,6 @@
   white-space: nowrap;
 }
 
-.wifi-detail-head__id {
-  display: block;
-  margin-top: 10rpx;
-  color: #8b9098;
-  font-size: 22rpx;
-}
-
 /* 通信类型角标：与搜索设备列表的 WiFi版 角标同款（青绿） */
 .comm-badge {
   flex: 0 0 auto;

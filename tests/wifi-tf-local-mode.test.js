@@ -221,6 +221,7 @@ async function main() {
     assert.ok(tpl.indexOf('bindtap="openInfo"') < idRow && idRow < sizeRow && sizeRow < tpl.indexOf('bindtap="openSleep"'), '设备信息 → 设备ID → 屏幕尺寸 → 休眠设置')
     assert.ok(/wx:if="\{\{device\.sizeModel\}\}" class="wifi-detail-entry size-model-entry"/.test(tpl), '屏幕尺寸没配整行不展示')
     assert.equal(tpl.slice(0, tpl.indexOf('wifi-detail-actions')).indexOf('屏幕尺寸'), -1, '顶部卡片不再显示屏幕尺寸')
+    assert.equal(tpl.slice(0, tpl.indexOf('wifi-detail-actions')).indexOf('设备ID'), -1, '顶部卡片不再显示设备ID（与功能栏重复）')
     assert.equal(tpl.indexOf('国家码'), -1, '不显示国家码')
     assert.ok(/\.wifi-detail-state\.is-local\s*\{/.test(read('subpackages/device/wifi-detail/wifi-detail.wxss')))
     assert.ok(/\.device-status\.wifi-status\.is-local\s*\{/.test(read('pages/home/home.wxss')), '首页本地模式颜色')
