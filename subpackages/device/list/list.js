@@ -30,7 +30,8 @@ function previousWifiFields(previous) {
     wifiStatusText: previous.wifiStatusText,
     wifiSignalLevel: previous.wifiSignalLevel,
     wifiBatteryText: previous.wifiBatteryText,
-    wifiBatteryIcon: previous.wifiBatteryIcon
+    wifiBatteryIcon: previous.wifiBatteryIcon,
+    wifiSlideshowOn: !!previous.wifiSlideshowOn
   }
 }
 
@@ -199,6 +200,7 @@ Page(fold.adapt({
       loadError: false
     })
     this.refreshWifiStatus()
+    this.refreshWifiSlideshow()
     this.watchWifiDevices()
     await this.refreshConnectedBattery()
   },
@@ -226,6 +228,28 @@ Page(fold.adapt({
             )
           })
         })
+    }))
+  },
+
+  // WiFi 版「轮播设置」旁的轮播中标记（2026-11-02）：每台查一次 strategy.running；随 onShow 重拉列表刷新，
+  // 所以从轮播设置页保存 / 暂停回来就会更新。查不到保持上次的显示；各台带序号，旧请求晚到不覆盖。
+  refreshWifiSlideshow() {
+    const targets = (this.data.devices || []).filter(item => item && item.isWifi)
+    const seqs = this._wifiSlideSeq || (this._wifiSlideSeq = {})
+    return Promise.all(targets.map(device => {
+      const key = String(device.id)
+      const seq = (seqs[key] || 0) + 1
+      seqs[key] = seq
+      return wifiStatus.fetchSlideshowRunning(device).then(running => {
+        if (seqs[key] !== seq || running === null) {
+          return
+        }
+        this.setData({
+          devices: (this.data.devices || []).map(item =>
+            String(item.id) === key && item.isWifi ? Object.assign({}, item, { wifiSlideshowOn: running }) : item
+          )
+        })
+      })
     }))
   },
 

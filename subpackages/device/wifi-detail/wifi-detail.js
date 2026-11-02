@@ -19,7 +19,7 @@ const app = getApp()
 //   · 设备记录：老服务 getDeviceDetail（名称、设备 ID、尺寸、设备图、isToHave / shareUserId）；
 //   · 状态：IoT GET /api/device/info，订阅 WS device.status，上下线时自动重查（只推信号不推详情）；
 //     电量放在在线状态那一栏（与蓝牙版一致，仅在线时显示）。
-//   · 顶部卡片下方：「投屏」「轮播设置」（与蓝牙版位置一致）；
+//   · 顶部卡片下方：「投屏」「轮播设置」（与蓝牙版位置一致）；轮播开启中（strategy.running）时「轮播设置」带绿点 +「轮播中」（2026-11-02）；
 //   · 功能栏依次：设备信息（二级页 wifi-info：WiFi信号 / WiFi名称 / 最后上线 / 最后心跳 / 固件版本）、休眠设置、
 //     消息中心（未读角标）、TF卡（未插卡不可点；有卡显示已用 / 总量，进 wifi-tf）、分享设备（仅所有者，进 wifi-share）、
 //     解除绑定（只删设备）；页底「删除设备」（仅所有者，样式同蓝牙版：先删云端图片再删设备）。
@@ -79,6 +79,7 @@ Page(fold.adapt({
     firmwareVersion: '',
     otaText: '--',
     otaHasUpdate: false,
+    slideshowOn: false, // 轮播开启中（2026-11-02，strategy.running）：「轮播设置」旁显示标记
     showMediaSheet: false,
     mediaSheetClosing: false,
     showUnbindConfirm: false,
@@ -165,6 +166,21 @@ Page(fold.adapt({
     this.refreshStatus()
     this.refreshUnread()
     this.refreshOta(true)
+    this.refreshSlideshow()
+  },
+
+  // 轮播开启中标记：每次进页（含从轮播设置页回来）查一次；查不到保持原样
+  async refreshSlideshow() {
+    if (!this.deviceNo()) {
+      return
+    }
+    const seq = (this._slideSeq || 0) + 1
+    this._slideSeq = seq
+    const running = await wifiStatus.fetchSlideshowRunning(this.data.device)
+    if (this.unloaded || this._slideSeq !== seq || running === null) {
+      return
+    }
+    this.setData({ slideshowOn: running })
   },
 
   // 固件升级行。query=true 时先向服务端核对本地进行中的升级（终态 / 4044 会清掉记录）

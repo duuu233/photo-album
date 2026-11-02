@@ -78,9 +78,14 @@
               <text>投屏</text>
             </view>
             <view class="device-action-divider"></view>
+            <!-- 轮播开启中（2026-11-02）：图标右上角绿点 + 「轮播中」小标签，辅助告知用户轮播在跑 -->
             <view class="device-action wifi-slideshow-action" hover-class="none" data-id="{{item.id}}" catchtap="openWifiSlideshow">
-              <image class="action-slideshow-icon" src="/assets/images/device-detail-icon01.png" mode="aspectFit"></image>
+              <view class="slideshow-icon-wrap">
+                <image class="action-slideshow-icon" src="/assets/images/device-detail-icon01.png" mode="aspectFit"></image>
+                <view wx:if="{{item.wifiSlideshowOn}}" class="slideshow-on-dot"></view>
+              </view>
               <text>轮播设置</text>
+              <text wx:if="{{item.wifiSlideshowOn}}" class="slideshow-on-tag">轮播中</text>
             </view>
           </view>
         </view>

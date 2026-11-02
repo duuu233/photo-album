@@ -75,6 +75,19 @@ function fetchFields(device) {
     })
 }
 
+// 轮播是否开启中（2026-11-02，我的设备 / WiFi 详情「轮播设置」旁的轮播中标记）：GET /api/device/strategy 的 running。
+// 只要权限、离线也能查。查不到（403 / 503 / 网络）返回 null，调用方保持原来的显示，不弹错。
+function fetchSlideshowRunning(device) {
+  const deviceNo = (device && (device.productDeviceId || device.deviceNo)) || ''
+  return Promise.resolve()
+    .then(() => iotApi.getStrategy(deviceNo, { showError: false }))
+    .then(res => !!(res && res.running))
+    .catch(error => {
+      console.warn('[WiFi轮播] 状态查询失败', error && error.code, error && error.message)
+      return null
+    })
+}
+
 // 投屏入口用：确认在线才往下走。明确离线 / 休眠时提示并返回 false；查不到（503 / 网络等）放行，由投屏接口裁决（离线回 4041）
 async function ensureOnline(device) {
   let state = ''
@@ -145,6 +158,7 @@ module.exports = {
   blockedTip,
   statusFields,
   fetchFields,
+  fetchSlideshowRunning,
   ensureOnline,
   projectBlockedTip,
   queryBlockedTip,

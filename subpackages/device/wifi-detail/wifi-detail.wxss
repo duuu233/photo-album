@@ -172,6 +172,48 @@
   height: 40rpx;
 }
 
+/* 轮播开启中标记（2026-11-02）：图标右上角绿点（带呼吸光圈）+「轮播中」小标签，颜色同「轮播设置」 */
+.slideshow-icon-wrap {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.slideshow-on-dot {
+  position: absolute;
+  top: -4rpx;
+  right: -6rpx;
+  width: 14rpx;
+  height: 14rpx;
+  box-sizing: border-box;
+  background: #0e9f87;
+  border: 2rpx solid #ffffff;
+  border-radius: 50%;
+  animation: slideshowOnPulse 1.6s ease-out infinite;
+}
+
+.slideshow-on-tag {
+  padding: 2rpx 10rpx;
+  color: #0e9f87;
+  background: rgba(14, 159, 135, 0.12);
+  border-radius: 999rpx;
+  font-size: 20rpx;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+@keyframes slideshowOnPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(14, 159, 135, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 10rpx rgba(14, 159, 135, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(14, 159, 135, 0);
+  }
+}
+
 .wifi-detail-error {
   display: flex;
   flex-direction: column;

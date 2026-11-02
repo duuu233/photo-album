@@ -54,9 +54,14 @@
         </view>
         <view class="wifi-detail-action-divider"></view>
         <!-- V1.4 更新说明 1.5：原「刷新状态」改为「轮播设置」；状态随进页与 WS device.status 自动重查 -->
+        <!-- 轮播开启中（2026-11-02）：图标右上角绿点 + 「轮播中」小标签 -->
         <view class="wifi-detail-action slideshow-action" hover-class="none" bindtap="openSlideshow">
-          <image class="wifi-detail-action__icon" src="/assets/images/device-detail-icon01.png" mode="aspectFit"></image>
+          <view class="slideshow-icon-wrap">
+            <image class="wifi-detail-action__icon" src="/assets/images/device-detail-icon01.png" mode="aspectFit"></image>
+            <view wx:if="{{slideshowOn}}" class="slideshow-on-dot"></view>
+          </view>
           <text>轮播设置</text>
+          <text wx:if="{{slideshowOn}}" class="slideshow-on-tag">轮播中</text>
         </view>
       </view>
 
