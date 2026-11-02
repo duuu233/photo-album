@@ -22,11 +22,18 @@
     "miniprogram": {
       "list": [
         {
+          "name": "分享",
+          "pathName": "subpackages/device/wifi-share-accept/wifi-share-accept",
+          "query": "d=38%3A44%3ABE%3A2E%3A52%3A20&p=19&u=224&n=IJ_3844BE2E5220&o=%E5%AF%92%E6%BD%AE%F0%9F%8D%BD%EF%B8%8F",
+          "scene": 1007,
+          "launchMode": "default"
+        },
+        {
           "name": "subpackages/projection/preview/preview",
           "pathName": "subpackages/projection/preview/preview",
           "query": "",
-          "scene": null,
-          "launchMode": "default"
+          "launchMode": "default",
+          "scene": null
         },
         {
           "name": "圆形照片预览 Demo",
