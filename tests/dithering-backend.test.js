@@ -10,6 +10,7 @@
 //   ③ 业务 JSON 报错：抛「接口-」+ retMsg，不当成帧、不重试；401/406 走统一登出；
 //   ④ 网络失败退避重试，共 3 次；
 //   ⑤ 取基地址：Header 带 userToken、data 去尾 /、成功缓存；失败（网络 / code≠0 / data 非 http 地址）回落 https://api.boltfox.cn 且不缓存。
+//   ⑥ getLastEndpoint（投屏进度页调试显示）：来源 endpoint / cache / fallback、基地址、请求地址（不带 userToken）、返回概要。
 const assert = require('node:assert/strict')
 
 const effects = []
@@ -134,12 +135,23 @@ async function main() {
     options.success({ statusCode: 200, data: { code: 0, msg: 'ok', data: 'https://proxy.example.com/api/' } })
   await dithering.requestFrameBin({ filePath: 'wxfile://image.jpg', type: '0' })
   assert.equal(requests()[0].url, 'https://proxy.example.com/api/Client/Basic/imageDitheringBinDownload?userToken=user-token', '反代域名带路径也照拼')
+  // ⑥ 调试显示（2026-11-02）：记下来源与地址，请求地址不带公共参数（不含 userToken）
+  let last = dithering.getLastEndpoint()
+  assert.equal(last.source, 'endpoint')
+  assert.equal(last.baseURL, 'https://proxy.example.com/api')
+  assert.equal(last.requestURL, 'https://proxy.example.com/api/Client/Basic/imageDitheringBinDownload')
+  assert.ok(/code=0/.test(last.detail) && /proxy\.example\.com/.test(last.detail), '返回概要带 code 与 data')
+  await dithering.requestFrameBin({ filePath: 'wxfile://image.jpg', type: '0' })
+  assert.equal(dithering.getLastEndpoint().source, 'cache', '缓存命中标为缓存')
 
   effects.length = 0
   dithering._resetEndpointCache()
   endpointRespond = options => options.fail({ errMsg: 'request:fail timeout' })
   await dithering.requestFrameBin({ filePath: 'wxfile://image.jpg', type: '0' })
   assert.equal(requests()[0].url, 'https://api.boltfox.cn/Client/Basic/imageDitheringBinDownload?userToken=user-token', '取地址网络失败回落默认域名')
+  last = dithering.getLastEndpoint()
+  assert.equal(last.source, 'fallback', '回落默认标为回落')
+  assert.ok(/网络失败/.test(last.detail) && /timeout/.test(last.detail), '记下失败原因')
   await dithering.requestFrameBin({ filePath: 'wxfile://image.jpg', type: '0' })
   assert.equal(endpointCalls().length, 2, '失败不缓存，下次重新取')
 
