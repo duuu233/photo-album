@@ -404,6 +404,13 @@
   border-radius: 50%;
 }
 
+/* 设备ID / 屏幕尺寸（2026-11-02）：只展示的值，字号颜色同蓝牙版详情 .row-value */
+.wifi-detail-entry__value--plain {
+  color: #777e88;
+  font-size: 28rpx;
+  line-height: 1.2;
+}
+
 /* 解除绑定（2026-10-29）：红字，同蓝牙版 .delete-row */
 .unbind-entry .wifi-detail-entry__label {
   color: #ff3045;

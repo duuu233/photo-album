@@ -215,6 +215,12 @@ async function main() {
     assert.ok(/wx:if="\{\{isOwner\}\}"[^>]*bindtap="openShare"/.test(tpl), '分享仅所有者')
     assert.ok(/wx:if="\{\{isOwner\}\}" class="outline-delete-device"/.test(tpl), '删除设备仅所有者，样式同蓝牙版')
     assert.ok(tpl.indexOf('batteryText') < tpl.indexOf('wifi-detail-actions'), '电量在顶部状态栏')
+    // 2026-11-02：设备ID、屏幕尺寸放进功能栏「设备信息」之下（同蓝牙版），顶部卡片不再显示屏幕尺寸
+    const idRow = tpl.indexOf('<text class="wifi-detail-entry__label">设备ID</text>')
+    const sizeRow = tpl.indexOf('<text class="wifi-detail-entry__label">屏幕尺寸</text>')
+    assert.ok(tpl.indexOf('bindtap="openInfo"') < idRow && idRow < sizeRow && sizeRow < tpl.indexOf('bindtap="openSleep"'), '设备信息 → 设备ID → 屏幕尺寸 → 休眠设置')
+    assert.ok(/wx:if="\{\{device\.sizeModel\}\}" class="wifi-detail-entry size-model-entry"/.test(tpl), '屏幕尺寸没配整行不展示')
+    assert.equal(tpl.slice(0, tpl.indexOf('wifi-detail-actions')).indexOf('屏幕尺寸'), -1, '顶部卡片不再显示屏幕尺寸')
     assert.equal(tpl.indexOf('国家码'), -1, '不显示国家码')
     assert.ok(/\.wifi-detail-state\.is-local\s*\{/.test(read('subpackages/device/wifi-detail/wifi-detail.wxss')))
     assert.ok(/\.device-status\.wifi-status\.is-local\s*\{/.test(read('pages/home/home.wxss')), '首页本地模式颜色')

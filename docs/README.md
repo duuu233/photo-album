@@ -57,6 +57,7 @@
 
 ## 变更记录
 
+- [2026-11-02 WiFi版详情设备ID与屏幕尺寸行](changes/2026-11-02-WiFi版详情设备ID与屏幕尺寸行.md)：`main-wifi` 分支。功能栏「设备信息」下新增「设备ID」「屏幕尺寸」两行（同蓝牙版，尺寸没配不展示）；顶部卡片的屏幕尺寸去掉。
 - [2026-11-02 WiFi版「轮播设置」轮播开启中标记](changes/2026-11-02-WiFi版轮播开启中标记.md)：`main-wifi` 分支。我的设备 WiFi 卡与 WiFi 详情的「轮播设置」在 `strategy.running` 时显示图标绿点 +「轮播中」标签（样式绘制，正式图标待替换）；查不到保持原样。
 - [2026-11-02 WiFi版固件升级（OTA）](changes/2026-11-02-WiFi版固件升级OTA.md)：`main-wifi` 分支，按前端对接变更说明（2026-10-31）。WiFi 详情新增「固件升级」（当前版本 + 新版本红点）；新页 `wifi-ota` 与配网页同一形态，四步 `SENT` / `DOWNLOADING` / `FLASHING` / `VERIFYING`，`FAILED` / `TIMEOUT` 在当前步打叉；`msgid` 带类型存 `ota_inflight:{deviceNo}`，重进按它恢复，`VERIFYING` 后不再提示升级；`4000` / `4045` 按升级进行中；消息类型 `OTA_SUCCESS` / `OTA_FAILED`。
 - [2026-11-02 抖动出帧基地址改由 download-endpoint 下发 / 设备列表连接后回顶](changes/2026-11-02-抖动出帧基地址下发与设备列表连接后回顶.md)：`main` / `main-wifi` 两支。先 `GET https://iot.boltfox.cn/api/device/download-endpoint` 取基地址（`data`，如 `https://api.boltfox.cn/`），再请求 基地址 + `/Client/Basic/imageDitheringBinDownload`，参数不变，取不到回落 `https://api.boltfox.cn`；「我的设备」蓝牙设备连接成功后页面平滑滚回顶部。本机无 node 测试未跑，未真机。
