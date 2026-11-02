@@ -56,6 +56,7 @@
 
 ## 变更记录
 
+- [2026-11-02 抖动出帧接口改调 iot.boltfox.cn](changes/2026-11-02-抖动出帧接口改调iot-download-endpoint.md)：`main` / `main-wifi` 两支。抖动出帧地址改为 `https://iot.boltfox.cn/api/device/download-endpoint`，参数全部不变（`clientRequestParts` 新增 `clientQuery` 让非 `/Client/` 路径也带公共参数）；小程序后台需加 request 合法域名。本机无 node 测试未跑，未真机。
 - [2026-10-29 抖动出帧接口改调 api.yikaltd.com](changes/2026-10-29-抖动出帧接口改调yikaltd.md)：`main` / `main-wifi` 两支。抖动出帧地址改为 `https://api.yikaltd.com/api/Client/Basic/imageDitheringBinDownload`，参数全部不变（`clientRequestParts` 新增 `baseURL` 覆盖）；小程序后台需加 request 合法域名。本机无 node 测试未跑，未真机。
 - [2026-10-29 WiFi版设备分享（简化版：微信卡片）](changes/2026-10-29-WiFi版设备分享简化版.md)：`main-wifi` 分支，按服务端新增的 `userId` / `isToHave` / `shareUserId`。绑定默认传所有者；分享列表发微信卡片（带设备号 / 产品 / 所有者 userId），新接受页以非所有者绑定，未登录登录后回接受页；移除成员走 `delUserProduct`。无邀请码，风险与待确认项见变更记录；开发版分享列表可「复制测试参数」用于自定义编译预览测接受页；同日补记服务端答复（所有者删设备连带成员记录与照片，解绑不删图，成员只有解绑）；成员加入时间改取接口新增的 `joinTime`。本机无 node 测试未跑，未真机。
 - [2026-10-29 WiFi版TF卡本地模式与设备详情改版](changes/2026-10-29-WiFi版TF卡本地模式与详情页改版.md)：`main-wifi` 分支，按前端对接变更说明（2026-10-29）。投屏进度页中间图片改为状态图标；新增设备状态「本地模式」（`LOCAL_TF`，不认识的状态按状态未知）；本地模式下投屏 / 轮播设置 / TF卡 只提示；AI 生图、官方图库选择设备过滤离线 / 本地模式 / 未知的 WiFi 版，我的上传与预览页「开始投屏」同口径拦截，轮播保存前判断状态；WiFi 详情改版（投屏 / 轮播上移、电量进状态栏、设备信息二级页、TF卡、分享设备、解除绑定、删除设备先删云端图片）；TF 卡设置页（play-tf + command.result）；分享列表页（邀请 / 移除接口待服务端）。本机无 node 测试未跑，未真机。
