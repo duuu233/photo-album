@@ -5,6 +5,8 @@
 // （/Client/Basic/getXTYUserToken）不再使用。
 // 2026-10-29 起地址改为 https://api.yikaltd.com/api/Client/Basic/imageDitheringBinDownload，参数（公共参数、
 // 鉴权头、form-data 字段）全部不变，只换域名与前缀。
+// 2026-11-02 起地址再改为 https://iot.boltfox.cn/api/device/download-endpoint，参数仍全部不变；
+// 新路径不在 /Client/ 下，公共参数 query 靠 clientRequestParts 的 clientQuery:true 强制带上。
 // 实现要点/注意：
 //   · 公共参数 device/terminal/language/userToken 与其它接口同口径注入（request.clientRequestParts），
 //     userToken 是本 App 用户自己的登录令牌；登录过期（401/406）走 request 统一登出引导；
@@ -15,8 +17,8 @@
 const protocol = require('./frame-protocol')
 const http = require('./request')
 
-const DITHERING_BASE_URL = 'https://api.yikaltd.com/api'
-const DITHERING_PATH = '/Client/Basic/imageDitheringBinDownload'
+const DITHERING_BASE_URL = 'https://iot.boltfox.cn/api'
+const DITHERING_PATH = '/device/download-endpoint'
 
 // 网络类失败的用户侧文案：微信透传的英文原文（`request:fail fail:time out` 之类）用户看不懂，
 // 原文写进 error.raw 并打日志，排查看 vConsole（判读表见 docs/architecture/image-projection-pipeline.md）。
@@ -133,7 +135,7 @@ function requestOnce(body, boundary) {
   const parts = http.clientRequestParts(
     DITHERING_PATH,
     { 'content-type': `multipart/form-data; boundary=${boundary}` },
-    { baseURL: DITHERING_BASE_URL }
+    { baseURL: DITHERING_BASE_URL, clientQuery: true }
   )
   return new Promise((resolve, reject) => {
     wx.request({

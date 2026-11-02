@@ -309,6 +309,8 @@ function handleSessionExpired() {
 // 给必须自己发 wx.request 的调用方（抖动出帧要 arraybuffer 响应 + 手拼 multipart，见 dithering.js）：
 // 与 request() 同口径带上公共参数 device/terminal/language/userToken（header + /Client/ query）与鉴权头。
 // options.baseURL（2026-10-29）：换掉默认的 config.baseURL（抖动出帧改调 api.yikaltd.com/api），公共参数照常拼。
+// options.clientQuery（2026-11-02）：true 时不在 /Client/ 下的路径也拼公共参数 query（抖动出帧改调
+// iot.boltfox.cn/api/device/download-endpoint，参数保持与原接口一致）。
 function clientRequestParts(url, extraHeader, options) {
   const token = getToken()
   const jwtToken = getJwtToken()
@@ -319,7 +321,8 @@ function clientRequestParts(url, extraHeader, options) {
   if (jwtToken) {
     header.Authentication = `Bearer ${jwtToken}`
   }
-  const clientQuery = isClientApi(url) ? getClientQuery(token, header) : {}
+  const forceClientQuery = Boolean(options && options.clientQuery)
+  const clientQuery = forceClientQuery || isClientApi(url) ? getClientQuery(token, header) : {}
   const path = appendQuery(url, clientQuery)
   const baseURL = options && options.baseURL
   return {

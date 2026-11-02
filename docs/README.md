@@ -40,6 +40,7 @@
 
 ## 变更记录
 
+- [2026-11-02 抖动出帧接口改调 iot.boltfox.cn](changes/2026-11-02-抖动出帧接口改调iot-download-endpoint.md)：`main` / `main-wifi` 两支。抖动出帧地址改为 `https://iot.boltfox.cn/api/device/download-endpoint`，参数全部不变（`clientRequestParts` 新增 `clientQuery` 让非 `/Client/` 路径也带公共参数）；小程序后台需加 request 合法域名。本机无 node 测试未跑，未真机。
 - [2026-10-29 抖动出帧接口改调 api.yikaltd.com](changes/2026-10-29-抖动出帧接口改调yikaltd.md)：`main` / `main-wifi` 两支。抖动出帧地址改为 `https://api.yikaltd.com/api/Client/Basic/imageDitheringBinDownload`，参数全部不变（`clientRequestParts` 新增 `baseURL` 覆盖）；小程序后台需加 request 合法域名。本机无 node 测试未跑，未真机。
 - [2026-10-27 搜索列表尺寸没配显示--寸](changes/2026-10-27-搜索列表尺寸没配显示--寸.md)：搜索设备列表尺寸直接显示按广播名匹配到的 `sizeModel`，没配 / 匹配不到显示「--寸」（原为不显示），加 `[搜索尺寸]` 日志；搜索页测试桩补 scanSizeModel。设备详情口径不变。本机无node测试未跑，未真机。
 - [2026-10-23 屏幕尺寸读sizeModel与抖动出帧迁后端](changes/2026-10-23-屏幕尺寸读sizeModel与抖动出帧迁后端.md)：设备详情「屏幕尺寸」直接展示后台 `sizeModel`，没配不展示；抖动出帧由第三方 seekink 改调 `/Client/Basic/imageDitheringBinDownload`（用户自己的 userToken），删 getXTYUserToken 及调试台 Token 卡片。同日追加：搜索列表按广播名匹配产品显示 sizeModel；type 数值不变由后端对齐。本机无node测试未跑，未真机。
