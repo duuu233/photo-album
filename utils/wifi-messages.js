@@ -12,6 +12,9 @@ const TYPE_TEXT = {
   PLAY_DOWNLOAD_FAILED: '投屏失败：设备下载图片失败',
   PLAY_STORAGE_ERROR: '投屏失败：设备存储异常',
   PLAY_FAILED: '投屏失败',
+  // 2026-11-02（docs/前端对接文档20261031.md 第四节）：只在设备重启后服务端确认版本时发；payload { version, baseVersion, reason? }
+  OTA_SUCCESS: '固件升级成功',
+  OTA_FAILED: '固件升级失败',
   EXCEPTION_UP_PARSE: '设备上报数据解析失败',
   EXCEPTION_UNKNOWN_ACTION: '设备上报了未知指令',
   EXCEPTION_COMMAND_BUILD: '平台下发指令构造失败'
@@ -43,6 +46,18 @@ function detailText(type, payload) {
   }
   if (p.rssi !== undefined && p.rssi !== null && p.rssi !== '') {
     parts.push(`信号 ${p.rssi}dBm`)
+  }
+  if (/^OTA_/.test(String(type))) {
+    // 升级通知：版本变化一行；reason 是短码（timeout 超时 / corrected 超时后由版本号确认成功），翻成中文
+    if (p.baseVersion && p.version) {
+      parts.push(`${p.baseVersion} → ${p.version}`)
+    } else if (p.version) {
+      parts.push(`目标版本 ${p.version}`)
+    }
+    if (p.reason === 'timeout') {
+      parts.push('升级超时')
+    }
+    return parts.join('，')
   }
   if (p.reason) {
     parts.push(String(p.reason))

@@ -60,7 +60,7 @@
         </view>
       </view>
 
-      <!-- 功能栏（2026-10-29）：设备信息、休眠设置、消息中心、TF卡、分享设备（仅所有者）、解除绑定 -->
+      <!-- 功能栏（2026-10-29）：设备信息、休眠设置、消息中心、固件升级（2026-11-02）、TF卡、分享设备（仅所有者）、解除绑定 -->
       <view class="wifi-detail-entries glass-panel">
         <view class="wifi-detail-entry" hover-class="none" bindtap="openInfo">
           <text class="wifi-detail-entry__label">设备信息</text>
@@ -74,6 +74,15 @@
           <text class="wifi-detail-entry__label">消息中心</text>
           <view class="wifi-detail-entry__right">
             <text wx:if="{{unreadCount}}" class="wifi-detail-badge">{{unreadText}}</text>
+            <view class="ui-chevron"></view>
+          </view>
+        </view>
+        <!-- 固件升级（2026-11-02）：右侧当前固件版本；有新版本亮红点，进行中显示「升级中」 -->
+        <view class="wifi-detail-entry ota-entry" hover-class="none" bindtap="openOta">
+          <text class="wifi-detail-entry__label">固件升级</text>
+          <view class="wifi-detail-entry__right">
+            <text class="wifi-detail-entry__value">{{otaText}}</text>
+            <view wx:if="{{otaHasUpdate}}" class="wifi-detail-dot"></view>
             <view class="ui-chevron"></view>
           </view>
         </view>

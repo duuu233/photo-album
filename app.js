@@ -8,6 +8,8 @@ const deviceBle = require('./utils/device-ble')
 const aiServiceConsent = require('./utils/ai-service-consent')
 const deviceIdentity = require('./utils/device-identity')
 const iotWs = require('./utils/iot-ws')
+const broadcastMatch = require('./utils/broadcast-match')
+const wifiOta = require('./utils/wifi-ota')
 
 // 将回调式的 wx.login 封装为 Promise，便于在 async 流程中 await
 function wxLogin() {
@@ -72,6 +74,13 @@ App({
         return
       }
 
+      // WiFi 版（2026-11-02）：本地有进行中的升级（含已到 VERIFYING、等设备重启）时不再弹，避免重复升级（对接文档 3.3）；
+      // 升级页走 WiFi 版步骤页，蓝牙版照旧
+      const isWifi = broadcastMatch.isWifiDevice(device) || broadcastMatch.isWifiDevice(selected)
+      if (isWifi && wifiOta.readInflight(device.productDeviceId || device.deviceNo || selected.productDeviceId || selected.deviceNo)) {
+        return
+      }
+      const otaPage = isWifi ? '/subpackages/device/wifi-ota/wifi-ota' : '/subpackages/device/ota/ota'
       const version = String(device.newVersionNo || '').trim() || '新版本'
       wx.showModal({
         title: '固件升级',
@@ -81,7 +90,7 @@ App({
         success: res => {
           if (res.confirm) {
             // 立刻更新：进入固件升级页
-            wx.navigateTo({ url: `/subpackages/device/ota/ota?id=${device.id}` })
+            wx.navigateTo({ url: `${otaPage}?id=${device.id}` })
           } else if (wx.exitMiniProgram) {
             // 稍后：关闭小程序
             wx.exitMiniProgram()

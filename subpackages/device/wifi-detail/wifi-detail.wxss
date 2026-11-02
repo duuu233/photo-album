@@ -353,6 +353,15 @@
   white-space: nowrap;
 }
 
+/* 固件升级行的新版本红点（2026-11-02，同蓝牙版 .firmware-dot） */
+.wifi-detail-dot {
+  flex: 0 0 auto;
+  width: 14rpx;
+  height: 14rpx;
+  background: #ff3b30;
+  border-radius: 50%;
+}
+
 /* 解除绑定（2026-10-29）：红字，同蓝牙版 .delete-row */
 .unbind-entry .wifi-detail-entry__label {
   color: #ff3045;

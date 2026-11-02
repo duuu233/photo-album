@@ -98,6 +98,10 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 服务端无邀请码，先用微信卡片：分享列表 `open-type="share"`，路径 `wifi-share-accept?d=设备号&p=产品ID&u=所有者userId&n=设备名&o=昵称`（`utils/wifi-share.js` 编解码）；接受页调 `api.acceptSharedDevice`（`addUserProduct`，`isToHave=0`、`shareUserId`），未登录先存 `pendingShareAccept` 再登录，登录页成功后 `reLaunch` 回来。自己绑定（蓝牙 / WiFi）一律 `isToHave=1, shareUserId=0`；`getUserProfile().userId` 是数字主键（`id` / `userNo` 仍是展示编号）。移除成员 `api.removeShareUser` = `delUserProduct(成员 userProductId)`；成员加入时间取 `getShareUserProductList` 的 `joinTime`（原样显示，空则「--」）。拿到卡片即可加入，靠服务端校验兜底。开发版分享列表多一个「复制测试参数」（卡片 `?` 后参数），供开发者工具自定义编译预览测接受页。服务端口径：所有者删除设备连带删除全部分享者记录与照片；解除绑定不删图；删除设备仅所有者，分享者只有解绑。见 `docs/changes/2026-10-29-WiFi版设备分享简化版.md`。
 
+## WiFi 版固件升级（2026-11-02，`main-wifi`）
+
+依据 `docs/前端对接文档20261031.md`。WiFi 详情「固件升级」行（当前 `firmwareVersion` + 新版本红点）→ `subpackages/device/wifi-ota`（版式与配网状态页同一套，`@import` 其 wxss）。目标版本 / 固件包取老服务 `getDeviceDetail` 的 `newVersionNo` / `downloadPath`，`utils/wifi-ota.evaluate` 按 `x.y.z` 数字段比较，当前版本空或旧格式（`M H:3 F:…`）按「无法判断」。`POST /api/device/ota`（`type=main`）成功立即把 `{ type:'ota', msgid, … }` 存到独立 key `ota_inflight:{deviceNo}`；3 秒轮询 `GET /api/device/ota/status` + WS `ota.result` 按 msgid 刷新。四步 `SENT` / `DOWNLOADING` / `FLASHING` / `VERIFYING`：`VERIFYING` 是步骤页成功终点但不是终态（记录保留到 `SUCCESS` / `FAILED` / `TIMEOUT` 或 `4044` 才清）；`FAILED` / `TIMEOUT` 在当前步打叉。**提示「有新版本」前先看本地记录**（详情红点、升级页、`app.js` 强制升级弹窗三处），`VERIFYING` 后重进只显示「升级完成 · 等待设备重启」。`4045` 与 OTA 上的 `4000` 按「设备正在升级」，不当普通失败。消息类型 `OTA_SUCCESS` / `OTA_FAILED`。见 `docs/changes/2026-11-02-WiFi版固件升级OTA.md`。
+
 ## 联调日志浮窗（2026-10-27，`main-wifi`）
 
 开发版 / 体验版每个页面左下角有「日志 N」浮窗（`components/debug-log`，app.json 全局注册，每个页面 wxml 末尾一个 `<debug-log>`；新增页面记得加），点开可复制 / 清空。数据来自 `utils/debug-log.js`：`app.js` 最先 `install()` 包装 console，另有老服务 `[HTTP]`、IoT `[IoT]`、`[WS]` 摘要；最近 500 行只在内存，token / 密码入库前打码。正式版整套不生效。

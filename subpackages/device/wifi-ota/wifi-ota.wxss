@@ -1,0 +1,60 @@
+/* WiFi 版固件升级：与配网状态页同一种形态，步骤圈 / 标题 / 底部按钮直接复用配网页样式 */
+@import "../wifi-provision/wifi-provision.wxss";
+
+.ota-art {
+  display: block;
+  width: 320rpx;
+  height: 240rpx;
+  margin: 40rpx auto 0;
+}
+
+.wifi-ota-page .provision-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 48rpx;
+}
+
+.ota-title-spinner {
+  flex: 0 0 32rpx;
+  width: 32rpx;
+  height: 32rpx;
+  margin-right: 16rpx;
+  box-sizing: border-box;
+  border: 4rpx solid rgba(255, 98, 31, 0.18);
+  border-top-color: #ff621f;
+  border-radius: 50%;
+  animation: provisionSpin 0.8s linear infinite;
+}
+
+.wifi-ota-page .provision-hint {
+  padding: 0 48rpx;
+  line-height: 1.5;
+}
+
+.ota-versions {
+  margin-top: 48rpx;
+  padding: 0 36rpx;
+}
+
+.ota-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 96rpx;
+}
+
+.ota-version-row + .ota-version-row {
+  border-top: 1rpx solid rgba(42, 43, 43, 0.06);
+}
+
+.ota-version-row__label {
+  color: #33373d;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.ota-version-row__value {
+  color: #777e88;
+  font-size: 28rpx;
+}

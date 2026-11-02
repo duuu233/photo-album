@@ -20,7 +20,8 @@
         "wifi-info/wifi-info",
         "wifi-tf/wifi-tf",
         "wifi-share/wifi-share",
-        "wifi-share-accept/wifi-share-accept"
+        "wifi-share-accept/wifi-share-accept",
+        "wifi-ota/wifi-ota"
       ]
     },
     {

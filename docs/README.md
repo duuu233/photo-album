@@ -52,10 +52,12 @@
 | [WiFi 版删除指定照片方案](wifi/删除指定照片方案.md) | 无 TF 卡时删除指定照片：删云端记录 + 屏上那张补发 `play` 换图、不能用 `clean_tf` / `refresh` 的原因、待产品/后端/固件确认项；draft |
 | [WiFi 版前端对接变更说明（2026-10-29）](wifi/前端对接20261029.md) | TF 卡本地播放：设备状态 `LOCAL_TF`、`play-tf` 完整交互与 `command.result` 推送、消息类型 `TF_LOCAL_MODE`；clean-tf 不变 |
 | [WiFi 版设备分享方案](wifi/设备分享方案.md) | 所有者分享给成员：一次性邀请链接规则（接受才消耗、24h、可撤回）、服务端接口与邀请表、落地页、小程序卡片 / 接受页、APP 通用链接（iOS SceneDelegate / Android 中转 Activity，不加插件）实现方案、成员权限表、分期与待确认项；draft |
+| [WiFi 版前端对接变更说明（2026-10-31）](前端对接文档20261031.md) | OTA 新增 `VERIFYING`（步骤页成功终点、非终态）、超时 1800 秒、固件版本号统一 `x.y.z`、`msgid` 带类型本地保存与恢复、`4000` / `4045` 兜底、消息类型 `OTA_SUCCESS` / `OTA_FAILED` |
 | [WiFi 版对接文档评审建议](前端对接文档_评审建议.md) | 小程序端对草稿 v0.27 的评审意见（P0/P1/P2）、待后端答复清单与小程序端自身调整项；draft |
 
 ## 变更记录
 
+- [2026-11-02 WiFi版固件升级（OTA）](changes/2026-11-02-WiFi版固件升级OTA.md)：`main-wifi` 分支，按前端对接变更说明（2026-10-31）。WiFi 详情新增「固件升级」（当前版本 + 新版本红点）；新页 `wifi-ota` 与配网页同一形态，四步 `SENT` / `DOWNLOADING` / `FLASHING` / `VERIFYING`，`FAILED` / `TIMEOUT` 在当前步打叉；`msgid` 带类型存 `ota_inflight:{deviceNo}`，重进按它恢复，`VERIFYING` 后不再提示升级；`4000` / `4045` 按升级进行中；消息类型 `OTA_SUCCESS` / `OTA_FAILED`。
 - [2026-11-02 抖动出帧基地址改由 download-endpoint 下发 / 设备列表连接后回顶](changes/2026-11-02-抖动出帧基地址下发与设备列表连接后回顶.md)：`main` / `main-wifi` 两支。先 `GET https://iot.boltfox.cn/api/device/download-endpoint` 取基地址（`data`，如 `https://api.boltfox.cn/`），再请求 基地址 + `/Client/Basic/imageDitheringBinDownload`，参数不变，取不到回落 `https://api.boltfox.cn`；「我的设备」蓝牙设备连接成功后页面平滑滚回顶部。本机无 node 测试未跑，未真机。
 - [2026-10-29 抖动出帧接口改调 api.yikaltd.com](changes/2026-10-29-抖动出帧接口改调yikaltd.md)：`main` / `main-wifi` 两支。抖动出帧地址改为 `https://api.yikaltd.com/api/Client/Basic/imageDitheringBinDownload`，参数全部不变（`clientRequestParts` 新增 `baseURL` 覆盖）；小程序后台需加 request 合法域名。本机无 node 测试未跑，未真机。
 - [2026-10-29 WiFi版设备分享（简化版：微信卡片）](changes/2026-10-29-WiFi版设备分享简化版.md)：`main-wifi` 分支，按服务端新增的 `userId` / `isToHave` / `shareUserId`。绑定默认传所有者；分享列表发微信卡片（带设备号 / 产品 / 所有者 userId），新接受页以非所有者绑定，未登录登录后回接受页；移除成员走 `delUserProduct`。无邀请码，风险与待确认项见变更记录；开发版分享列表可「复制测试参数」用于自定义编译预览测接受页；同日补记服务端答复（所有者删设备连带成员记录与照片，解绑不删图，成员只有解绑）；成员加入时间改取接口新增的 `joinTime`。本机无 node 测试未跑，未真机。

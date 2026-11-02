@@ -1,0 +1,60 @@
+<!-- WiFi 版设备固件升级（逻辑见 wifi-ota.js 文件头；版式与配网状态页同一套，样式引用 wifi-provision.wxss） -->
+<view class="mock-root provision-page wifi-ota-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
+  <view class="mock-bg">
+    <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
+  </view>
+
+  <page-nav title="固件升级"></page-nav>
+
+  <view class="mock-content provision-content">
+    <image class="ota-art" src="{{art}}" mode="aspectFit"></image>
+
+    <view class="provision-title {{phase === 'failed' || phase === 'error' ? 'is-failed' : ''}} {{phase === 'verifying' ? 'is-success' : ''}}">
+      <view wx:if="{{phase === 'checking'}}" class="ota-title-spinner"></view>
+      <text>{{title}}</text>
+    </view>
+    <view class="provision-hint">{{hint}}</view>
+
+    <!-- 版本比对结果：当前版本 / 最新版本 -->
+    <view wx:if="{{showVersions}}" class="ota-versions glass-panel">
+      <view class="ota-version-row">
+        <text class="ota-version-row__label">当前版本</text>
+        <text class="ota-version-row__value">{{currentVersion}}</text>
+      </view>
+      <view class="ota-version-row">
+        <text class="ota-version-row__label">最新版本</text>
+        <text class="ota-version-row__value">{{latestVersion}}</text>
+      </view>
+    </view>
+
+    <!-- 升级步骤：SENT / DOWNLOADING / FLASHING / VERIFYING 四步；FAILED / TIMEOUT 在当前那一步打叉 -->
+    <view wx:if="{{showSteps}}" class="provision-steps glass-panel">
+      <view wx:for="{{steps}}" wx:key="key" class="provision-step is-{{item.status}}">
+        <view class="step-icon">
+          <view wx:if="{{item.status === 'loading'}}" class="step-icon__spinner"></view>
+          <text wx:elif="{{item.status === 'done'}}" class="step-icon__mark">✓</text>
+          <text wx:elif="{{item.status === 'fail'}}" class="step-icon__mark">×</text>
+          <text wx:else class="step-icon__no">{{index + 1}}</text>
+        </view>
+        <text class="step-text">{{item.text}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{phase === 'available'}}" class="provision-actions">
+    <view class="provision-primary ota-start" hover-class="none" bindtap="startUpgrade">立即升级</view>
+  </view>
+  <view wx:elif="{{phase === 'verifying' || phase === 'busy'}}" class="provision-actions">
+    <view class="provision-primary" hover-class="none" bindtap="finish">完成</view>
+  </view>
+  <view wx:elif="{{phase === 'failed'}}" class="provision-actions provision-actions--stack">
+    <view class="provision-primary ota-retry" hover-class="none" bindtap="retryUpgrade">重新升级</view>
+    <view class="provision-cancel" hover-class="none" bindtap="finish">取消</view>
+  </view>
+  <view wx:elif="{{phase === 'unknown' || phase === 'error'}}" class="provision-actions">
+    <view class="provision-primary" hover-class="none" bindtap="retryCheck">重新检查</view>
+  </view>
+
+  <global-toast id="globalToast"></global-toast>
+  <debug-log></debug-log>
+</view>

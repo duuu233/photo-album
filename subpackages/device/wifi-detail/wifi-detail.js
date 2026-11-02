@@ -10,6 +10,7 @@ const deviceIdentity = require('../../../utils/device-identity')
 const wifiStatus = require('../../../utils/wifi-status')
 const wifiTf = require('../../../utils/wifi-tf')
 const wifiShare = require('../../../utils/wifi-share')
+const wifiOta = require('../../../utils/wifi-ota')
 
 const app = getApp()
 
@@ -23,7 +24,9 @@ const app = getApp()
 //     消息中心（未读角标）、TF卡（未插卡不可点；有卡显示已用 / 总量，进 wifi-tf）、分享设备（仅所有者，进 wifi-share）、
 //     解除绑定（只删设备）；页底「删除设备」（仅所有者，样式同蓝牙版：先删云端图片再删设备）。
 //   · 本地模式（status=LOCAL_TF，2026-10-29）：投屏 / 轮播设置 / TF卡 可以点，但只提示「当前设备状态：本地模式，
-//     请恢复设备网络再试」；设备信息、休眠设置、消息中心、分享、解绑、删除照常。WiFi 版暂无 OTA 入口。
+//     请恢复设备网络再试」；设备信息、休眠设置、消息中心、分享、解绑、删除照常。
+//   · 固件升级（2026-11-02，docs/前端对接文档20261031.md）：功能栏「消息中心」之后，右侧显示设备当前固件版本，
+//     有新版本亮红点（先看本地有没有进行中的升级记录：有则显示「升级中」、不亮红点，对接文档 3.3）；进 wifi-ota 步骤页。
 function plainDeviceNo(value) {
   return String(value || '').replace(/[:\-\s]/g, '').toUpperCase()
 }
@@ -31,7 +34,7 @@ function plainDeviceNo(value) {
 // 设备信息 → 页面字段。info 为 null 表示查不到（403 / 503 / 网络）
 function statusFields(info) {
   if (!info) {
-    return { status: 'unknown', statusText: '状态未知', batteryText: '', batteryIcon: '', tfState: 'unknown', tfText: '--' }
+    return { status: 'unknown', statusText: '状态未知', batteryText: '', batteryIcon: '', tfState: 'unknown', tfText: '--', firmwareVersion: '' }
   }
   const status = wifiStatus.deviceState(info) // 非在线时电量不显示（本地模式影子冻结）
   const battery = status === 'online' ? batteryUtil.normalizeBattery((info.shadow || {}).battery) : null
@@ -42,8 +45,18 @@ function statusFields(info) {
     batteryText: battery === null ? '' : `${battery}%`,
     batteryIcon: battery === null ? '' : batteryUtil.getBatteryIcon(battery),
     tfState: tf.state,
-    tfText: tf.text
+    tfText: tf.text,
+    firmwareVersion: String(info.firmwareVersion || (info.shadow || {}).version || '').trim()
   }
+}
+
+// 「固件升级」行：右侧当前版本（读不到 '--'）；本地有进行中的升级 → 「升级中」、不亮红点；否则有新版本亮红点
+function otaFields(device, firmwareVersion, inflight) {
+  if (inflight) {
+    return { otaText: '升级中', otaHasUpdate: false }
+  }
+  const result = wifiOta.evaluate(firmwareVersion, device && device.newVersionNo, device && device.downloadPath)
+  return { otaText: firmwareVersion || '--', otaHasUpdate: result.state === 'available' }
 }
 
 Page(fold.adapt({
@@ -63,6 +76,9 @@ Page(fold.adapt({
     tfText: '--',
     unreadCount: 0,
     unreadText: '',
+    firmwareVersion: '',
+    otaText: '--',
+    otaHasUpdate: false,
     showMediaSheet: false,
     mediaSheetClosing: false,
     showUnbindConfirm: false,
@@ -89,6 +105,12 @@ Page(fold.adapt({
         this.refreshUnread()
       }
     })
+    // 升级状态推送：本地进行中的记录随之更新 / 清掉，固件升级行跟着刷新
+    this._offOta = iotWs.on('ota.result', event => {
+      if (this.data.device && event && plainDeviceNo(event.deviceNo) === this.deviceNo()) {
+        this.refreshOta(true)
+      }
+    })
   },
 
   onShow() {
@@ -104,6 +126,9 @@ Page(fold.adapt({
     }
     if (this._offNotice) {
       this._offNotice()
+    }
+    if (this._offOta) {
+      this._offOta()
     }
     if (this._subscribed) {
       iotWs.unsubscribe(this._subscribed)
@@ -139,6 +164,26 @@ Page(fold.adapt({
     }
     this.refreshStatus()
     this.refreshUnread()
+    this.refreshOta(true)
+  },
+
+  // 固件升级行。query=true 时先向服务端核对本地进行中的升级（终态 / 4044 会清掉记录）
+  async refreshOta(query) {
+    const deviceNo = this.deviceNo()
+    if (!deviceNo) {
+      return
+    }
+    let inflight = wifiOta.readInflight(deviceNo)
+    if (inflight && query) {
+      try {
+        inflight = (await wifiOta.refreshInflight(deviceNo)).record
+      } catch (error) {
+        // 查不到保持本地记录
+      }
+    }
+    if (!this.unloaded) {
+      this.setData(otaFields(this.data.device, this.data.firmwareVersion, inflight))
+    }
   },
 
   // 消息中心未读角标；查不到不显示，不弹错
@@ -184,6 +229,7 @@ Page(fold.adapt({
       return
     }
     this.setData(statusFields(info))
+    this.refreshOta(false)
   },
 
   // 本地模式下的远程操作（投屏、轮播设置、TF卡）：按钮可点，只提示；拦下返回 true
@@ -210,6 +256,13 @@ Page(fold.adapt({
   openMessages() {
     if (this.data.device) {
       wx.navigateTo({ url: `/subpackages/device/wifi-messages/wifi-messages?deviceNo=${this.deviceNo()}` })
+    }
+  },
+
+  // 「固件升级」：进步骤页（版本检查、下发与进度都在那页；离线等由那页下发前判断）
+  openOta() {
+    if (this.data.device) {
+      wx.navigateTo({ url: `/subpackages/device/wifi-ota/wifi-ota?id=${this.data.id}` })
     }
   },
 

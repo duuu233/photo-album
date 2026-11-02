@@ -109,6 +109,25 @@ module.exports = {
     return iot.post('/api/device/sleep', Object.assign({}, payload, { deviceNo: plainDeviceNo(payload && payload.deviceNo) }), options)
   },
 
+  // 固件升级下发（草稿 3.9，2026-10-31 变更说明）：{ deviceNo, url（http/https 固件包）, type（main 主控 / fpga）, version（目标版本）}
+  // → { msgid }。同一设备同时只允许一个升级任务：重复下发 4000「已有升级任务进行中」，升级中 4045；
+  // MQTT 发布失败直接 5000（任务被撤销，不产生 FAILED）；设备离线 4041。
+  startOta(payload, options) {
+    const p = payload || {}
+    return iot.post('/api/device/ota', {
+      deviceNo: plainDeviceNo(p.deviceNo),
+      url: p.url,
+      type: p.type || 'main',
+      version: p.version
+    }, options)
+  },
+
+  // 升级状态（草稿 3.9.1）：{ msgid, status, type, version, baseVersion, sentAt, elapsedSeconds }；
+  // status 枚举与步骤页口径见 utils/wifi-ota.js；任务只保留 2 小时，过期 / 不存在 4044
+  getOtaStatus(msgid, options) {
+    return iot.get('/api/device/ota/status', { msgid }, options)
+  },
+
   // 消息列表（对接文档 8.1）：{ total, page, size, unreadCount, list: [{ id, category, type, payload, read, createdAt }] }，按时间倒序
   getNotifications(params, options) {
     const p = params || {}
