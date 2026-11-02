@@ -612,6 +612,9 @@ Page(fold.adapt({
       devices: nextDevices,
       reorderingDeviceId: String(device.id)
     })
+    // 连上的设备已被排到第一张（sortDevices），页面滚动位置要跟着平滑回到顶部，
+    // 否则用户停在原位置看不到刚连上的那张卡和它的上浮动效（2026-11-02 产品要求）。
+    this.scrollListToTop()
     if (this._reorderTimer) {
       clearTimeout(this._reorderTimer)
     }
@@ -620,6 +623,14 @@ Page(fold.adapt({
       this.setData({ reorderingDeviceId: '' })
     }, 560)
     return updated
+  },
+
+  // 页面级滚动平滑回顶（本页不是 scroll-view，滚的是页面本身）
+  scrollListToTop() {
+    if (typeof wx.pageScrollTo !== 'function') {
+      return
+    }
+    wx.pageScrollTo({ scrollTop: 0, duration: 300, fail: () => {} })
   },
 
   renameDevice(e) {
