@@ -102,6 +102,16 @@
   padding-bottom: calc(150rpx + var(--safe-bottom, 0px));
 }
 
+/* 分页尾：横跨网格三列 */
+.photo-more {
+  grid-column: 1 / -1;
+  padding: 18rpx 0 6rpx;
+  color: #8a9bb0;
+  font-size: 24rpx;
+  line-height: 34rpx;
+  text-align: center;
+}
+
 .photo-tile {
   position: relative;
   height: 210rpx;

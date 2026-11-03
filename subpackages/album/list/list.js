@@ -59,6 +59,9 @@ const app = getApp()
 const DEFAULT_FILTERS = []
 // 投屏记录接口是否带 deviceId 及原因的控制台标记（2026-11-03，测试核对用；WiFi 轮播设置选图同款）
 const RECORDS_LOG_TAG = '★★★【我的上传·deviceId】'
+// 投屏记录每页条数（2026-11-03）：3 列 × 7 行，触底加载下一页（onReachBottom → loadMoreRecords）。
+// 只管本页；WiFi 轮播设置选图仍一次取 100 条，不跟着改。
+const RECORDS_PAGE_SIZE = 21
 const DEVICE_NAMES = ['房间相册', '客厅相框', '书房相框']
 const THUMB_TYPES = [
   'tree',
@@ -213,7 +216,11 @@ Page(fold.adapt({
     deleteClosing: false, // 删除确认弹窗是否正在播放退场动画
     deleteWifi: false, // 待删照片属于 WiFi 版设备：确认弹窗多一句「可能需手动切换」
     loading: true, // 首屏接口返回前为 true，避免空态先闪一下
-    loadError: false // 接口失败标记：走「加载失败+重新加载」空态，不再伪装成「暂无照片」
+    loadError: false, // 接口失败标记：走「加载失败+重新加载」空态，不再伪装成「暂无照片」
+    pageSize: RECORDS_PAGE_SIZE, // 模板用：只有一页时不显示「没有更多了」
+    hasMore: false, // 还有下一页（按 RECORDS_PAGE_SIZE 分页，触底加载）
+    loadingMore: false,
+    moreError: false // 下一页失败：底部显示「加载失败，点击重试」，已加载的照片保留
   },
 
   onLoad() {
@@ -222,6 +229,10 @@ Page(fold.adapt({
 
   onShow() {
     this.loadPhotos()
+  },
+
+  onReachBottom() {
+    return this.loadMoreRecords()
   },
 
   onUnload() {
@@ -298,19 +309,25 @@ Page(fold.adapt({
     this.loadRecords(filter)
   },
 
-  // 拉「当前设备的投屏成功记录」并铺成网格。
+  // 拉「当前设备的投屏成功记录」第一页并铺成网格，后面的页触底时由 loadMoreRecords 追加。
   // · deviceUploadState=1 由后端过滤成功记录，端上再按 status 兜一层，兼容后端忽略该参数；
   // · 无设备（filters 为空）时不带 userProductId，展示全部成功记录，保持原页面「没有设备也有内容」的行为；
-  // · seq 作废在途请求：切设备切得快时，旧回包不得倒灌覆盖新设备的列表。
+  // · seq 作废在途请求：切设备切得快时，旧回包不得倒灌覆盖新设备的列表（翻页请求同样认这个 seq）。
   async loadRecords(userProductId = this.data.currentFilter) {
     const seq = (this.recordSeq || 0) + 1
     this.recordSeq = seq
     this.records = []
+    this.recordPage = 0
+    this.recordTotal = 0
+    this.recordQuery = null
     this.setData({
       filteredPhotos: [],
       totalCount: 0,
       loading: true,
-      loadError: false
+      loadError: false,
+      hasMore: false,
+      loadingMore: false,
+      moreError: false
     })
 
     const recordsQuery = this.recordsDeviceId(userProductId)
@@ -321,14 +338,18 @@ Page(fold.adapt({
       console.warn(`${RECORDS_LOG_TAG} 未传 deviceId，userProductId=${userProductId || '（不带）'} —— 原因：${recordsQuery.reason}`)
     }
 
-    let records
+    // 后续翻页沿用同一组查询条件（同一台设备、同样带不带 deviceId）
+    const query = {
+      deviceUploadState: 1,
+      userProductId: userProductId || undefined,
+      // 选了具体设备时带设备完整 ID，后端改按设备查（2026-11-03）；「全部」或取不到完整 ID 时不带，仍按用户查
+      deviceId: recordsQuery.deviceId,
+      pageSize: RECORDS_PAGE_SIZE
+    }
+
+    let page
     try {
-      records = await api.getProjectionRecords({
-        deviceUploadState: 1,
-        userProductId: userProductId || undefined,
-        // 选了具体设备时带设备完整 ID，后端改按设备查（2026-11-03）；「全部」或取不到完整 ID 时不带，仍按用户查
-        deviceId: recordsQuery.deviceId
-      })
+      page = await api.getProjectionRecordsPage(Object.assign({ pageIndex: 1 }, query))
     } catch (error) {
       if (seq !== this.recordSeq) {
         return
@@ -344,19 +365,82 @@ Page(fold.adapt({
       return
     }
 
-    const success = (records || []).filter(item => item.status === 'success')
+    const records = (page && page.records) || []
+    const success = records.filter(item => item.status === 'success')
     this.records = success
-    console.log(`${RECORDS_LOG_TAG} 返回 ${(records || []).length} 条记录（${queryMode}，userProductId=${userProductId || '（不带）'}），投屏成功 ${success.length} 张`)
+    this.recordPage = 1
+    this.recordQuery = { query, queryMode, userProductId }
+    // 「共 N 张」：第一页整页都是成功记录 → 后端确实按 deviceUploadState 过滤了，recordCount 就是成功总数；
+    // 否则 recordCount 混着失败记录，只能按已加载的成功张数显示（同「我的」页统计 getProjectionSuccessCount 的判定）
+    this.recordTotal = page && page.recordCount && records.length && success.length === records.length ? page.recordCount : 0
+    const hasMore = !!(page && page.hasMore)
+    console.log(`${RECORDS_LOG_TAG} 返回 ${records.length} 条记录（${queryMode}，userProductId=${userProductId || '（不带）'}），投屏成功 ${success.length} 张；第 1 页，每页 ${RECORDS_PAGE_SIZE}，${hasMore ? '还有下一页' : '没有更多'}`)
 
     this.setData({
       filteredPhotos: success.map(buildRecordTile),
       // 左上角「共 N 张」取**当前设备**的张数，不是全部设备的合计
-      totalCount: success.length,
+      totalCount: Math.max(this.recordTotal, success.length),
       selectedMap: {},
       selectedCount: 0,
       loading: false,
-      loadError: false
+      loadError: false,
+      hasMore
     })
+  },
+
+  // 触底加载下一页，追加到网格末尾；已选状态保留。失败只在底部提示「点击重试」，不清已加载的照片。
+  async loadMoreRecords() {
+    const ctx = this.recordQuery
+    if (!ctx || this.data.loading || this.data.loadError || this.data.loadingMore || !this.data.hasMore) {
+      return
+    }
+    const seq = this.recordSeq
+    const pageIndex = (this.recordPage || 1) + 1
+    this.setData({ loadingMore: true, moreError: false })
+
+    let page
+    try {
+      page = await api.getProjectionRecordsPage(Object.assign({ pageIndex }, ctx.query))
+    } catch (error) {
+      if (seq !== this.recordSeq) {
+        return
+      }
+      console.warn(`${RECORDS_LOG_TAG} 第 ${pageIndex} 页接口失败（${ctx.queryMode}，userProductId=${ctx.userProductId || '（不带）'}）`, error && error.message)
+      this.setData({ loadingMore: false, moreError: true })
+      return
+    }
+    if (seq !== this.recordSeq) {
+      return
+    }
+
+    const records = (page && page.records) || []
+    // 翻页期间别处删过 / 新增过记录，后一页可能和已加载的重叠一两条：按 id 去重
+    const loaded = {}
+    ;(this.records || []).forEach(item => { loaded[item.id] = true })
+    const success = records.filter(item => item.status === 'success' && !loaded[item.id])
+    this.records = (this.records || []).concat(success)
+    this.recordPage = pageIndex
+    const hasMore = !!(page && page.hasMore) && records.length > 0
+    console.log(`${RECORDS_LOG_TAG} 第 ${pageIndex} 页返回 ${records.length} 条记录（${ctx.queryMode}，userProductId=${ctx.userProductId || '（不带）'}），新增投屏成功 ${success.length} 张，${hasMore ? '还有下一页' : '没有更多'}`)
+
+    // 只追加新增的那几格，不整表重传（setData 体积随页数增长）；占位插画序号接着已有格子往下排
+    const offset = this.data.filteredPhotos.length
+    const tiles = success.map((record, index) => buildRecordTile(record, offset + index))
+    const patch = {
+      totalCount: Math.max(this.recordTotal || 0, this.records.length),
+      loadingMore: false,
+      moreError: false,
+      hasMore
+    }
+    tiles.forEach((tile, index) => {
+      patch[`filteredPhotos[${offset + index}]`] = tile
+    })
+    this.setData(patch)
+  },
+
+  // 底部「加载失败，点击重试」
+  retryLoadMore() {
+    return this.loadMoreRecords()
   },
 
   // 记录 id(upirId) → 记录对象

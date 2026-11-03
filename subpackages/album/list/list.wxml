@@ -75,6 +75,9 @@
             <image wx:if="{{selectedMap[item.id]}}" class="select-icon" src="/assets/images/selected-icon.png" mode="aspectFit"></image>
           </view>
         </view>
+        <!-- 分页尾（每页 21 张，触底加载）：放在网格里横跨三列，选中时网格的 has-bottom-bar 留白落在它下面，不会被底部栏盖住。
+             只有一页时不显示「没有更多了」 -->
+        <view wx:if="{{loadingMore || moreError || hasMore || filteredPhotos.length > pageSize}}" class="photo-more" hover-class="none" bindtap="retryLoadMore">{{loadingMore ? '加载中…' : (moreError ? '加载失败，点击重试' : (hasMore ? '上拉加载更多' : '没有更多了'))}}</view>
       </view>
 
       <!-- 底部操作栏：再次投屏（橙）/ 删除（红）/ 取消（深色）。

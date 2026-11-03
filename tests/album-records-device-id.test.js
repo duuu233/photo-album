@@ -46,7 +46,8 @@ const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
     global.getApp = () => ({ globalData: {} })
     const requests = []
     stubModule('../utils/api', {
-      getProjectionRecords: params => { requests.push(params); return Promise.resolve([]) }
+      // 「我的上传」2026-11-03 起按页取（getProjectionRecordsPage，每页 21 条），查询条件不变
+      getProjectionRecordsPage: params => { requests.push(params); return Promise.resolve({ records: [], rowCount: 0, recordCount: 0, hasMore: false }) }
     })
     ;['../utils/iot-api', '../utils/wifi-status', '../utils/device-ble', '../utils/device-info', '../utils/media'].forEach(name => stubModule(name, {}))
     stubModule('../utils/toast', { warn: () => {}, show: () => {}, error: () => {} })

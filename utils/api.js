@@ -1366,11 +1366,25 @@ module.exports = {
     })
   },
 
-  // 投屏记录列表。可按上传状态与绑定设备筛选。
+  // 投屏记录列表。可按上传状态与绑定设备筛选。只取第一页 100 条（投屏记录页、WiFi 轮播选图在用）；
+  // 「我的上传」按页翻，走下面的 getProjectionRecordsPage。
   getProjectionRecords(params = {}) {
+    return module.exports
+      .getProjectionRecordsPage(params)
+      .then(page => page.records)
+  },
+
+  // 投屏记录按页取（2026-11-03，「我的上传」每页 21 条触底加载）：参数同 getProjectionRecords，另收 pageIndex / pageSize
+  // （缺省 1 / 100）。返回 { records, rowCount, recordCount, hasMore }：rowCount 是本页原始条数（含被端上兜底滤掉的），
+  // recordCount 是后端分页元数据里的总数（没回为 0）。
+  // hasMore 判停优先信 pageCount / recordCount，都没回才看「本页条数 < pageSize」——
+  // 后端可能无视 pageSize 按自己的默认值分页（见 getProjectionSuccessCount 同款注释）。
+  getProjectionRecordsPage(params = {}) {
+    const pageIndex = Number(params.pageIndex) > 0 ? Number(params.pageIndex) : 1
+    const pageSize = Number(params.pageSize) > 0 ? Number(params.pageSize) : 100
     const query = {
-      pageIndex: 1,
-      pageSize: 100
+      pageIndex,
+      pageSize
     }
     // 仅在明确传 0/1 时带上该参数，避免把 undefined 发给后端
     if (params.deviceUploadState === 0 || params.deviceUploadState === 1) {
@@ -1386,7 +1400,27 @@ module.exports = {
 
     return module.exports
       .getUserProductImgRecordList(query)
-      .then(data => pageData(data).map(normalizeProjectionRecord))
+      .then(data => {
+        const rows = pageData(data)
+        const recordCount = Number(data && data.recordCount) || 0
+        const pageCount = Number(data && data.pageCount) || 0
+        let hasMore
+        if (!rows.length) {
+          hasMore = false
+        } else if (pageCount) {
+          hasMore = pageIndex < pageCount
+        } else if (recordCount) {
+          hasMore = (pageIndex - 1) * pageSize + rows.length < recordCount
+        } else {
+          hasMore = rows.length >= pageSize
+        }
+        return {
+          records: rows.map(normalizeProjectionRecord),
+          rowCount: rows.length,
+          recordCount,
+          hasMore
+        }
+      })
   },
 
   // 「我的」页「我的相册」卡片上的数字：**全部设备**的投屏成功记录条数。
