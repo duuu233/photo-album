@@ -43,6 +43,21 @@ function errorText(error, fallback) {
   return String((error && error.message) || fallback).replace(/^接口\(IoT\)-/, '')
 }
 
+// 选图列表（投屏记录接口）是否带 deviceId 及原因（2026-11-03，同「我的上传」规则）：
+// 设备详情有完整 6 字节设备 ID（productDeviceId）就带，后端按设备查；没有 / 不完整就不带，仍按用户查。
+const RECORDS_LOG_TAG = '★★★【轮播选图·deviceId】'
+
+function recordsDeviceId(device) {
+  const d = device || {}
+  if (d.productDeviceId) {
+    return { deviceId: d.productDeviceId, reason: '设备有完整 6 字节设备 ID，后端按设备查（这台设备上所有人上传的都能查到）' }
+  }
+  if (d.deviceIdentityInvalid) {
+    return { deviceId: undefined, reason: `设备 ID「${d.rawProductDeviceId}」不是完整 6 字节 ID（历史短 ID），不带，仍按用户查` }
+  }
+  return { deviceId: undefined, reason: '设备详情没有设备 ID，不带，仍按用户查' }
+}
+
 // 选图网格：tile 带上它在已选里的序号（1 起，0 = 未选）；选满后未选的置灰（disabled）
 function decorateTiles(tiles, selected) {
   const full = strategy.isFull(selected)
@@ -111,6 +126,13 @@ Page(fold.adapt({
     }
     this.setData({ device })
     const deviceNo = this.deviceNo()
+    const recordsQuery = recordsDeviceId(device)
+    const userProductId = device.userProductId || device.id || this.data.id
+    if (recordsQuery.deviceId) {
+      console.log(`${RECORDS_LOG_TAG} 已传 deviceId=${recordsQuery.deviceId}，userProductId=${userProductId} —— 原因：${recordsQuery.reason}`)
+    } else {
+      console.warn(`${RECORDS_LOG_TAG} 未传 deviceId，userProductId=${userProductId} —— 原因：${recordsQuery.reason}`)
+    }
     const [config, records] = await Promise.all([
       iotApi.getStrategy(deviceNo, { showError: false }).catch(error => {
         console.warn('[WiFi轮播] 查询轮播配置失败', error && error.code, error && error.message)
@@ -118,11 +140,11 @@ Page(fold.adapt({
       }),
       api.getProjectionRecords({
         deviceUploadState: 1,
-        userProductId: device.userProductId || device.id || this.data.id,
+        userProductId,
         // 同「我的上传」页（2026-11-03）：有设备完整 ID 就带，后端按设备查；取不到不带，仍按用户查
-        deviceId: device.productDeviceId || undefined
+        deviceId: recordsQuery.deviceId
       }).catch(error => {
-        console.warn('[WiFi轮播] 拉我的上传失败', error && error.message)
+        console.warn(`${RECORDS_LOG_TAG} 接口失败（${recordsQuery.deviceId ? '按设备查' : '按用户查'}）`, error && error.message)
         return null
       })
     ])
@@ -139,6 +161,9 @@ Page(fold.adapt({
       }
     })
     this.tiles = tiles
+    if (records) {
+      console.log(`${RECORDS_LOG_TAG} 返回 ${records.length} 条记录（${recordsQuery.deviceId ? '按设备查' : '按用户查'}），可轮播（投屏成功且带 imgBle、去重后）${tiles.length} 张`)
+    }
     const urls = tiles.map(tile => tile.url)
     const picked = strategy.selectionFromStrategy(config, urls)
     this.selected = picked.selected

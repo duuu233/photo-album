@@ -113,8 +113,29 @@ const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
     assert.strictEqual(withId.deviceId, 'D0:CF:13:F0:2F:F8', '轮播选图：有完整 ID 就带')
     assert.strictEqual(withId.userProductId, 'W1', '轮播选图：原有参数不变')
     assert.strictEqual(withId.deviceUploadState, 1)
-    const withoutId = await run({ id: 'W2', userProductId: 'W2', productDeviceId: '' })
+    const logs = []
+    const originalLog = console.log
+    const originalWarn = console.warn
+    console.log = (...args) => logs.push(['log', args.join(' ')])
+    console.warn = (...args) => logs.push(['warn', args.join(' ')])
+    let withoutId
+    let shortId
+    try {
+      withoutId = await run({ id: 'W2', userProductId: 'W2', productDeviceId: '' })
+      shortId = await run({ id: 'W3', userProductId: 'W3', productDeviceId: '', rawProductDeviceId: '2FF8', deviceIdentityInvalid: true })
+      await run({ id: 'W4', userProductId: 'W4', productDeviceId: 'D0:CF:13:F0:2F:F9' })
+    } finally {
+      console.log = originalLog
+      console.warn = originalWarn
+    }
     assert.strictEqual(withoutId.deviceId, undefined, '轮播选图：没有完整 ID 不带')
+    assert.strictEqual(shortId.deviceId, undefined, '轮播选图：历史短 ID 不带')
+    // 测试用的重点日志：传没传、为什么，一眼能看出来
+    const tagged = logs.filter(([, text]) => text.indexOf('【轮播选图·deviceId】') > -1)
+    assert.ok(tagged.some(([level, text]) => level === 'warn' && /未传 deviceId，userProductId=W2/.test(text) && /没有设备 ID/.test(text)), '日志：没 ID 的原因')
+    assert.ok(tagged.some(([level, text]) => level === 'warn' && /未传 deviceId，userProductId=W3/.test(text) && /2FF8/.test(text) && /不是完整/.test(text)), '日志：短 ID 的原因')
+    assert.ok(tagged.some(([level, text]) => level === 'log' && /已传 deviceId=D0:CF:13:F0:2F:F9，userProductId=W4/.test(text) && /按设备查/.test(text)), '日志：已传及原因')
+    assert.ok(tagged.some(([, text]) => /返回 0 条记录（按设备查）/.test(text)), '日志：返回条数与查询方式')
   }
 
   // ④ 其它调用方这次不传 deviceId
