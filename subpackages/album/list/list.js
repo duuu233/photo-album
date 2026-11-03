@@ -62,6 +62,10 @@ const RECORDS_LOG_TAG = '★★★【我的上传·deviceId】'
 // 投屏记录每页条数（2026-11-03）：3 列 × 7 行，触底加载下一页（onReachBottom → loadMoreRecords）。
 // 只管本页；WiFi 轮播设置选图仍一次取 100 条，不跟着改。
 const RECORDS_PAGE_SIZE = 21
+// 切后台回来沿用已加载的照片（2026-11-03）：后台待得不超过这么久就不重新请求；超过则静默刷新（不清网格、不转圈）
+const BACKGROUND_CACHE_MS = 10 * 60 * 1000
+// 本页 onHide 与 App onAppHide 相差不超过这么久，才算「本页在前台时切了后台」（两者先后顺序不作假设）
+const APP_HIDE_TOLERANCE_MS = 1500
 const DEVICE_NAMES = ['房间相册', '客厅相框', '书房相框']
 const THUMB_TYPES = [
   'tree',
@@ -225,10 +229,43 @@ Page(fold.adapt({
 
   onLoad() {
     this.setSystemMetrics()
+    // 记下小程序切后台的时刻：页面 onHide 分不清「切后台」和「进下一级页面」，靠 App 级的 onAppHide 区分（见 onShow）
+    this.appHideHandler = () => {
+      this.appHiddenAt = Date.now()
+    }
+    if (wx.onAppHide) {
+      wx.onAppHide(this.appHideHandler)
+    }
   },
 
+  // 显示时按来源决定要不要重新拉（2026-11-03 改缓存；原来每次 onShow 都清空网格重拉，切出去再回来必闪「加载中」、已选也被清）：
+  //   · 首次进页 / 还没成功加载过 → 正常加载（转圈）；首屏还在请求中就不重复发；
+  //   · 本页在前台时切后台、又回来（含选图等系统界面回来），且不超过 BACKGROUND_CACHE_MS → 沿用已加载的照片、已选与翻页，不发请求；
+  //   · 从下一级页面返回（再次投屏、预览等，可能多了新记录；哪怕在下一级页面切过后台）或后台待太久 → 静默刷新：
+  //     不清网格、不转圈，回包后整表替换。
   onShow() {
-    this.loadPhotos()
+    const pageHiddenAt = this.pageHiddenAt || 0
+    const appHiddenAt = this.appHiddenAt || 0
+    this.pageHiddenAt = 0
+    this.appHiddenAt = 0
+    if (!this.hasLoaded) {
+      if (this.loadStarted && this.data.loading) {
+        return
+      }
+      this.loadPhotos()
+      return
+    }
+    const fromBackground = !!(pageHiddenAt && appHiddenAt && Math.abs(appHiddenAt - pageHiddenAt) <= APP_HIDE_TOLERANCE_MS)
+    if (fromBackground && Date.now() - pageHiddenAt < BACKGROUND_CACHE_MS) {
+      console.log('[我的上传] 切后台回来，沿用已加载的照片，不重新请求')
+      return
+    }
+    console.log(`[我的上传] ${fromBackground ? '后台待得较久' : '从其它页面返回'}，静默刷新`)
+    this.loadPhotos({ silent: true })
+  },
+
+  onHide() {
+    this.pageHiddenAt = Date.now()
   },
 
   onReachBottom() {
@@ -238,6 +275,9 @@ Page(fold.adapt({
   onUnload() {
     // 页面销毁后作废在途请求，避免慢接口回包继续向已卸载页面 setData
     this.recordSeq = (this.recordSeq || 0) + 1
+    if (wx.offAppHide && this.appHideHandler) {
+      wx.offAppHide(this.appHideHandler)
+    }
   },
 
   // 失败态「重新加载」：先回到 loading 转圈（即时反馈），再走一遍正常加载
@@ -254,12 +294,19 @@ Page(fold.adapt({
   // 网格本身的数据是「当前设备的投屏成功记录」，由 applyFilter → loadRecords 取。
   // 2026-08-17 起这里不再并行拉图库列表：它只喂过「默认设备③」和「再次投屏取原图」两处，
   // 两处都已改掉，留着等于让一个用不上的接口有权把整页打成「加载失败」。
-  async loadPhotos() {
+  // silent（静默刷新，见 onShow）：不清网格、不转圈；设备接口失败时保留现有内容，不切到「加载失败」。
+  async loadPhotos(options = {}) {
+    const silent = !!options.silent
+    this.loadStarted = true
     // 首屏渲染即 loading=true，等接口返回再决定展示照片网格还是空态，避免空态先闪一下
     let devices
     try {
       devices = await api.getDevices()
     } catch (error) {
+      if (silent) {
+        console.warn('[我的上传] 静默刷新：设备列表获取失败，保留当前内容', error && error.message)
+        return
+      }
       // 接口失败时 api 层已 toast 提示；标记 loadError 展示「加载失败+重新加载」——
       // 落到「暂无照片」空态会让用户误以为数据被清空了，且除退出重进外没有任何重试手段
       this.setData({ loading: false, loadError: true })
@@ -275,6 +322,14 @@ Page(fold.adapt({
     // 这类照片不再单独成筛选项，也不会出现在任何设备的筛选结果里。
     const filters = this.buildLatestDeviceFilters(devices)
     const currentFilter = this.pickDefaultFilter(filters, devices)
+
+    // 静默刷新且还是同一台设备：只更新下拉选项，记录静默重拉（保留已选与翻页）；
+    // 当前设备没了（被解绑）才按正常流程切到新默认设备
+    if (silent && currentFilter === this.data.currentFilter) {
+      this.setData({ filters })
+      this.applyFilter(currentFilter, false, { silent: true })
+      return
+    }
 
     this.setData({
       filters,
@@ -293,49 +348,63 @@ Page(fold.adapt({
   // 切换设备分类：清空已选 → 查一键清除状态 → 重新拉这台设备的投屏成功记录。
   // filter 就是后端设备ID(userProductId)，直接作为记录接口的查询参数，由后端按设备过滤——
   // 与投屏管理页同一口径，不在端上按记录字段猜归属（记录不一定回 userProductId）。
-  applyFilter(filter, keepFilterMenuOpen = false) {
+  // options.silent：静默刷新同一台设备（见 onShow），不动下拉展开状态与已选，记录不清网格重拉。
+  applyFilter(filter, keepFilterMenuOpen = false, options = {}) {
+    const silent = !!options.silent
     const active = (this.data.filters || []).find(item => item.value === filter)
 
-    this.setData({
+    const patch = {
       currentFilter: filter,
-      currentFilterLabel: active ? active.label : '',
-      showFilterMenu: keepFilterMenuOpen,
-      selectedMap: {},
-      selectedCount: 0
-    })
+      currentFilterLabel: active ? active.label : ''
+    }
+    if (!silent) {
+      Object.assign(patch, {
+        showFilterMenu: keepFilterMenuOpen,
+        selectedMap: {},
+        selectedCount: 0
+      })
+    }
+    this.setData(patch)
 
     // 进入页面/每次切换设备都查一次该设备的一键清除状态（applyFilter 是两条路径的公共汇合点）
     this.checkDeviceClearStatus(filter)
-    this.loadRecords(filter)
+    this.loadRecords(filter, { silent })
   },
 
   // 拉「当前设备的投屏成功记录」第一页并铺成网格，后面的页触底时由 loadMoreRecords 追加。
   // · deviceUploadState=1 由后端过滤成功记录，端上再按 status 兜一层，兼容后端忽略该参数；
   // · 无设备（filters 为空）时不带 userProductId，展示全部成功记录，保持原页面「没有设备也有内容」的行为；
   // · seq 作废在途请求：切设备切得快时，旧回包不得倒灌覆盖新设备的列表（翻页请求同样认这个 seq）。
-  async loadRecords(userProductId = this.data.currentFilter) {
+  // options.silent（静默刷新，见 onShow）：不清网格、不转圈；已翻到第 k 页就一次取 k × 21 条（pageIndex=1），
+  // 回包后整表替换，之后第 k+1 页仍按每页 21 条接得上；已选里仍在列表中的照片保留；失败保留现有内容。
+  async loadRecords(userProductId = this.data.currentFilter, options = {}) {
+    const silent = !!options.silent
     const seq = (this.recordSeq || 0) + 1
     this.recordSeq = seq
-    this.records = []
-    this.recordPage = 0
-    this.recordTotal = 0
-    this.recordQuery = null
-    this.setData({
-      filteredPhotos: [],
-      totalCount: 0,
-      loading: true,
-      loadError: false,
-      hasMore: false,
-      loadingMore: false,
-      moreError: false
-    })
+    const pages = silent ? Math.max(1, this.recordPage || 1) : 1
+    if (!silent) {
+      this.records = []
+      this.recordPage = 0
+      this.recordTotal = 0
+      this.recordQuery = null
+      this.setData({
+        filteredPhotos: [],
+        totalCount: 0,
+        loading: true,
+        loadError: false,
+        hasMore: false,
+        loadingMore: false,
+        moreError: false
+      })
+    }
+    const logPrefix = silent ? `${RECORDS_LOG_TAG} [静默刷新]` : RECORDS_LOG_TAG
 
     const recordsQuery = this.recordsDeviceId(userProductId)
     const queryMode = recordsQuery.deviceId ? '按设备查' : '按用户查'
     if (recordsQuery.deviceId) {
-      console.log(`${RECORDS_LOG_TAG} 已传 deviceId=${recordsQuery.deviceId}，userProductId=${userProductId} —— 原因：${recordsQuery.reason}`)
+      console.log(`${logPrefix} 已传 deviceId=${recordsQuery.deviceId}，userProductId=${userProductId} —— 原因：${recordsQuery.reason}`)
     } else {
-      console.warn(`${RECORDS_LOG_TAG} 未传 deviceId，userProductId=${userProductId || '（不带）'} —— 原因：${recordsQuery.reason}`)
+      console.warn(`${logPrefix} 未传 deviceId，userProductId=${userProductId || '（不带）'} —— 原因：${recordsQuery.reason}`)
     }
 
     // 后续翻页沿用同一组查询条件（同一台设备、同样带不带 deviceId）
@@ -349,12 +418,18 @@ Page(fold.adapt({
 
     let page
     try {
-      page = await api.getProjectionRecordsPage(Object.assign({ pageIndex: 1 }, query))
+      page = await api.getProjectionRecordsPage(Object.assign({}, query, { pageIndex: 1, pageSize: RECORDS_PAGE_SIZE * pages }))
     } catch (error) {
       if (seq !== this.recordSeq) {
         return
       }
-      console.warn(`${RECORDS_LOG_TAG} 接口失败（${queryMode}，userProductId=${userProductId || '（不带）'}）`, error && error.message)
+      console.warn(`${logPrefix} 接口失败（${queryMode}，userProductId=${userProductId || '（不带）'}）`, error && error.message)
+      // 静默刷新失败：照片照旧展示；刷新顶掉了在途的翻页（seq 已变），把它的加载态收回。
+      // 页面正处在转圈（顶掉的是一次正常加载，网格已清空）时按正常失败处理，不能一直转下去
+      if (silent && !this.data.loading) {
+        this.setData({ loadingMore: false })
+        return
+      }
       // 接口失败时 api 层已 toast；标记 loadError 展示「加载失败 + 重新加载」——
       // 落到「暂无照片」空态会让用户误以为照片被清空，且除退出重进外没有重试手段
       this.setData({ loading: false, loadError: true })
@@ -367,24 +442,39 @@ Page(fold.adapt({
 
     const records = (page && page.records) || []
     const success = records.filter(item => item.status === 'success')
+    const hasMore = !!(page && page.hasMore)
     this.records = success
-    this.recordPage = 1
+    // 后端把 pageSize 封顶、少回了时，按实际回来的整页数接下一页（多出的几条下一页回来会被 id 去重掉）
+    this.recordPage = hasMore ? Math.max(1, Math.floor(((page && page.rowCount) || records.length) / RECORDS_PAGE_SIZE)) : pages
     this.recordQuery = { query, queryMode, userProductId }
+    this.hasLoaded = true
     // 「共 N 张」：第一页整页都是成功记录 → 后端确实按 deviceUploadState 过滤了，recordCount 就是成功总数；
     // 否则 recordCount 混着失败记录，只能按已加载的成功张数显示（同「我的」页统计 getProjectionSuccessCount 的判定）
     this.recordTotal = page && page.recordCount && records.length && success.length === records.length ? page.recordCount : 0
-    const hasMore = !!(page && page.hasMore)
-    console.log(`${RECORDS_LOG_TAG} 返回 ${records.length} 条记录（${queryMode}，userProductId=${userProductId || '（不带）'}），投屏成功 ${success.length} 张；第 1 页，每页 ${RECORDS_PAGE_SIZE}，${hasMore ? '还有下一页' : '没有更多'}`)
+    console.log(`${logPrefix} 返回 ${records.length} 条记录（${queryMode}，userProductId=${userProductId || '（不带）'}），投屏成功 ${success.length} 张；第 1${pages > 1 ? `~${pages}` : ''} 页，每页 ${RECORDS_PAGE_SIZE}，${hasMore ? '还有下一页' : '没有更多'}`)
+
+    // 静默刷新保留已选里仍在列表中的那些；正常加载一律清空
+    const selectedMap = {}
+    if (silent) {
+      const prev = this.data.selectedMap || {}
+      success.forEach(item => {
+        if (prev[item.id]) {
+          selectedMap[item.id] = true
+        }
+      })
+    }
 
     this.setData({
       filteredPhotos: success.map(buildRecordTile),
       // 左上角「共 N 张」取**当前设备**的张数，不是全部设备的合计
       totalCount: Math.max(this.recordTotal, success.length),
-      selectedMap: {},
-      selectedCount: 0,
+      selectedMap,
+      selectedCount: countSelected(selectedMap),
       loading: false,
       loadError: false,
-      hasMore
+      hasMore,
+      loadingMore: false,
+      moreError: false
     })
   },
 
@@ -589,7 +679,7 @@ Page(fold.adapt({
   },
 
   // 默认选中哪台设备（loadPhotos 首屏与下拉刷新共用，两处必须同一套规则）：
-  //   ① 保留用户当前选中的那台（仍在列表里）——本页 onShow 每次都会重跑 loadPhotos，
+  //   ① 保留用户当前选中的那台（仍在列表里）——从其它页面返回时 onShow 会静默重跑 loadPhotos（2026-11-03 起切后台回来不重跑），
   //      不保留的话「点进照片再返回」就会把用户手动切过的设备冲掉；
   //   ② 否则优先**连接中**的设备：外面（首页/设备列表/设备详情）连了哪台，进来就看哪台的照片；
   //   ③ 再否则第一台。
