@@ -12,7 +12,7 @@ const dithering = require('../../../utils/dithering')
 // 入口：我的设备 WiFi 卡、WiFi 设备详情的「轮播设置」（取代原「刷新状态」）。蓝牙版仍走 slideshow 页，互不影响。
 //   · 回显：IoT GET /api/device/strategy（只要权限，离线也能查）；
 //   · 模式：间隔时间（开始 / 结束 HH:mm + 间隔）/ 固定时间（每 N 天 + 若干时间点）；顺序 / 随机；轮播后是否休眠；
-//   · 选图：「我的上传」里这台设备的照片（老服务投屏成功记录，只取带 imgBle 的），单选 / 多选 / 全选，
+//   · 选图：「我的上传」里这台设备的照片（老服务投屏成功记录，只取带 imgBle 的；有完整设备 ID 时带 deviceId 按设备查），单选 / 多选 / 全选，
 //     按选择顺序作为 imgUrls 提交；回显 imgUrls=null（全部相册）时全选；一张不选不让保存（空数组会回 4000）；
 //     按相册顺序全选时不带 imgUrls，保持「全部相册」（之后新上传的也进轮播）；
 //     最多 100 张（2026-10-27 追加内容第一节）：显示「已选 X/100」，选满后未选的置灰、点了提示，已选的仍可取消；
@@ -116,7 +116,12 @@ Page(fold.adapt({
         console.warn('[WiFi轮播] 查询轮播配置失败', error && error.code, error && error.message)
         return null
       }),
-      api.getProjectionRecords({ deviceUploadState: 1, userProductId: device.userProductId || device.id || this.data.id }).catch(error => {
+      api.getProjectionRecords({
+        deviceUploadState: 1,
+        userProductId: device.userProductId || device.id || this.data.id,
+        // 同「我的上传」页（2026-11-03）：有设备完整 ID 就带，后端按设备查；取不到不带，仍按用户查
+        deviceId: device.productDeviceId || undefined
+      }).catch(error => {
         console.warn('[WiFi轮播] 拉我的上传失败', error && error.message)
         return null
       })

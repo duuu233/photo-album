@@ -3,7 +3,8 @@
 //   ① api.getProjectionRecords：调用方给了 deviceId 才带上，没给不带（其它页面行为不变）；
 //   ② 「我的上传」页（subpackages/album/list）选了具体设备时带该设备的 productDeviceId；
 //      选「全部」、设备列表里找不到、或设备没有完整 ID 时都不带；
-//   ③ 其它页面（投屏记录、WiFi 轮播）与「我的」页统计这次不传 deviceId。
+//   ③ WiFi 轮播设置的选图（subpackages/device/wifi-slideshow）同规则：设备有 productDeviceId 就带，没有不带；
+//   ④ 投屏记录页与「我的」页统计这次不传 deviceId。
 const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
@@ -77,8 +78,47 @@ const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
     assert.strictEqual(requests[3].deviceId, undefined, '设备列表里找不到不带')
   }
 
-  // ③ 其它调用方这次不传 deviceId
-  for (const file of ['subpackages/projection/records/records.js', 'subpackages/device/wifi-slideshow/wifi-slideshow.js']) {
+  // ③ WiFi 轮播设置选图
+  {
+    const requests = []
+    const stubModule = (request, exports) => {
+      const filename = require.resolve(request)
+      require.cache[filename] = { id: filename, filename, loaded: true, children: [], paths: [], exports }
+    }
+    let detail = null
+    stubModule('../utils/api', {
+      getDeviceDetail: () => Promise.resolve(detail),
+      getProjectionRecords: params => { requests.push(params); return Promise.resolve([]) }
+    })
+    stubModule('../utils/iot-api', { getStrategy: () => Promise.resolve(null) })
+    ;['../utils/toast', '../utils/wifi-status', '../utils/wifi-projection', '../utils/dithering'].forEach(name => stubModule(name, {}))
+    stubModule('../utils/system', { getLayoutMetrics: () => ({}) })
+    stubModule('../utils/fold-adapt', { adapt: options => options })
+    let pageOptions = null
+    global.Page = options => { pageOptions = options }
+    const file = require.resolve('../subpackages/device/wifi-slideshow/wifi-slideshow.js')
+    delete require.cache[file]
+    require(file)
+
+    const run = async device => {
+      detail = device
+      const page = Object.create(pageOptions)
+      page.data = Object.assign({}, pageOptions.data, { id: device.id })
+      page.setData = patch => Object.assign(page.data, patch)
+      page.selected = []
+      await page.load()
+      return requests[requests.length - 1]
+    }
+    const withId = await run({ id: 'W1', userProductId: 'W1', productDeviceId: 'D0:CF:13:F0:2F:F8' })
+    assert.strictEqual(withId.deviceId, 'D0:CF:13:F0:2F:F8', '轮播选图：有完整 ID 就带')
+    assert.strictEqual(withId.userProductId, 'W1', '轮播选图：原有参数不变')
+    assert.strictEqual(withId.deviceUploadState, 1)
+    const withoutId = await run({ id: 'W2', userProductId: 'W2', productDeviceId: '' })
+    assert.strictEqual(withoutId.deviceId, undefined, '轮播选图：没有完整 ID 不带')
+  }
+
+  // ④ 其它调用方这次不传 deviceId
+  for (const file of ['subpackages/projection/records/records.js']) {
     const source = read(file)
     const calls = source.match(/getProjectionRecords\(\{[\s\S]*?\}\)/g) || []
     assert.ok(calls.length > 0, `${file} 仍调用 getProjectionRecords`)
