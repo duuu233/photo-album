@@ -57,6 +57,8 @@ const app = getApp()
 
 // 筛选项完全按设备接口动态生成、以后端设备ID为值（见 buildDeviceFiltersFromDevices），不再有「全部」
 const DEFAULT_FILTERS = []
+// 投屏记录接口是否带 deviceId 及原因的控制台标记（2026-11-03，测试核对用；WiFi 轮播设置选图同款）
+const RECORDS_LOG_TAG = '★★★【我的上传·deviceId】'
 const DEVICE_NAMES = ['房间相册', '客厅相框', '书房相框']
 const THUMB_TYPES = [
   'tree',
@@ -311,18 +313,27 @@ Page(fold.adapt({
       loadError: false
     })
 
+    const recordsQuery = this.recordsDeviceId(userProductId)
+    const queryMode = recordsQuery.deviceId ? '按设备查' : '按用户查'
+    if (recordsQuery.deviceId) {
+      console.log(`${RECORDS_LOG_TAG} 已传 deviceId=${recordsQuery.deviceId}，userProductId=${userProductId} —— 原因：${recordsQuery.reason}`)
+    } else {
+      console.warn(`${RECORDS_LOG_TAG} 未传 deviceId，userProductId=${userProductId || '（不带）'} —— 原因：${recordsQuery.reason}`)
+    }
+
     let records
     try {
       records = await api.getProjectionRecords({
         deviceUploadState: 1,
         userProductId: userProductId || undefined,
         // 选了具体设备时带设备完整 ID，后端改按设备查（2026-11-03）；「全部」或取不到完整 ID 时不带，仍按用户查
-        deviceId: this.deviceIdOf(userProductId)
+        deviceId: recordsQuery.deviceId
       })
     } catch (error) {
       if (seq !== this.recordSeq) {
         return
       }
+      console.warn(`${RECORDS_LOG_TAG} 接口失败（${queryMode}，userProductId=${userProductId || '（不带）'}）`, error && error.message)
       // 接口失败时 api 层已 toast；标记 loadError 展示「加载失败 + 重新加载」——
       // 落到「暂无照片」空态会让用户误以为照片被清空，且除退出重进外没有重试手段
       this.setData({ loading: false, loadError: true })
@@ -335,6 +346,7 @@ Page(fold.adapt({
 
     const success = (records || []).filter(item => item.status === 'success')
     this.records = success
+    console.log(`${RECORDS_LOG_TAG} 返回 ${(records || []).length} 条记录（${queryMode}，userProductId=${userProductId || '（不带）'}），投屏成功 ${success.length} 张`)
 
     this.setData({
       filteredPhotos: success.map(buildRecordTile),
@@ -416,16 +428,27 @@ Page(fold.adapt({
     })
   },
 
-  // 筛选值(userProductId，兜底 id) → 该设备的完整 6 字节设备 ID(productDeviceId)，给投屏记录接口的 deviceId 用。
-  // 取不到（未选设备、设备列表里没有、历史短 ID 被判无效）返回 undefined，不传该参数。
-  deviceIdOf(userProductId) {
+  // 筛选值(userProductId，兜底 id) → 该设备的完整 6 字节设备 ID(productDeviceId)，给投屏记录接口的 deviceId 用，
+  // 连同原因一起返回（测试核对用，loadRecords 打进控制台）。
+  // 取不到（未选设备、设备列表里没有、历史短 ID 被判无效、没有设备 ID）时 deviceId 为 undefined，不传该参数。
+  recordsDeviceId(userProductId) {
     if (!userProductId) {
-      return undefined
+      return { deviceId: undefined, reason: '选的是「全部」（没有具体设备），不带，仍按用户查' }
     }
     const device = (this.devices || []).find(
       item => String(item.userProductId || item.id || '') === String(userProductId)
     )
-    return (device && device.productDeviceId) || undefined
+    if (!device) {
+      return { deviceId: undefined, reason: '设备列表里找不到这台设备，不带，仍按用户查' }
+    }
+    const name = device.name || device.productName || ''
+    if (device.productDeviceId) {
+      return { deviceId: device.productDeviceId, reason: `选了设备「${name}」，有完整 6 字节设备 ID，后端按设备查（这台设备上所有人上传的都能查到）` }
+    }
+    if (device.deviceIdentityInvalid) {
+      return { deviceId: undefined, reason: `设备「${name}」的设备 ID「${device.rawProductDeviceId}」不是完整 6 字节 ID（历史短 ID），不带，仍按用户查` }
+    }
+    return { deviceId: undefined, reason: `设备「${name}」没有设备 ID，不带，仍按用户查` }
   },
 
   // 用户设备接口(getDevices)返回列表第一项的后端设备ID(userProductId，兜底 id)。

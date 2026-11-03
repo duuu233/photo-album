@@ -64,13 +64,34 @@ const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
     page.setData = patch => Object.assign(page.data, patch)
     page.devices = [
       { id: 'W1', userProductId: 'W1', name: 'WiFi相框', productDeviceId: 'D0:CF:13:F0:2F:F8' },
-      { id: 'B1', userProductId: 'B1', name: '旧相框', productDeviceId: '' }
+      { id: 'B1', userProductId: 'B1', name: '旧相框', productDeviceId: '' },
+      { id: 'S1', userProductId: 'S1', name: '短ID相框', productDeviceId: '', rawProductDeviceId: '2FF8', deviceIdentityInvalid: true }
     ]
 
-    await page.loadRecords('W1')
-    await page.loadRecords('')
-    await page.loadRecords('B1')
-    await page.loadRecords('X9')
+    const logs = []
+    const originalLog = console.log
+    const originalWarn = console.warn
+    console.log = (...args) => logs.push(['log', args.join(' ')])
+    console.warn = (...args) => logs.push(['warn', args.join(' ')])
+    try {
+      await page.loadRecords('W1')
+      await page.loadRecords('')
+      await page.loadRecords('B1')
+      await page.loadRecords('X9')
+      await page.loadRecords('S1')
+    } finally {
+      console.log = originalLog
+      console.warn = originalWarn
+    }
+    // 测试用的重点日志：传没传、为什么，一眼能看出来
+    const tagged = logs.filter(([, text]) => text.indexOf('【我的上传·deviceId】') > -1)
+    assert.ok(tagged.some(([level, text]) => level === 'log' && /已传 deviceId=D0:CF:13:F0:2F:F8，userProductId=W1/.test(text) && /WiFi相框/.test(text) && /按设备查/.test(text)), '日志：已传及原因')
+    assert.ok(tagged.some(([level, text]) => level === 'warn' && /未传 deviceId/.test(text) && /「全部」/.test(text)), '日志：「全部」')
+    assert.ok(tagged.some(([level, text]) => level === 'warn' && /userProductId=B1/.test(text) && /没有设备 ID/.test(text)), '日志：没有设备 ID')
+    assert.ok(tagged.some(([level, text]) => level === 'warn' && /userProductId=X9/.test(text) && /找不到/.test(text)), '日志：设备列表里找不到')
+    assert.ok(tagged.some(([level, text]) => level === 'warn' && /userProductId=S1/.test(text) && /2FF8/.test(text) && /不是完整/.test(text)), '日志：历史短 ID')
+    assert.ok(tagged.some(([, text]) => /返回 0 条记录（按设备查，userProductId=W1）/.test(text)), '日志：返回条数与查询方式')
+    assert.strictEqual(requests[4].deviceId, undefined, '历史短 ID 不带')
     assert.strictEqual(requests[0].deviceId, 'D0:CF:13:F0:2F:F8', '选了设备带它的完整 ID')
     assert.strictEqual(requests[0].userProductId, 'W1')
     assert.strictEqual(requests[1].deviceId, undefined, '「全部」不带')
