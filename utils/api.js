@@ -965,7 +965,9 @@ module.exports = {
     })
   },
 
-  // 产品投屏记录列表（成功/失败投屏）。params 支持分页、keyword 搜索图片地址、userProductId
+  // 产品投屏记录列表（成功/失败投屏）。params 支持分页、keyword 搜索图片地址、userProductId；
+  // deviceId（可选，2026-11-03）：设备完整 6 字节 ID（productDeviceId）。传了后端按设备 ID 查，不再按用户 ID；
+  // 不传维持原逻辑按用户 ID 查。
   getUserProductImgRecordList(params = {}) {
     return http.get('/Client/UserProduct/getUserProductImgRecordList', params, {
       mock: false
@@ -1376,6 +1378,10 @@ module.exports = {
     }
     if (params.userProductId) {
       query.userProductId = params.userProductId
+    }
+    // 只有调用方明确给了设备 ID 才带（目前只有「我的上传」页选了具体设备时）；其它页面不传，仍按用户查
+    if (params.deviceId) {
+      query.deviceId = params.deviceId
     }
 
     return module.exports

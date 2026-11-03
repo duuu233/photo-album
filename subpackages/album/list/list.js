@@ -315,7 +315,9 @@ Page(fold.adapt({
     try {
       records = await api.getProjectionRecords({
         deviceUploadState: 1,
-        userProductId: userProductId || undefined
+        userProductId: userProductId || undefined,
+        // 选了具体设备时带设备完整 ID，后端改按设备查（2026-11-03）；「全部」或取不到完整 ID 时不带，仍按用户查
+        deviceId: this.deviceIdOf(userProductId)
       })
     } catch (error) {
       if (seq !== this.recordSeq) {
@@ -412,6 +414,18 @@ Page(fold.adapt({
         this.clearImgModalShowing = false
       }
     })
+  },
+
+  // 筛选值(userProductId，兜底 id) → 该设备的完整 6 字节设备 ID(productDeviceId)，给投屏记录接口的 deviceId 用。
+  // 取不到（未选设备、设备列表里没有、历史短 ID 被判无效）返回 undefined，不传该参数。
+  deviceIdOf(userProductId) {
+    if (!userProductId) {
+      return undefined
+    }
+    const device = (this.devices || []).find(
+      item => String(item.userProductId || item.id || '') === String(userProductId)
+    )
+    return (device && device.productDeviceId) || undefined
   },
 
   // 用户设备接口(getDevices)返回列表第一项的后端设备ID(userProductId，兜底 id)。
