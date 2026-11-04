@@ -73,7 +73,30 @@ Page(fold.adapt({
     this.setData(system.getLayoutMetrics())
     this.setData({ showDebugEntry: system.isDevEnv() })
     this.loadProductCatalog()
+    this.loadBoundNames()
     this.scan()
+  },
+
+  // 搜索列表标题（2026-11-04 产品口径）：这台设备在当前用户名下有名称（以前绑定时起的 / 改过的）就显示该名称，
+  // 优先级最高；没有才显示蓝牙广播名。按完整 6 字节设备ID 匹配（蓝牙版取广播里的设备ID，WiFi 版取广播名解析出的 deviceNo）。
+  // 只影响列表显示（单独的 title 字段），行里的 name 仍是广播名——绑定时的产品匹配、默认昵称、设备图都照旧用它。
+  // 与扫描并行拉取，回来后补到已搜到的行上；拉不到就全部显示广播名。
+  loadBoundNames() {
+    api.getBoundDeviceNames().then(names => {
+      this.boundNames = names || {}
+      if (this.unloaded || !this.data.devices.length) {
+        return
+      }
+      this.setData({
+        devices: this.data.devices.map(item => Object.assign({}, item, { title: this.boundTitle(item) }))
+      })
+    })
+  },
+
+  boundTitle(item) {
+    const names = this.boundNames || {}
+    const id = deviceIdUtil.canonical(item && (item.commType === COMM_WIFI ? item.wifiDeviceId : item.broadcastDeviceId))
+    return (id && names[id]) || ''
   },
 
   // 搜索列表的屏幕尺寸按蓝牙广播名匹配产品，显示该产品后台配置的 sizeModel（2026-10-23，见
@@ -234,11 +257,12 @@ Page(fold.adapt({
         order[key] = next++
       }
       if (item.commType === COMM_WIFI) {
-        return Object.assign({}, item, this.wifiRowFields(item))
+        return Object.assign({}, item, this.wifiRowFields(item), { title: this.boundTitle(item) })
       }
       // deviceCode：列表里给用户看的「设备ID」，每次都从本次广播重新计算（见 displayDeviceCode）
       return Object.assign({}, item, {
         commType: 'BLE',
+        title: this.boundTitle(Object.assign({}, item, { commType: 'BLE' })),
         deviceCode: this.displayDeviceCode(item),
         // 设备图按蓝牙广播名区分机型（见 utils/device-thumb.js）
         thumb: deviceThumb.thumbOf(item),

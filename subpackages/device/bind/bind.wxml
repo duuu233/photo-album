@@ -51,7 +51,8 @@
                ⚠️ 2026-08-21 前它叫 home-icon02.png，首页改版的新素材占了这个名字，故文件更名、图没换。 -->
           <view class="nearby-icon"><image class="nearby-icon__img" src="{{item.thumb || '/assets/images/home-device-thumb.png'}}" mode="aspectFit"></image></view>
           <view class="nearby-copy">
-            <text class="nearby-name">{{item.name}}</text>
+            <!-- 标题：用户名下已有的设备名称优先，没有显示蓝牙广播名（2026-11-04，见 bind.js loadBoundNames） -->
+            <text class="nearby-name">{{item.title || item.name}}</text>
             <!-- 第二行：通信类型标签把尺寸包进来（2026-10-27 产品要求，如「WiFi版·5.89寸」），WiFi 版青绿、蓝牙版蓝，与选中态的橙色错开；
                  标签后接电量（蓝牙版）与「信号」+ 信号格。10-26 起标签挂在设备名后面，这次挪到这一行与尺寸合并。
                  尺寸两类设备同一口径（2026-10-26）：直接显示后台产品配置的 sizeModel，没配显示 --寸。

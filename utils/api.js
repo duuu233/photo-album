@@ -876,6 +876,32 @@ module.exports = {
     })
   },
 
+  // 搜索设备页（绑定前）用：当前用户已绑定设备的名称，按完整 6 字节设备ID（AA:BB:CC:DD:EE:FF）索引（2026-11-04）。
+  // 名称取后端记录的 productName（用户起的 / 改过的名称），为空的不收；设备ID 候选与 normalizeDevice 同口径，
+  // 只认完整 6 字节。静默请求：失败返回空表、不弹错（搜索页照旧显示广播名）。
+  getBoundDeviceNames() {
+    return http
+      .get('/Client/UserProduct/getUserProductList', { pageIndex: 1, pageSize: 100 }, { mock: false, showError: false })
+      .then(
+        data => {
+          const names = {}
+          pageData(data).forEach(row => {
+            if (!row) {
+              return
+            }
+            const candidates = [row.productDeviceId, row.deviceNo, row.serialNo, row.productSerialNo, row.deviceId]
+            const id = deviceIdUtil.canonical(candidates.filter(deviceIdUtil.isComplete)[0])
+            const name = String(row.productName || '').trim()
+            if (id && name && !names[id]) {
+              names[id] = name
+            }
+          })
+          return names
+        },
+        () => ({})
+      )
+  },
+
   // 获取用户设备详情。可传 userProductId 或 { userProductId, productVersionNo }
   getUserProductDetail(params) {
     const query =
