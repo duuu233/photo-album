@@ -82,6 +82,14 @@ async function main() {
       assert.deepEqual([gets[2].url, gets[2].data, gets[2].options.showError], ['/Client/UserProduct/chkTimeValid', { currentTime: '1762240000000' }, false], '校验传 currentTime')
       reply = false
       assert.equal(await api.checkShareTimeValid('1'), false, 'false = 已过期')
+      http.get = () => Promise.reject({ code: 500, message: '链接已过期', data: false })
+      assert.equal(await api.checkShareTimeValid('1'), false, 'retCode 非 200 但 retData 为 false 也按过期')
+      http.get = () => Promise.reject({ code: 406, message: '登录失效', data: false })
+      await assert.rejects(api.checkShareTimeValid('1'), '登录失效不算过期')
+      http.get = () => Promise.reject({ code: 'NETWORK_ERROR', message: 'timeout' })
+      await assert.rejects(api.checkShareTimeValid('1'), '网络失败不算过期')
+      http.get = () => Promise.reject({ code: 500, message: '服务器异常' })
+      await assert.rejects(api.checkShareTimeValid('1'), '没有布尔值不算过期')
     } finally {
       http.post = originalPost
       http.get = originalGet

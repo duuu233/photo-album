@@ -927,11 +927,20 @@ module.exports = {
     })
   },
 
+  // 服务端口径（2026-11-04）：只看 retData 布尔值，true 有效、false 过期。retCode 非 200 但带了布尔 retData 的
+  // 也按这个布尔值算；登录失效 / 冻结（401 / 405 / 406 / 409）、网络失败、没有布尔值的仍按校验失败抛出。
   checkShareTimeValid(currentTime) {
+    const toFlag = data => data === true || String(data).toLowerCase() === 'true'
     return http.get('/Client/UserProduct/chkTimeValid', { currentTime }, {
       mock: false,
       showError: false
-    }).then(data => data === true || String(data).toLowerCase() === 'true')
+    }).then(toFlag, error => {
+      const code = error && error.code
+      if (error && typeof error.data === 'boolean' && [401, 405, 406, 409, 'NETWORK_ERROR'].indexOf(code) < 0) {
+        return toFlag(error.data)
+      }
+      throw error
+    })
   },
 
   // 所有者移除分享成员：删成员自己的那条设备记录（分享列表返回的 userProductId），沿用 delUserProduct
