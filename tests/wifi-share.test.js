@@ -221,7 +221,8 @@ async function main() {
       toast: { show() {} },
       system: { getLayoutMetrics: () => ({}), isDevEnv: () => devEnv },
       'fold-adapt': { adapt: value => value },
-      'wifi-share': share
+      'wifi-share': share,
+      'share-card': { render: async () => 'wxfile://card.png', cardInfo: () => ({ thumb: '/assets/images/home-device-thumb.png' }) }
     }
     const wx = { setClipboardData: options => clips.push(options.data) }
     let page = loadPage('subpackages/device/wifi-share/wifi-share.js', modules, { wx })
@@ -232,13 +233,27 @@ async function main() {
     assert.ok(card.path.indexOf(share.ACCEPT_PAGE + '?') === 0, '卡片进接受页')
     assert.ok(/u=34/.test(card.path) && /p=12/.test(card.path), '带所有者 userId 与产品')
     assert.ok(/[?&]t=\d+(&|$)/.test(card.path), '默认参数带进页面时取到的时间戳')
+    assert.equal(card.imageUrl, 'wxfile://card.png', '卡片封面用 Canvas 画的图，不用页面截图')
     const fresh = await card.promise
     assert.equal(fresh.title, card.title)
+    assert.equal(fresh.imageUrl, 'wxfile://card.png')
     assert.ok(fresh.path.indexOf('t=' + now) > 0 && fresh.path !== card.path, '分享时 promise 再取最新时间戳')
     timeFails = true
     const kept = page.onShareAppMessage()
-    assert.deepEqual(await kept.promise, { title: kept.title, path: kept.path }, '分享时取不到最新时间戳 → 用默认参数')
+    assert.deepEqual(await kept.promise, { title: kept.title, path: kept.path, imageUrl: kept.imageUrl }, '分享时取不到最新时间戳 → 用默认参数')
     timeFails = false
+    {
+      // 封面还没画完就分享：默认参数先用设备图，promise 等封面画完再带上
+      let finish
+      const slow = Object.assign({}, modules, { 'share-card': { render: () => new Promise(resolve => { finish = resolve }), cardInfo: () => ({ thumb: '/assets/images/home-device-thumb.png' }) } })
+      const early = loadPage('subpackages/device/wifi-share/wifi-share.js', slow, { wx })
+      early.onLoad({ id: '7' })
+      await early.load()
+      const pending = early.onShareAppMessage()
+      assert.equal(pending.imageUrl, '/assets/images/home-device-thumb.png', '封面没画完时默认参数用设备图')
+      finish('wxfile://late.png')
+      assert.equal((await pending.promise).imageUrl, 'wxfile://late.png', '分享时等封面画完')
+    }
     assert.equal(page.data.showDevCopy, true, '开发版显示复制测试参数')
     await page.copyTestQuery()
     assert.deepEqual(clips, [page.acceptPath().split('?')[1]], '复制的就是卡片 ? 后面的参数（含最新时间戳）')

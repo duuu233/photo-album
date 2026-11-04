@@ -3,6 +3,7 @@ const toast = require('../../../utils/toast')
 const system = require('../../../utils/system')
 const fold = require('../../../utils/fold-adapt')
 const wifiShare = require('../../../utils/wifi-share')
+const shareCard = require('../../../utils/share-card')
 
 // WiFi 版分享列表（2026-10-29）。入口：WiFi 详情「分享设备」（仅所有者）。
 //   · 第一栏固定所有者（头像 + 昵称 + 身份），与接收者用不同底色区分；
@@ -14,6 +15,8 @@ const wifiShare = require('../../../utils/wifi-share')
 // 有效期（2026-11-04）：卡片带服务器时间戳 t（getCurrentTime），接受页拿它调 chkTimeValid 判断是否过期。
 //   进页面先取一次（取不到不让分享，点按钮会重取）；真正分享时 onShareAppMessage 的 promise 再取一次最新的，
 //   3 秒内没取到或失败，微信按默认参数（进页面时取到的时间戳）发出。
+// 卡片封面（2026-11-04）：不用微信默认的页面截图，拿到设备详情后用离屏 Canvas 画一张（utils/share-card.js），
+//   分享时还没画好就在 promise 里等它；画不出来用机型设备图。
 // 仅开发版：底部多一个「复制测试参数」，复制卡片参数，粘到开发者工具自定义编译的启动参数里，预览二维码即可在开发版打开接受页
 //   （开发版发出的卡片别人点开进的是正式版，正式版没有接受页会提示「页面不存在」）。
 Page(fold.adapt({
@@ -47,6 +50,10 @@ Page(fold.adapt({
       return
     }
     this.device = device
+    this.cardPromise = shareCard.render(device).then(file => {
+      this.cardImage = file
+      return file
+    })
     const deviceId = device.rawProductDeviceId || device.productDeviceId || device.deviceNo
     let list
     try {
@@ -187,9 +194,14 @@ Page(fold.adapt({
       return { title: 'BoltStar 智能相框', path: '/pages/home/home' }
     }
     const title = `${user.nickName || '好友'}邀请你共用电子纸设备「${device.name || '智能相框'}」`
-    const fallback = { title, path: this.acceptPath() }
-    // 分享这一刻再取一次服务器时间戳；失败也 resolve 默认参数，不让分享失败
-    const promise = this.refreshShareTime().then(() => ({ title, path: this.acceptPath() }), () => fallback)
+    const imageUrl = this.cardImage || shareCard.cardInfo(device).thumb
+    const fallback = { title, path: this.acceptPath(), imageUrl }
+    // 分享这一刻再取一次服务器时间戳，顺带等封面画完；失败也 resolve 默认参数，不让分享失败
+    const card = this.cardPromise || Promise.resolve(imageUrl)
+    const promise = Promise.all([this.refreshShareTime(), card]).then(
+      ([, image]) => ({ title, path: this.acceptPath(), imageUrl: image || imageUrl }),
+      () => fallback
+    )
     return Object.assign({ promise }, fallback)
   }
 }))
