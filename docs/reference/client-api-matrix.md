@@ -15,6 +15,9 @@
 
 ## 操作日志（最新在上）
 
+- **2026-11-04（main-wifi）**：WiFi 版设备分享链接加有效期：`getCurrentTime`（`api.getServerTime`）取服务器时间戳写进卡片 `t`，
+  接受页用 `chkTimeValid`（`api.checkShareTimeValid`，入参 `currentTime`）判断是否过期。关联：`utils/wifi-share.js`、
+  `subpackages/device/wifi-share/*`、`subpackages/device/wifi-share-accept/*`、`tests/wifi-share.test.js`。
 - **2026-10-27**：绑定页搜索列表尺寸匹配不到或没配时显示「--寸」（原为不显示），`loadProductCatalog` 打 `[搜索尺寸]`
   日志列出各广播名的 `sizeModel`。关联：`subpackages/device/bind/*`、`tests/search-device-id.test.js`。
 - **2026-10-23（追加）**：绑定页搜索列表的屏幕文案改为按蓝牙广播名匹配 `/Client/Product/getProductList`
@@ -200,6 +203,8 @@
 | 用户权限 | - | ➖ | ✅ | - | 位置、蓝牙、相册权限 |
 | 搜索设备 | 拉取后端产品列表 | `GET /Client/Product/getProductList` | ✅ | `getProductList` | 配合蓝牙搜索 |
 | 绑定设备 | 绑定设备 | `POST /Client/UserProduct/addUserProduct` | ✅ | `addUserProduct` | `deviceId` 必须是连接后 `0x01` 返回的完整 6 字节 ID（统一 `AA:BB:CC:DD:EE:FF`）；禁止广播 4 字节短 ID 或微信 BLE deviceId。**2026-08-12 后端改动**：重新绑定一台曾解绑过的设备时，出参 `ClientUserProductDetailApiOut.productName` 会回带**上次保存的昵称**，绑定后的命名弹窗要带出它 —— ⚠️ 端上 `api.bindDevice` 里要连 `name` 一起以后端为准，否则会被 `normalizeDevice` 里排在前面的蓝牙广播名盖住 |
+| 设备分享（WiFi） | 分享链接取服务器时间戳 | `GET /Client/UserProduct/getCurrentTime` | ✅ | `getServerTime` | **2026-11-04（main-wifi）** 出参 `retData` 为 long，原样写进分享卡片参数 `t`；分享列表进页面取一次（取不到不让分享），分享那一刻由 `onShareAppMessage` 的 `promise` 再取最新的 |
+| 设备分享（WiFi） | 校验分享链接是否过期 | `GET /Client/UserProduct/chkTimeValid` | ✅ | `checkShareTimeValid` | **2026-11-04（main-wifi）** 入参 `currentTime`（卡片里的时间戳），出参 `retData` boolean，`true` 仍有效；过期规则在服务端。接受页已登录时进页面校验一次、点「接受」前再校验一次，过期 / 校验失败都不绑定 |
 | 投屏流程 | - | ➖ | ✅ | - | 选图 → 选设备 → 预览（预处理尺寸）→ 确认投屏；内存已满提示清理/联系相册所有者 |
 | 设备选择 | - | ➖ | ✅ | - | 切换连接设备 |
 

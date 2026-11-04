@@ -2,7 +2,8 @@
 // 简化版分享（服务端未做邀请码）：所有者发微信卡片，卡片路径带设备号 / 产品 ID / 设备名 / 所有者 userId 与昵称；
 // 接收者在接受页调 addUserProduct（isToHave=0、shareUserId=所有者 userId）。成员列表用 getShareUserProductList，
 // 移除成员用 delUserProduct（成员那条 userProductId）。
-// 已知风险：没有一次性 / 过期 / 撤回，卡片被转发时拿到的人都能加入，由服务端校验兜底。
+// 有效期（2026-11-04）：卡片带分享时的服务器时间戳 t（getCurrentTime），接受页用 chkTimeValid 判断是否过期，
+// 过期规则在服务端。仍没有一次性 / 撤回，有效期内卡片被转发时拿到的人都能加入，由服务端校验兜底。
 
 // 是否所有者：isToHave=1 是；带分享者 shareUserId 的是接收者；两者都没有的是分享上线前绑定的老记录，按所有者算
 function isOwner(device) {
@@ -51,7 +52,8 @@ function decode(value) {
   }
 }
 
-// 卡片路径：d 设备号（绑定时的完整格式，带冒号）、p 产品 ID、u 所有者 userId、n 设备名、o 所有者昵称
+// 卡片路径：d 设备号（绑定时的完整格式，带冒号）、p 产品 ID、u 所有者 userId、n 设备名、o 所有者昵称、
+// t 分享时的服务器时间戳（原样）
 function buildAcceptPath(info) {
   const i = info || {}
   const query = [
@@ -59,7 +61,8 @@ function buildAcceptPath(info) {
     ['p', i.productId],
     ['u', i.ownerUserId],
     ['n', i.deviceName],
-    ['o', i.ownerName]
+    ['o', i.ownerName],
+    ['t', i.shareTime]
   ]
     .filter(pair => pair[1] !== undefined && pair[1] !== null && pair[1] !== '')
     .map(pair => `${pair[0]}=${encodeURIComponent(String(pair[1]))}`)
@@ -67,7 +70,8 @@ function buildAcceptPath(info) {
   return `${ACCEPT_PAGE}?${query}`
 }
 
-// 接受页 options → 分享信息；缺设备号 / 产品 / 所有者任一项返回 null（卡片无效）
+// 接受页 options → 分享信息；缺设备号 / 产品 / 所有者 / 时间戳任一项返回 null（卡片无效）。
+// 不带 t 的是有效期上线前发出的卡片，没法校验是否过期，一律按无效处理。
 function parseAcceptQuery(options) {
   const o = options || {}
   const info = {
@@ -75,9 +79,10 @@ function parseAcceptQuery(options) {
     productId: decode(o.p).trim(),
     ownerUserId: decode(o.u).trim(),
     deviceName: decode(o.n).trim() || '智能相框',
-    ownerName: decode(o.o).trim()
+    ownerName: decode(o.o).trim(),
+    shareTime: decode(o.t).trim()
   }
-  if (!info.deviceId || !/^\d+$/.test(info.productId) || !/^\d+$/.test(info.ownerUserId)) {
+  if (!info.deviceId || !/^\d+$/.test(info.productId) || !/^\d+$/.test(info.ownerUserId) || !/^\d+$/.test(info.shareTime) || Number(info.shareTime) <= 0) {
     return null
   }
   return info

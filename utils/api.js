@@ -911,6 +911,29 @@ module.exports = {
     })
   },
 
+  // 分享链接有效期（2026-11-04）：分享时取服务器当前时间戳写进卡片（getCurrentTime，retData 为 long），
+  // 接受时把卡片里的时间戳交给 chkTimeValid 判断是否过期（retData 为 boolean，true = 仍有效）。
+  // 时间戳原样透传，不在端上换算单位、不按本机时间判断。两个都不自动弹错，由页面自己提示。
+  getServerTime() {
+    return http.get('/Client/UserProduct/getCurrentTime', {}, {
+      mock: false,
+      showError: false
+    }).then(data => {
+      const text = String(data == null ? '' : data).trim()
+      if (!/^\d+$/.test(text) || Number(text) <= 0) {
+        throw new Error('获取服务器时间失败')
+      }
+      return text
+    })
+  },
+
+  checkShareTimeValid(currentTime) {
+    return http.get('/Client/UserProduct/chkTimeValid', { currentTime }, {
+      mock: false,
+      showError: false
+    }).then(data => data === true || String(data).toLowerCase() === 'true')
+  },
+
   // 所有者移除分享成员：删成员自己的那条设备记录（分享列表返回的 userProductId），沿用 delUserProduct
   removeShareUser(userProductId) {
     return http.post('/Client/UserProduct/delUserProduct', { id: userProductId }, {

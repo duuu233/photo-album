@@ -11,6 +11,9 @@ const wifiShare = require('../../../utils/wifi-share')
 // 分享（简化版，无邀请码）：底部按钮 open-type="share" 发微信卡片，卡片路径带设备号 / 产品 / 所有者 userId，
 //   对方在接受页确认后以非所有者身份绑定（见 utils/wifi-share.js）。拿不到自己的 userId 或产品 ID 时不让分享。
 // 移除：确认后 delUserProduct 删成员那条记录，再刷新列表。加入时间取接口 joinTime，为空时显示「--」。
+// 有效期（2026-11-04）：卡片带服务器时间戳 t（getCurrentTime），接受页拿它调 chkTimeValid 判断是否过期。
+//   进页面先取一次（取不到不让分享，点按钮会重取）；真正分享时 onShareAppMessage 的 promise 再取一次最新的，
+//   3 秒内没取到或失败，微信按默认参数（进页面时取到的时间戳）发出。
 // 仅开发版：底部多一个「复制测试参数」，复制卡片参数，粘到开发者工具自定义编译的启动参数里，预览二维码即可在开发版打开接受页
 //   （开发版发出的卡片别人点开进的是正式版，正式版没有接受页会提示「页面不存在」）。
 Page(fold.adapt({
@@ -58,6 +61,7 @@ Page(fold.adapt({
       user = null
     }
     this.user = user
+    await this.refreshShareTime()
     if (this.unloaded) {
       return
     }
@@ -67,7 +71,7 @@ Page(fold.adapt({
     }
     const profile = { userProductId: device.userProductId, userName: user && user.nickName, avatar: user && user.avatarUrl }
     const split = wifiShare.splitMembers(list, profile)
-    const canShare = !!(user && user.userId && device.productId && device.productDeviceId)
+    const canShare = this.shareReady()
     this.setData({
       loading: false,
       loadError: false,
@@ -118,8 +122,38 @@ Page(fold.adapt({
     this.load()
   },
 
-  // 拿不到自己的 userId / 产品 ID 时底部是普通按钮，点了只提示
-  shareUnavailable() {
+  // 取服务器时间戳，成功时记到 this.shareTime；失败返回 false，保留上一次取到的
+  async refreshShareTime() {
+    try {
+      this.shareTime = await api.getServerTime()
+      return true
+    } catch (error) {
+      console.warn('[设备分享] 获取服务器时间戳失败', error && error.message)
+      return false
+    }
+  },
+
+  // 能不能发卡片：自己的 userId、产品 ID、设备号、分享时间戳都要有
+  shareReady() {
+    const device = this.device || {}
+    const user = this.user || {}
+    return !!(user.userId && device.productId && device.productDeviceId && this.shareTime)
+  },
+
+  // 拿不到自己的 userId / 产品 ID / 时间戳时底部是普通按钮。只缺时间戳的，点了重取一次，取到就换回分享按钮
+  async shareUnavailable() {
+    const device = this.device || {}
+    const user = this.user || {}
+    if (!this._timeRetrying && user.userId && device.productId && device.productDeviceId && !this.shareTime) {
+      this._timeRetrying = true
+      const ok = await this.refreshShareTime()
+      this._timeRetrying = false
+      if (ok && !this.unloaded) {
+        this.setData({ canShare: true, showDevCopy: system.isDevEnv() })
+        toast.show({ title: '已就绪，请再点一次「分享设备」', icon: 'none' })
+        return
+      }
+    }
     toast.show({ title: '暂时无法分享，请稍后重试', icon: 'none' })
   },
 
@@ -131,15 +165,17 @@ Page(fold.adapt({
       productId: device.productId,
       ownerUserId: user.userId,
       deviceName: device.name,
-      ownerName: user.nickName || ''
+      ownerName: user.nickName || '',
+      shareTime: this.shareTime
     })
   },
 
-  // 开发版「复制测试参数」：只复制 ? 后面那段，启动页面固定为 wifiShare.ACCEPT_PAGE
-  copyTestQuery() {
+  // 开发版「复制测试参数」：只复制 ? 后面那段，启动页面固定为 wifiShare.ACCEPT_PAGE；先取一次最新时间戳
+  async copyTestQuery() {
     if (!this.data.showDevCopy) {
       return
     }
+    await this.refreshShareTime()
     wx.setClipboardData({ data: this.acceptPath().split('?')[1] || '' })
   },
 
@@ -150,9 +186,10 @@ Page(fold.adapt({
     if (!this.data.canShare) {
       return { title: 'BoltStar 智能相框', path: '/pages/home/home' }
     }
-    return {
-      title: `${user.nickName || '好友'}邀请你共用电子纸设备「${device.name || '智能相框'}」`,
-      path: this.acceptPath()
-    }
+    const title = `${user.nickName || '好友'}邀请你共用电子纸设备「${device.name || '智能相框'}」`
+    const fallback = { title, path: this.acceptPath() }
+    // 分享这一刻再取一次服务器时间戳；失败也 resolve 默认参数，不让分享失败
+    const promise = this.refreshShareTime().then(() => ({ title, path: this.acceptPath() }), () => fallback)
+    return Object.assign({ promise }, fallback)
   }
 }))
