@@ -15,6 +15,7 @@
 //     写进 pendingProjection（与首页手选图片同形态），出帧/图传/建记录/记账全走上面的正常链路。
 //     旧「imgBle(.bin) 直传 + addUserProductImgRecord 补记」机制已删除（后端不再生成 .bin）。
 const system = require('../../../utils/system')
+const tapGuard = require('../../../utils/tap-guard')
 const api = require('../../../utils/api')
 const deviceBle = require('../../../utils/device-ble')
 const dithering = require('../../../utils/dithering')
@@ -152,7 +153,7 @@ function readPerformanceEnvironment() {
 
 // 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
 // styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
-Page(fold.adapt({
+Page(fold.adapt(tapGuard.wrap({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -1254,12 +1255,12 @@ Page(fold.adapt({
 
   // 选「拍照」：调起相机拍一张后继续投屏
   chooseCamera() {
-    this.pickAndContinue(() => media.chooseFromCamera())
+    return this.pickAndContinue(() => media.chooseFromCamera())
   },
 
   // 选「相册」：从相册选图后继续投屏
   chooseAlbum() {
-    this.pickAndContinue(() => media.chooseFromAlbum())
+    return this.pickAndContinue(() => media.chooseFromAlbum())
   },
 
   // 选图(拍照/相册)后继续投屏：复用本次投屏的设备，确保已连接后写 pendingProjection 跳投屏预览页。
@@ -1316,4 +1317,4 @@ Page(fold.adapt({
   },
 
   noop() {}
-}))
+}, { continueProjection: 'projection', retry: 'projection', chooseCamera: 'pick', chooseAlbum: 'pick' })))

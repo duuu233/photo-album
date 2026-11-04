@@ -40,6 +40,7 @@
 //    它的槽位在设备上已经空了。此时**删除必须照样能删掉**——设备侧按真实 IMG_MASK 过滤后再发
 //    0x12，空槽位跳过、槽位上换了别的图也照删，后端记录一律删掉。详见 confirmDeleteSelected 第 3 步。
 const api = require('../../../utils/api')
+const tapGuard = require('../../../utils/tap-guard')
 const media = require('../../../utils/media')
 const system = require('../../../utils/system')
 const deviceBle = require('../../../utils/device-ble')
@@ -199,7 +200,7 @@ function countSelected(map) {
 
 // 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
 // styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
-Page(fold.adapt({
+Page(fold.adapt(tapGuard.wrap({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -1305,4 +1306,4 @@ Page(fold.adapt({
 
   noop() {
   }
-}))
+}, { retryProjection: 'projection' })))

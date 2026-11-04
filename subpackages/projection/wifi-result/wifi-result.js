@@ -1,4 +1,5 @@
 const api = require('../../../utils/api')
+const tapGuard = require('../../../utils/tap-guard')
 const system = require('../../../utils/system')
 const fold = require('../../../utils/fold-adapt')
 const dithering = require('../../../utils/dithering')
@@ -95,7 +96,7 @@ function resolveLocalFile(image) {
   return Promise.resolve(remote || '')
 }
 
-Page(fold.adapt({
+Page(fold.adapt(tapGuard.wrap({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -309,4 +310,4 @@ Page(fold.adapt({
       }
     })
   }
-}))
+}, { retryFailed: 'projection' })))

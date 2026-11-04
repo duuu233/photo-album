@@ -228,6 +228,7 @@ async function main() {
         }
       },
       system: { getLayoutMetrics: () => ({}) },
+      'tap-guard': require('../utils/tap-guard'),
       'fold-adapt': { adapt: value => value },
       dithering: { typeForDevice: () => '0' },
       'wifi-projection': {

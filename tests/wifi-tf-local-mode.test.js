@@ -136,6 +136,7 @@ async function main() {
       'iot-ws': { on: () => () => {}, subscribe() {}, unsubscribe() {}, getSubscriptions: () => [] },
       toast: { show: value => toasts.push(value.title), warn: value => toasts.push(value.title) },
       system: { getLayoutMetrics: () => ({}) },
+      'tap-guard': require('../utils/tap-guard'),
       'fold-adapt': { adapt: value => value },
       media: {},
       battery: { normalizeBattery: value => value, getBatteryIcon: () => 'icon' },

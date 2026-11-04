@@ -1,4 +1,5 @@
 const api = require('../../../utils/api')
+const tapGuard = require('../../../utils/tap-guard')
 const broadcastMatch = require('../../../utils/broadcast-match')
 const toast = require('../../../utils/toast')
 const system = require('../../../utils/system')
@@ -259,7 +260,7 @@ function hasFirmwareUpdate(device) {
 
 // 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
 // styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
-Page(fold.adapt({
+Page(fold.adapt(tapGuard.wrap({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -694,12 +695,12 @@ Page(fold.adapt({
 
   // 选「拍照」：调起相机拍一张后进入投屏
   chooseCamera() {
-    this.pickAndProject(() => media.chooseFromCamera())
+    return this.pickAndProject(() => media.chooseFromCamera())
   },
 
   // 选「相册」：从相册选图后进入投屏
   chooseAlbum() {
-    this.pickAndProject(() => media.chooseFromAlbum())
+    return this.pickAndProject(() => media.chooseFromAlbum())
   },
 
   // 选图（拍照/相册）后跳投屏预览：用户取消选择不报错；选到图先关弹层再带数据跳转，
@@ -1461,4 +1462,4 @@ Page(fold.adapt({
       }
     })
   }
-}))
+}, { startProjection: 'projection', chooseCamera: 'pick', chooseAlbum: 'pick' })))

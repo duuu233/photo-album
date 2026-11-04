@@ -52,6 +52,7 @@ function loadListPage(options = {}) {
       inheritStableIdentity: item => item,
       findConnectedDeviceId: () => ''
     },
+    'tap-guard': require('../utils/tap-guard'),
     'fold-adapt': { adapt: value => value },
     'broadcast-match': match,
     'iot-api': {
@@ -148,6 +149,9 @@ async function main() {
     assert.equal(page._projectionDevice.id, '1')
     assert.equal(state.selected, null, '不改当前选中设备')
     page.data.showMediaSheet = false
+    page.startWifiProjection({ currentTarget: { dataset: { id: '1' } } })
+    assert.equal(page.data.showMediaSheet, false, '紧接着再点一次投屏被防重复点击挡下（tap-guard 冷却中）')
+    page.__tapGuard = {} // 模拟冷却已过，下面测离线拦截
     page.data.devices = page.data.devices.map(item => (item.id === '1' ? Object.assign({}, item, { wifiStatus: 'offline' }) : item))
     page.startWifiProjection({ currentTarget: { dataset: { id: '1' } } })
     assert.equal(page.data.showMediaSheet, false, '离线先拦下')

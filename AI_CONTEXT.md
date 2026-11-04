@@ -104,6 +104,10 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 依据 `docs/前端对接文档20261031.md`。WiFi 详情「固件升级」行（当前 `firmwareVersion` + 新版本红点）→ `subpackages/device/wifi-ota`（版式与配网状态页同一套，`@import` 其 wxss）。目标版本 / 固件包取老服务 `getDeviceDetail` 的 `newVersionNo` / `downloadPath`，`utils/wifi-ota.evaluate` 按 `x.y.z` 数字段比较，当前版本空或旧格式（`M H:3 F:…`）按「无法判断」。`POST /api/device/ota`（`type=main`）成功立即把 `{ type:'ota', msgid, … }` 存到独立 key `ota_inflight:{deviceNo}`；3 秒轮询 `GET /api/device/ota/status` + WS `ota.result` 按 msgid 刷新。四步 `SENT` / `DOWNLOADING` / `FLASHING` / `VERIFYING`：`VERIFYING` 是步骤页成功终点但不是终态（记录保留到 `SUCCESS` / `FAILED` / `TIMEOUT` 或 `4044` 才清）；`FAILED` / `TIMEOUT` 在当前步打叉。**提示「有新版本」前先看本地记录**（详情红点、升级页、`app.js` 强制升级弹窗三处），`VERIFYING` 后重进只显示「升级完成 · 等待设备重启」。`4045` 与 OTA 上的 `4000` 按「设备正在升级」，不当普通失败。消息类型 `OTA_SUCCESS` / `OTA_FAILED`。见 `docs/changes/2026-11-02-WiFi版固件升级OTA.md`。
 
+## 投屏按钮防重复点击（2026-11-04，`main-wifi`）
+
+`utils/tap-guard.js`：页面注册处 `tapGuard.wrap(定义, { 方法名: key })` 加锁——同页同 key 执行中（返回的 Promise 未结束）忽略再点，结束后冷却 500ms，超过 60 秒挂住不再拦。目前只接了投屏相关按钮（key `projection` 为入口、`pick` 为弹层拍照 / 相册），覆盖首页、我的设备、蓝牙 / WiFi 详情、官方图库、AI 对话、我的相册、投屏记录、预览、两个结果页；锁只覆盖方法返回的 Promise，调用链要 `return` 到底，同一链上不要用同一个 key 包两层。新增投屏入口记得加进锁表与 `tests/tap-guard.test.js`。见 `docs/changes/2026-11-04-投屏按钮防重复点击.md`。
+
 ## 联调日志浮窗（2026-10-27，`main-wifi`）
 
 开发版 / 体验版每个页面左下角有「日志 N」浮窗（`components/debug-log`，app.json 全局注册，每个页面 wxml 末尾一个 `<debug-log>`；新增页面记得加），点开可复制 / 清空。数据来自 `utils/debug-log.js`：`app.js` 最先 `install()` 包装 console，另有老服务 `[HTTP]`、IoT `[IoT]`、`[WS]` 摘要；最近 500 行只在内存，token / 密码入库前打码。正式版整套不生效。

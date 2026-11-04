@@ -1,4 +1,5 @@
 const api = require('../../../utils/api')
+const tapGuard = require('../../../utils/tap-guard')
 const iotApi = require('../../../utils/iot-api')
 const iotWs = require('../../../utils/iot-ws')
 const toast = require('../../../utils/toast')
@@ -60,7 +61,7 @@ function otaFields(device, firmwareVersion, inflight) {
   return { otaText: firmwareVersion || '--', otaHasUpdate: result.state === 'available' }
 }
 
-Page(fold.adapt({
+Page(fold.adapt(tapGuard.wrap({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -329,11 +330,11 @@ Page(fold.adapt({
   },
 
   chooseCamera() {
-    this.pickAndProject(() => media.chooseFromCamera())
+    return this.pickAndProject(() => media.chooseFromCamera())
   },
 
   chooseAlbum() {
-    this.pickAndProject(() => media.chooseFromAlbum())
+    return this.pickAndProject(() => media.chooseFromAlbum())
   },
 
   // 选图后进预览页构图；预览页认出 WiFi 版，导出后去 WiFi 投屏结果页
@@ -471,4 +472,4 @@ Page(fold.adapt({
     toast.show({ title: '电子纸设备已删除', icon: 'none' })
     this.afterRemoved()
   }
-}))
+}, { startProjection: 'projection', chooseCamera: 'pick', chooseAlbum: 'pick' })))

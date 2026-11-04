@@ -11,6 +11,7 @@
 //  详见 utils/gallery-api.js）。详情是**唯一**能直接读到收藏态的接口（`isAlreadyCollected`），
 //  列表那边只能靠收藏列表在端上标记。
 const fold = require('../../../utils/fold-adapt')
+const tapGuard = require('../../../utils/tap-guard')
 const galleryApi = require('../../../utils/gallery-api')
 const activeDevice = require('../../../utils/active-device')
 const lowBattery = require('../../../utils/low-battery')
@@ -35,7 +36,7 @@ const HERO_PAD_MAX = 240
 // 真值由它的 measure 事件回抛；测量到之前先用这个，免得首帧闪一条断层。
 const NAV_HEIGHT_DEFAULT = 64
 
-Page(fold.adapt({
+Page(fold.adapt(tapGuard.wrap({
   data: {
     // sizes 不再进页面数据：「适用设备尺寸」区块 2026-08-12 已按产品要求去掉
     //（接口/mock 仍下发该字段，只是端上不渲染，见 detail.wxml 里的注释）。
@@ -150,8 +151,7 @@ Page(fold.adapt({
 
     const device = activeDevice.getActiveDevice()
     if (device && activeDevice.isDeviceConnected(device)) {
-      this.startProjection(device)
-      return
+      return this.startProjection(device)
     }
 
     // 未连接：弹已绑定设备列表。不预置选中项（2026-08-13 需求 3，口径同 AI 对话页）：
@@ -197,7 +197,7 @@ Page(fold.adapt({
     const device = event.detail && event.detail.device
     this.setData({ 'devicePicker.show': false })
     if (device) {
-      this.startProjection(device)
+      return this.startProjection(device)
     }
   },
 
@@ -302,4 +302,4 @@ Page(fold.adapt({
 
   // 弹层内部点击阻止冒泡到遮罩（项目惯例）
   noop() {}
-}))
+}, { onProject: 'projection', onDevicePickerConfirm: 'projection' })))

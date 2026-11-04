@@ -1,4 +1,5 @@
 const api = require('../../utils/api')
+const tapGuard = require('../../utils/tap-guard')
 const toast = require('../../utils/toast')
 const media = require('../../utils/media')
 const batteryUtil = require('../../utils/battery')
@@ -287,7 +288,7 @@ function sceneState(scene) {
   }
 }
 
-Page({
+Page(tapGuard.wrap({
   data: Object.assign({
     scene: SCENES.UNBOUND,
     statusBarHeight: 20,
@@ -1006,7 +1007,7 @@ Page({
     if (!(await this.ensureCanProject())) {
       return
     }
-    this.chooseCamera()
+    return this.chooseCamera()
   },
 
   // 点击「相册」入口：校验通过后直接调起相册选择（不再弹「拍照/相册」二选一层）。
@@ -1014,7 +1015,7 @@ Page({
     if (!(await this.ensureCanProject())) {
       return
     }
-    this.chooseAlbum()
+    return this.chooseAlbum()
   },
 
   // 拍照/相册前的统一校验：未登录先跳登录；未绑定先引导绑定；当前选中设备未连接则先自动扫描连接
@@ -1225,4 +1226,4 @@ Page({
   },
 
   noop() {}
-})
+}, { tapCameraEntry: 'projection', tapAlbumEntry: 'projection' }))

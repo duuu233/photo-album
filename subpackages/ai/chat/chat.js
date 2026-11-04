@@ -21,6 +21,7 @@
 //   5 首屏「先渲染 → 贴底 → 再显形」，图片占位防内容被顶飞；
 //   6 AI 气泡去头像、按屏宽铺满（用户侧气泡维持原样）。
 const aiApi = require('../../../utils/ai-api')
+const tapGuard = require('../../../utils/tap-guard')
 const aiI18n = require('../../../utils/ai-i18n')
 const aiToken = require('../../../utils/ai-token')
 const api = require('../../../utils/api')
@@ -469,7 +470,7 @@ function nextMessageTimeMeta(messages, value) {
 
 // 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
 // styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
-Page(fold.adapt({
+Page(fold.adapt(tapGuard.wrap({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -2709,8 +2710,7 @@ Page(fold.adapt({
   async projectImage(url) {
     const device = activeDevice.getActiveDevice()
     if (device && activeDevice.isDeviceConnected(device)) {
-      this.startProjection(device, url)
-      return
+      return this.startProjection(device, url)
     }
 
     // 未连接：弹已绑定设备列表。
@@ -2767,7 +2767,7 @@ Page(fold.adapt({
     const device = event.detail && event.detail.device
     this.setData({ 'devicePicker.show': false })
     if (device) {
-      this.startProjection(device, this._pendingProjectImage)
+      return this.startProjection(device, this._pendingProjectImage)
     }
   },
 
@@ -2783,8 +2783,7 @@ Page(fold.adapt({
       if (!(await wifiStatus.ensureOnline(device))) {
         return
       }
-      this.openProjectionPreview(Object.assign({}, device, { isWifi: true }), url)
-      return
+      return this.openProjectionPreview(Object.assign({}, device, { isWifi: true }), url)
     }
     // 「连接并投屏」要**真的先连上**再进预览（2026-09-21，与官方图库同一处报障）：弹层里的设备来自
     // 后端列表，记录里没有本机 BLE 句柄，原来原样塞进 pendingProjection、指望预览页后台预热去连，
@@ -2800,7 +2799,7 @@ Page(fold.adapt({
         return
       }
     }
-    this.openProjectionPreview(activeDevice.applyConnectedIdentity(device, deviceId), url)
+    return this.openProjectionPreview(activeDevice.applyConnectedIdentity(device, deviceId), url)
   },
 
   // 下载 AI 生成图并进投屏预览页（蓝牙版带本机句柄、WiFi 版带 isWifi）
@@ -2896,4 +2895,4 @@ Page(fold.adapt({
     const distance = (detail.scrollHeight || 0) - (detail.scrollTop || 0) - this._chatViewH
     this._stick = distance <= SCROLL_STICK_PX
   }
-}))
+}, { projectImage: 'projection', onDevicePickerConfirm: 'projection' })))
