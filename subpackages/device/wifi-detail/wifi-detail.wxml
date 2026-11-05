@@ -63,7 +63,7 @@
         </view>
       </view>
 
-      <!-- 功能栏（2026-10-29）：设备信息、设备ID、屏幕尺寸（2026-11-02）、休眠设置、消息中心、固件升级（2026-11-02）、TF卡、分享设备（仅所有者）、解除绑定 -->
+      <!-- 功能栏（2026-10-29）：设备信息、设备ID、屏幕尺寸（2026-11-02）、休眠设置、消息中心、固件升级（2026-11-02）、TF卡、共享设备（2026-11-05 起所有者与接收者都显示，接收者进去只看不改）、解除绑定 -->
       <view class="wifi-detail-entries glass-panel">
         <view class="wifi-detail-entry" hover-class="none" bindtap="openInfo">
           <text class="wifi-detail-entry__label">设备信息</text>
@@ -107,8 +107,8 @@
             <view wx:if="{{tfState === 'present'}}" class="ui-chevron"></view>
           </view>
         </view>
-        <view wx:if="{{isOwner}}" class="wifi-detail-entry" hover-class="none" bindtap="openShare">
-          <text class="wifi-detail-entry__label">分享设备</text>
+        <view class="wifi-detail-entry" hover-class="none" bindtap="openShare">
+          <text class="wifi-detail-entry__label">共享设备</text>
           <view class="ui-chevron"></view>
         </view>
         <view class="wifi-detail-entry unbind-entry" hover-class="none" bindtap="showUnbindConfirm">

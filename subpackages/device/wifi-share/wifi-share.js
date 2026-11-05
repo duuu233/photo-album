@@ -5,10 +5,13 @@ const fold = require('../../../utils/fold-adapt')
 const wifiShare = require('../../../utils/wifi-share')
 const shareCard = require('../../../utils/share-card')
 
-// WiFi 版分享列表（2026-10-29）。入口：WiFi 详情「分享设备」（仅所有者）。
+// WiFi 版共享设备列表（2026-10-29）。入口：WiFi 详情「共享设备」（2026-11-05 起所有者与接收者都能进）。
+//   · 接收者（2026-11-05）：显示内容与所有者一致（所有者栏 + 已分享成员），只是没有「移除」和底部「分享设备」；
+//     身份按设备详情判断（wifiShare.isOwner），不看入口参数。接收者不画卡片封面、不取时间戳 / 个人资料，
+//     列表里没有所有者那条时不拿自己兜底（所有者栏不显示），右上角转发退回首页卡片。
 //   · 第一栏固定所有者（头像 + 昵称 + 身份），与接收者用不同底色区分；
 //   · 下面是接收者（头像 + 昵称 + 加入时间 + 移除）；底部按钮「分享设备」。
-// 数据：老服务 getShareUserProductList（按后端设备号）；列表里没有所有者时用当前用户资料兜底。
+// 数据：老服务 getShareUserProductList（按后端设备号）；列表里没有所有者时用当前用户资料兜底（仅所有者本人进来时）。
 // 分享（简化版，无邀请码）：底部按钮 open-type="share" 发微信卡片，卡片路径带设备号 / 产品 / 所有者 userId，
 //   对方在接受页确认后以非所有者身份绑定（见 utils/wifi-share.js）。拿不到自己的 userId 或产品 ID 时不让分享。
 // 移除：确认后 delUserProduct 删成员那条记录，再刷新列表。加入时间取接口 joinTime，为空时显示「--」。
@@ -26,6 +29,7 @@ Page(fold.adapt({
     id: '',
     loading: true,
     loadError: false,
+    isOwner: false,
     owner: null,
     members: [],
     canShare: false,
@@ -50,10 +54,13 @@ Page(fold.adapt({
       return
     }
     this.device = device
-    this.cardPromise = shareCard.render(device).then(file => {
-      this.cardImage = file
-      return file
-    })
+    const isOwner = wifiShare.isOwner(device)
+    if (isOwner) {
+      this.cardPromise = shareCard.render(device).then(file => {
+        this.cardImage = file
+        return file
+      })
+    }
     const deviceId = device.rawProductDeviceId || device.productDeviceId || device.deviceNo
     let list
     try {
@@ -62,13 +69,15 @@ Page(fold.adapt({
       list = null
     }
     let user = null
-    try {
-      user = await api.getUserProfile()
-    } catch (error) {
-      user = null
+    if (isOwner) {
+      try {
+        user = await api.getUserProfile()
+      } catch (error) {
+        user = null
+      }
+      await this.refreshShareTime()
     }
     this.user = user
-    await this.refreshShareTime()
     if (this.unloaded) {
       return
     }
@@ -77,11 +86,13 @@ Page(fold.adapt({
       return
     }
     const profile = { userProductId: device.userProductId, userName: user && user.nickName, avatar: user && user.avatarUrl }
-    const split = wifiShare.splitMembers(list, profile)
-    const canShare = this.shareReady()
+    // 进得来这页的所有者可以拿自己兜底所有者栏；接收者不行（那会把自己显示成所有者）
+    const split = wifiShare.splitMembers(list, isOwner ? profile : null)
+    const canShare = isOwner && this.shareReady()
     this.setData({
       loading: false,
       loadError: false,
+      isOwner,
       owner: split.owner,
       members: split.members,
       canShare,
@@ -97,7 +108,7 @@ Page(fold.adapt({
   removeMember(e) {
     const id = String(e.currentTarget.dataset.id || '')
     const member = this.data.members.filter(item => item.id === id)[0]
-    if (!member || this._removing) {
+    if (!member || this._removing || !this.data.isOwner) {
       return
     }
     wx.showModal({
@@ -114,7 +125,7 @@ Page(fold.adapt({
   },
 
   async confirmRemove(member) {
-    if (this._removing) {
+    if (this._removing || !this.data.isOwner) {
       return
     }
     this._removing = true
@@ -147,10 +158,13 @@ Page(fold.adapt({
     return !!(user.userId && device.productId && device.productDeviceId && this.shareTime)
   },
 
-  // 拿不到自己的 userId / 产品 ID / 时间戳时底部是普通按钮。只缺时间戳的，点了重取一次，取到就换回分享按钮
+  // 拿不到自己的 userId / 产品 ID / 时间戳时底部是普通按钮（只有所有者有这个按钮）。只缺时间戳的，点了重取一次，取到就换回分享按钮
   async shareUnavailable() {
     const device = this.device || {}
     const user = this.user || {}
+    if (!this.data.isOwner) {
+      return
+    }
     if (!this._timeRetrying && user.userId && device.productId && device.productDeviceId && !this.shareTime) {
       this._timeRetrying = true
       const ok = await this.refreshShareTime()
@@ -186,7 +200,7 @@ Page(fold.adapt({
     wx.setClipboardData({ data: this.acceptPath().split('?')[1] || '' })
   },
 
-  // 底部「分享设备」（open-type="share"）与右上角菜单都走这里；不能分享时退回小程序首页卡片
+  // 底部「分享设备」（open-type="share"）与右上角菜单都走这里；不能分享（含接收者）时退回小程序首页卡片
   onShareAppMessage() {
     const device = this.device || {}
     const user = this.user || {}

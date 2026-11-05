@@ -1,6 +1,6 @@
 {
   "navigationStyle": "custom",
-  "navigationBarTitleText": "分享设备",
+  "navigationBarTitleText": "共享设备",
   "usingComponents": {
     "page-nav": "/components/page-nav/page-nav"
   },

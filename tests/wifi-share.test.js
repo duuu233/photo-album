@@ -5,6 +5,7 @@
 //   ③ 接受页：自己分享的不接受；已在列表直接进详情；否则接受后进详情；未登录先记下卡片再去登录；
 //   ④ 分享列表：能分享时卡片路径指向接受页，拿不到 userId 退回首页卡片；仅开发版能复制卡片参数；
 //   ⑤ 登录页：登录成功后回接受页；页面已注册。
+//   ⑦ 共享设备（2026-11-05）：接收者也能进，内容同所有者，没有移除 / 分享设备按钮，不拿自己兜底所有者栏。
 //   ⑥ 有效期（2026-11-04）：卡片带服务器时间戳 t（getCurrentTime），缺 t 视为无效；接受页已登录进页面就 chkTimeValid，
 //      过期显示过期卡片；点接受再校验一次，过期 / 校验不了都不绑定；分享列表取不到时间戳不能分享，分享时再取最新的。
 const assert = require('node:assert/strict')
@@ -294,6 +295,55 @@ async function main() {
     assert.ok(/bindtap="removeMember"/.test(tpl))
     assert.ok(/wx:if="\{\{showDevCopy\}\}"[^>]*bindtap="copyTestQuery"/.test(tpl), '复制测试参数只按 showDevCopy 渲染')
     checked('分享列表')
+  }
+  {
+    // 接收者进「共享设备」（2026-11-05）：内容与所有者一致（所有者栏 + 成员），没有移除、没有分享设备按钮
+    const calls = []
+    let list = [{ userProductId: 7, userName: '小明', isToHave: 1 }, { userProductId: 9, userName: '小红', isToHave: 0, joinTime: '2026-11-01 10:00' }]
+    const modules = {
+      api: {
+        getDeviceDetail: async () => ({ id: '9', userProductId: 9, productId: 12, productDeviceId: 'E3:48:C2:1E:D4:28', name: '客厅相框', isToHave: 0, shareUserId: 34 }),
+        getShareUsers: async () => list,
+        getUserProfile: async () => { calls.push('profile'); return { userId: 99, nickName: '小红' } },
+        getServerTime: async () => { calls.push('time'); return '1762240000000' },
+        removeShareUser: async id => { calls.push(['remove', id]) }
+      },
+      toast: { show() {} },
+      system: { getLayoutMetrics: () => ({}), isDevEnv: () => true },
+      'fold-adapt': { adapt: value => value },
+      'wifi-share': share,
+      'share-card': { render: async () => { calls.push('card'); return 'wxfile://card.png' }, cardInfo: () => ({ thumb: '/assets/images/home-device-thumb.png' }) }
+    }
+    const modals = []
+    const wx = { showModal: options => modals.push(options), setClipboardData: () => calls.push('clip') }
+    let page = loadPage('subpackages/device/wifi-share/wifi-share.js', modules, { wx })
+    page.onLoad({ id: '9' })
+    await page.load()
+    assert.equal(page.data.isOwner, false, '按设备详情判断为接收者')
+    assert.equal(page.data.owner.name, '小明', '所有者栏照常显示')
+    assert.deepEqual(page.data.members.map(item => item.name), ['小红'], '成员列表照常显示')
+    assert.equal(page.data.canShare, false, '接收者不能分享')
+    assert.equal(page.data.showDevCopy, false, '接收者不给复制测试参数')
+    assert.deepEqual(calls, [], '接收者不画封面、不取个人资料 / 时间戳')
+    assert.equal(page.onShareAppMessage().path, '/pages/home/home', '右上角转发退回首页卡片')
+    page.removeMember({ currentTarget: { dataset: { id: '9' } } })
+    await page.confirmRemove(page.data.members[0])
+    await page.shareUnavailable()
+    await page.copyTestQuery()
+    assert.equal(modals.length, 0, '接收者点不出移除确认')
+    assert.deepEqual(calls, [], '接收者调不了移除 / 分享相关接口')
+    list = [{ userProductId: 9, userName: '小红', isToHave: 0 }]
+    page = loadPage('subpackages/device/wifi-share/wifi-share.js', modules, { wx })
+    page.onLoad({ id: '9' })
+    await page.load()
+    assert.equal(page.data.owner, null, '列表里没有所有者时不拿接收者自己兜底')
+    const tpl = read('subpackages/device/wifi-share/wifi-share.wxml')
+    assert.ok(/wx:if="\{\{isOwner\}\}" class="share-remove"[^>]*bindtap="removeMember"/.test(tpl), '移除仅所有者')
+    const shareBlock = tpl.slice(tpl.indexOf('<block wx:if="{{isOwner}}">'), tpl.indexOf('</block>'))
+    assert.ok(shareBlock.indexOf('open-type="share"') > 0 && shareBlock.indexOf('bindtap="shareUnavailable"') > 0 && shareBlock.indexOf('bindtap="copyTestQuery"') > 0, '分享设备按钮、提示、复制测试参数都只给所有者')
+    assert.ok(/<page-nav title="共享设备">/.test(tpl), '页面标题「共享设备」')
+    assert.equal(JSON.parse(read('subpackages/device/wifi-share/wifi-share.json')).navigationBarTitleText, '共享设备')
+    checked('接收者看共享设备')
   }
   {
     const login = read('pages/login/login.js')

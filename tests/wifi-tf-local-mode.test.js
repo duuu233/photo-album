@@ -178,6 +178,10 @@ async function main() {
     page.openMessages()
     page.openShare()
     assert.equal(state.navs.length, 4, '设备信息 / 休眠 / 消息 / 分享照常进')
+    state.navs.length = 0
+    page.setData({ isOwner: false })
+    page.openShare()
+    assert.deepEqual(state.navs, ['/subpackages/device/wifi-share/wifi-share?id=7'], '接收者也能进共享设备（2026-11-05）')
 
     infoReply = { online: true, status: 'ONLINE', shadow: { tfStatus: 'absent', battery: 66 } }
     page = make()
@@ -213,7 +217,10 @@ async function main() {
     const positions = order.map(key => tpl.indexOf(key))
     assert.ok(positions.every(pos => pos > -1), '入口齐全')
     assert.deepEqual(positions.slice().sort((a, b) => a - b), positions, '投屏 / 轮播在功能栏之前，功能栏顺序：设备信息、休眠、消息、TF卡、分享、解绑，页底删除')
-    assert.ok(/wx:if="\{\{isOwner\}\}"[^>]*bindtap="openShare"/.test(tpl), '分享仅所有者')
+    // 2026-11-05 有意改口径：入口改名「共享设备」，接收者也显示（进去只看不改，移除 / 分享按钮由 wifi-share 按身份隐藏）。
+    // 原「分享仅所有者」断言挪到 tests/wifi-share.test.js 的接收者用例里守（接收者没有移除 / 分享按钮）。
+    assert.ok(/<view class="wifi-detail-entry" hover-class="none" bindtap="openShare">\s*<text class="wifi-detail-entry__label">共享设备<\/text>/.test(tpl), '共享设备入口所有者与接收者都显示')
+    assert.equal(tpl.indexOf('分享设备</text>'), -1, '详情页入口不再叫「分享设备」')
     assert.ok(/wx:if="\{\{isOwner\}\}" class="outline-delete-device"/.test(tpl), '删除设备仅所有者，样式同蓝牙版')
     assert.ok(tpl.indexOf('batteryText') < tpl.indexOf('wifi-detail-actions'), '电量在顶部状态栏')
     // 2026-11-02：设备ID、屏幕尺寸放进功能栏「设备信息」之下（同蓝牙版），顶部卡片不再显示屏幕尺寸

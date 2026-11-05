@@ -23,7 +23,7 @@ const app = getApp()
 //   · 顶部卡片下方：「投屏」「轮播设置」（与蓝牙版位置一致）；轮播开启中（strategy.running）时「轮播设置」带绿点 +「轮播中」（2026-11-02）；
 //   · 功能栏依次：设备信息（二级页 wifi-info：WiFi信号 / WiFi名称 / 最后上线 / 最后心跳 / 固件版本）、
 //     设备ID、屏幕尺寸（2026-11-02，同蓝牙版，只展示；顶部卡片不再显示屏幕尺寸与设备ID）、休眠设置、
-//     消息中心（未读角标）、TF卡（未插卡不可点；有卡显示已用 / 总量，进 wifi-tf）、分享设备（仅所有者，进 wifi-share）、
+//     消息中心（未读角标）、TF卡（未插卡不可点；有卡显示已用 / 总量，进 wifi-tf）、共享设备（所有者与接收者都显示，进 wifi-share；接收者在那页只看不改）、
 //     解除绑定（只删设备）；页底「删除设备」（仅所有者，样式同蓝牙版：先删云端图片再删设备）。
 //   · 本地模式（status=LOCAL_TF，2026-10-29）：投屏 / 轮播设置 / TF卡 可以点，但只提示「当前设备状态：本地模式，
 //     请恢复设备网络再试」；设备信息、休眠设置、消息中心、分享、解绑、删除照常。
@@ -292,8 +292,9 @@ Page(fold.adapt(tapGuard.wrap({
     wx.navigateTo({ url: `/subpackages/device/wifi-tf/wifi-tf?id=${this.data.id}` })
   },
 
+  // 「共享设备」（2026-11-05）：接收者也能进，只看所有者与成员；移除 / 分享按钮由 wifi-share 按设备身份隐藏
   openShare() {
-    if (this.data.device && this.data.isOwner) {
+    if (this.data.device) {
       wx.navigateTo({ url: `/subpackages/device/wifi-share/wifi-share?id=${this.data.id}` })
     }
   },
