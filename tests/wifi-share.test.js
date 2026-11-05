@@ -299,7 +299,7 @@ async function main() {
   {
     // 接收者进「共享设备」（2026-11-05）：内容与所有者一致（所有者栏 + 成员），没有移除、没有分享设备按钮
     const calls = []
-    let list = [{ userProductId: 7, userName: '小明', isToHave: 1 }, { userProductId: 9, userName: '小红', isToHave: 0, joinTime: '2026-11-01 10:00' }]
+    let list = [{ userProductId: 7, userName: '小明', isToHave: 1 }, { userProductId: 9, userName: '小红', isToHave: 0, joinTime: '2026-11-01 10:00' }, { userProductId: 11, userName: '小刚', isToHave: 0 }]
     const modules = {
       api: {
         getDeviceDetail: async () => ({ id: '9', userProductId: 9, productId: 12, productDeviceId: 'E3:48:C2:1E:D4:28', name: '客厅相框', isToHave: 0, shareUserId: 34 }),
@@ -321,7 +321,8 @@ async function main() {
     await page.load()
     assert.equal(page.data.isOwner, false, '按设备详情判断为接收者')
     assert.equal(page.data.owner.name, '小明', '所有者栏照常显示')
-    assert.deepEqual(page.data.members.map(item => item.name), ['小红'], '成员列表照常显示')
+    assert.deepEqual(page.data.members.map(item => item.name), ['小红', '小刚'], '成员列表照常显示')
+    assert.deepEqual(page.data.members.map(item => item.isMe), [true, false], '接收者自己那行（userProductId 同本人记录）标「我」，别人不标')
     assert.equal(page.data.canShare, false, '接收者不能分享')
     assert.equal(page.data.showDevCopy, false, '接收者不给复制测试参数')
     assert.deepEqual(calls, [], '接收者不画封面、不取个人资料 / 时间戳')
@@ -339,6 +340,8 @@ async function main() {
     assert.equal(page.data.owner, null, '列表里没有所有者时不拿接收者自己兜底')
     const tpl = read('subpackages/device/wifi-share/wifi-share.wxml')
     assert.ok(/wx:if="\{\{isOwner\}\}" class="share-remove"[^>]*bindtap="removeMember"/.test(tpl), '移除仅所有者')
+    assert.ok(/class="share-remove"[^>]*>移除<\/view>\s*<text wx:elif="\{\{item\.isMe\}\}" class="share-me">我<\/text>/.test(tpl), '「我」在原移除位置，所有者看不到')
+    assert.ok(/\.share-me \{/.test(read('subpackages/device/wifi-share/wifi-share.wxss')), '「我」有样式')
     const shareBlock = tpl.slice(tpl.indexOf('<block wx:if="{{isOwner}}">'), tpl.indexOf('</block>'))
     assert.ok(shareBlock.indexOf('open-type="share"') > 0 && shareBlock.indexOf('bindtap="shareUnavailable"') > 0 && shareBlock.indexOf('bindtap="copyTestQuery"') > 0, '分享设备按钮、提示、复制测试参数都只给所有者')
     assert.ok(/<page-nav title="共享设备">/.test(tpl), '页面标题「共享设备」')

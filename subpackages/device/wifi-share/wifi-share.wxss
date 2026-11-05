@@ -92,6 +92,14 @@
   font-size: 24rpx;
 }
 
+/* 接收者自己那行：原「移除」位置的「我」（只是标记，不可点） */
+.share-me {
+  flex: 0 0 auto;
+  padding: 10rpx 26rpx;
+  color: #8b9098;
+  font-size: 24rpx;
+}
+
 /* button 默认样式清掉（open-type="share" 只能挂在 button 上） */
 button.share-action {
   width: auto;

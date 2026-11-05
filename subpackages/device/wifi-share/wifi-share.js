@@ -9,6 +9,7 @@ const shareCard = require('../../../utils/share-card')
 //   · 接收者（2026-11-05）：显示内容与所有者一致（所有者栏 + 已分享成员），只是没有「移除」和底部「分享设备」；
 //     身份按设备详情判断（wifiShare.isOwner），不看入口参数。接收者不画卡片封面、不取时间戳 / 个人资料，
 //     列表里没有所有者那条时不拿自己兜底（所有者栏不显示），右上角转发退回首页卡片。
+//     成员列表里接收者自己那行（按 userProductId 认）在原「移除」位置显示文字「我」。
 //   · 第一栏固定所有者（头像 + 昵称 + 身份），与接收者用不同底色区分；
 //   · 下面是接收者（头像 + 昵称 + 加入时间 + 移除）；底部按钮「分享设备」。
 // 数据：老服务 getShareUserProductList（按后端设备号）；列表里没有所有者时用当前用户资料兜底（仅所有者本人进来时）。
@@ -88,13 +89,16 @@ Page(fold.adapt({
     const profile = { userProductId: device.userProductId, userName: user && user.nickName, avatar: user && user.avatarUrl }
     // 进得来这页的所有者可以拿自己兜底所有者栏；接收者不行（那会把自己显示成所有者）
     const split = wifiShare.splitMembers(list, isOwner ? profile : null)
+    // 接收者自己那行（成员 userProductId = 本人这条记录）在原「移除」位置标「我」（2026-11-05）
+    const selfId = String(device.userProductId != null ? device.userProductId : '')
+    const members = split.members.map(item => Object.assign({}, item, { isMe: !isOwner && !!selfId && item.id === selfId }))
     const canShare = isOwner && this.shareReady()
     this.setData({
       loading: false,
       loadError: false,
       isOwner,
       owner: split.owner,
-      members: split.members,
+      members,
       canShare,
       showDevCopy: canShare && system.isDevEnv()
     })
