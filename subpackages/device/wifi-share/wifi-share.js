@@ -6,16 +6,18 @@ const wifiShare = require('../../../utils/wifi-share')
 const shareCard = require('../../../utils/share-card')
 
 // WiFi 版共享设备列表（2026-10-29）。入口：WiFi 详情「共享设备」（2026-11-05 起所有者与接收者都能进）。
-//   · 接收者（2026-11-05）：显示内容与所有者一致（所有者栏 + 已分享成员），只是没有「移除」和底部「分享设备」；
+//   · 接收者（2026-11-05）：显示内容与所有者一致（所有者栏 + 已分享成员），没有底部「分享设备」；
 //     身份按设备详情判断（wifiShare.isOwner），不看入口参数。接收者不画卡片封面、不取时间戳 / 个人资料，
 //     列表里没有所有者那条时不拿自己兜底（所有者栏不显示），右上角转发退回首页卡片。
-//     成员列表里接收者自己那行（按 userProductId 认）在原「移除」位置显示文字「我」。
+//     成员列表里接收者自己那行（按 userProductId 认）在原「移除」位置显示文字「我」（该行能解绑时显示「移除」）。
+//   · 「移除」按钮（2026-11-05 起后端控制）：成员接口每条带 isCanDel，== 1 才显示、才能移除，前端不再按所有者 / 接收者判断。
+//     自己那条被移除（接收者解绑自己）后这台设备就不在自己名下，提示后回首页。
 //   · 第一栏固定所有者（头像 + 昵称 + 身份），与接收者用不同底色区分；
 //   · 下面是接收者（头像 + 昵称 + 加入时间 + 移除）；底部按钮「分享设备」。
 // 数据：老服务 getShareUserProductList（按后端设备号）；列表里没有所有者时用当前用户资料兜底（仅所有者本人进来时）。
 // 分享（简化版，无邀请码）：底部按钮 open-type="share" 发微信卡片，卡片路径带设备号 / 产品 / 所有者 userId，
 //   对方在接受页确认后以非所有者身份绑定（见 utils/wifi-share.js）。拿不到自己的 userId 或产品 ID 时不让分享。
-// 移除：确认后 delUserProduct 删成员那条记录，再刷新列表。加入时间取接口 joinTime，为空时显示「--」。
+// 移除：isCanDel == 1 的成员才有，确认后 delUserProduct 删成员那条记录，再刷新列表。加入时间取接口 joinTime，为空时显示「--」。
 // 有效期（2026-11-04）：卡片带服务器时间戳 t（getCurrentTime），接受页拿它调 chkTimeValid 判断是否过期。
 //   进页面先取一次（取不到不让分享，点按钮会重取）；真正分享时 onShareAppMessage 的 promise 再取一次最新的，
 //   3 秒内没取到或失败，微信按默认参数（进页面时取到的时间戳）发出。
@@ -112,12 +114,12 @@ Page(fold.adapt({
   removeMember(e) {
     const id = String(e.currentTarget.dataset.id || '')
     const member = this.data.members.filter(item => item.id === id)[0]
-    if (!member || this._removing || !this.data.isOwner) {
+    if (!member || this._removing || !member.canDel) {
       return
     }
     wx.showModal({
       title: '移除成员',
-      content: `移除后「${member.name}」将不能再使用这台设备，确认移除？`,
+      content: member.isMe ? '移除后你将不能再使用这台设备，确认移除？' : `移除后「${member.name}」将不能再使用这台设备，确认移除？`,
       confirmText: '移除',
       confirmColor: '#ff3045',
       success: res => {
@@ -129,7 +131,7 @@ Page(fold.adapt({
   },
 
   async confirmRemove(member) {
-    if (this._removing || !this.data.isOwner) {
+    if (this._removing || !member || !member.canDel) {
       return
     }
     this._removing = true
@@ -141,6 +143,11 @@ Page(fold.adapt({
     }
     this._removing = false
     toast.show({ title: '已移除', icon: 'none' })
+    if (member.isMe) {
+      // 解绑的是自己：设备已不在自己名下，留在这页只会加载失败
+      setTimeout(() => wx.reLaunch({ url: '/pages/home/home' }), 800)
+      return
+    }
     this.load()
   },
 

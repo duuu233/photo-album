@@ -21,7 +21,8 @@ function toMember(raw) {
     id: String(r.userProductId != null ? r.userProductId : ''),
     name: r.userName || r.nickName || '微信用户',
     avatar: r.avatar || r.avatarUrl || '',
-    joinedAt: r.joinTime || '' // 分享列表接口的加入时间，原样显示
+    joinedAt: r.joinTime || '', // 分享列表接口的加入时间，原样显示
+    canDel: Number(r.isCanDel) === 1 // 能否解绑（2026-11-05 接口新增 isCanDel，后端控制，1 才显示「移除」）
   }
 }
 

@@ -5,7 +5,9 @@
 //   ③ 接受页：自己分享的不接受；已在列表直接进详情；否则接受后进详情；未登录先记下卡片再去登录；
 //   ④ 分享列表：能分享时卡片路径指向接受页，拿不到 userId 退回首页卡片；仅开发版能复制卡片参数；
 //   ⑤ 登录页：登录成功后回接受页；页面已注册。
-//   ⑦ 共享设备（2026-11-05）：接收者也能进，内容同所有者，没有移除 / 分享设备按钮，不拿自己兜底所有者栏。
+//   ⑦ 共享设备（2026-11-05）：接收者也能进，内容同所有者，没有分享设备按钮，不拿自己兜底所有者栏。
+//   ⑧ 移除按钮（2026-11-05 第二轮）：后端控制——成员接口每条 isCanDel == 1 才显示「移除」、才能移除，不再看所有者身份；
+//      解绑自己后回首页。
 //   ⑥ 有效期（2026-11-04）：卡片带服务器时间戳 t（getCurrentTime），缺 t 视为无效；接受页已登录进页面就 chkTimeValid，
 //      过期显示过期卡片；点接受再校验一次，过期 / 校验不了都不绑定；分享列表取不到时间戳不能分享，分享时再取最新的。
 const assert = require('node:assert/strict')
@@ -297,7 +299,8 @@ async function main() {
     checked('分享列表')
   }
   {
-    // 接收者进「共享设备」（2026-11-05）：内容与所有者一致（所有者栏 + 成员），没有移除、没有分享设备按钮
+    // 接收者进「共享设备」（2026-11-05）：内容与所有者一致（所有者栏 + 成员），没有分享设备按钮；
+    // 这组数据不带 isCanDel，所以也没有移除（移除改由 isCanDel 控制，见下一组）
     const calls = []
     let list = [{ userProductId: 7, userName: '小明', isToHave: 1 }, { userProductId: 9, userName: '小红', isToHave: 0, joinTime: '2026-11-01 10:00' }, { userProductId: 11, userName: '小刚', isToHave: 0 }]
     const modules = {
@@ -339,7 +342,8 @@ async function main() {
     await page.load()
     assert.equal(page.data.owner, null, '列表里没有所有者时不拿接收者自己兜底')
     const tpl = read('subpackages/device/wifi-share/wifi-share.wxml')
-    assert.ok(/wx:if="\{\{isOwner\}\}" class="share-remove"[^>]*bindtap="removeMember"/.test(tpl), '移除仅所有者')
+    // 2026-11-05 第二轮有意改口径：移除按钮不再看 isOwner，改看每条成员的 isCanDel（后端控制）
+    assert.ok(/wx:if="\{\{item\.canDel\}\}" class="share-remove"[^>]*bindtap="removeMember"/.test(tpl), '移除按 isCanDel 显示')
     assert.ok(/class="share-remove"[^>]*>移除<\/view>\s*<text wx:elif="\{\{item\.isMe\}\}" class="share-me">我<\/text>/.test(tpl), '「我」在原移除位置，所有者看不到')
     assert.ok(/\.share-me \{/.test(read('subpackages/device/wifi-share/wifi-share.wxss')), '「我」有样式')
     const shareBlock = tpl.slice(tpl.indexOf('<block wx:if="{{isOwner}}">'), tpl.indexOf('</block>'))
@@ -347,6 +351,61 @@ async function main() {
     assert.ok(/<page-nav title="共享设备">/.test(tpl), '页面标题「共享设备」')
     assert.equal(JSON.parse(read('subpackages/device/wifi-share/wifi-share.json')).navigationBarTitleText, '共享设备')
     checked('接收者看共享设备')
+  }
+  {
+    // 移除按钮后端控制（2026-11-05 第二轮）：isCanDel == 1 才显示、才能移除
+    assert.equal(share.toMember({ userProductId: 1, isCanDel: 1 }).canDel, true)
+    assert.equal(share.toMember({ userProductId: 1, isCanDel: '1' }).canDel, true, '字符串 1 也认')
+    assert.equal(share.toMember({ userProductId: 1, isCanDel: 0 }).canDel, false)
+    assert.equal(share.toMember({ userProductId: 1 }).canDel, false, '不带 isCanDel 不能移除')
+    const calls = []
+    const navs = []
+    let detail = { id: '7', userProductId: 7, productId: 12, productDeviceId: 'E3:48:C2:1E:D4:28', name: '客厅相框', isToHave: 1 }
+    let list = [{ userProductId: 7, userName: '小明', isToHave: 1, isCanDel: 0 }, { userProductId: 9, userName: '小红', isToHave: 0, isCanDel: 1 }, { userProductId: 11, userName: '小刚', isToHave: 0, isCanDel: 0 }]
+    const modules = {
+      api: {
+        getDeviceDetail: async () => detail,
+        getShareUsers: async () => list,
+        getUserProfile: async () => ({ userId: 34, nickName: '小明' }),
+        getServerTime: async () => '1762240000000',
+        removeShareUser: async id => { calls.push(id) }
+      },
+      toast: { show() {} },
+      system: { getLayoutMetrics: () => ({}), isDevEnv: () => false },
+      'fold-adapt': { adapt: value => value },
+      'wifi-share': share,
+      'share-card': { render: async () => 'wxfile://card.png', cardInfo: () => ({ thumb: '' }) }
+    }
+    const modals = []
+    const wx = { showModal: options => { modals.push(options); options.success({ confirm: true }) }, reLaunch: options => navs.push(options.url) }
+    let page = loadPage('subpackages/device/wifi-share/wifi-share.js', modules, { wx })
+    page.onLoad({ id: '7' })
+    await page.load()
+    assert.deepEqual(page.data.members.map(item => item.canDel), [true, false], '按每条 isCanDel')
+    page.removeMember({ currentTarget: { dataset: { id: '11' } } })
+    await page.confirmRemove(page.data.members[1])
+    assert.equal(modals.length, 0, 'isCanDel 不是 1：所有者也移除不了')
+    page.removeMember({ currentTarget: { dataset: { id: '9' } } })
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(modals.length, 1)
+    assert.ok(modals[0].content.indexOf('小红') > 0)
+    assert.deepEqual(calls, ['9'], 'isCanDel = 1 确认后移除那条记录')
+    assert.deepEqual(navs, [], '移除别人不离开本页')
+
+    // 接收者：后端给自己那条 isCanDel = 1 → 显示移除（不显示「我」），解绑后回首页
+    detail = { id: '9', userProductId: 9, productId: 12, productDeviceId: 'E3:48:C2:1E:D4:28', name: '客厅相框', isToHave: 0, shareUserId: 34 }
+    list = [{ userProductId: 7, userName: '小明', isToHave: 1 }, { userProductId: 9, userName: '小红', isToHave: 0, isCanDel: 1 }]
+    page = loadPage('subpackages/device/wifi-share/wifi-share.js', modules, { wx })
+    page.onLoad({ id: '9' })
+    await page.load()
+    assert.equal(page.data.isOwner, false)
+    assert.deepEqual([page.data.members[0].isMe, page.data.members[0].canDel], [true, true])
+    page.removeMember({ currentTarget: { dataset: { id: '9' } } })
+    await new Promise(resolve => setImmediate(resolve))
+    assert.ok(/你将不能再使用/.test(modals[1].content), '移除自己的确认文案')
+    assert.deepEqual(calls, ['9', '9'])
+    assert.deepEqual(navs, ['/pages/home/home'], '解绑自己后回首页')
+    checked('移除按钮按 isCanDel')
   }
   {
     const login = read('pages/login/login.js')

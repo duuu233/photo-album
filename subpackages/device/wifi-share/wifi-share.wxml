@@ -37,7 +37,7 @@
           <text class="share-name">{{item.name}}</text>
           <text class="share-time">加入时间 {{item.joinedAt || '--'}}</text>
         </view>
-        <view wx:if="{{isOwner}}" class="share-remove" hover-class="none" data-id="{{item.id}}" bindtap="removeMember">移除</view>
+        <view wx:if="{{item.canDel}}" class="share-remove" hover-class="none" data-id="{{item.id}}" bindtap="removeMember">移除</view>
         <text wx:elif="{{item.isMe}}" class="share-me">我</text>
       </view>
     </view>
