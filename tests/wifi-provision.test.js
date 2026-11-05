@@ -4,7 +4,7 @@
 //   ② MQTT 参数接口失败 / 不完整 / 401：停在第 2 步，不连设备；mqtt_config result 非 0 / 超时停在第 2 步，不再发后续指令；
 //   ③ 国家码：pending=1 优先、result=0 通过；result 非 0 换新 msgid 重试一次，仍失败继续；超时不重试、继续；
 //   ④ 绑定失败停在第 3 步，不开始轮询；
-//   ⑤ 在线轮询：503 / 403 继续轮询，60s 等不到 online 停在第 4 步（一直 503 提示稍后重试）；401 直接停；
+//   ⑤ 在线轮询：503 / 403 继续轮询，120s 等不到 online 停在第 4 步（2026-11-05 由 60s 提到 120s）（一直 503 提示稍后重试）；401 直接停；
 //   ⑥ 手机没网停在第 1 步；任何结束路径都释放蓝牙会话；
 //   （2026-10-27 起配网日志已删除，原日志断言随之去掉。）
 const assert = require('node:assert/strict')
@@ -190,7 +190,8 @@ async function main() {
 
     const never = setup({ online: [{ online: false }] })
     await assert.rejects(never.run(), error => error.step === 3 && /联网超时/.test(error.message))
-    assert.ok(never.log.onlineCalls.length >= 25 && never.log.onlineCalls.length <= 31, `约 60s / 2s 轮询：${never.log.onlineCalls.length} 次`)
+    // 2026-11-05 等待窗口由 60s 提到 120s（对接文档 20261105 第一节），次数区间随之从 25~31 挪到 55~61
+    assert.ok(never.log.onlineCalls.length >= 55 && never.log.onlineCalls.length <= 61, `约 120s / 2s 轮询：${never.log.onlineCalls.length} 次`)
 
     const down = setup({ online: [unavailable] })
     await assert.rejects(down.run(), error => error.step === 3 && /服务暂时不可用，请稍后重试/.test(error.message))
@@ -198,7 +199,7 @@ async function main() {
     const relogin = setup({ online: [Object.assign(new Error('401'), { code: 401, action: 'relogin' })] })
     await assert.rejects(relogin.run(), error => error.step === 3 && /重新登录/.test(error.message))
     assert.equal(relogin.log.onlineCalls.length, 1, '登录失效不再轮询')
-    checked('第 4 步：503/403 继续轮询、60s 超时（一直 503 提示稍后重试）、401 停止')
+    checked('第 4 步：503/403 继续轮询、120s 超时（一直 503 提示稍后重试）、401 停止')
   }
   {
     const offline = setup({ network: 'none' })

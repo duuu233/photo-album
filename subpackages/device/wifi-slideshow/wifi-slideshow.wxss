@@ -105,11 +105,6 @@
   padding: 22rpx 0;
 }
 
-.ws-row--switch {
-  margin-top: 16rpx;
-  border-bottom: none;
-}
-
 .ws-row__value {
   color: #ff6a20;
   font-weight: 600;
@@ -278,4 +273,165 @@
   border-radius: 999rpx;
   font-size: 28rpx;
   line-height: 80rpx;
+}
+
+/* ── 2026-11-05 轮播服务端化：下次刷新、时区、基础配置提示、高级设置 ── */
+.ws-next {
+  margin-top: 6rpx;
+  color: #0e9f87;
+}
+
+/* 工作日 / 周末启用独立配置时，基础配置旁的灰字提示（不阻断保存） */
+.ws-base-hint {
+  margin-top: 14rpx;
+  color: #8a9099;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.ws-advanced-toggle {
+  margin: 4rpx 0 28rpx;
+  padding: 20rpx 0;
+  color: #ff6a20;
+  font-size: 28rpx;
+  font-weight: 600;
+  text-align: center;
+}
+
+.ws-tag {
+  padding: 4rpx 16rpx;
+  color: #ff6a20;
+  background: rgba(255, 106, 32, 0.1);
+  border-radius: 999rpx;
+  font-size: 22rpx;
+}
+
+/* 纪念日：每条一块，日期可改、可删除 */
+.ws-anniv {
+  margin-top: 24rpx;
+  padding: 8rpx 24rpx 24rpx;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 20rpx;
+}
+
+.ws-anniv__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 80rpx;
+}
+
+.ws-anniv__date {
+  color: #33373d;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.ws-anniv__remove {
+  color: #e5533d;
+  font-size: 26rpx;
+}
+
+.ws-anniv-add {
+  margin-top: 24rpx;
+  height: 80rpx;
+  color: #0e9f87;
+  background: rgba(14, 159, 135, 0.1);
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  line-height: 80rpx;
+  text-align: center;
+}
+
+/* 底部弹层：时区选择、卡片选图 */
+.ws-mask {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  background: rgba(42, 43, 43, 0.5);
+}
+
+.ws-sheet {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  max-height: 80vh;
+  padding: 36rpx 36rpx calc(28rpx + var(--safe-bottom));
+  background: #ffffff;
+  border-radius: 32rpx 32rpx 0 0;
+}
+
+.ws-sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+}
+
+.ws-sheet__title {
+  color: #2a2b2b;
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.ws-sheet__close {
+  color: #8a9099;
+  font-size: 28rpx;
+}
+
+.ws-sheet__body {
+  height: 56vh;
+}
+
+.ws-sheet__actions {
+  display: flex;
+  gap: 24rpx;
+  margin-top: 20rpx;
+}
+
+.ws-search {
+  height: 72rpx;
+  margin-bottom: 16rpx;
+  padding: 0 28rpx;
+  color: #25282d;
+  background: #f3f4f6;
+  border-radius: 999rpx;
+  font-size: 26rpx;
+}
+
+.ws-zone-group {
+  padding: 20rpx 0 8rpx;
+  color: #8a9099;
+  font-size: 24rpx;
+}
+
+.ws-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  min-height: 84rpx;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.06);
+}
+
+.ws-zone__label {
+  color: #33373d;
+  font-size: 28rpx;
+}
+
+.ws-zone__zh {
+  color: #9ba2ad;
+  font-size: 24rpx;
+}
+
+.ws-zone.is-active .ws-zone__label {
+  color: #ff6a20;
+  font-weight: 600;
 }

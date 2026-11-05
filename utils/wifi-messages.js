@@ -15,6 +15,8 @@ const TYPE_TEXT = {
   // 2026-11-02（docs/前端对接文档20261031.md 第四节）：只在设备重启后服务端确认版本时发；payload { version, baseVersion, reason? }
   OTA_SUCCESS: '固件升级成功',
   OTA_FAILED: '固件升级失败',
+  // 2026-11-05（docs/wifi/前端对接文档20261105.md 10.2）：到点该推轮播但设备不在线 / 下发失败；category BUSINESS
+  CAROUSEL_NOT_SENT: '轮播未发送成功',
   EXCEPTION_UP_PARSE: '设备上报数据解析失败',
   EXCEPTION_UNKNOWN_ACTION: '设备上报了未知指令',
   EXCEPTION_COMMAND_BUILD: '平台下发指令构造失败'
@@ -32,6 +34,13 @@ function parsePayload(payload) {
   } catch (error) {
     return {}
   }
+}
+
+// 轮播未发送的那个时刻（HH:mm）：time / triggerTime / scheduledAt / planTime，带日期的只取时分
+function carouselTime(p) {
+  const raw = p.time || p.triggerTime || p.scheduledAt || p.planTime || p.triggerAt || ''
+  const m = /(\d{1,2}:\d{2})(:\d{2})?\s*$/.exec(String(raw).trim()) || /(\d{1,2}:\d{2})/.exec(String(raw))
+  return m ? m[1] : ''
 }
 
 // payload 里值得给用户看的参数，拼成一行；看不懂的字段不展示
@@ -58,6 +67,11 @@ function detailText(type, payload) {
       parts.push('升级超时')
     }
     return parts.join('，')
+  }
+  if (type === 'CAROUSEL_NOT_SENT') {
+    // 内容「18:00 的轮播图片未发送成功，请检查设备网络状态」；payload 字段对接文档未列，几种常见写法都认，取不到时刻只给后半句
+    const at = carouselTime(p)
+    return at ? `${at} 的轮播图片未发送成功，请检查设备网络状态` : '轮播图片未发送成功，请检查设备网络状态'
   }
   if (p.reason) {
     parts.push(String(p.reason))

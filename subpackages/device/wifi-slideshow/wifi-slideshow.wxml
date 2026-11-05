@@ -1,4 +1,39 @@
 <!-- WiFi 版轮播设置（说明见 wifi-slideshow.js 文件头） -->
+
+<!-- 高级卡片的时间 / 照片 / 顺序：时间参数跟随上面的轮播方式（间隔 / 固定），两组都保留 -->
+<template name="cardBody">
+  <block wx:if="{{updateType === 2}}">
+    <picker mode="time" value="{{card.beginTime}}" data-card="{{cardKey}}" data-index="{{cardIndex}}" bindchange="changeCardBegin">
+      <view class="ws-row"><text>开始时间</text><text class="ws-row__value">{{card.beginTime}}</text></view>
+    </picker>
+    <picker mode="multiSelector" range="{{endTimeColumns}}" value="{{card.endTimeIndex}}" data-card="{{cardKey}}" data-index="{{cardIndex}}" bindchange="changeCardEnd">
+      <view class="ws-row"><text>结束时间</text><text class="ws-row__value">{{card.endTime}}</text></view>
+    </picker>
+    <picker mode="selector" range="{{intervalLabels}}" value="{{card.intervalIndex}}" data-card="{{cardKey}}" data-index="{{cardIndex}}" bindchange="changeCardInterval">
+      <view class="ws-row"><text>每隔</text><text class="ws-row__value">{{intervalLabels[card.intervalIndex]}} 换一张</text></view>
+    </picker>
+  </block>
+  <view wx:else class="ws-row ws-row--top">
+    <text>播放时间</text>
+    <view class="ws-times">
+      <view wx:for="{{card.updateTimeList}}" wx:key="*this" class="ws-time" hover-class="none" data-card="{{cardKey}}" data-index="{{cardIndex}}" data-value="{{item}}" bindtap="removeCardTime">{{item}} ×</view>
+      <picker mode="time" value="12:00" data-card="{{cardKey}}" data-index="{{cardIndex}}" bindchange="addCardTime">
+        <view class="ws-time ws-time--add">+ 添加</view>
+      </picker>
+    </view>
+  </view>
+  <view class="ws-row" hover-class="none" data-card="{{cardKey}}" data-index="{{cardIndex}}" bindtap="openCardPhotos">
+    <text>播放照片</text>
+    <text class="ws-row__value">{{card.selectedCount ? '已选 ' + card.selectedCount + ' 张' : '选择照片'}} ›</text>
+  </view>
+  <view wx:if="{{card.hint}}" class="ws-hint">{{card.hint}}</view>
+  <view class="ws-title ws-title--gap">播放顺序</view>
+  <view class="ws-segment">
+    <view class="ws-segment__item {{card.mode === 1 ? 'is-active' : ''}}" hover-class="none" data-card="{{cardKey}}" data-index="{{cardIndex}}" data-value="1" bindtap="chooseCardMode">顺序播放</view>
+    <view class="ws-segment__item {{card.mode === 2 ? 'is-active' : ''}}" hover-class="none" data-card="{{cardKey}}" data-index="{{cardIndex}}" data-value="2" bindtap="chooseCardMode">随机播放</view>
+  </view>
+</template>
+
 <view class="mock-root wifi-slideshow-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
@@ -26,18 +61,26 @@
         <text class="ws-state {{running ? 'is-on' : ''}}">{{running ? '轮播中' : (configured ? '已暂停' : '未设置')}}</text>
       </view>
       <view wx:if="{{updatedAt}}" class="ws-sub">最后设置 {{updatedAt}}</view>
+      <view wx:if="{{running && nextRefresh}}" class="ws-sub ws-next">下次刷新：{{nextRefresh}}</view>
 
       <view class="ws-title ws-title--gap">轮播方式</view>
       <view class="ws-segment">
         <view class="ws-segment__item {{form.updateType === 2 ? 'is-active' : ''}}" hover-class="none" data-value="2" bindtap="chooseUpdateType">间隔时间</view>
         <view class="ws-segment__item {{form.updateType === 1 ? 'is-active' : ''}}" hover-class="none" data-value="1" bindtap="chooseUpdateType">固定时间</view>
       </view>
+      <!-- 工作日 / 周末启用了独立配置时的提示（纯文字，不阻断保存） -->
+      <view wx:if="{{baseHint}}" class="ws-base-hint">{{baseHint}}</view>
+
+      <view class="ws-row" hover-class="none" bindtap="openZoneSheet">
+        <text>时区</text>
+        <text class="ws-row__value">{{timeZoneLabel}} ▾</text>
+      </view>
 
       <block wx:if="{{form.updateType === 2}}">
         <picker mode="time" value="{{form.beginTime}}" bindchange="changeBeginTime">
           <view class="ws-row"><text>开始时间</text><text class="ws-row__value">{{form.beginTime}}</text></view>
         </picker>
-        <picker mode="time" value="{{form.endTime}}" bindchange="changeEndTime">
+        <picker mode="multiSelector" range="{{endTimeColumns}}" value="{{endTimeIndex}}" bindchange="changeEndTime">
           <view class="ws-row"><text>结束时间</text><text class="ws-row__value">{{form.endTime}}</text></view>
         </picker>
         <picker mode="selector" range="{{intervalLabels}}" value="{{intervalIndex}}" bindchange="changeInterval">
@@ -64,11 +107,6 @@
         <view class="ws-segment__item {{form.mode === 1 ? 'is-active' : ''}}" hover-class="none" data-value="1" bindtap="chooseMode">顺序播放</view>
         <view class="ws-segment__item {{form.mode === 2 ? 'is-active' : ''}}" hover-class="none" data-value="2" bindtap="chooseMode">随机播放</view>
       </view>
-
-      <view class="ws-row ws-row--switch">
-        <text>轮播后休眠</text>
-        <switch checked="{{form.idle === 0}}" color="#ff6a20" bindchange="toggleIdle" />
-      </view>
     </view>
 
     <view class="ws-card glass-panel">
@@ -76,7 +114,7 @@
         <text class="ws-title">轮播照片</text>
         <view wx:if="{{tiles.length}}" class="ws-select-all" hover-class="none" bindtap="toggleAll">{{allSelected ? '取消全选' : '全选'}}</view>
       </view>
-      <view class="ws-sub">从「我的上传」选择，按选择顺序轮播；全选即轮播全部照片（含之后新上传的）。最多 {{maxCount}} 张</view>
+      <view class="ws-sub">从「我的上传」选择，按选择顺序轮播；全选即轮播全部照片（含之后新上传的）。至少选择 1 张，最多 {{maxCount}} 张</view>
       <view class="ws-count {{selectedCount >= maxCount ? 'is-full' : ''}}">已选 {{selectedCount}}/{{maxCount}}</view>
       <view wx:if="{{selectionHint}}" class="ws-hint">{{selectionHint}}</view>
 
@@ -89,11 +127,100 @@
         </view>
       </view>
     </view>
+
+    <!-- 高级设置：同页展开 / 收起（进页默认收起、不持久化），收起时数据保留 -->
+    <view class="ws-advanced-toggle" hover-class="none" bindtap="toggleAdvanced">{{advancedOpen ? '收起高级设置 ▴' : (advancedCount ? '高级设置（' + advancedCount + ' 项）▾' : '高级设置 ▾')}}</view>
+
+    <block wx:if="{{advancedOpen}}">
+      <view class="ws-card glass-panel">
+        <view class="ws-head">
+          <text class="ws-title">工作日</text>
+          <switch checked="{{advanced.weekday.enabled}}" color="#ff6a20" data-card="weekday" bindchange="toggleCardEnabled" />
+        </view>
+        <view class="ws-sub">周一至周五按这张卡片轮播，启用后基础配置在工作日不生效</view>
+        <block wx:if="{{advanced.weekday.enabled}}">
+          <template is="cardBody" data="{{ card: advanced.weekday, cardKey: 'weekday', cardIndex: 0, updateType: form.updateType, intervalLabels: intervalLabels, endTimeColumns: endTimeColumns }}" />
+        </block>
+      </view>
+
+      <view class="ws-card glass-panel">
+        <view class="ws-head">
+          <text class="ws-title">周末</text>
+          <switch checked="{{advanced.weekend.enabled}}" color="#ff6a20" data-card="weekend" bindchange="toggleCardEnabled" />
+        </view>
+        <view class="ws-sub">周六、周日按这张卡片轮播，启用后基础配置在周末不生效</view>
+        <block wx:if="{{advanced.weekend.enabled}}">
+          <template is="cardBody" data="{{ card: advanced.weekend, cardKey: 'weekend', cardIndex: 0, updateType: form.updateType, intervalLabels: intervalLabels, endTimeColumns: endTimeColumns }}" />
+        </block>
+      </view>
+
+      <view class="ws-card glass-panel">
+        <view class="ws-head">
+          <text class="ws-title">纪念日</text>
+          <text class="ws-tag">当天独占</text>
+        </view>
+        <view class="ws-sub">纪念日当天只按该纪念日卡片轮播，工作日 / 周末 / 基础配置当天都不执行；只支持公历，02月29日只在闰年生效</view>
+        <view wx:for="{{advanced.anniversaries}}" wx:key="monthDay" class="ws-anniv">
+          <view class="ws-anniv__head">
+            <picker mode="date" fields="day" start="{{annivYear}}-01-01" end="{{annivYear}}-12-31" value="{{annivYear}}-{{item.monthDay}}" data-card="anniversary" data-index="{{index}}" bindchange="changeAnnivDate">
+              <view class="ws-anniv__date">{{item.monthDayLabel}} ▾</view>
+            </picker>
+            <text class="ws-anniv__remove" hover-class="none" data-index="{{index}}" bindtap="removeAnniversary">删除</text>
+          </view>
+          <template is="cardBody" data="{{ card: item, cardKey: 'anniversary', cardIndex: index, updateType: form.updateType, intervalLabels: intervalLabels, endTimeColumns: endTimeColumns }}" />
+        </view>
+        <view class="ws-anniv-add" hover-class="none" bindtap="addAnniversary">+ 添加纪念日</view>
+      </view>
+    </block>
   </view>
 
   <view wx:if="{{!loading && !loadError}}" class="ws-actions">
     <view wx:if="{{running}}" class="ws-text-btn {{stopping ? 'is-busy' : ''}}" hover-class="none" bindtap="stop">{{stopping ? '暂停中…' : '暂停轮播'}}</view>
-    <view class="ws-primary {{saving ? 'is-busy' : ''}}" hover-class="none" bindtap="save">{{saving ? (savingText || '保存中…') : '保存并开始轮播'}}</view>
+    <view class="ws-primary {{saving ? 'is-busy' : ''}}" hover-class="none" bindtap="save">{{saving ? '保存中…' : '保存并开始轮播'}}</view>
+  </view>
+
+  <!-- 时区选择：分组列表 + 搜索 -->
+  <view wx:if="{{zoneSheet.show}}" class="ws-mask" bindtap="closeZoneSheet">
+    <view class="ws-sheet" catchtap="noop">
+      <view class="ws-sheet__head">
+        <text class="ws-sheet__title">选择时区</text>
+        <text class="ws-sheet__close" hover-class="none" bindtap="closeZoneSheet">关闭</text>
+      </view>
+      <input class="ws-search" placeholder="搜索时区或城市，如 Tokyo / 东京" value="{{zoneSheet.keyword}}" bindinput="searchZone" />
+      <scroll-view scroll-y class="ws-sheet__body">
+        <block wx:for="{{zoneSheet.list}}" wx:key="id">
+          <view wx:if="{{item.showGroup}}" class="ws-zone-group">{{item.group}}</view>
+          <view class="ws-zone {{item.id === form.timeZone ? 'is-active' : ''}}" hover-class="none" data-id="{{item.id}}" bindtap="pickZone">
+            <text class="ws-zone__label">{{item.label}}</text>
+            <text wx:if="{{item.zh}}" class="ws-zone__zh">{{item.zh}}</text>
+          </view>
+        </block>
+        <view wx:if="{{!zoneSheet.list.length}}" class="ws-empty">没有匹配的时区</view>
+      </scroll-view>
+    </view>
+  </view>
+
+  <!-- 高级卡片选图：与基础配置同一套网格，按点选顺序轮播 -->
+  <view wx:if="{{photoSheet.show}}" class="ws-mask" bindtap="closePhotoSheet">
+    <view class="ws-sheet" catchtap="noop">
+      <view class="ws-sheet__head">
+        <text class="ws-sheet__title">{{photoSheet.title}}</text>
+        <text class="ws-select-all" hover-class="none" bindtap="sheetToggleAll">{{photoSheet.allSelected ? '取消全选' : '全选'}}</text>
+      </view>
+      <view class="ws-count {{photoSheet.count >= maxCount ? 'is-full' : ''}}">已选 {{photoSheet.count}}/{{maxCount}}（至少 1 张，按选择顺序轮播）</view>
+      <scroll-view scroll-y class="ws-sheet__body">
+        <view class="ws-grid">
+          <view wx:for="{{photoSheet.tiles}}" wx:key="id" class="ws-tile {{item.order ? 'is-selected' : ''}} {{item.disabled ? 'is-disabled' : ''}}" hover-class="none" data-url="{{item.url}}" bindtap="sheetToggleTile">
+            <image wx:if="{{item.thumb}}" class="ws-tile__img" src="{{item.thumb}}" mode="aspectFill" lazy-load></image>
+            <view class="ws-tile__badge">{{item.order || ''}}</view>
+          </view>
+        </view>
+      </scroll-view>
+      <view class="ws-sheet__actions">
+        <view class="ws-text-btn" hover-class="none" bindtap="closePhotoSheet">取消</view>
+        <view class="ws-primary" hover-class="none" bindtap="sheetConfirm">确定</view>
+      </view>
+    </view>
   </view>
 
   <global-toast id="globalToast"></global-toast>

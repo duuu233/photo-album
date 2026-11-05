@@ -82,7 +82,7 @@ WiFi 投屏（STEP 3，2026-10-27 按 V1.4 改）：预览页对 WiFi 版不预�
 
 ## WiFi 版休眠设置与消息中心（2026-10-27，`main-wifi`）
 
-WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/POST /api/device/sleep`，逻辑在 `utils/wifi-sleep.js`）与「消息中心」（`subpackages/device/wifi-messages`，未读角标、分页、已读、`notification.new` 刷新，文案在 `utils/wifi-messages.js`）。轮播设置回显 `imgUrls=null` 全选、不选不让存、保存后立即 `refresh=true` 投第一张。见 `docs/changes/2026-10-27-WiFi版休眠设置与消息中心.md`。
+WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/POST /api/device/sleep`，逻辑在 `utils/wifi-sleep.js`）与「消息中心」（`subpackages/device/wifi-messages`，未读角标、分页、已读、`notification.new` 刷新，文案在 `utils/wifi-messages.js`）。轮播设置回显 `imgUrls=null` 全选、不选不让存（保存后立即投第一张已于 2026-11-05 取消，见下文轮播服务端化）。见 `docs/changes/2026-10-27-WiFi版休眠设置与消息中心.md`。
 
 2026-10-28：轮播选图上限 100（`wifi-strategy.MAX_IMG_URLS`，「已选 X/100」、选满置灰）；投屏预览页 WiFi 版进页查轮播，`running` 时显示「同时加入轮播」开关，经 `pendingProjection.addToCarousel` 让结果页每张带 `addToCarousel`，`carouselUpdated=false` 提示「未成功加入轮播」；「我的上传」WiFi 删除提示「若相框未更新，请手动切换或重新设置轮播」。见 `docs/changes/2026-10-28-WiFi版轮播上限100与同时加入轮播.md`。
 
@@ -99,6 +99,10 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 服务端无邀请码，先用微信卡片：分享列表 `open-type="share"`，路径 `wifi-share-accept?d=设备号&p=产品ID&u=所有者userId&n=设备名&o=昵称&t=分享时间戳`（`utils/wifi-share.js` 编解码）；接受页调 `api.acceptSharedDevice`（`addUserProduct`，`isToHave=0`、`shareUserId`），未登录先存 `pendingShareAccept` 再登录，登录页成功后 `reLaunch` 回来。自己绑定（蓝牙 / WiFi）一律 `isToHave=1, shareUserId=0`；`getUserProfile().userId` 是数字主键（`id` / `userNo` 仍是展示编号）。移除成员 `api.removeShareUser` = `delUserProduct(成员 userProductId)`，2026-11-05 起「移除」按钮只看成员接口每条 `isCanDel == 1`（`toMember.canDel`，后端控制，不看所有者 / 接收者；解绑自己后回首页）；成员加入时间取 `getShareUserProductList` 的 `joinTime`（原样显示，空则「--」）。拿到卡片即可加入，靠服务端校验兜底。开发版分享列表多一个「复制测试参数」（卡片 `?` 后参数），供开发者工具自定义编译预览测接受页。服务端口径：所有者删除设备连带删除全部分享者记录与照片；解除绑定不删图；删除设备仅所有者，分享者只有解绑。见 `docs/changes/2026-10-29-WiFi版设备分享简化版.md`。有效期（2026-11-04）：卡片多带 `t`（分享时 `getCurrentTime` 取的服务器时间戳，原样；分享列表进页面取一次、`onShareAppMessage` 的 `promise` 分享时再取），接受页已登录进页面与点接受前各调一次 `chkTimeValid(currentTime)`，`false` 显示「分享链接已过期」，校验失败不能接受；缺 `t` 的卡片按无效。见 `docs/changes/2026-11-04-WiFi版分享链接有效期校验.md`。卡片封面（2026-11-04）：不用页面截图，`utils/share-card.js` 用离屏 Canvas 画 5:4 封面（设备图 + 设备名 / 规格 + 「点击接受邀请」），分享列表拿到设备详情就画，`onShareAppMessage` 带 `imageUrl`，没画好先用设备图、`promise` 里等画完；画不出来用机型设备图。见 `docs/changes/2026-11-04-WiFi版分享卡片封面.md`。
 
 2026-11-02：我的设备 WiFi 卡与 WiFi 详情的「轮播设置」在轮播开启中（`GET /api/device/strategy` 的 `running`，`wifi-status.fetchSlideshowRunning`）时显示图标绿点 +「轮播中」标签，查不到保持原样；标记是样式画的，正式图标待替换。见 `docs/changes/2026-11-02-WiFi版轮播开启中标记.md`。
+
+## WiFi 版轮播服务端化（2026-11-05，`main-wifi`）
+
+依据 `docs/wifi/前端对接文档20261105.md`：服务端按配置定时推图。轮播设置页（逻辑 `utils/wifi-strategy.js`，时区 `utils/time-zone.js`）提交必带 IANA `timeZone`（默认手机时区，弹层分组 + 搜索，不传 `UTC+8` 这类偏移）；间隔档位 10 分钟 ~ 24 小时（`timingTime` 600~86400），结束可选 `24:00`、没配置过默认 `00:00~24:00`；`idle` 废弃；间隔 / 固定两组参数都带（切换不清空）。高级设置同页展开（进页收起、不持久化）：`weekday` / `weekend`（`enabled`）与 `anniversaries`（`monthDay` 不重复，当天独占），每张卡片独立时间 / 照片组（弹层选，一律明确提交）/ 顺序；工作日 / 周末启用时基础配置旁三档灰字提示；不做跨卡片时间重叠校验。基础配置与每张启用的卡片都至少一张照片。**保存后不再调 `/api/device/play` 投第一张**（设备收到轮播立刻自动刷屏），成功后重拉一次配置，`nextRefreshAt` 显示「下次刷新」。WiFi 投屏结果页与蓝牙版同为两个按钮（成功「再投一张」/ 有失败「重试未成功的」+「返回首页」）；消息 `CAROUSEL_NOT_SENT`；配网等上云 120 秒。见 `docs/changes/2026-11-05-WiFi版轮播服务端化.md`。双频合一路由器下让设备留在 2.4G 的方案见 `docs/wifi/双频合一WiFi保持2.4G方案.md`（未改代码）。
 
 ## WiFi 版固件升级（2026-11-02，`main-wifi`）
 

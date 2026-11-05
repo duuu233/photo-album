@@ -11,7 +11,7 @@
 //   3 设备正在连接Wi-Fi      —— 设备侧没有状态上报，这一步调老服务绑定；绑定失败停在本步，不开始轮询
 //                              （绑定必须先于在线查询：在线接口会调老服务 checkPermission，未绑定返回 403）
 //   4 设备正在连接云端       —— 轮询 GET /api/device/online?deviceNo=&since=（since 为本次配网开始时间），online=true 即成功；
-//                              503（权限服务不可用）/ 403 / 网络失败继续轮询，60s 超时；401 停止
+//                              503（权限服务不可用）/ 403 / 网络失败继续轮询，120s 超时（2026-11-05 起，原 60s）；401 停止
 //
 // 页面之间的交接（handoff）放内存、不进页面路由：WiFi 密码不该出现在 url 里。
 const api = require('./api')
@@ -26,7 +26,7 @@ const BLE_ACK_TIMEOUT_MS = 5000
 // 国家码：小程序统一传世界通用模式 01（设备入网流程 5.2；App 才传真实国家码）
 const COUNTRY_CODE = '01'
 const ONLINE_POLL_INTERVAL_MS = 2000
-const ONLINE_TIMEOUT_MS = 60000
+const ONLINE_TIMEOUT_MS = 120000 // 2026-11-05 由 60 秒提到 120 秒（docs/wifi/前端对接文档20261105.md 第一节）
 
 // ── 页面交接 ──
 // target：搜索页选中的设备 { bleDeviceId, deviceNo, name, product }；credentials：{ ssid, password }

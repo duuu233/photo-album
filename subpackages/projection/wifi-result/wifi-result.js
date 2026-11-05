@@ -5,6 +5,8 @@ const fold = require('../../../utils/fold-adapt')
 const dithering = require('../../../utils/dithering')
 const wifiProjection = require('../../../utils/wifi-projection')
 const config = require('../../../utils/config')
+const media = require('../../../utils/media')
+const toast = require('../../../utils/toast')
 
 // WiFi 版投屏结果页（2026-10-27，对接进度 STEP 3）：预览页构图导出后 redirectTo 到这里（蓝牙版去 result 页）。
 // 逐张调 utils/wifi-projection.projectOne：图片上传中 → 图片处理中（两段合占进度条 0~99%）→ 接口返回成功才到 100%。
@@ -14,7 +16,9 @@ const config = require('../../../utils/config')
 // 整批只刷一次屏（更新说明 2.4）。重试时同样按「本轮最后一张刷屏」。
 // 每张拿到 binUrl 后写老服务相册记录（api.addWifiAlbumRecord，img + imgBle），「我的上传」、轮播选图、删除都靠它；
 // 写记录失败不算投屏失败，只在这一张的文案后注明「未存入我的上传」并记日志。
-// 结束后：全部成功只给「完成」；有失败给「重试未成功的」+「完成」。
+// 结束后两个按钮，与蓝牙版结果页一致（2026-11-05，docs/wifi/前端对接文档20261105.md 第一节第 10 项）：
+//   全部成功 →「再投一张」（当前页弹拍照 / 相册，选图后同一台设备进预览页）+「返回首页」；
+//   有失败 →「重试未成功的」+「返回首页」。
 // 同时加入轮播（2026-10-27 追加内容第二节）：预览页勾了「同时加入轮播」时 pendingProjection.addToCarousel=true，
 // 每张（含只上传的）都带 addToCarousel=true；有任何一张成功投出但 carouselUpdated=false，结束后在结果下方追加
 // 「未成功加入轮播，请前往轮播设置添加」；true / null 不额外提示。相册记录照常写（全部相册轮播靠它才拉得到这张）。
@@ -110,6 +114,9 @@ Page(fold.adapt(tapGuard.wrap({
     successCount: 0,
     retryable: false,
     carouselTip: '',
+    canContinue: false,
+    showMediaSheet: false,
+    mediaSheetClosing: false,
     showLog: false,
     logs: [],
     logAnchor: ''
@@ -125,6 +132,7 @@ Page(fold.adapt(tapGuard.wrap({
       deviceName: (this.device && (this.device.name || this.device.productName)) || '',
       total: this.images.length,
       items: this.images.map((image, index) => ({ key: index, src: imageSrc(image), status: 'pending', text: '等待投屏' })),
+      canContinue: !!this.device,
       showLog: showLogPanel()
     })
     if (!this.device || !this.images.length) {
@@ -303,11 +311,58 @@ Page(fold.adapt(tapGuard.wrap({
     }
   },
 
-  finish() {
-    wx.navigateBack({
-      fail() {
-        wx.switchTab({ url: '/pages/home/home' })
+  backHome() {
+    wx.switchTab({ url: '/pages/home/home' })
+  },
+
+  // 「再投一张」：不跳首页，在当前页弹出「拍照 / 相册」二选一弹层（与蓝牙版结果页「继续投屏」同一做法）
+  continueProjection() {
+    if (!this.device) {
+      return
+    }
+    this.setData({ showMediaSheet: true, mediaSheetClosing: false })
+  },
+
+  hideMediaSheet() {
+    if (this.data.mediaSheetClosing) {
+      return
+    }
+    this.setData({ mediaSheetClosing: true })
+    setTimeout(() => {
+      if (!this.unloaded) {
+        this.setData({ showMediaSheet: false, mediaSheetClosing: false })
       }
-    })
-  }
-}, { retryFailed: 'projection' })))
+    }, 220)
+  },
+
+  chooseCamera() {
+    return this.pickAndContinue(() => media.chooseFromCamera())
+  },
+
+  chooseAlbum() {
+    return this.pickAndContinue(() => media.chooseFromAlbum())
+  },
+
+  // 选图后用本次投屏的同一台设备进预览页构图；预览页认出 WiFi 版，导出后再回到本页。
+  // 结果页是流程终点，用 redirectTo（与蓝牙版一致），不留在返回栈里。用户取消选择不报错、保留弹层
+  async pickAndContinue(pickImages) {
+    let images
+    try {
+      images = await pickImages()
+    } catch (error) {
+      if (error && error.errMsg && error.errMsg.indexOf('cancel') > -1) {
+        return
+      }
+      toast.warn({ title: '选择照片失败', icon: 'none' })
+      return
+    }
+    if (!images || !images.length || !this.device) {
+      return
+    }
+    this.setData({ showMediaSheet: false, mediaSheetClosing: false })
+    wx.setStorageSync('pendingProjection', { device: Object.assign({}, this.device, { isWifi: true }), images })
+    wx.redirectTo({ url: '/subpackages/projection/preview/preview' })
+  },
+
+  noop() {}
+}, { retryFailed: 'projection', continueProjection: 'projection', chooseCamera: 'pick', chooseAlbum: 'pick' })))

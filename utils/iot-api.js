@@ -67,11 +67,14 @@ module.exports = {
     return iot.get('/api/device/strategy', { deviceNo: plainDeviceNo(deviceNo) }, options)
   },
 
-  // 轮播设置（V1.4）：updateType 2 = 间隔（beginTime / endTime / timingTime 秒），1 = 固定时间（updateDays 1~365 /
-  // updateTimeList HH:mm 数组）；mode 1 顺序 / 2 随机；idle 0 轮播后休眠 / 1 不休眠；
+  // 轮播设置（V1.4；2026-11-05 起服务端按配置定时推图，docs/wifi/前端对接文档20261105.md）：
+  // timeZone 必传（IANA 名）；updateType 2 = 间隔（beginTime / endTime HH:mm，end 可为 24:00，不传默认 00:00~24:00；
+  // timingTime 600~86400 秒），1 = 固定时间（updateDays 1~365 / updateTimeList HH:mm 数组）；mode 1 顺序 / 2 随机；
+  // idle 已废弃（不再传）；weekday / weekend / anniversaries 为高级卡片（组装见 utils/wifi-strategy.buildPayload）；
   // imgUrls 可选：相册 imgBle，最多 100（2026-10-27 追加内容，原 200，超过回 4000），按选择顺序；
   // 不传 = 全部相册，传空数组会被拒（4000），由调用方保证不传空。
-  // 要求设备在线（离线 4041）。返回 { msgid }。
+  // 要求设备在线（离线 4041）。返回 { msgid }；下发后设备立刻自动刷屏，不需要再调 play。
+  // 查询（getStrategy）回显新增 timeZone、nextRefreshAt（下次刷新，只读）与三类卡片。
   setStrategy(payload, options) {
     return iot.post('/api/device/strategy', Object.assign({}, payload, { deviceNo: plainDeviceNo(payload && payload.deviceNo) }), options)
   },

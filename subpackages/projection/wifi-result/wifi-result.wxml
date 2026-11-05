@@ -41,9 +41,39 @@
     </view>
   </view>
 
+  <!-- 两个按钮，与蓝牙版结果页一致：成功「再投一张」/ 有失败「重试未成功的」+「返回首页」 -->
   <view wx:if="{{phase === 'done'}}" class="wifi-result-actions">
     <view wx:if="{{retryable && total}}" class="wifi-result-primary" hover-class="none" bindtap="retryFailed">重试未成功的</view>
-    <view class="{{retryable && total ? 'wifi-result-text-btn' : 'wifi-result-primary'}}" hover-class="none" bindtap="finish">完成</view>
+    <view wx:elif="{{canContinue}}" class="wifi-result-primary" hover-class="none" bindtap="continueProjection">再投一张</view>
+    <view class="wifi-result-secondary" hover-class="none" bindtap="backHome">返回首页</view>
+  </view>
+
+  <!-- 「拍照 / 相册」选择弹层（与蓝牙版结果页同款）。点遮罩关闭；弹层内部 catchtap="noop" 阻止冒泡 -->
+  <view class="media-mask" wx:if="{{showMediaSheet}}" catchtouchmove="noop" bindtap="hideMediaSheet">
+    <view class="bottom-sheet media-sheet {{mediaSheetClosing ? 'pop-closing-sheet' : ''}}" catchtap="noop">
+      <view class="media-sheet-title">选择投屏方式</view>
+      <view class="media-option" hover-class="none" bindtap="chooseCamera">
+        <view class="media-option-left">
+          <image class="media-art mini camera-art" src="/assets/images/home-media-mini01.png" mode="aspectFit" />
+          <view class="media-option-copy">
+            <view>拍照</view>
+            <text>调用手机相机拍照</text>
+          </view>
+        </view>
+        <image class="round-arrow" src="/assets/images/home-camera-card-right-icon.png" mode="aspectFit" />
+      </view>
+      <view class="media-option" hover-class="none" bindtap="chooseAlbum">
+        <view class="media-option-left">
+          <image class="media-art mini album-art" src="/assets/images/home-media-mini02.png" mode="aspectFit" />
+          <view class="media-option-copy">
+            <view>相册</view>
+            <text>从手机相册选择照片</text>
+          </view>
+        </view>
+        <image class="round-arrow" src="/assets/images/home-album-card-right-icon.png" mode="aspectFit" />
+      </view>
+      <view class="cancel-action" hover-class="none" bindtap="hideMediaSheet">取消</view>
+    </view>
   </view>
 
   <global-toast id="globalToast"></global-toast>
