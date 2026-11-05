@@ -143,10 +143,17 @@ const wxml = fs.readFileSync(
   path.join(root, 'subpackages/device/bind/bind.wxml'),
   'utf8'
 ).replace(/<!--[\s\S]*?-->/g, '')
+// 2026-11-05 条件有意改为「搜到设备且搜索已结束」：搜索中 GIF 尺寸不变（产品要求），
+// 所以已发现态只在 !scanning 时挂；守的判据不变——让位的类真的挂得上、且有设备时才挂
 assert.ok(
-  /class="radar-wrap \{\{devices\.length \? 'radar-wrap--found' : ''\}\}"/.test(wxml),
-  '雷达缩小要按 devices.length 挂 radar-wrap--found，与设备列表的渲染条件保持一致'
+  /class="radar-wrap \{\{devices\.length && !scanning \? 'radar-wrap--found' : ''\}\} \{\{scanning \? 'radar-wrap--scanning' : ''\}\}"/.test(wxml),
+  '雷达缩小要按 devices.length && !scanning 挂 radar-wrap--found；搜索中挂 radar-wrap--scanning'
 )
+// 搜索中 GIF 尺寸固定：不改宽高、不参与 flex 收缩（否则列表一长 GIF 又会被一点点压小）
+const radarScanning = ruleBody('.radar-wrap--scanning')
+assert.equal(declaration(radarScanning, 'flex-shrink'), '0', '搜索中雷达不参与收缩，GIF 尺寸不变')
+assert.equal(declaration(radarScanning, 'height'), null, '搜索中雷达沿用默认 500rpx，不另设高度')
+assert.equal(declaration(radarScanning, 'width'), null, '搜索中雷达沿用默认 500rpx，不另设宽度')
 
 // ── ④ 按机型跑一遍 flex 收缩 ──────────────────────────────────────
 const substituteVars = (expr, vars) => {

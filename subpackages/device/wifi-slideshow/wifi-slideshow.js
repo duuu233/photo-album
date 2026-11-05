@@ -23,10 +23,19 @@ const timeZone = require('../../../utils/time-zone')
 //   · 保存：IoT POST /api/device/strategy，要求设备在线（4041 时补查是休眠 / 关机 / 离线给对应提示）；
 //     下发后设备会立刻自动刷屏，**不再额外 /api/device/play 投第一张**（2026-11-05 确认）；保存成功后重新拉一次配置；
 //   · 正在轮播时可「暂停轮播」（POST /api/device/strategy/stop）。
+// 2026-11-05 修订版 docs/wifi/前端对接文档20261105-1.md：
+//   · 基础配置做成「简单模式」卡片（启用开关，默认启用并展开；关闭不提交基础字段），简单模式 / 高级卡片任一启用才能保存，否则按钮置灰；
+//   · 选图统一成底部弹层（简单模式与高级卡片同一个）：从下往上滑入、每行 3 张（同「我的上传」样式），按页 21 张、滑到底再显示下一页；
+//   · 时区按语种显示「中国 / 北京」，不带 UTC 偏移；状态区「设置时间：」「下次刷新：MM-dd HH:mm · 卡片类型」；
+//   · 固定模式每 N 天 1~30（存量 > 30 提示调整）；纪念日只选月 / 日，2 月最多 28 日。
 // 换算、校验、卡片与选图顺序见 utils/wifi-strategy.js，时区见 utils/time-zone.js。
-const DAY_OPTIONS = Array.from({ length: 365 }, (item, index) => `${index + 1}`)
-// 纪念日日期选择用一个闰年（2028）的日期选择器，只取月日，02-29 也能选（只在闰年生效，服务端判断）
-const ANNIV_YEAR = '2028'
+const DAY_OPTIONS = Array.from({ length: strategy.MAX_UPDATE_DAYS }, (item, index) => (index ? `每 ${index + 1} 天` : '每天'))
+// 选图：投屏记录按页取，每页 21 张（3 列 × 7 行，同「我的上传」）；弹层里一页一页往下显示
+const PHOTO_PAGE_SIZE = 21
+// 进页把这台设备的可轮播照片按页取完（回显校验、全选、「全部相册」判断都要整本相册）；最多取这么多页兜底
+const MAX_PHOTO_PAGES = 30
+// 弹层退场动画时长（app.wxss .pop-closing-sheet 0.24s）
+const SHEET_CLOSE_MS = 240
 
 function plainDeviceNo(value) {
   return String(value || '').replace(/[:\-\s]/g, '').toUpperCase()
@@ -75,6 +84,21 @@ function cardTitle(card) {
   return card.kind === strategy.CARD_WEEKEND ? '周末' : '工作日'
 }
 
+// 把这台设备的投屏成功记录按页取完（每页 PHOTO_PAGE_SIZE）；任一页失败整体失败（返回 Promise reject）
+async function loadAllRecords(query) {
+  const records = []
+  for (let pageIndex = 1; pageIndex <= MAX_PHOTO_PAGES; pageIndex += 1) {
+    const page = await api.getProjectionRecordsPage(Object.assign({}, query, { pageIndex, pageSize: PHOTO_PAGE_SIZE }))
+    const rows = (page && page.records) || []
+    rows.forEach(record => records.push(record))
+    if (!page || !page.hasMore || !rows.length) {
+      return records
+    }
+  }
+  console.warn(`${RECORDS_LOG_TAG} 已取满 ${MAX_PHOTO_PAGES} 页（每页 ${PHOTO_PAGE_SIZE}），后面的不再取`)
+  return records
+}
+
 Page(fold.adapt({
   data: {
     statusBarHeight: 20,
@@ -85,8 +109,8 @@ Page(fold.adapt({
     device: null,
     running: false,
     configured: false,
-    updatedAt: '',
-    nextRefresh: '',
+    updatedAt: '', // 「设置时间：yyyy-MM-dd HH:mm」
+    nextRefresh: '', // 「下次刷新：MM-dd HH:mm · 卡片类型」冒号后的部分；空 = 整行不显示
     form: strategy.DEFAULT_FORM,
     timeZoneLabel: '',
     intervalLabels: strategy.INTERVAL_OPTIONS.map(strategy.intervalLabel),
@@ -95,10 +119,11 @@ Page(fold.adapt({
     endTimeIndex: strategy.endTimeIndex(strategy.DEFAULT_FORM.endTime),
     dayOptions: DAY_OPTIONS,
     newTime: '12:00',
-    tiles: [], // [{ id, url(imgBle), thumb, order }]
+    daysHint: '', // 存量每 N 天 > 30 的提示
+    canSave: true, // 简单模式或任一高级卡片启用；否则保存按钮置灰
+    photoCount: 0, // 可轮播的照片总数（「我的上传」里这台设备带 imgBle 的）
     selectedCount: 0,
     maxCount: strategy.MAX_IMG_URLS,
-    allSelected: false,
     selectionHint: '',
     photosError: false,
     // 高级设置：进页一律收起，展开只在本页有效
@@ -106,9 +131,9 @@ Page(fold.adapt({
     advanced: strategy.decorateAdvanced(null),
     advancedCount: 0,
     baseHint: '',
-    annivYear: ANNIV_YEAR,
-    zoneSheet: { show: false, keyword: '', list: [] },
-    photoSheet: { show: false, title: '', tiles: [], count: 0, allSelected: false },
+    zoneSheet: { show: false, closing: false, keyword: '', list: [] },
+    // 选图弹层（简单模式与高级卡片共用）：tiles 只放已显示的几页，limit 为已显示张数（每次 +21）
+    photoSheet: { show: false, closing: false, title: '', tiles: [], limit: PHOTO_PAGE_SIZE, total: 0, count: 0, allSelected: false },
     saving: false,
     stopping: false
   },
@@ -162,7 +187,7 @@ Page(fold.adapt({
         console.warn('[WiFi轮播] 查询轮播配置失败', error && error.code, error && error.message)
         return null
       }),
-      api.getProjectionRecords({
+      loadAllRecords({
         deviceUploadState: 1,
         userProductId,
         // 同「我的上传」页（2026-11-03）：有设备完整 ID 就带，后端按设备查；取不到不带，仍按用户查
@@ -188,7 +213,7 @@ Page(fold.adapt({
       console.log(`${RECORDS_LOG_TAG} 返回 ${records.length} 条记录（${recordsQuery.deviceId ? '按设备查' : '按用户查'}），可轮播（投屏成功且带 imgBle、去重后）${tiles.length} 张`)
     }
     this.applyConfig(config)
-    this.setData({ loading: false, photosError: records === null })
+    this.setData({ loading: false, photosError: records === null, photoCount: tiles.length })
   },
 
   // 服务端配置 → 页面（进页与保存成功后共用）：未保存的草稿一律丢弃，以服务端为准。查询失败（null）用默认值并提示
@@ -202,8 +227,8 @@ Page(fold.adapt({
     this.setData({
       configured: !!(config && config.configured),
       running: !!(config && config.running),
-      updatedAt: (config && config.updatedAt) || '',
-      nextRefresh: strategy.nextRefreshText(config && config.nextRefreshAt),
+      updatedAt: strategy.updatedAtText(config && config.updatedAt),
+      nextRefresh: strategy.nextRefreshLine(config),
       intervalIndex: strategy.intervalIndexOf(form.intervalMinutes),
       endTimeIndex: strategy.endTimeIndex(form.endTime),
       selectionHint: config ? picked.hint : '轮播配置查询失败，以下为默认设置'
@@ -218,25 +243,32 @@ Page(fold.adapt({
   },
 
   renderSelection() {
-    this.setData({
-      tiles: decorateTiles(this.tiles || [], this.selected),
-      selectedCount: this.selected.length,
-      allSelected: strategy.isAllSelected(this.selected, this.albumUrls())
-    })
+    this.setData({ selectedCount: this.selected.length })
   },
 
   renderAdvanced() {
     this.setData({
       advanced: strategy.decorateAdvanced(this.advanced),
       advancedCount: strategy.advancedCount(this.advanced),
-      baseHint: strategy.baseHint(this.advanced)
+      baseHint: strategy.baseHint(this.advanced),
+      canSave: strategy.hasAnyConfig(this.data.form, this.advanced)
     })
   },
 
   // replace=true 时整体替换（回显），否则合并
   setForm(patch, replace) {
     const form = replace ? Object.assign({}, patch) : Object.assign({}, this.data.form, patch)
-    this.setData({ form, timeZoneLabel: timeZone.label(form.timeZone) })
+    this.setData({
+      form,
+      timeZoneLabel: timeZone.label(form.timeZone),
+      daysHint: strategy.daysOverHint(form),
+      canSave: strategy.hasAnyConfig(form, this.advanced)
+    })
+  },
+
+  // 简单模式启用开关：关闭后基础字段不提交，此时至少要启用一张高级卡片
+  toggleSimple(e) {
+    this.setForm({ simpleEnabled: !!e.detail.value })
   },
 
   chooseUpdateType(e) {
@@ -296,33 +328,10 @@ Page(fold.adapt({
     this.setForm({ updateTimeList: (this.data.form.updateTimeList || []).filter(item => item !== value) })
   },
 
-  toggleTile(e) {
-    const url = e.currentTarget.dataset.url
-    const next = strategy.toggleSelection(this.selected, url)
-    if (next.overflow) {
-      toast.show({ title: `最多选择 ${strategy.MAX_IMG_URLS} 张，请先取消部分照片`, icon: 'none' })
-      return
-    }
-    this.selected = next.selected
-    this.renderSelection()
-  },
-
-  toggleAll() {
-    const urls = this.albumUrls()
-    if (!urls.length) {
-      return
-    }
-    this.selected = strategy.toggleAll(this.selected, urls)
-    if (urls.length > strategy.MAX_IMG_URLS && this.selected.length) {
-      toast.show({ title: `最多选择 ${strategy.MAX_IMG_URLS} 张`, icon: 'none' })
-    }
-    this.renderSelection()
-  },
-
   // ── 时区 ─────────────────────────────────────────
 
   openZoneSheet() {
-    this.setData({ zoneSheet: { show: true, keyword: '', list: timeZone.options('', this.data.form.timeZone) } })
+    this.setData({ zoneSheet: { show: true, closing: false, keyword: '', list: timeZone.options('', this.data.form.timeZone) } })
   },
 
   searchZone(e) {
@@ -339,7 +348,25 @@ Page(fold.adapt({
   },
 
   closeZoneSheet() {
-    this.setData({ 'zoneSheet.show': false })
+    this.closeSheet('zoneSheet')
+  },
+
+  // 底部弹层退场：先播下滑动画（.pop-closing-sheet），再卸载
+  closeSheet(key, done) {
+    if (!this.data[key].show || this.data[key].closing) {
+      return
+    }
+    this.setData({ [`${key}.closing`]: true })
+    setTimeout(() => {
+      // 退场期间又被打开（open 会把 closing 置回 false）就不收了
+      if (this.unloaded || !this.data[key].closing) {
+        return
+      }
+      this.setData({ [`${key}.show`]: false, [`${key}.closing`]: false })
+      if (done) {
+        done()
+      }
+    }, SHEET_CLOSE_MS)
   },
 
   // ── 高级设置 ─────────────────────────────────────────
@@ -409,16 +436,43 @@ Page(fold.adapt({
     this.patchCard(e.currentTarget.dataset, { mode: Number(e.currentTarget.dataset.value) })
   },
 
-  // 纪念日日期：日期选择器给 yyyy-MM-dd，只取月日；与其他纪念日重复时拦下
+  // 纪念日日期选择器（月 / 日两列，不选年）：滑动月份时日这一列换成该月的合法天数（2 月 28 天，4 / 6 / 9 / 11 月 30 天）
+  changeAnnivColumn(e) {
+    const detail = e.detail || {}
+    if (Number(detail.column) !== 0) {
+      return
+    }
+    const index = Number(e.currentTarget.dataset.index)
+    const card = (this.data.advanced.anniversaries || [])[index]
+    if (!card) {
+      return
+    }
+    const month = Number(detail.value) + 1
+    const columns = strategy.monthDayColumns(month)
+    const day = Math.min(card.monthDayIndex[1], columns[1].length - 1)
+    this.setData({
+      [`advanced.anniversaries[${index}].monthDayColumns`]: columns,
+      [`advanced.anniversaries[${index}].monthDayIndex`]: [month - 1, day]
+    })
+  },
+
+  // 取消选择：日这一列恢复成当前日期所在月份
+  cancelAnnivDate() {
+    this.renderAdvanced()
+  },
+
+  // 纪念日日期：选择器给 [月, 日] 下标，换成 MM-dd；与其他纪念日重复时拦下
   changeAnnivDate(e) {
-    const monthDay = String(e.detail.value || '').slice(5, 10)
+    const monthDay = strategy.monthDayFromIndex(e.detail.value)
     const index = Number(e.currentTarget.dataset.index)
     if (!strategy.isMonthDay(monthDay)) {
+      this.renderAdvanced()
       return
     }
     const taken = (this.advanced.anniversaries || []).some((card, i) => i !== index && card.monthDay === monthDay)
     if (taken) {
       toast.show({ title: '这个日期已添加纪念日', icon: 'none' })
+      this.renderAdvanced()
       return
     }
     this.patchCard(e.currentTarget.dataset, { monthDay })
@@ -456,31 +510,57 @@ Page(fold.adapt({
     })
   },
 
-  // ── 卡片选图弹层 ─────────────────────────────────────────
+  // ── 选图弹层（简单模式与高级卡片共用）─────────────────────────────────────────
+
+  // 简单模式的「轮播照片」
+  openBasePhotos() {
+    this.openPhotoSheet({ card: 'base' }, this.selected, '简单模式 · 轮播照片')
+  },
 
   openCardPhotos(e) {
     const dataset = e.currentTarget.dataset
     const card = this.getCard(dataset)
-    if (!card) {
-      return
+    if (card) {
+      this.openPhotoSheet({ card: dataset.card, index: dataset.index }, card.selected, `${cardTitle(card)} · 轮播照片`)
     }
+  },
+
+  openPhotoSheet(target, selected, title) {
     if (!(this.tiles || []).length) {
       toast.show({ title: this.data.photosError ? '「我的上传」加载失败，请返回重试' : '还没有可轮播的照片，先投屏几张吧', icon: 'none' })
       return
     }
-    this.sheetTarget = { card: dataset.card, index: dataset.index }
-    this.sheetSelected = (card.selected || []).slice()
-    this.setData({ 'photoSheet.show': true, 'photoSheet.title': `${cardTitle(card)} · 播放照片` })
+    this.sheetTarget = target
+    this.sheetSelected = (selected || []).slice()
+    this.setData({
+      'photoSheet.show': true,
+      'photoSheet.closing': false,
+      'photoSheet.title': title,
+      'photoSheet.limit': PHOTO_PAGE_SIZE,
+      'photoSheet.total': this.tiles.length
+    })
     this.renderSheet()
   },
 
+  // 只渲染已显示的几页（每页 21 张）
   renderSheet() {
     const selected = this.sheetSelected || []
+    const limit = this.data.photoSheet.limit
     this.setData({
-      'photoSheet.tiles': decorateTiles(this.tiles || [], selected),
+      'photoSheet.tiles': decorateTiles((this.tiles || []).slice(0, limit), selected),
       'photoSheet.count': selected.length,
       'photoSheet.allSelected': strategy.isAllSelected(selected, this.albumUrls())
     })
+  },
+
+  // 滑到底显示下一页
+  sheetLoadMore() {
+    const sheet = this.data.photoSheet
+    if (!sheet.show || sheet.limit >= (this.tiles || []).length) {
+      return
+    }
+    this.setData({ 'photoSheet.limit': sheet.limit + PHOTO_PAGE_SIZE })
+    this.renderSheet()
   },
 
   sheetToggleTile(e) {
@@ -494,20 +574,31 @@ Page(fold.adapt({
   },
 
   sheetToggleAll() {
-    this.sheetSelected = strategy.toggleAll(this.sheetSelected, this.albumUrls())
+    const urls = this.albumUrls()
+    this.sheetSelected = strategy.toggleAll(this.sheetSelected, urls)
+    if (urls.length > strategy.MAX_IMG_URLS && this.sheetSelected.length) {
+      toast.show({ title: `最多选择 ${strategy.MAX_IMG_URLS} 张`, icon: 'none' })
+    }
     this.renderSheet()
   },
 
   sheetConfirm() {
-    if (this.sheetTarget) {
-      this.patchCard(this.sheetTarget, { selected: (this.sheetSelected || []).slice(), hint: '' })
+    const target = this.sheetTarget
+    const selected = (this.sheetSelected || []).slice()
+    if (target && target.card === 'base') {
+      this.selected = selected
+      this.setData({ selectionHint: '' })
+      this.renderSelection()
+    } else if (target) {
+      this.patchCard(target, { selected, hint: '' })
     }
     this.closePhotoSheet()
   },
 
   closePhotoSheet() {
-    this.sheetTarget = null
-    this.setData({ 'photoSheet.show': false })
+    this.closeSheet('photoSheet', () => {
+      this.sheetTarget = null
+    })
   },
 
   noop() {},
@@ -529,6 +620,10 @@ Page(fold.adapt({
 
   async save() {
     if (this.data.saving || !this.data.device) {
+      return
+    }
+    if (!this.data.canSave) {
+      toast.show({ title: '至少配置一项', icon: 'none' })
       return
     }
     const built = strategy.buildPayload(this.deviceNo(), this.data.form, this.selected, this.albumUrls(), this.advanced)
@@ -563,7 +658,7 @@ Page(fold.adapt({
       return
     }
     // 下发轮播后设备会立刻自动刷屏，不再额外投第一张（2026-11-05）
-    const saved = built.payload.imgUrls ? `已保存，轮播所选 ${built.payload.imgUrls.length} 张` : '已保存，轮播全部照片'
+    const saved = !this.data.form.simpleEnabled ? '已保存' : (built.payload.imgUrls ? `已保存，轮播所选 ${built.payload.imgUrls.length} 张` : '已保存，轮播全部照片')
     this.setData({ running: true, configured: true, selectionHint: '' })
     toast.show({ title: `${saved}，屏幕即将刷新`, icon: 'none' })
     await this.reloadConfig()

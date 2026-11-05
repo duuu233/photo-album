@@ -1,5 +1,6 @@
 // 2026-11-05 轮播服务端化（docs/wifi/前端对接文档20261105.md）中轮播页以外的部分：
-//   ① utils/time-zone：只认 IANA 名（UTC+8 不算）、手机时区（系统 / Intl / 按偏移兜底）、「Asia/Shanghai（UTC+8）」展示、分组搜索；
+//   ① utils/time-zone：只认 IANA 名（UTC+8 不算）、手机时区（系统 / Intl / 按偏移兜底）、分组搜索；
+//      展示 2026-11-05（20261105-1 第 2 条）起按语种「国家 / 城市」、不带 UTC 偏移、列表每行一段文字（原「Asia/Shanghai（UTC+8）」断言随之改写）；
 //   ② 消息类型 CAROUSEL_NOT_SENT「轮播未发送成功」，内容带未发送的时刻；
 //   ③ WiFi 投屏结果页与蓝牙版一样两个按钮：成功「再投一张」（当前页弹拍照 / 相册）/ 有失败「重试未成功的」+「返回首页」；
 //   ④ 配网「设备正在连接云端」等待窗口 120 秒（轮询次数断言在 wifi-provision.test.js）。
@@ -27,8 +28,16 @@ function checked(name) { checks++; console.log('PASS ' + name) }
   assert.equal(tz.offsetText(480), 'UTC+8')
   assert.equal(tz.offsetText(-300), 'UTC-5')
   assert.equal(tz.offsetText(330), 'UTC+5:30')
-  assert.equal(tz.label('Asia/Shanghai'), 'Asia/Shanghai（UTC+8）')
-  assert.equal(tz.label('Etc/GMT-8'), 'Etc/GMT-8（UTC+8）')
+  // 20261105-1：展示去掉 UTC+8，按语种显示；提交值仍是 IANA 名（展示与提交两套数据）
+  assert.equal(tz.label('Asia/Shanghai', 'zh-Hans'), '中国 / 北京')
+  assert.equal(tz.label('Asia/Shanghai', 'zh-Hant'), '中國 / 北京')
+  assert.equal(tz.label('America/New_York', 'en'), 'USA / New York')
+  assert.equal(tz.label('Asia/Tokyo', 'ja'), '日本 / 東京')
+  assert.equal(tz.label('Asia/Shanghai'), '中国 / 北京', '不传语种：取当前语种，取不到按简体中文')
+  assert.equal(tz.label('Asia/Shanghai', 'fr'), '中国 / 北京', '不认识的语种按简体中文')
+  assert.ok(!/UTC/.test(tz.ZONES.map(zone => tz.label(zone.id, 'zh-Hans')).join('')), '候选展示不带 UTC 偏移')
+  assert.equal(tz.label('Etc/GMT-8'), 'Etc/GMT-8', '不在候选里的原样显示 IANA 名')
+  tz.LANGS.forEach(lang => tz.ZONES.forEach(zone => assert.ok(tz.label(zone.id, lang), `${zone.id} 缺 ${lang} 译名`)))
   const summer = new Date(Date.UTC(2026, 6, 1, 12))
   const winter = new Date(Date.UTC(2026, 0, 1, 12))
   assert.equal(tz.offsetOf('America/New_York', winter), -300)
@@ -37,15 +46,21 @@ function checked(name) { checks++; console.log('PASS ' + name) }
   assert.equal(all.length, tz.ZONES.length, '全部候选')
   assert.equal(all[0].id, 'Asia/Shanghai')
   assert.equal(all[0].showGroup, true)
-  assert.equal(all[1].group, '港澳台')
+  assert.equal(all[0].label, '中国 / 北京')
+  assert.equal(all[1].group, '中国', '港澳台并进「中国」组（展示已是「中国 / 香港」）')
+  assert.deepEqual(Object.keys(all[0]).sort(), ['group', 'id', 'label', 'showGroup'], '每行只有一段展示文字，没有右侧副标题')
+  assert.equal(tz.options('', 'Asia/Shanghai', 'en')[0].group, 'China', '分组名按语种')
   assert.deepEqual(tz.options('东京').map(row => row.id), ['Asia/Tokyo'], '中文城市可搜')
   assert.deepEqual(tz.options('new_york').map(row => row.id), ['America/New_York'], '不区分大小写')
   assert.deepEqual(tz.options('美洲').map(row => row.id).length, 4, '分组名可搜')
+  assert.deepEqual(tz.options('北京').map(row => row.id), ['Asia/Shanghai'], '按展示文案可搜')
+  assert.deepEqual(tz.options('tokyo', '', 'zh-Hans').map(row => row.id), ['Asia/Tokyo'], '别的语种译名也能搜')
   const custom = tz.options('', 'Asia/Kolkata')
   assert.equal(custom[0].id, 'Asia/Kolkata', '回显值不在候选里放最前「当前」')
   assert.equal(custom[0].group, '当前')
+  assert.equal(custom[0].label, 'Asia/Kolkata')
   assert.equal(tz.options('xyz').length, 0)
-  checked('时区：IANA 校验、手机时区、偏移展示、搜索')
+  checked('时区：IANA 校验、手机时区、按语种展示、搜索')
 }
 {
   assert.equal(messages.TYPE_TEXT.CAROUSEL_NOT_SENT, '轮播未发送成功')

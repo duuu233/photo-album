@@ -1,6 +1,7 @@
 // WiFi 版轮播开启中标记（2026-11-02）：
 //   ① wifi-status.fetchSlideshowRunning：strategy.running → true / false，查不到（错误 / 接口缺失）→ null（调用方保持原样），设备号原样交给 iot-api；
-//   ② 我的设备 WiFi 卡、WiFi 详情的「轮播设置」：开启中显示图标右上角绿点 +「轮播中」标签，未开启不显示；
+//   ② 我的设备 WiFi 卡、WiFi 详情的「轮播设置」：开启中显示图标右上角绿点，未开启不显示；
+//      2026-11-05 起去掉「轮播中」文字（产品），图标换绿色版，且要 running 与设备在线同时成立（对接文档 20261105-1 第 3 条）；
 //   ③ 列表重拉时沿用上次的标记（不闪），详情进页查一次。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -42,14 +43,16 @@ async function main() {
   }
   {
     const list = read('subpackages/device/list/list.wxml')
-    assert.ok(/openWifiSlideshow[\s\S]*?wx:if="\{\{item\.wifiSlideshowOn\}\}" class="slideshow-on-dot"[\s\S]*?wx:if="\{\{item\.wifiSlideshowOn\}\}" class="slideshow-on-tag">轮播中</.test(list), '列表 WiFi 卡轮播中标记')
+    // 2026-11-05：「轮播中」文字标签有意删掉，判据挪到「绿点 + 绿色图标都要求 running 且在线」
+    assert.ok(/openWifiSlideshow[\s\S]*?item\.wifiSlideshowOn && item\.wifiStatus === 'online' \? '\/assets\/images\/device-detail-icon01-on\.png'[\s\S]*?wx:if="\{\{item\.wifiSlideshowOn && item\.wifiStatus === 'online'\}\}" class="slideshow-on-dot"/.test(list), '列表 WiFi 卡轮播中标记')
     const detail = read('subpackages/device/wifi-detail/wifi-detail.wxml')
-    assert.ok(/openSlideshow[\s\S]*?wx:if="\{\{slideshowOn\}\}" class="slideshow-on-dot"[\s\S]*?wx:if="\{\{slideshowOn\}\}" class="slideshow-on-tag">轮播中</.test(detail), '详情轮播中标记')
+    assert.ok(/openSlideshow[\s\S]*?slideshowOn && status === 'online' \? '\/assets\/images\/device-detail-icon01-on\.png'[\s\S]*?wx:if="\{\{slideshowOn && status === 'online'\}\}" class="slideshow-on-dot"/.test(detail), '详情轮播中标记')
+    assert.ok(!/slideshow-on-tag|>轮播中</.test(list + detail), '不再显示「轮播中」文字')
+    assert.ok(fs.existsSync(path.join(root, 'assets/images/device-detail-icon01-on.png')), '绿色轮播图标')
     ;['subpackages/device/list/list.wxss', 'subpackages/device/wifi-detail/wifi-detail.wxss'].forEach(file => {
       const css = read(file)
       assert.ok(/\.slideshow-icon-wrap \{[^}]*position: relative/.test(css), `${file} 图标容器相对定位`)
       assert.ok(/\.slideshow-on-dot \{[^}]*position: absolute/.test(css), `${file} 绿点压在图标右上角`)
-      assert.ok(/\.slideshow-on-tag \{/.test(css), `${file} 轮播中标签`)
     })
     checked('模板与样式')
   }

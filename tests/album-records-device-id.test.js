@@ -110,7 +110,8 @@ const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
     let detail = null
     stubModule('../utils/api', {
       getDeviceDetail: () => Promise.resolve(detail),
-      getProjectionRecords: params => { requests.push(params); return Promise.resolve([]) }
+      // 2026-11-05 起轮播选图按页取（getProjectionRecordsPage，每页 21 条），查询条件不变
+      getProjectionRecordsPage: params => { requests.push(params); return Promise.resolve({ records: [], rowCount: 0, recordCount: 0, hasMore: false }) }
     })
     stubModule('../utils/iot-api', { getStrategy: () => Promise.resolve(null) })
     ;['../utils/toast', '../utils/wifi-status', '../utils/wifi-projection', '../utils/dithering'].forEach(name => stubModule(name, {}))
@@ -135,6 +136,7 @@ const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
     assert.strictEqual(withId.deviceId, 'D0:CF:13:F0:2F:F8', '轮播选图：有完整 ID 就带')
     assert.strictEqual(withId.userProductId, 'W1', '轮播选图：原有参数不变')
     assert.strictEqual(withId.deviceUploadState, 1)
+    assert.strictEqual(withId.pageSize, 21, '轮播选图每页 21 条')
     const logs = []
     const originalLog = console.log
     const originalWarn = console.warn

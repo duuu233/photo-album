@@ -1,6 +1,7 @@
 // 「我的上传」投屏记录分页（2026-11-03）：每页 21 条，触底加载下一页。
 //   ① api.getProjectionRecordsPage：带 pageIndex / pageSize；hasMore 先信 pageCount、再信 recordCount，都没回才看条数；
-//      getProjectionRecords（投屏记录页、WiFi 轮播选图在用）仍是第一页 100 条，不跟着改；
+//      getProjectionRecords（投屏记录页在用）仍是第一页 100 条，不跟着改；
+//      WiFi 轮播选图 2026-11-05 起（对接文档 20261105-1 第 1 条「pagesize 改为 21」）有意改为按页取、每页 21 条，见下方改写的那组；
 //   ② 「我的上传」页：首屏取第 1 页 21 条，onReachBottom 追加下一页、沿用同一组查询条件、按 id 去重、保留已选；
 //      没有下一页 / 加载中 / 首屏失败时不再请求；下一页失败只标 moreError，已加载的照片不清；
 //      切设备（重新 loadRecords）后，旧设备的翻页回包丢弃；
@@ -64,12 +65,13 @@ const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
     }
   }
 
-  // 轮播设置选图仍走 getProjectionRecords、不传 pageSize
+  // 轮播设置选图：2026-11-05 有意从「getProjectionRecords 第一页 100 条」改为按页取、每页 21 条（20261105-1 第 1 条），
+  // 判据挪到新调用上——仍守「轮播选图的分页口径是明确定下来的那一个」，不跟别的页面的改动漂
   {
     const source = read('subpackages/device/wifi-slideshow/wifi-slideshow.js')
-    const calls = source.match(/getProjectionRecords\(\{[\s\S]*?\}\)/g) || []
-    assert.ok(calls.length > 0, '轮播选图仍调 getProjectionRecords')
-    calls.forEach(call => assert.ok(!/pageSize/.test(call), '轮播选图不改分页'))
+    assert.ok(!/getProjectionRecords\(\{/.test(source), '轮播选图不再走第一页 100 条')
+    assert.ok(/const PHOTO_PAGE_SIZE = 21/.test(source), '轮播选图每页 21 条')
+    assert.ok(/api\.getProjectionRecordsPage\(Object\.assign\(\{\}, query, \{ pageIndex, pageSize: PHOTO_PAGE_SIZE \}\)\)/.test(source), '按页取，沿用同一组查询条件')
   }
 
   // ② ③ 「我的上传」页

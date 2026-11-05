@@ -1424,8 +1424,8 @@ module.exports = {
     })
   },
 
-  // 投屏记录列表。可按上传状态与绑定设备筛选。只取第一页 100 条（投屏记录页、WiFi 轮播选图在用）；
-  // 「我的上传」按页翻，走下面的 getProjectionRecordsPage。
+  // 投屏记录列表。可按上传状态与绑定设备筛选。只取第一页 100 条（投屏记录页在用）；
+  // 「我的上传」与 WiFi 轮播选图（2026-11-05 起每页 21 条）按页翻，走下面的 getProjectionRecordsPage。
   getProjectionRecords(params = {}) {
     return module.exports
       .getProjectionRecordsPage(params)

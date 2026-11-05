@@ -347,7 +347,8 @@
   height: 36rpx;
 }
 
-/* 轮播开启中标记（2026-11-02）：图标右上角绿点（带呼吸光圈）+「轮播中」小标签，颜色同「轮播设置」 */
+/* 轮播开启中标记（2026-11-02）：图标右上角绿点（带呼吸光圈），颜色同「轮播设置」。
+   2026-11-05：去掉「轮播中」文字标签，开启中图标换绿色版（device-detail-icon01-on.png），只在 running 且设备在线时显示 */
 .slideshow-icon-wrap {
   position: relative;
   display: flex;
@@ -365,16 +366,6 @@
   border: 2rpx solid #ffffff;
   border-radius: 50%;
   animation: slideshowOnPulse 1.6s ease-out infinite;
-}
-
-.slideshow-on-tag {
-  padding: 2rpx 10rpx;
-  color: #0e9f87;
-  background: rgba(14, 159, 135, 0.12);
-  border-radius: 999rpx;
-  font-size: 20rpx;
-  font-weight: 600;
-  line-height: 1.4;
 }
 
 @keyframes slideshowOnPulse {

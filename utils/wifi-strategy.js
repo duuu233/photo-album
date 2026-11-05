@@ -12,6 +12,16 @@
 //     每张卡片独立的时间设置、图片组、顺序；每天只有一种卡片生效（纪念日 > 周末 / 工作日 > 基础配置），不做跨卡片时间重叠校验；
 //   · 保存后不再额外 /api/device/play 投第一张（2026-11-05 确认：下发轮播后设备会立刻自动刷屏）。
 //
+// 2026-11-05 修订版 docs/wifi/前端对接文档20261105-1.md（与上一版冲突以它为准）：
+//   · 基础配置做成「简单模式」卡片，带启用开关（默认启用）。关闭 = 不提交基础字段：间隔的 timingTime / beginTime / endTime、
+//     固定的 updateDays / updateTimeList，以及基础的 mode / imgUrls；回显时当前模式的基础字段为空（intervalMinutes / updateDays
+//     为 null、updateTimeList 空）即视为关闭；
+//   · 保存条件：简单模式启用，或至少一张高级卡片启用（工作日 / 周末 enabled、任一纪念日），否则「至少配置一项」、保存按钮置灰；
+//   · 固定模式每 N 天 1~30（原 1~365）；updateDays 只在 updateTimeList 非空时才带。存量配置 > 30 的照样回显，提示调整、不让保存；
+//   · 纪念日只选月日，2 月最多 28 日（服务端拒绝 02-29），4 / 6 / 9 / 11 月 30 日；
+//   · 「下次刷新：MM-dd HH:mm · 卡片类型」（nextRefreshCardType：base 按间隔「每 N 分钟 / 小时」或固定「每天 / 每 N 天」，
+//     对应字段为 null 不带后缀；weekday / weekend / anniversary 为「工作日 / 周末 / 纪念日」）；nextRefreshAt 为 null 整行不显示。
+//
 // 选图（沿用 2026-10-27 起的规则）：
 //   · imgUrls：「我的上传」里选中照片的 imgBle，按选择顺序，最多 100；不传 = 轮播全部相册；**不能传空数组**（服务端回 4000）；
 //   · 开启轮播必须至少选一张（2026-11-05 确认）：基础配置与每张启用的卡片都要选，一张没选不让保存；
@@ -22,6 +32,7 @@ const timeZone = require('./time-zone')
 const UPDATE_INTERVAL = 2
 const UPDATE_FIXED = 1
 const MAX_IMG_URLS = 100
+const MAX_UPDATE_DAYS = 30
 const MAX_TIME_POINTS = 24
 const MIN_TIMING_SECONDS = 600
 const MAX_TIMING_SECONDS = 86400
@@ -31,6 +42,7 @@ const DAY_START = '00:00'
 const DAY_END = '24:00'
 const DEFAULT_FORM = {
   updateType: UPDATE_INTERVAL,
+  simpleEnabled: true, // 简单模式（基础配置）启用开关，默认启用并展开
   timeZone: '',
   beginTime: DAY_START,
   endTime: DAY_END,
@@ -113,8 +125,18 @@ function minutesOf(raw) {
   return INTERVAL_OPTIONS[intervalIndexOf(minutes)]
 }
 
+// 回显：当前模式的基础字段有值才算简单模式启用（关闭时服务端不存基础字段，intervalMinutes / updateDays 回 null）
+function hasBaseConfig(raw, updateType) {
+  const r = raw || {}
+  if (updateType === UPDATE_FIXED) {
+    return normalizeTimes(r.updateTimeList).length > 0
+  }
+  return Number(r.intervalMinutes) > 0 || Number(r.timingTime) > 0
+}
+
 // GET /api/device/strategy → 基础配置表单。没配置过（configured=false）用默认值；
-// 时区：服务端回传了合法 IANA 名就用它（保存后以服务端为准），否则用 fallbackZone（手机时区）
+// 时区：服务端回传了合法 IANA 名就用它（保存后以服务端为准），否则用 fallbackZone（手机时区）。
+// 每 N 天：存量配置可能 > 30（原上限 365），原值回显（页面提示调整，保存时拦下），不悄悄改成别的天数
 function formFromStrategy(strategy, fallbackZone) {
   const s = strategy || {}
   const zone = timeZone.isIana(s.timeZone) ? String(s.timeZone) : String(fallbackZone || timeZone.DEFAULT_ZONE)
@@ -126,11 +148,12 @@ function formFromStrategy(strategy, fallbackZone) {
   const times = normalizeTimes(s.updateTimeList)
   return {
     updateType,
+    simpleEnabled: hasBaseConfig(s, updateType),
     timeZone: zone,
     beginTime: isTime(s.beginTime) ? s.beginTime : DAY_START,
     endTime: isEndTime(s.endTime) ? s.endTime : DAY_END,
     intervalMinutes: minutesOf(s),
-    updateDays: days >= 1 && days <= 365 ? Math.floor(days) : DEFAULT_FORM.updateDays,
+    updateDays: days >= 1 ? Math.floor(days) : DEFAULT_FORM.updateDays,
     updateTimeList: times.length ? times : DEFAULT_FORM.updateTimeList.slice(),
     mode: Number(s.mode) === 2 ? 2 : 1
   }
@@ -234,7 +257,8 @@ function isWholeAlbum(selected, albumUrls) {
 
 // ── 纪念日日期 ─────────────────────────────────────────
 
-const MONTH_DAYS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] // 2 月按 29 天（02-29 只在闰年生效，服务端判断）
+// 2 月最多 28 日（20261105-1 第 7 条：服务端拒绝 02-29，2 月 29 日出生的选 2 月 28 日）
+const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
 function isMonthDay(value) {
   const m = /^(\d{2})-(\d{2})$/.exec(String(value || ''))
@@ -251,6 +275,33 @@ function monthDayLabel(value) {
     return ''
   }
   return `${value.slice(0, 2)}月${value.slice(3, 5)}日`
+}
+
+// 纪念日日期选择器（两列：月 / 日，不选年）。日这一列随月份变：2 月 28 天，4 / 6 / 9 / 11 月 30 天
+const MONTH_LABELS = Array.from({ length: 12 }, (v, i) => `${String(i + 1).padStart(2, '0')}月`)
+
+function dayLabels(month) {
+  const count = MONTH_DAYS[Math.min(12, Math.max(1, Number(month) || 1)) - 1]
+  return Array.from({ length: count }, (v, i) => `${String(i + 1).padStart(2, '0')}日`)
+}
+
+function monthDayColumns(month) {
+  return [MONTH_LABELS, dayLabels(month)]
+}
+
+// MM-dd ↔ 选择器下标 [月, 日]
+function monthDayIndex(value) {
+  if (!isMonthDay(value)) {
+    return [0, 0]
+  }
+  return [Number(value.slice(0, 2)) - 1, Number(value.slice(3, 5)) - 1]
+}
+
+// 下标 → MM-dd；日超过该月天数时落到月末（先滚到 31 日再切到 2 月的情况）
+function monthDayFromIndex(index) {
+  const month = Math.min(12, Math.max(1, (Number(index && index[0]) || 0) + 1))
+  const day = Math.min(MONTH_DAYS[month - 1], Math.max(1, (Number(index && index[1]) || 0) + 1))
+  return `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
 // 新增纪念日的默认日期：从 start（MM-dd，默认 01-01）起找第一个没被占用的日子
@@ -338,10 +389,13 @@ function advancedFromStrategy(strategy, albumUrls) {
 // 页面展示用字段（选择器下标、日期文案、已选张数）
 function decorateCard(card) {
   const c = card || {}
+  const dayIndex = monthDayIndex(c.monthDay)
   return Object.assign({}, c, {
     intervalIndex: intervalIndexOf(c.intervalMinutes),
     endTimeIndex: endTimeIndex(c.endTime),
     monthDayLabel: monthDayLabel(c.monthDay),
+    monthDayIndex: dayIndex,
+    monthDayColumns: monthDayColumns(dayIndex[0] + 1),
     selectedCount: (c.selected || []).length
   })
 }
@@ -361,21 +415,47 @@ function advancedCount(advanced) {
   return (a.weekday && a.weekday.enabled ? 1 : 0) + (a.weekend && a.weekend.enabled ? 1 : 0) + (a.anniversaries || []).length
 }
 
-// 基础配置旁的提示（对接文档 4.2）：只看工作日 / 周末是否启用，纯文字、不阻断保存
+// 简单模式旁的提示（对接文档 4.2）：只看工作日 / 周末是否启用，纯文字、不阻断保存。
+// 20261105-1 起基础配置叫「简单模式」，文案随之改名
 function baseHint(advanced) {
   const a = advanced || {}
   const weekday = !!(a.weekday && a.weekday.enabled)
   const weekend = !!(a.weekend && a.weekend.enabled)
   if (weekday && weekend) {
-    return '工作日与周末均已启用，本配置将不会生效'
+    return '工作日与周末均已启用，简单模式将不会生效'
   }
   if (weekday) {
-    return '工作日已启用独立配置，本配置在工作日不生效'
+    return '工作日已启用独立配置，简单模式在工作日不生效'
   }
   if (weekend) {
-    return '周末已启用独立配置，本配置在周末不生效'
+    return '周末已启用独立配置，简单模式在周末不生效'
   }
   return ''
+}
+
+// 是否有可保存的配置（20261105-1 第 8 条）：简单模式启用，或任一高级卡片启用（工作日 / 周末 enabled、任一纪念日）
+function hasAnyConfig(form, advanced) {
+  const f = form || {}
+  const a = advanced || {}
+  return f.simpleEnabled !== false ||
+    !!(a.weekday && a.weekday.enabled) ||
+    !!(a.weekend && a.weekend.enabled) ||
+    (a.anniversaries || []).length > 0
+}
+
+// 每 N 天合法范围 1~30
+function isUpdateDays(value) {
+  const days = Number(value)
+  return Number.isInteger(days) && days >= 1 && days <= MAX_UPDATE_DAYS
+}
+
+// 存量配置每 N 天 > 30 时的提示（服务端照旧按原值跑，但改任何设置都存不了）：只在简单模式启用时给
+function daysOverHint(form) {
+  const f = form || {}
+  if (f.simpleEnabled === false || !(Number(f.updateDays) > MAX_UPDATE_DAYS)) {
+    return ''
+  }
+  return `当前播放频率为每 ${Number(f.updateDays)} 天，已超过 ${MAX_UPDATE_DAYS} 天上限，请调整后再保存`
 }
 
 // ── 保存 ─────────────────────────────────────────
@@ -460,39 +540,47 @@ function cardPayload(card, updateType) {
 }
 
 // 表单 + 已选 + 高级卡片 → POST /api/device/strategy 的 body。返回 { payload } 或 { error }（给用户看的文案）。
-// albumUrls 传相册里可选的全部照片（网格顺序），用来判断「全部相册」；advanced 不传则不带三类卡片字段
+// albumUrls 传相册里可选的全部照片（网格顺序），用来判断「全部相册」；advanced 不传则不带三类卡片字段。
+// 简单模式关闭（form.simpleEnabled === false）时基础字段、基础 mode / imgUrls 一律不带，此时至少要启用一张高级卡片
 function buildPayload(deviceNo, form, selected, albumUrls, advanced) {
   const f = form || {}
   const updateType = Number(f.updateType) === UPDATE_FIXED ? UPDATE_FIXED : UPDATE_INTERVAL
   if (!timeZone.isIana(f.timeZone)) {
     return { error: '请选择时区' }
   }
+  if (!hasAnyConfig(f, advanced)) {
+    return { error: '至少配置一项' }
+  }
   const payload = {
     deviceNo,
     updateType,
-    timeZone: String(f.timeZone),
-    mode: Number(f.mode) === 2 ? 2 : 1
+    timeZone: String(f.timeZone)
   }
-  const days = Number(f.updateDays)
-  const daysOk = days >= 1 && days <= 365
-  if (updateType === UPDATE_FIXED && !daysOk) {
-    return { error: '每隔天数需在 1~365 之间' }
-  }
-  const groups = bothGroups(f, updateType)
-  if (groups.error) {
-    return { error: groups.error }
-  }
-  Object.assign(payload, groups.value)
-  if (daysOk) {
-    payload.updateDays = Math.floor(days)
-  }
-  const urls = (selected || []).filter(Boolean)
-  const photos = photoError(urls)
-  if (photos) {
-    return { error: photos }
-  }
-  if (!isWholeAlbum(urls, albumUrls)) {
-    payload.imgUrls = urls.slice()
+  if (f.simpleEnabled !== false) {
+    const daysOk = isUpdateDays(f.updateDays)
+    if (updateType === UPDATE_FIXED && !daysOk) {
+      return { error: `每隔天数需在 1~${MAX_UPDATE_DAYS} 之间，请调整播放频率` }
+    }
+    const groups = bothGroups(f, updateType)
+    if (groups.error) {
+      return { error: groups.error }
+    }
+    const value = Object.assign({}, groups.value)
+    // updateDays 只跟着 updateTimeList 走（20261105-1 第 8 条）；天数不合法时固定那组整组不带（间隔模式下）
+    if (value.updateTimeList && daysOk) {
+      value.updateDays = Number(f.updateDays)
+    } else {
+      delete value.updateTimeList
+    }
+    const urls = (selected || []).filter(Boolean)
+    const photos = photoError(urls)
+    if (photos) {
+      return { error: photos }
+    }
+    Object.assign(payload, { mode: Number(f.mode) === 2 ? 2 : 1 }, value)
+    if (!isWholeAlbum(urls, albumUrls)) {
+      payload.imgUrls = urls.slice()
+    }
   }
   if (advanced) {
     const weekday = cardPayload(Object.assign({}, advanced.weekday, { kind: CARD_WEEKDAY }), updateType)
@@ -525,14 +613,69 @@ function buildPayload(deviceNo, form, selected, albumUrls, advanced) {
   return { payload }
 }
 
-// 「下次刷新：2026-11-05 10:41」：nextRefreshAt（yyyy-MM-dd HH:mm:ss）去掉秒，没有返回 ''
-function nextRefreshText(value) {
+// 时间文案：yyyy-MM-dd HH:mm:ss → 'MM-dd HH:mm'（short）或 'yyyy-MM-dd HH:mm'；认不出原样返回，空返回 ''
+function timeText(value, short) {
   const text = String(value || '').trim()
   if (!text) {
     return ''
   }
-  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/.exec(text)
-  return m ? `${m[1]} ${m[2]}` : text
+  const m = /^(\d{4})-(\d{2}-\d{2})[ T](\d{2}:\d{2})/.exec(text)
+  if (!m) {
+    return text
+  }
+  return short ? `${m[2]} ${m[3]}` : `${m[1]}-${m[2]} ${m[3]}`
+}
+
+// 「下次刷新」的时间：MM-dd HH:mm（20261105-1 第 5 条示例「11-06 08:00」）
+function nextRefreshText(value) {
+  return timeText(value, true)
+}
+
+// 「设置时间：2026-11-05 21:43」：updatedAt 去掉秒
+function updatedAtText(value) {
+  return timeText(value, false)
+}
+
+// 「下次刷新」后面的卡片类型（20261105-1 第 5 条 / 3.3）。base 按当前轮播方式：
+// 间隔取 intervalMinutes「每 N 分钟 / 每 N 小时」，固定取 updateDays「每天 / 每 N 天」；对应字段为 null 不带后缀
+function nextRefreshCardText(config) {
+  const c = config || {}
+  const type = String(c.nextRefreshCardType || '')
+  if (type === 'weekday') {
+    return '工作日'
+  }
+  if (type === 'weekend') {
+    return '周末'
+  }
+  if (type === 'anniversary') {
+    return '纪念日'
+  }
+  if (type !== 'base') {
+    return ''
+  }
+  if (Number(c.updateType) === UPDATE_FIXED) {
+    if (c.updateDays === null || c.updateDays === undefined || !(Number(c.updateDays) >= 1)) {
+      return ''
+    }
+    const days = Number(c.updateDays)
+    return days === 1 ? '每天' : `每 ${days} 天`
+  }
+  if (c.intervalMinutes === null || c.intervalMinutes === undefined || !(Number(c.intervalMinutes) > 0)) {
+    return ''
+  }
+  const minutes = Number(c.intervalMinutes)
+  return minutes >= 60 && minutes % 60 === 0 ? `每 ${minutes / 60} 小时` : `每 ${minutes} 分钟`
+}
+
+// 「下次刷新：11-06 08:00 · 工作日」冒号后的部分；nextRefreshAt 为 null 返回 ''（整行不显示）
+function nextRefreshLine(config) {
+  const c = config || {}
+  const time = nextRefreshText(c.nextRefreshAt)
+  if (!time) {
+    return ''
+  }
+  const card = nextRefreshCardText(c)
+  return card ? `${time} · ${card}` : time
 }
 
 // 保存失败的提示：4000（参数错误，含超过 100 张）给明确文案，其余返回 '' 由页面按通用错误处理
@@ -552,6 +695,7 @@ module.exports = {
   UPDATE_INTERVAL,
   UPDATE_FIXED,
   MAX_IMG_URLS,
+  MAX_UPDATE_DAYS,
   MAX_TIME_POINTS,
   MIN_TIMING_SECONDS,
   MAX_TIMING_SECONDS,
@@ -570,6 +714,7 @@ module.exports = {
   endTimeFromIndex,
   intervalIndexOf,
   intervalLabel,
+  hasBaseConfig,
   formFromStrategy,
   selectionFromStrategy,
   selectionFromCard,
@@ -580,6 +725,10 @@ module.exports = {
   isWholeAlbum,
   isMonthDay,
   monthDayLabel,
+  MONTH_DAYS,
+  monthDayColumns,
+  monthDayIndex,
+  monthDayFromIndex,
   nextFreeMonthDay,
   defaultCard,
   cardFromStrategy,
@@ -588,10 +737,16 @@ module.exports = {
   decorateAdvanced,
   advancedCount,
   baseHint,
+  hasAnyConfig,
+  isUpdateDays,
+  daysOverHint,
   intervalGroup,
   fixedGroup,
   cardPayload,
   buildPayload,
   nextRefreshText,
+  updatedAtText,
+  nextRefreshCardText,
+  nextRefreshLine,
   saveErrorText
 }

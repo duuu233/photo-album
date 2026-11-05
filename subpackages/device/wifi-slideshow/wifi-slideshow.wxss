@@ -100,6 +100,10 @@
   font-size: 28rpx;
 }
 
+.ws-row--last {
+  border-bottom: none;
+}
+
 .ws-row--top {
   align-items: flex-start;
   padding: 22rpx 0;
@@ -145,27 +149,31 @@
   text-align: center;
 }
 
+/* 选图网格（2026-11-05 20261105-1 第 1 条）：每行 3 张，格子同「我的上传」（album/list .photo-grid / .photo-tile：
+   间距 14rpx、高 210rpx、圆角 22rpx、浅蓝底，图片 aspectFit 完整显示） */
 .ws-grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 14rpx;
   margin-top: 24rpx;
 }
 
 .ws-tile {
   position: relative;
-  box-sizing: border-box;
-  width: calc((100% - 42rpx) / 4);
-  height: 0;
-  padding-bottom: calc((100% - 42rpx) / 4);
+  height: 210rpx;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.6);
-  border: 4rpx solid transparent;
-  border-radius: 16rpx;
+  background: #d7e7f8;
+  border-radius: 22rpx;
 }
 
-.ws-tile.is-selected {
-  border-color: #ff6a20;
+/* 分页尾：横跨三列 */
+.ws-grid__more {
+  grid-column: 1 / -1;
+  padding: 18rpx 0 6rpx;
+  color: #8a9bb0;
+  font-size: 24rpx;
+  line-height: 34rpx;
+  text-align: center;
 }
 
 /* 选满 100 张后未选的置灰（点了提示先取消部分照片） */
@@ -181,22 +189,22 @@
   height: 100%;
 }
 
-/* 右上角圆圈：选中后显示选择顺序（= 轮播顺序） */
+/* 右上角圆圈（位置大小同「我的上传」的选择圈）：选中后橙底显示选择顺序（= 轮播顺序） */
 .ws-tile__badge {
   position: absolute;
-  top: 8rpx;
-  right: 8rpx;
+  top: 14rpx;
+  right: 14rpx;
   box-sizing: border-box;
-  min-width: 36rpx;
-  height: 36rpx;
+  min-width: 42rpx;
+  height: 42rpx;
   padding: 0 8rpx;
   color: #ffffff;
-  background: rgba(0, 0, 0, 0.25);
-  border: 2rpx solid #ffffff;
+  background: rgba(255, 255, 255, 0.14);
+  border: 3rpx solid rgba(255, 255, 255, 0.88);
   border-radius: 999rpx;
   font-size: 22rpx;
   font-weight: 700;
-  line-height: 32rpx;
+  line-height: 36rpx;
   text-align: center;
 }
 
@@ -242,6 +250,12 @@
 .ws-primary.is-busy,
 .ws-text-btn.is-busy {
   opacity: 0.6;
+}
+
+/* 简单模式与高级卡片都没启用：保存置灰（点了只提示「至少配置一项」） */
+.ws-primary.is-disabled {
+  background: #c9cdd3;
+  box-shadow: none;
 }
 
 .ws-error {
@@ -366,6 +380,8 @@
   padding: 36rpx 36rpx calc(28rpx + var(--safe-bottom));
   background: #ffffff;
   border-radius: 32rpx 32rpx 0 0;
+  /* 从下往上滑入（20261105-1 第 1 条，全局 popSheetSlideUp）；退场挂 .pop-closing-sheet */
+  animation: popSheetSlideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .ws-sheet__head {
@@ -424,11 +440,6 @@
 .ws-zone__label {
   color: #33373d;
   font-size: 28rpx;
-}
-
-.ws-zone__zh {
-  color: #9ba2ad;
-  font-size: 24rpx;
 }
 
 .ws-zone.is-active .ws-zone__label {

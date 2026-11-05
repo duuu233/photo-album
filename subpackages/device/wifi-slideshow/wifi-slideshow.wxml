@@ -23,7 +23,7 @@
     </view>
   </view>
   <view class="ws-row" hover-class="none" data-card="{{cardKey}}" data-index="{{cardIndex}}" bindtap="openCardPhotos">
-    <text>播放照片</text>
+    <text>轮播照片</text>
     <text class="ws-row__value">{{card.selectedCount ? '已选 ' + card.selectedCount + ' 张' : '选择照片'}} ›</text>
   </view>
   <view wx:if="{{card.hint}}" class="ws-hint">{{card.hint}}</view>
@@ -60,7 +60,8 @@
         <text class="ws-title">轮播状态</text>
         <text class="ws-state {{running ? 'is-on' : ''}}">{{running ? '轮播中' : (configured ? '已暂停' : '未设置')}}</text>
       </view>
-      <view wx:if="{{updatedAt}}" class="ws-sub">最后设置 {{updatedAt}}</view>
+      <!-- 「设置时间：」与「下次刷新：」同一格式（20261105-1 第 4 条）；下次刷新带卡片类型，nextRefreshAt 为空整行不显示 -->
+      <view wx:if="{{updatedAt}}" class="ws-sub">设置时间：{{updatedAt}}</view>
       <view wx:if="{{running && nextRefresh}}" class="ws-sub ws-next">下次刷新：{{nextRefresh}}</view>
 
       <view class="ws-title ws-title--gap">轮播方式</view>
@@ -68,64 +69,66 @@
         <view class="ws-segment__item {{form.updateType === 2 ? 'is-active' : ''}}" hover-class="none" data-value="2" bindtap="chooseUpdateType">间隔时间</view>
         <view class="ws-segment__item {{form.updateType === 1 ? 'is-active' : ''}}" hover-class="none" data-value="1" bindtap="chooseUpdateType">固定时间</view>
       </view>
-      <!-- 工作日 / 周末启用了独立配置时的提示（纯文字，不阻断保存） -->
-      <view wx:if="{{baseHint}}" class="ws-base-hint">{{baseHint}}</view>
 
-      <view class="ws-row" hover-class="none" bindtap="openZoneSheet">
+      <view class="ws-row ws-row--last" hover-class="none" bindtap="openZoneSheet">
         <text>时区</text>
         <text class="ws-row__value">{{timeZoneLabel}} ▾</text>
       </view>
-
-      <block wx:if="{{form.updateType === 2}}">
-        <picker mode="time" value="{{form.beginTime}}" bindchange="changeBeginTime">
-          <view class="ws-row"><text>开始时间</text><text class="ws-row__value">{{form.beginTime}}</text></view>
-        </picker>
-        <picker mode="multiSelector" range="{{endTimeColumns}}" value="{{endTimeIndex}}" bindchange="changeEndTime">
-          <view class="ws-row"><text>结束时间</text><text class="ws-row__value">{{form.endTime}}</text></view>
-        </picker>
-        <picker mode="selector" range="{{intervalLabels}}" value="{{intervalIndex}}" bindchange="changeInterval">
-          <view class="ws-row"><text>每隔</text><text class="ws-row__value">{{intervalLabels[intervalIndex]}} 换一张</text></view>
-        </picker>
-      </block>
-      <block wx:else>
-        <picker mode="selector" range="{{dayOptions}}" value="{{form.updateDays - 1}}" bindchange="changeDays">
-          <view class="ws-row"><text>每隔</text><text class="ws-row__value">{{form.updateDays}} 天</text></view>
-        </picker>
-        <view class="ws-row ws-row--top">
-          <text>更新时间</text>
-          <view class="ws-times">
-            <view wx:for="{{form.updateTimeList}}" wx:key="*this" class="ws-time" hover-class="none" data-value="{{item}}" bindtap="removeTime">{{item}} ×</view>
-            <picker mode="time" value="{{newTime}}" bindchange="addTime">
-              <view class="ws-time ws-time--add">+ 添加</view>
-            </picker>
-          </view>
-        </view>
-      </block>
-
-      <view class="ws-title ws-title--gap">播放顺序</view>
-      <view class="ws-segment">
-        <view class="ws-segment__item {{form.mode === 1 ? 'is-active' : ''}}" hover-class="none" data-value="1" bindtap="chooseMode">顺序播放</view>
-        <view class="ws-segment__item {{form.mode === 2 ? 'is-active' : ''}}" hover-class="none" data-value="2" bindtap="chooseMode">随机播放</view>
-      </view>
     </view>
 
+    <!-- 简单模式（20261105-1 第 9 条）：原基础配置做成卡片，带启用开关，默认启用并展开；关闭后基础字段不提交 -->
     <view class="ws-card glass-panel">
       <view class="ws-head">
-        <text class="ws-title">轮播照片</text>
-        <view wx:if="{{tiles.length}}" class="ws-select-all" hover-class="none" bindtap="toggleAll">{{allSelected ? '取消全选' : '全选'}}</view>
+        <text class="ws-title">简单模式</text>
+        <switch checked="{{form.simpleEnabled}}" color="#ff6a20" bindchange="toggleSimple" />
       </view>
-      <view class="ws-sub">从「我的上传」选择，按选择顺序轮播；全选即轮播全部照片（含之后新上传的）。至少选择 1 张，最多 {{maxCount}} 张</view>
-      <view class="ws-count {{selectedCount >= maxCount ? 'is-full' : ''}}">已选 {{selectedCount}}/{{maxCount}}</view>
-      <view wx:if="{{selectionHint}}" class="ws-hint">{{selectionHint}}</view>
+      <!-- 工作日 / 周末启用了独立配置时的提示（纯文字，不阻断保存） -->
+      <view wx:if="{{form.simpleEnabled && baseHint}}" class="ws-base-hint">{{baseHint}}</view>
+      <block wx:if="{{form.simpleEnabled}}">
+        <block wx:if="{{form.updateType === 2}}">
+          <picker mode="time" value="{{form.beginTime}}" bindchange="changeBeginTime">
+            <view class="ws-row"><text>开始时间</text><text class="ws-row__value">{{form.beginTime}}</text></view>
+          </picker>
+          <picker mode="multiSelector" range="{{endTimeColumns}}" value="{{endTimeIndex}}" bindchange="changeEndTime">
+            <view class="ws-row"><text>结束时间</text><text class="ws-row__value">{{form.endTime}}</text></view>
+          </picker>
+          <picker mode="selector" range="{{intervalLabels}}" value="{{intervalIndex}}" bindchange="changeInterval">
+            <view class="ws-row"><text>每隔</text><text class="ws-row__value">{{intervalLabels[intervalIndex]}} 换一张</text></view>
+          </picker>
+        </block>
+        <block wx:else>
+          <!-- 每 N 天 1~30（20261105-1 第 6 条）；存量 > 30 原值显示并提示调整 -->
+          <picker mode="selector" range="{{dayOptions}}" value="{{form.updateDays > dayOptions.length ? dayOptions.length - 1 : form.updateDays - 1}}" bindchange="changeDays">
+            <view class="ws-row"><text>播放频率</text><text class="ws-row__value">{{form.updateDays === 1 ? '每天' : '每 ' + form.updateDays + ' 天'}}</text></view>
+          </picker>
+          <view wx:if="{{daysHint}}" class="ws-hint">{{daysHint}}</view>
+          <view class="ws-row ws-row--top">
+            <text>播放时间</text>
+            <view class="ws-times">
+              <view wx:for="{{form.updateTimeList}}" wx:key="*this" class="ws-time" hover-class="none" data-value="{{item}}" bindtap="removeTime">{{item}} ×</view>
+              <picker mode="time" value="{{newTime}}" bindchange="addTime">
+                <view class="ws-time ws-time--add">+ 添加</view>
+              </picker>
+            </view>
+          </view>
+        </block>
 
-      <view wx:if="{{photosError}}" class="ws-empty">「我的上传」加载失败，请返回重试</view>
-      <view wx:elif="{{!tiles.length}}" class="ws-empty">还没有可轮播的照片，先投屏几张吧</view>
-      <view wx:else class="ws-grid">
-        <view wx:for="{{tiles}}" wx:key="id" class="ws-tile {{item.order ? 'is-selected' : ''}} {{item.disabled ? 'is-disabled' : ''}}" hover-class="none" data-url="{{item.url}}" bindtap="toggleTile">
-          <image wx:if="{{item.thumb}}" class="ws-tile__img" src="{{item.thumb}}" mode="aspectFill" lazy-load></image>
-          <view class="ws-tile__badge">{{item.order || ''}}</view>
+        <!-- 轮播照片（20261105-1 第 1 条）：不再在页面里铺开，与高级卡片同一个选图弹层 -->
+        <view class="ws-row" hover-class="none" bindtap="openBasePhotos">
+          <text>轮播照片</text>
+          <text class="ws-row__value">{{selectedCount ? '已选 ' + selectedCount + ' 张' : '选择照片'}} ›</text>
         </view>
-      </view>
+        <view wx:if="{{photosError}}" class="ws-hint">「我的上传」加载失败，请返回重试</view>
+        <view wx:elif="{{!photoCount}}" class="ws-hint">还没有可轮播的照片，先投屏几张吧</view>
+        <view wx:if="{{selectionHint}}" class="ws-hint">{{selectionHint}}</view>
+
+        <view class="ws-title ws-title--gap">播放顺序</view>
+        <view class="ws-segment">
+          <view class="ws-segment__item {{form.mode === 1 ? 'is-active' : ''}}" hover-class="none" data-value="1" bindtap="chooseMode">顺序播放</view>
+          <view class="ws-segment__item {{form.mode === 2 ? 'is-active' : ''}}" hover-class="none" data-value="2" bindtap="chooseMode">随机播放</view>
+        </view>
+      </block>
+      <view wx:else class="ws-sub">已关闭：简单模式的时间与照片不会保存，需至少启用一张高级卡片（工作日 / 周末 / 纪念日）</view>
     </view>
 
     <!-- 高级设置：同页展开 / 收起（进页默认收起、不持久化），收起时数据保留 -->
@@ -137,7 +140,7 @@
           <text class="ws-title">工作日</text>
           <switch checked="{{advanced.weekday.enabled}}" color="#ff6a20" data-card="weekday" bindchange="toggleCardEnabled" />
         </view>
-        <view class="ws-sub">周一至周五按这张卡片轮播，启用后基础配置在工作日不生效</view>
+        <view class="ws-sub">周一至周五按这张卡片轮播，启用后简单模式在工作日不生效</view>
         <block wx:if="{{advanced.weekday.enabled}}">
           <template is="cardBody" data="{{ card: advanced.weekday, cardKey: 'weekday', cardIndex: 0, updateType: form.updateType, intervalLabels: intervalLabels, endTimeColumns: endTimeColumns }}" />
         </block>
@@ -148,7 +151,7 @@
           <text class="ws-title">周末</text>
           <switch checked="{{advanced.weekend.enabled}}" color="#ff6a20" data-card="weekend" bindchange="toggleCardEnabled" />
         </view>
-        <view class="ws-sub">周六、周日按这张卡片轮播，启用后基础配置在周末不生效</view>
+        <view class="ws-sub">周六、周日按这张卡片轮播，启用后简单模式在周末不生效</view>
         <block wx:if="{{advanced.weekend.enabled}}">
           <template is="cardBody" data="{{ card: advanced.weekend, cardKey: 'weekend', cardIndex: 0, updateType: form.updateType, intervalLabels: intervalLabels, endTimeColumns: endTimeColumns }}" />
         </block>
@@ -159,10 +162,11 @@
           <text class="ws-title">纪念日</text>
           <text class="ws-tag">当天独占</text>
         </view>
-        <view class="ws-sub">纪念日当天只按该纪念日卡片轮播，工作日 / 周末 / 基础配置当天都不执行；只支持公历，02月29日只在闰年生效</view>
+        <view class="ws-sub">纪念日当天只按该纪念日卡片轮播，工作日 / 周末 / 简单模式当天都不执行；只支持公历，只选月和日</view>
         <view wx:for="{{advanced.anniversaries}}" wx:key="monthDay" class="ws-anniv">
           <view class="ws-anniv__head">
-            <picker mode="date" fields="day" start="{{annivYear}}-01-01" end="{{annivYear}}-12-31" value="{{annivYear}}-{{item.monthDay}}" data-card="anniversary" data-index="{{index}}" bindchange="changeAnnivDate">
+            <!-- 只选月 / 日（20261105-1 第 7 条）：日这一列随月份变，2 月最多 28 日 -->
+            <picker mode="multiSelector" range="{{item.monthDayColumns}}" value="{{item.monthDayIndex}}" data-card="anniversary" data-index="{{index}}" bindcolumnchange="changeAnnivColumn" bindcancel="cancelAnnivDate" bindchange="changeAnnivDate">
               <view class="ws-anniv__date">{{item.monthDayLabel}} ▾</view>
             </picker>
             <text class="ws-anniv__remove" hover-class="none" data-index="{{index}}" bindtap="removeAnniversary">删除</text>
@@ -176,23 +180,23 @@
 
   <view wx:if="{{!loading && !loadError}}" class="ws-actions">
     <view wx:if="{{running}}" class="ws-text-btn {{stopping ? 'is-busy' : ''}}" hover-class="none" bindtap="stop">{{stopping ? '暂停中…' : '暂停轮播'}}</view>
-    <view class="ws-primary {{saving ? 'is-busy' : ''}}" hover-class="none" bindtap="save">{{saving ? '保存中…' : '保存并开始轮播'}}</view>
+    <!-- 简单模式与高级卡片都没启用时置灰（20261105-1 第 8 条），点了提示「至少配置一项」 -->
+    <view class="ws-primary {{saving ? 'is-busy' : ''}} {{canSave ? '' : 'is-disabled'}}" hover-class="none" bindtap="save">{{saving ? '保存中…' : '保存并开始轮播'}}</view>
   </view>
 
-  <!-- 时区选择：分组列表 + 搜索 -->
+  <!-- 时区选择：分组列表 + 搜索；每行只有一段按语种的文字（20261105-1 第 2 条），提交的仍是 IANA 名 -->
   <view wx:if="{{zoneSheet.show}}" class="ws-mask" bindtap="closeZoneSheet">
-    <view class="ws-sheet" catchtap="noop">
+    <view class="ws-sheet {{zoneSheet.closing ? 'pop-closing-sheet' : ''}}" catchtap="noop">
       <view class="ws-sheet__head">
         <text class="ws-sheet__title">选择时区</text>
         <text class="ws-sheet__close" hover-class="none" bindtap="closeZoneSheet">关闭</text>
       </view>
-      <input class="ws-search" placeholder="搜索时区或城市，如 Tokyo / 东京" value="{{zoneSheet.keyword}}" bindinput="searchZone" />
+      <input class="ws-search" placeholder="搜索国家或城市，如 东京 / Tokyo" value="{{zoneSheet.keyword}}" bindinput="searchZone" />
       <scroll-view scroll-y class="ws-sheet__body">
         <block wx:for="{{zoneSheet.list}}" wx:key="id">
           <view wx:if="{{item.showGroup}}" class="ws-zone-group">{{item.group}}</view>
           <view class="ws-zone {{item.id === form.timeZone ? 'is-active' : ''}}" hover-class="none" data-id="{{item.id}}" bindtap="pickZone">
             <text class="ws-zone__label">{{item.label}}</text>
-            <text wx:if="{{item.zh}}" class="ws-zone__zh">{{item.zh}}</text>
           </view>
         </block>
         <view wx:if="{{!zoneSheet.list.length}}" class="ws-empty">没有匹配的时区</view>
@@ -200,20 +204,23 @@
     </view>
   </view>
 
-  <!-- 高级卡片选图：与基础配置同一套网格，按点选顺序轮播 -->
+  <!-- 选图弹层（简单模式与高级卡片共用，20261105-1 第 1 条）：从下往上滑入；每行 3 张（同「我的上传」样式），
+       每页 21 张、滑到底显示下一页；按点选顺序轮播，最多 100 张 -->
   <view wx:if="{{photoSheet.show}}" class="ws-mask" bindtap="closePhotoSheet">
-    <view class="ws-sheet" catchtap="noop">
+    <view class="ws-sheet {{photoSheet.closing ? 'pop-closing-sheet' : ''}}" catchtap="noop">
       <view class="ws-sheet__head">
         <text class="ws-sheet__title">{{photoSheet.title}}</text>
         <text class="ws-select-all" hover-class="none" bindtap="sheetToggleAll">{{photoSheet.allSelected ? '取消全选' : '全选'}}</text>
       </view>
       <view class="ws-count {{photoSheet.count >= maxCount ? 'is-full' : ''}}">已选 {{photoSheet.count}}/{{maxCount}}（至少 1 张，按选择顺序轮播）</view>
-      <scroll-view scroll-y class="ws-sheet__body">
+      <scroll-view scroll-y class="ws-sheet__body" lower-threshold="120" bindscrolltolower="sheetLoadMore">
         <view class="ws-grid">
           <view wx:for="{{photoSheet.tiles}}" wx:key="id" class="ws-tile {{item.order ? 'is-selected' : ''}} {{item.disabled ? 'is-disabled' : ''}}" hover-class="none" data-url="{{item.url}}" bindtap="sheetToggleTile">
-            <image wx:if="{{item.thumb}}" class="ws-tile__img" src="{{item.thumb}}" mode="aspectFill" lazy-load></image>
+            <image wx:if="{{item.thumb}}" class="ws-tile__img" src="{{item.thumb}}" mode="aspectFit" lazy-load></image>
             <view class="ws-tile__badge">{{item.order || ''}}</view>
           </view>
+          <!-- 分页尾：只有一页时不显示 -->
+          <view wx:if="{{photoSheet.total > photoSheet.tiles.length || photoSheet.total > 21}}" class="ws-grid__more">{{photoSheet.total > photoSheet.tiles.length ? '上拉加载更多' : '没有更多了'}}</view>
         </view>
       </scroll-view>
       <view class="ws-sheet__actions">

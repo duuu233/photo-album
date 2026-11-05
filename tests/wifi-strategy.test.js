@@ -13,6 +13,9 @@
 //   · idle 废弃不再传、页面去掉「轮播后休眠」；间隔 / 固定两组参数都带（切换不清空另一方）；
 //   · 保存后不再额外 /api/device/play 投第一张（设备收到轮播会立刻自动刷屏），firstImageUrl 已删除；
 //   · 高级卡片（工作日 / 周末 / 纪念日）与「至少一张照片」见文件末尾两组。
+// 2026-11-05 修订版 docs/wifi/前端对接文档20261105-1.md 的口径变化（相关断言就地注明，新增用例见最后一组）：
+//   · 基础配置叫「简单模式」、可关闭；每 N 天上限 30（原 365）；纪念日 2 月最多 28 日（原 02-29 可选）；
+//   · 「下次刷新」改 MM-dd HH:mm 并带卡片类型；选图统一走弹层（每行 3 张、每页 21 张）。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -44,7 +47,8 @@ const plain = value => JSON.parse(JSON.stringify(value))
   assert.equal(s.buildPayload('x', fixed, [], album).error, '请至少选择一张照片', '不选不让保存，绝不提交空数组')
   // 2026-11-05：文案改为「时间点」（固定时间点的校验与高级卡片共用）
   assert.equal(s.buildPayload('x', Object.assign({}, fixed, { updateTimeList: [] }), ['u1'], album).error, '请至少添加一个时间点')
-  assert.equal(s.buildPayload('x', Object.assign({}, fixed, { updateDays: 366 }), ['u1'], album).error, '每隔天数需在 1~365 之间')
+  // 20261105-1 第 6 条：上限由 365 改为 30（原用例 366 改为 31）
+  assert.equal(s.buildPayload('x', Object.assign({}, fixed, { updateDays: 31 }), ['u1'], album).error, '每隔天数需在 1~30 之间，请调整播放频率')
   assert.equal(s.buildPayload('x', Object.assign({}, form, { beginTime: '' }), ['u1'], album).error, '请选择轮播开始和结束时间')
   assert.equal(s.buildPayload('x', Object.assign({}, form, { intervalMinutes: 5 }), ['u1'], album).error, '轮播间隔需在 10 分钟到 24 小时之间', '9 分钟 / 5 分钟不能提交')
   assert.equal(s.buildPayload('x', Object.assign({}, form, { intervalMinutes: 1440 }), ['u1'], album).payload.timingTime, 86400, '24 小时可以')
@@ -154,14 +158,16 @@ const plain = value => JSON.parse(JSON.stringify(value))
   assert.ok(/strategy\.saveErrorText\(error, built\.payload\)/.test(page), '4000 走明确提示')
   assert.ok(/最多选择 \$\{strategy\.MAX_IMG_URLS\} 张，请先取消部分照片/.test(page), '选满点未选的提示')
   const tpl = fs.readFileSync(path.join(root, 'subpackages/device/wifi-slideshow/wifi-slideshow.wxml'), 'utf8')
-  assert.ok(/已选 \{\{selectedCount\}\}\/\{\{maxCount\}\}/.test(tpl), '显示已选 X/100')
+  // 20261105-1 第 1 条：简单模式的照片也改为弹层选，「已选 X/100」挪到弹层里
+  assert.ok(/已选 \{\{photoSheet\.count\}\}\/\{\{maxCount\}\}/.test(tpl), '显示已选 X/100')
   assert.ok(/item\.disabled \? 'is-disabled'/.test(tpl), '选满后未选的置灰')
   assert.equal(tpl.indexOf('toggleIdle'), -1, '去掉「轮播后休眠」开关')
   assert.equal(tpl.indexOf('轮播后休眠'), -1)
   assert.ok(/bindtap="openZoneSheet"/.test(tpl) && /\{\{timeZoneLabel\}\}/.test(tpl), '时区控件')
   assert.ok(/mode="multiSelector" range="\{\{endTimeColumns\}\}"/.test(tpl), '结束时间可选 24:00')
   assert.ok(/下次刷新：\{\{nextRefresh\}\}/.test(tpl), '下次刷新一行')
-  assert.ok(/wx:if="\{\{baseHint\}\}" class="ws-base-hint"/.test(tpl), '基础配置旁的提示')
+  // 20261105-1 第 9 条：提示挪进简单模式卡片，只在简单模式启用时显示
+  assert.ok(/wx:if="\{\{form\.simpleEnabled && baseHint\}\}" class="ws-base-hint"/.test(tpl), '简单模式旁的提示')
   assert.ok(/bindtap="toggleAdvanced"/.test(tpl) && /<block wx:if="\{\{advancedOpen\}\}">/.test(tpl), '高级设置展开 / 收起')
   assert.ok(/当天独占/.test(tpl) && /bindtap="addAnniversary"/.test(tpl), '纪念日卡片')
   const css = fs.readFileSync(path.join(root, 'subpackages/device/wifi-slideshow/wifi-slideshow.wxss'), 'utf8')
@@ -225,14 +231,17 @@ const plain = value => JSON.parse(JSON.stringify(value))
   const overlap = s.buildPayload('D0', Object.assign({}, base, { updateType: 1, updateTimeList: ['08:00'] }), ['a'], album, adv)
   assert.ok(overlap.payload, '时间点跨卡片重复不拦')
 
-  assert.equal(s.baseHint(adv), '工作日已启用独立配置，本配置在工作日不生效')
-  assert.equal(s.baseHint(Object.assign({}, adv, { weekday: { enabled: false }, weekend: { enabled: true } })), '周末已启用独立配置，本配置在周末不生效')
-  assert.equal(s.baseHint(Object.assign({}, adv, { weekend: { enabled: true } })), '工作日与周末均已启用，本配置将不会生效')
+  // 20261105-1：基础配置改叫「简单模式」，三档文案里的「本配置」随之改名
+  assert.equal(s.baseHint(adv), '工作日已启用独立配置，简单模式在工作日不生效')
+  assert.equal(s.baseHint(Object.assign({}, adv, { weekday: { enabled: false }, weekend: { enabled: true } })), '周末已启用独立配置，简单模式在周末不生效')
+  assert.equal(s.baseHint(Object.assign({}, adv, { weekend: { enabled: true } })), '工作日与周末均已启用，简单模式将不会生效')
   assert.equal(s.baseHint(Object.assign({}, adv, { weekday: { enabled: false } })), '', '只有纪念日不提示')
   checked('高级卡片：回显、提交、至少一张、重复日期、三档提示')
 }
 {
-  assert.equal(s.isMonthDay('02-29'), true, '02-29 可选（闰年生效）')
+  // 20261105-1 第 7 条：服务端拒绝 02-29，2 月最多 28 日（原「02-29 可选」作废）
+  assert.equal(s.isMonthDay('02-29'), false, '02-29 不可选')
+  assert.equal(s.isMonthDay('02-28'), true)
   assert.equal(s.isMonthDay('02-30'), false)
   assert.equal(s.isMonthDay('4-1'), false)
   assert.equal(s.monthDayLabel('10-20'), '10月20日')
@@ -242,8 +251,103 @@ const plain = value => JSON.parse(JSON.stringify(value))
   assert.equal(s.endTimeFromIndex([24, 30]), '24:00', '选 24 时分钟归零')
   assert.equal(s.endTimeFromIndex([8, 5]), '08:05')
   assert.equal(s.END_TIME_COLUMNS[0].length, 25, '时 00~24')
-  assert.equal(s.nextRefreshText('2026-11-05 10:41:20'), '2026-11-05 10:41', '下次刷新去掉秒')
+  // 20261105-1 第 5 条：下次刷新改为 MM-dd HH:mm（示例「11-06 08:00」）
+  assert.equal(s.nextRefreshText('2026-11-05 10:41:20'), '11-05 10:41', '下次刷新：月日 + 时分')
   assert.equal(s.nextRefreshText(null), '')
   checked('纪念日日期、结束时间 24:00、下次刷新')
+}
+{
+  // 2026-11-05 修订版 20261105-1：简单模式开关、保存条件、每 N 天 30、纪念日月日、下次刷新卡片类型
+  const album = ['a', 'b', 'c']
+  const base = Object.assign({}, s.DEFAULT_FORM, { timeZone: 'Asia/Shanghai' })
+  assert.equal(s.DEFAULT_FORM.simpleEnabled, true, '简单模式默认启用')
+  const adv = s.advancedFromStrategy({ weekday: { enabled: true, updateTimeList: ['08:00'], timingTime: 900, imgUrls: ['a'] } }, album)
+  const none = s.advancedFromStrategy(null, album)
+
+  // 第 9 条：关闭 = 基础字段、基础 mode / imgUrls 一律不提交
+  const off = Object.assign({}, base, { simpleEnabled: false })
+  const offPayload = s.buildPayload('D0', off, ['a'], album, adv).payload
+  ;['timingTime', 'beginTime', 'endTime', 'updateDays', 'updateTimeList', 'mode', 'imgUrls'].forEach(key => {
+    assert.equal(key in offPayload, false, `简单模式关闭不提交 ${key}`)
+  })
+  assert.deepEqual([offPayload.deviceNo, offPayload.updateType, offPayload.timeZone], ['D0', 2, 'Asia/Shanghai'], '顶层照带')
+  assert.equal(offPayload.weekday.enabled, true)
+  assert.equal(offPayload.weekday.timingTime, 900, '间隔模式下高级卡片自带起止时间 + 间隔')
+  assert.equal(s.buildPayload('D0', Object.assign({}, off, { updateType: 1 }), [], album, adv).payload.updateDays, undefined, '固定模式关闭：updateDays 也不带，不选照片也能存')
+  // 第 8 条：简单模式与高级卡片任一启用才能保存
+  assert.equal(s.buildPayload('D0', off, ['a'], album, none).error, '至少配置一项', '都没启用：不让保存')
+  assert.equal(s.buildPayload('D0', off, ['a'], album).error, '至少配置一项', '不带高级卡片且简单模式关闭')
+  assert.equal(s.hasAnyConfig(off, none), false)
+  assert.equal(s.hasAnyConfig(base, none), true)
+  assert.equal(s.hasAnyConfig(off, adv), true)
+  assert.equal(s.hasAnyConfig(off, Object.assign({}, none, { anniversaries: [s.defaultCard(s.CARD_ANNIVERSARY, '10-20')] })), true, '有纪念日也算')
+
+  // 回显：当前模式的基础字段为空 = 简单模式关闭
+  assert.equal(s.formFromStrategy({ configured: true, updateType: 2, intervalMinutes: null, updateDays: null }).simpleEnabled, false, '间隔模式 intervalMinutes 为 null')
+  assert.equal(s.formFromStrategy({ configured: true, updateType: 1, updateDays: null, updateTimeList: [] }).simpleEnabled, false, '固定模式时间点为空')
+  assert.equal(s.formFromStrategy({ configured: true, updateType: 2, intervalMinutes: 30 }).simpleEnabled, true)
+  assert.equal(s.formFromStrategy({ configured: true, updateType: 1, updateDays: 2, updateTimeList: ['08:00'] }).simpleEnabled, true)
+  assert.equal(s.formFromStrategy({ configured: false }).simpleEnabled, true, '没配置过默认启用')
+
+  // 第 6 条：1~30；存量 > 30 原值回显 + 提示，保存拦下
+  const fixed = Object.assign({}, base, { updateType: 1, updateTimeList: ['08:00'] })
+  assert.equal(s.buildPayload('D0', Object.assign({}, fixed, { updateDays: 30 }), ['a'], album).payload.updateDays, 30, '30 天可以')
+  assert.equal(s.MAX_UPDATE_DAYS, 30)
+  const legacy = s.formFromStrategy({ configured: true, updateType: 1, updateDays: 45, updateTimeList: ['08:00'] })
+  assert.equal(legacy.updateDays, 45, '存量 45 天原值回显')
+  assert.equal(s.daysOverHint(legacy), '当前播放频率为每 45 天，已超过 30 天上限，请调整后再保存')
+  assert.equal(s.daysOverHint(Object.assign({}, legacy, { simpleEnabled: false })), '', '简单模式关闭不提示')
+  assert.equal(s.daysOverHint(Object.assign({}, legacy, { updateDays: 7 })), '')
+  assert.ok(/1~30/.test(s.buildPayload('D0', Object.assign({}, legacy, { timeZone: 'Asia/Shanghai' }), ['a'], album).error), '存量 > 30 存不了')
+  const intervalLegacy = s.buildPayload('D0', Object.assign({}, legacy, { timeZone: 'Asia/Shanghai', updateType: 2 }), ['a'], album).payload
+  assert.equal('updateDays' in intervalLegacy || 'updateTimeList' in intervalLegacy, false, '间隔模式下天数不合法：固定那组整组不带')
+
+  // 第 7 条：纪念日只选月日，日随月份变
+  assert.equal(s.MONTH_DAYS[1], 28, '2 月 28 天')
+  assert.equal(s.monthDayColumns(2)[1].length, 28)
+  assert.equal(s.monthDayColumns(4)[1].length, 30)
+  assert.equal(s.monthDayColumns(12)[1].length, 31)
+  assert.equal(s.monthDayColumns(1)[0].length, 12, '月 12 个，没有年')
+  assert.deepEqual(plain(s.monthDayIndex('10-20')), [9, 19])
+  assert.equal(s.monthDayFromIndex([9, 19]), '10-20')
+  assert.equal(s.monthDayFromIndex([1, 30]), '02-28', '先滚到 31 日再切 2 月：落到 28 日')
+  assert.equal(s.monthDayFromIndex([3, 30]), '04-30')
+  assert.equal(s.isMonthDay('04-31'), false)
+  const decorated = s.decorateCard(s.defaultCard(s.CARD_ANNIVERSARY, '02-10'))
+  assert.equal(decorated.monthDayColumns[1].length, 28, '卡片带当月的日列')
+  assert.deepEqual(plain(decorated.monthDayIndex), [1, 9])
+
+  // 第 5 条：下次刷新 · 卡片类型
+  const at = '2026-11-06 08:00:00'
+  assert.equal(s.nextRefreshLine({ nextRefreshAt: at, nextRefreshCardType: 'weekday' }), '11-06 08:00 · 工作日')
+  assert.equal(s.nextRefreshLine({ nextRefreshAt: at, nextRefreshCardType: 'weekend' }), '11-06 08:00 · 周末')
+  assert.equal(s.nextRefreshLine({ nextRefreshAt: at, nextRefreshCardType: 'anniversary', nextRefreshCardMonthDay: '11-06' }), '11-06 08:00 · 纪念日')
+  assert.equal(s.nextRefreshLine({ nextRefreshAt: at, nextRefreshCardType: 'base', updateType: 2, intervalMinutes: 30 }), '11-06 08:00 · 每 30 分钟')
+  assert.equal(s.nextRefreshLine({ nextRefreshAt: at, nextRefreshCardType: 'base', updateType: 2, intervalMinutes: 120 }), '11-06 08:00 · 每 2 小时')
+  assert.equal(s.nextRefreshLine({ nextRefreshAt: at, nextRefreshCardType: 'base', updateType: 1, updateDays: 1 }), '11-06 08:00 · 每天', 'updateDays=1 显示每天')
+  assert.equal(s.nextRefreshLine({ nextRefreshAt: at, nextRefreshCardType: 'base', updateType: 1, updateDays: 3 }), '11-06 08:00 · 每 3 天')
+  assert.equal(s.nextRefreshLine({ nextRefreshAt: at, nextRefreshCardType: 'base', updateType: 2, intervalMinutes: null }), '11-06 08:00', 'intervalMinutes 为 null 不带后缀')
+  assert.equal(s.nextRefreshLine({ nextRefreshAt: at, nextRefreshCardType: 'base', updateType: 1, updateDays: null }), '11-06 08:00', 'updateDays 为 null 不带后缀')
+  assert.equal(s.nextRefreshLine({ nextRefreshAt: null, nextRefreshCardType: 'weekday' }), '', 'nextRefreshAt 为 null 整行不显示')
+  assert.equal(s.nextRefreshLine({ nextRefreshAt: at }), '11-06 08:00', '没有卡片类型只显示时间')
+  assert.equal(s.updatedAtText('2026-11-05 21:43:10'), '2026-11-05 21:43', '设置时间去掉秒')
+
+  // 页面
+  const tpl = fs.readFileSync(path.join(root, 'subpackages/device/wifi-slideshow/wifi-slideshow.wxml'), 'utf8')
+  const page = fs.readFileSync(path.join(root, 'subpackages/device/wifi-slideshow/wifi-slideshow.js'), 'utf8')
+  const css = fs.readFileSync(path.join(root, 'subpackages/device/wifi-slideshow/wifi-slideshow.wxss'), 'utf8')
+  assert.ok(/<text class="ws-title">简单模式<\/text>\s*<switch checked="\{\{form\.simpleEnabled\}\}"[^>]*bindchange="toggleSimple"/.test(tpl), '简单模式卡片带启用开关')
+  assert.ok(/设置时间：\{\{updatedAt\}\}/.test(tpl) && tpl.indexOf('最后设置') === -1, '「设置时间：」')
+  assert.ok(/bindtap="openBasePhotos"/.test(tpl) && tpl.indexOf('bindtap="toggleTile"') === -1, '简单模式照片不再默认展开，走弹层')
+  assert.ok(/bindscrolltolower="sheetLoadMore"/.test(tpl), '弹层滑到底加载下一页')
+  assert.ok(/const PHOTO_PAGE_SIZE = 21/.test(page) && /pageSize: PHOTO_PAGE_SIZE/.test(page), '每页 21 张')
+  assert.ok(/\.ws-grid \{[^}]*grid-template-columns: repeat\(3, 1fr\)/.test(css), '每行 3 张')
+  assert.ok(/\.ws-sheet \{[^}]*animation: popSheetSlideUp/.test(css) && /photoSheet\.closing \? 'pop-closing-sheet'/.test(tpl), '弹层从下往上滑入、下滑退场')
+  assert.ok(/\{\{canSave \? '' : 'is-disabled'\}\}/.test(tpl) && /\.ws-primary\.is-disabled \{/.test(css), '都没启用时保存置灰')
+  assert.ok(tpl.indexOf('02月29日') === -1 && tpl.indexOf('闰年') === -1, '删掉「02月29日只在闰年生效」')
+  assert.ok(/range="\{\{item\.monthDayColumns\}\}"[^>]*bindcolumnchange="changeAnnivColumn"/.test(tpl) && tpl.indexOf('mode="date"') === -1, '纪念日只选月日')
+  assert.ok(/wx:if="\{\{daysHint\}\}"/.test(tpl), '存量 > 30 天提示')
+  assert.ok(tpl.indexOf('ws-zone__zh') === -1, '时区列表每行只有一段文字')
+  checked('20261105-1：简单模式、保存条件、每 N 天 30、纪念日月日、下次刷新卡片类型、选图弹层')
 }
 console.log(`wifi-strategy: ${checks} groups passed`)
