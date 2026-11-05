@@ -83,12 +83,15 @@ async function main() {
   {
     const names = { '37:0B:00:D0:44:5A': '客厅相框', 'E3:48:C2:1E:D4:28': '书房WiFi' }
     const { page, finish } = loadBindPage(names)
+    assert.equal(page.data.namesLoading, true, '进页面时名称处先显示 loading')
     page.loadBoundNames()
-    // 名称还没回来：先按广播名显示
+    // 名称还没回来：行数据里是广播名，但模板按 namesLoading 显示 loading，不先露出广播名（2026-11-05）
     page.applyScanResult(1, [bleRow('h1', 'EB-169', '37:0B:00:D0:44:5A'), wifiRow('h2', 'E348C21ED428'), bleRow('h3', 'EF6-589', 'AA:BB:CC:DD:EE:01')])
     assert.deepEqual(page.data.devices.map(item => item.title || item.name), ['EB-169', 'IJ_E348C21ED428', 'EF6-589'])
+    assert.equal(page.data.namesLoading, true, '名称没回来前保持 loading')
     finish()
     await flush()
+    assert.equal(page.data.namesLoading, false, '名称回来后结束 loading')
     assert.deepEqual(page.data.devices.map(item => item.title || item.name), ['客厅相框', '书房WiFi', 'EF6-589'], '名称回来后补到已搜到的行上；没绑定过的仍显示广播名')
     assert.deepEqual(page.data.devices.map(item => item.name), ['EB-169', 'IJ_E348C21ED428', 'EF6-589'], 'name 仍是广播名，绑定逻辑不受影响')
     page.applyScanResult(1, [bleRow('h1', 'EB-169', '37:0B:00:D0:44:5A'), bleRow('h4', 'EB-169', '370B00D0')])
@@ -96,10 +99,25 @@ async function main() {
     checked('搜索列表标题：用户名下的名称优先，没有显示广播名')
   }
   {
+    // 名称先于扫描结果回来（列表还空）也要结束 loading，否则之后搜到的行一直转圈
+    const { page, finish } = loadBindPage({})
+    page.loadBoundNames()
+    finish()
+    await flush()
+    assert.equal(page.data.namesLoading, false, '列表为空时名称回来也结束 loading')
+    page.applyScanResult(1, [bleRow('h1', 'EB-169', 'AA:BB:CC:DD:EE:02')])
+    assert.deepEqual(page.data.devices.map(item => item.title || item.name), ['EB-169'], '没绑定过的显示广播名')
+    checked('名称先回来：结束 loading，之后的行直接显示')
+  }
+  {
     const tpl = fs.readFileSync(path.join(root, 'subpackages/device/bind/bind.wxml'), 'utf8')
-    assert.ok(/<text class="nearby-name">\{\{item\.title \|\| item\.name\}\}<\/text>/.test(tpl), '列表标题优先 title')
+    // 2026-11-05：名称查回来前显示 loading，原「<text class="nearby-name">」改为 wx:else 分支（判据「标题优先 title」不变）
+    assert.ok(/<view wx:if="\{\{namesLoading\}\}" class="nearby-name nearby-name--loading"><view class="spec-spinner"><\/view><\/view>\s*<text wx:else class="nearby-name">\{\{item\.title \|\| item\.name\}\}<\/text>/.test(tpl), '列表标题优先 title，查询中显示 loading')
     const source = fs.readFileSync(path.join(root, 'subpackages/device/bind/bind.js'), 'utf8')
     assert.ok(/this\.loadProductCatalog\(\)\n    this\.loadBoundNames\(\)\n    this\.scan\(\)/.test(source), '进页面与扫描并行拉名称')
+    assert.ok(/const BOUND_NAMES_WAIT_MS = 5000/.test(source) && /setTimeout\(\(\) => \{\n      if \(!this\.boundNames && !this\.unloaded && this\.data\.namesLoading\) \{\n        this\.setData\(\{ namesLoading: false \}\)/.test(source), '最多等 5 秒，超时先显示广播名')
+    const css = fs.readFileSync(path.join(root, 'subpackages/device/bind/bind.wxss'), 'utf8')
+    assert.ok(/\.nearby-name--loading \{[^}]*height: 44rpx/.test(css), 'loading 占一行名称高度，切换时行高不变')
     checked('模板与进页加载')
   }
   console.log(`bind-bound-name: ${checks} groups passed`)

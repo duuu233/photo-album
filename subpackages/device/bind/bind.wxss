@@ -259,6 +259,19 @@
   white-space: nowrap;
 }
 
+/* 名称查询中（2026-11-05）：占一行名称的高度，左侧小圆圈转圈，查回来后换成名称，行高不变 */
+.nearby-name--loading {
+  display: flex;
+  align-items: center;
+  height: 44rpx;
+}
+
+.nearby-name--loading .spec-spinner {
+  width: 28rpx;
+  height: 28rpx;
+  border-width: 4rpx;
+}
+
 /* 通信类型标签（2026-10-27 起在第二行、把尺寸包进来，如「WiFi版·5.89寸」）：始终完整露出，后面的电量 / 信号过长才被截。
    标签 28rpx 高，不超过副标题一行的行高（22rpx × 1.2~1.4 ≈ 26~31rpx），卡片高度与 4.5 张的推算基本不变。 */
 .comm-badge {

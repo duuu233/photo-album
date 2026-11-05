@@ -29,6 +29,8 @@ const SCAN_TIMEOUT_MS = 20000
 // 选中后不走蓝牙绑定，而是按 getProductByDevice 查规格：查到进 WiFi 配网，查不到 / 失败为「未知设备」，禁止连接。
 const COMM_WIFI = 'WIFI'
 const UNKNOWN_WIFI_DEVICE_MESSAGE = '未知设备，请联系客服开通'
+// 用户设备名称最多等这么久（2026-11-05）：等的时候名称处转圈，超时先显示广播名，结果晚到仍补上
+const BOUND_NAMES_WAIT_MS = 5000
 
 // 未知设备提示里带上「为什么没查到」（接口失败 / 返回为空 / 返回里没有产品 ID 等，见 api.lookupProductByDevice）：
 // 开发版 / 体验版显示，方便联调；正式版只给「未知设备，请联系客服开通」
@@ -66,7 +68,9 @@ Page(fold.adapt({
     // 调试台入口是否显示。**只有开发版(develop)为 true**，体验版(trial)与正式版(release)
     // 一律 false——调试台能对设备发任意指令（含删除图片类）且整页未接多语言，不能暴露给
     // 最终用户，体验版是要发给外部人试用的，同样不能留。见 utils/system.isDevEnv。
-    showDebugEntry: false
+    showDebugEntry: false,
+    // 用户设备名称还没查回来：列表名称处显示 loading，查回来再一次性显示（2026-11-05，避免先显示广播名再跳成用户名称）
+    namesLoading: true
   },
 
   onLoad() {
@@ -80,14 +84,26 @@ Page(fold.adapt({
   // 搜索列表标题（2026-11-04 产品口径）：这台设备在当前用户名下有名称（以前绑定时起的 / 改过的）就显示该名称，
   // 优先级最高；没有才显示蓝牙广播名。按完整 6 字节设备ID 匹配（蓝牙版取广播里的设备ID，WiFi 版取广播名解析出的 deviceNo）。
   // 只影响列表显示（单独的 title 字段），行里的 name 仍是广播名——绑定时的产品匹配、默认昵称、设备图都照旧用它。
-  // 与扫描并行拉取，回来后补到已搜到的行上；拉不到就全部显示广播名。
+  // 与扫描并行拉取，回来后补到已搜到的行上；拉不到（接口失败返回空表）就全部显示广播名。
+  // 查回来之前名称处显示 loading（namesLoading），不先显示广播名再跳（2026-11-05）；
+  // 最多等 BOUND_NAMES_WAIT_MS，超时先显示广播名，结果晚到仍补上。
   loadBoundNames() {
+    setTimeout(() => {
+      if (!this.boundNames && !this.unloaded && this.data.namesLoading) {
+        this.setData({ namesLoading: false })
+      }
+    }, BOUND_NAMES_WAIT_MS)
     api.getBoundDeviceNames().then(names => {
       this.boundNames = names || {}
-      if (this.unloaded || !this.data.devices.length) {
+      if (this.unloaded) {
+        return
+      }
+      if (!this.data.devices.length) {
+        this.setData({ namesLoading: false })
         return
       }
       this.setData({
+        namesLoading: false,
         devices: this.data.devices.map(item => Object.assign({}, item, { title: this.boundTitle(item) }))
       })
     })
