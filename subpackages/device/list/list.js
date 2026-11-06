@@ -58,9 +58,11 @@ Page(fold.adapt(tapGuard.wrap({
     showMediaSheet: false, // 「拍照/相册」选择弹层是否展示（点某台设备的「投屏」后弹出）
     mediaSheetClosing: false, // 选择弹层是否正在播放退场动画
     reorderingDeviceId: '',
-    // 分组（2026-10-27）：WiFi 版 / 蓝牙版各几台，决定分组标题是否显示；卡片仍按 devices 渲染
+    // WiFi 版 / 蓝牙版各几台（2026-10-27 起）：2026-11-06 改 Tab 后用于「共 N 台设备」与当前 Tab 是否空态；卡片仍按 devices 渲染
     wifiCount: 0,
     bleCount: 0,
+    // 当前 Tab（2026-11-06）：'wifi' / 'ble'。用户点过之前每次加载按 defaultDeviceTab 选，点过之后保持不变
+    deviceTab: 'wifi',
     renameVisible: false,
     renameDeviceId: '',
     renameValue: '',
@@ -69,6 +71,34 @@ Page(fold.adapt(tapGuard.wrap({
   },
 
   noop() {},
+
+  // 默认 Tab（2026-11-06）：选相框模式只能选蓝牙版，优先蓝牙版；普通模式 WiFi 版在前（同原分组顺序）。
+  // 优先的那类没有设备而另一类有，就落到有设备的那一类；两类都没有落在优先那类（显示空态 + 添加）
+  defaultDeviceTab(wifiCount, bleCount) {
+    const preferred = this.data.selectMode ? 'ble' : 'wifi'
+    const preferredCount = preferred === 'wifi' ? wifiCount : bleCount
+    const otherCount = preferred === 'wifi' ? bleCount : wifiCount
+    if (!preferredCount && otherCount) {
+      return preferred === 'wifi' ? 'ble' : 'wifi'
+    }
+    return preferred
+  },
+
+  // 点 Tab：本地按 isWifi 过滤，不重新请求；切过去回到页面顶部（与投屏记录页一样点击即切）
+  switchDeviceTab(e) {
+    const tab = e.currentTarget.dataset.tab
+    if (tab !== 'wifi' && tab !== 'ble') {
+      return
+    }
+    this.deviceTabChosen = true
+    if (tab === this.data.deviceTab) {
+      return
+    }
+    this.setData({ deviceTab: tab })
+    if (wx.pageScrollTo) {
+      wx.pageScrollTo({ scrollTop: 0, duration: 0 })
+    }
+  },
 
   onLoad(options) {
     this.setSystemMetrics()
@@ -192,10 +222,12 @@ Page(fold.adapt(tapGuard.wrap({
         : Object.assign({}, item, { isWifi: false })
     })
     const wifiCount = nextDevices.filter(item => item.isWifi).length
+    const bleCount = nextDevices.length - wifiCount
     this.setData({
       devices: nextDevices,
       wifiCount,
-      bleCount: nextDevices.length - wifiCount,
+      bleCount,
+      deviceTab: this.deviceTabChosen ? this.data.deviceTab : this.defaultDeviceTab(wifiCount, bleCount),
       selectedId: selected ? selected.id : '',
       loading: false,
       loadError: false

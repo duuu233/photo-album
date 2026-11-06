@@ -1,12 +1,118 @@
-/* 顶部添加按钮：右对齐到与下方卡片相同的内容边缘 */
-.device-toolbar {
+/* ── 顶部 Tab 栏（2026-11-06）：左 WiFi版 / 蓝牙版 Tab，右添加按钮（原 .device-toolbar 只放添加按钮，已并入）。
+   Tab 样式与交互照投屏记录页 .record-tabs：白色胶囊底 + 橙色滑动指示器，切到蓝牙版时指示器平移一格 ── */
+.device-tab-bar {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 24rpx;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.device-tabs {
+  position: relative;
+  display: flex;
+  flex: 1;
+  height: 82rpx;
+  padding: 8rpx;
+  background: rgba(255, 255, 255, 0.84);
+  border-radius: 999rpx;
+  box-shadow: 0 16rpx 38rpx rgba(126, 150, 184, 0.08);
+}
+
+.device-tabs__indicator {
+  position: absolute;
+  top: 8rpx;
+  bottom: 8rpx;
+  left: 8rpx;
+  z-index: 0;
+  width: calc(50% - 8rpx);
+  border-radius: 999rpx;
+  background-color: #ff6a20;
+  box-shadow: 0 10rpx 24rpx rgba(255, 106, 32, 0.32);
+  transition: transform 0.36s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.device-tabs--ble .device-tabs__indicator {
+  transform: translateX(100%);
+}
+
+.device-tab {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 66rpx;
+  color: #858b94;
+  background: transparent;
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  transition: color 0.32s ease;
+}
+
+.device-tab.is-active {
+  color: #ffffff;
+}
+
+/* 与投屏记录页 .record-count 同款：Tab 下方「共 N 台设备」 */
+.device-count {
+  margin: 36rpx 0 18rpx;
+  color: #777e88;
+  font-size: 24rpx;
+  line-height: 1;
+}
+
+/* ── 当前 Tab 没有设备：默认设备图 + 右下角加号，整块点击进搜索设备页 ── */
+.empty-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 36rpx;
+  padding: 56rpx 36rpx 64rpx;
+  text-align: center;
+}
+
+.empty-tab--hover {
+  opacity: 0.82;
+}
+
+.empty-tab__art {
+  position: relative;
+  width: 360rpx;
+  height: 284rpx;
+}
+
+.empty-tab__img {
+  width: 100%;
+  height: 100%;
+}
+
+.empty-tab__plus {
+  position: absolute;
+  right: 36rpx;
+  bottom: 24rpx;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  box-shadow: 0 12rpx 24rpx rgba(255, 102, 31, 0.24);
+}
+
+.empty-tab__title {
+  margin-top: 20rpx;
+  color: #2a2d32;
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.empty-tab__desc {
+  margin-top: 12rpx;
+  color: #ff6a20;
+  font-size: 26rpx;
 }
 
 .device-add-btn {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   width: 64rpx;
@@ -263,27 +369,7 @@
   height: 40rpx;
 }
 
-/* ── 分组标题（2026-10-27）：WiFi 版 / 蓝牙版，图标沿用搜索列表的通信类型角标 ── */
-.device-group-title {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-  padding: 0 8rpx;
-  color: #4a5059;
-  font-size: 28rpx;
-  font-weight: 600;
-  line-height: 1;
-}
-
-/* 两组之间多留一点距离（列表本身 gap 24rpx） */
-.device-group-title--gap {
-  margin-top: 16rpx;
-}
-
-.device-group-title__icon {
-  width: 30rpx;
-  height: 30rpx;
-}
+/* 分组标题 .device-group-title（2026-10-27）已于 2026-11-06 删除：WiFi 版 / 蓝牙版改由顶部 Tab 区分 */
 
 /* ── WiFi 版卡片：在线青绿（与 WiFi版 角标同色）、休眠中蓝、离线 / 未知灰 ── */
 .wifi-state {

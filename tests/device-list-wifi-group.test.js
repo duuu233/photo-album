@@ -4,6 +4,9 @@
 //   ③ WiFi 版按钮：投屏不连蓝牙、直接弹拍照 / 相册（离线先拦）；轮播设置进 WiFi 轮播页（V1.4 取代原「刷新状态」，不拦离线）；
 //      点卡片进 WiFi 详情；选相框模式不让选 WiFi 版；
 //   ④ 模板：两组标题按数量显示，WiFi 卡用 WiFi 按钮，蓝牙卡仍是「投屏 / 连接」原样；
+//      2026-11-06 有意改动：上下分组改为顶部 Tab 切换（同投屏记录页 record-tabs），分组标题删掉；
+//      原「WiFi 版在前 / 有设备才显示该组」挪到 Tab 上：WiFi版 Tab 在前、默认 Tab 落在有设备的那一类；
+//      当前 Tab 没设备显示默认设备图 + 加号，整块点击进搜索设备页（goBind → bind）；
 //   ⑤ 状态推送（2026-10-27，utils/wifi-watch）：只订阅 WiFi 版（去冒号），收到 device.status 只重查那一台，
 //      长连接重连成功全部重查，onHide 退订并不再响应；已被别处订阅的不重复订阅、不替它退订。
 const assert = require('node:assert/strict')
@@ -200,16 +203,53 @@ async function main() {
     const { page, state } = loadListPage({ devices: [{ id: '9', name: '蓝牙', broadcastId: 'EB-169', productDeviceId: 'AA:BB:CC:DD:EE:09' }] })
     await page.loadDevices()
     assert.deepEqual(state.subs, [], '纯蓝牙版用户不订阅、不建长连接')
-    assert.equal(page.data.wifiCount, 0, '没有 WiFi 版就不出 WiFi 版标题')
+    assert.equal(page.data.wifiCount, 0, '没有 WiFi 版')
     assert.equal(page.data.bleCount, 1)
-    checked('只有蓝牙版时 WiFi 组不显示')
+    // 2026-11-06：原「不出 WiFi 版标题」改为 Tab 后，判据挪到默认 Tab——没有 WiFi 版就直接落在蓝牙版，不让用户先看空态
+    assert.equal(page.data.deviceTab, 'ble', '只有蓝牙版时默认落在蓝牙版 Tab')
+    checked('只有蓝牙版时默认蓝牙版 Tab')
+  }
+  {
+    // Tab（2026-11-06）：默认 WiFi 版在前；点过之后重新加载保持；两类都没有落在 WiFi 版（空态）；选相框模式优先蓝牙版
+    const { page, state } = loadListPage()
+    await page.loadDevices()
+    assert.equal(page.data.deviceTab, 'wifi', '两类都有：默认 WiFi 版')
+    page.switchDeviceTab({ currentTarget: { dataset: { tab: 'ble' } } })
+    assert.equal(page.data.deviceTab, 'ble', '点蓝牙版切过去')
+    await page.loadDevices()
+    assert.equal(page.data.deviceTab, 'ble', '用户点过 Tab，onShow 重拉列表不重置')
+    page.switchDeviceTab({ currentTarget: { dataset: { tab: 'x' } } })
+    assert.equal(page.data.deviceTab, 'ble', '非法 Tab 不理')
+    assert.deepEqual(state.navs, [], '切 Tab 不跳页')
+    const empty = loadListPage({ devices: [] })
+    await empty.page.loadDevices()
+    assert.equal(empty.page.data.deviceTab, 'wifi', '没有设备：落在 WiFi 版，显示空态')
+    empty.page.goBind()
+    assert.deepEqual(empty.state.navs, ['/subpackages/device/bind/bind'], '空态点击进搜索设备页')
+    const wifiOnly = loadListPage({ devices: [{ id: '1', name: 'WiFi', broadcastId: 'IJ_*', productDeviceId: 'E3:48:C2:1E:D4:28' }] })
+    await wifiOnly.page.loadDevices()
+    assert.equal(wifiOnly.page.data.deviceTab, 'wifi')
+    const select = loadListPage()
+    select.page.data.selectMode = true
+    await select.page.loadDevices()
+    assert.equal(select.page.data.deviceTab, 'ble', '选相框模式（只能选蓝牙版）优先蓝牙版')
+    checked('Tab：默认 / 切换 / 重载保持 / 空态 / 选相框模式')
   }
   {
     const tpl = fs.readFileSync(path.join(root, 'subpackages/device/list/list.wxml'), 'utf8')
-    assert.ok(/wx:if="\{\{wifiCount\}\}" class="device-group-title"/.test(tpl), 'WiFi 版标题按数量显示')
-    assert.ok(/wx:if="\{\{bleCount\}\}" class="device-group-title/.test(tpl), '蓝牙版标题按数量显示')
-    assert.ok(tpl.indexOf('WiFi版</text>') < tpl.indexOf('蓝牙版</text>'), 'WiFi 版在前')
-    const wifiCard = tpl.slice(tpl.indexOf('wx:if="{{item.isWifi}}"'), tpl.indexOf('蓝牙版</text>'))
+    // 2026-11-06：分组标题改 Tab，「按数量显示」挪到当前 Tab 有无设备决定列表 / 空态，「WiFi 版在前」挪到 Tab 顺序
+    assert.equal(tpl.indexOf('device-group-title'), -1, '分组标题已删（改 Tab）')
+    assert.ok(/data-tab="wifi" bindtap="switchDeviceTab">WiFi版<\/view>/.test(tpl) && /data-tab="ble" bindtap="switchDeviceTab">蓝牙版<\/view>/.test(tpl), '两个 Tab')
+    assert.ok(tpl.indexOf('data-tab="wifi"') < tpl.indexOf('data-tab="ble"'), 'WiFi版 Tab 在前')
+    assert.ok(/class="device-tabs device-tabs--\{\{deviceTab\}\}"/.test(tpl) && /class="device-tabs__indicator"/.test(tpl), '滑动指示器按当前 Tab 定位')
+    assert.ok(/wx:if="\{\{deviceTab === 'wifi' \? wifiCount : bleCount\}\}" class="device-list"/.test(tpl), '当前 Tab 有设备才出列表')
+    const emptyTab = tpl.slice(tpl.indexOf('class="empty-tab glass-panel"'))
+    assert.ok(/^class="empty-tab glass-panel"[^>]*bindtap="goBind"/.test(emptyTab), '空态整块点击进搜索设备页')
+    assert.ok(/empty_device_art\.png/.test(emptyTab) && /home-add-icon\.png/.test(emptyTab), '空态：默认设备图 + 加号')
+    assert.ok(/wx:else class="empty-tab glass-panel"/.test(tpl), '空态是列表的 wx:else')
+    const bleStart = tpl.indexOf('wx:if="{{!item.isWifi}}"')
+    const wifiCard = tpl.slice(tpl.indexOf('wx:if="{{item.isWifi}}"'), bleStart)
+    assert.ok(tpl.lastIndexOf("deviceTab === 'wifi'}}", tpl.indexOf('wx:if="{{item.isWifi}}"')) > -1, 'WiFi 卡只在 WiFi版 Tab 下渲染')
     assert.ok(/catchtap="startWifiProjection"/.test(wifiCard) && /catchtap="openWifiSlideshow"/.test(wifiCard), 'WiFi 卡：投屏 + 轮播设置')
     assert.ok(/<text>轮播设置<\/text>/.test(wifiCard) && wifiCard.indexOf('刷新状态</text>') === -1, '按钮文案改为轮播设置')
     assert.equal(wifiCard.indexOf('toggleConnection'), -1, 'WiFi 卡没有蓝牙连接 / 断开')
@@ -217,7 +257,11 @@ async function main() {
     assert.ok(/catchtap="startProjection"/.test(bleCard) && /catchtap="toggleConnection"/.test(bleCard), '蓝牙卡按钮不变：投屏 + 连接 / 断开')
     const json = JSON.parse(fs.readFileSync(path.join(root, 'subpackages/device/list/list.json'), 'utf8'))
     assert.equal(json.usingComponents['signal-bars'], '/components/signal-bars/signal-bars')
-    checked('模板：分组标题、WiFi 卡按钮、蓝牙卡按钮不变')
+    const css = fs.readFileSync(path.join(root, 'subpackages/device/list/list.wxss'), 'utf8')
+    assert.ok(/\.device-tabs--ble \.device-tabs__indicator \{[^}]*translateX\(100%\)/.test(css), '切到蓝牙版指示器平移一格')
+    assert.ok(/\.device-tab\.is-active \{[^}]*color: #ffffff/.test(css), '选中 Tab 白字')
+    assert.ok(/\.empty-tab__plus \{[^}]*position: absolute/.test(css), '加号压在设备图右下')
+    checked('模板：Tab、空态、WiFi 卡按钮、蓝牙卡按钮不变')
   }
   console.log(`device-list-wifi-group: ${checks} groups passed`)
 }

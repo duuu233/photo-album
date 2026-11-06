@@ -6,12 +6,6 @@
   <page-nav title="{{selectMode ? '选择相框' : '我的设备'}}"></page-nav>
 
   <view class="mock-content device-content">
-    <view class="device-toolbar" wx:if="{{!loading && devices.length}}">
-      <view class="device-add-btn" hover-class="device-add-btn--hover" aria-label="添加设备" bindtap="goBind">
-        <image class="device-add-btn__icon" src="/assets/images/home-add-icon.png" mode="aspectFit"></image>
-      </view>
-    </view>
-
     <!-- 加载中：等接口返回再决定展示设备列表还是空态，避免空态先闪一下 -->
     <view wx:if="{{loading}}" class="page-loading">
       <view class="page-loading__spinner"></view>
@@ -28,13 +22,26 @@
       <view class="empty-device__btn" hover-class="none" bindtap="retryLoad">重新加载</view>
     </view>
 
-    <!-- 按 WiFi 版 / 蓝牙版分组展示（2026-10-27）：WiFi 版在前；某组没有设备就不出该组标题。
-         两组都遍历同一份 devices（各自按 isWifi 过滤），连接 / 投屏 / 改名等原有逻辑都按 devices 找设备，不受分组影响。 -->
-    <view wx:elif="{{devices.length}}" class="device-list">
-      <view wx:if="{{wifiCount}}" class="device-group-title">
-        <image class="device-group-title__icon" src="/assets/images/badge-wifi.svg" mode="aspectFit"></image>
-        <text>WiFi版</text>
+    <!-- WiFi 版 / 蓝牙版改为 Tab 切换（2026-11-06，样式与交互同投屏记录页 record-tabs：胶囊底 + 滑动橙色指示器，点击即切）。
+         取代 2026-10-27 的上下分组标题；两个 Tab 都遍历同一份 devices（各自按 isWifi 过滤），本地切换不重新请求，
+         连接 / 投屏 / 改名等原有逻辑都按 devices 找设备，不受 Tab 影响。右侧添加按钮常驻（原只在有设备时显示）。
+         当前 Tab 没有设备时显示默认设备图 + 加号，整块点击进搜索设备页（goBind）。 -->
+    <block wx:else>
+    <view class="device-tab-bar">
+      <view class="device-tabs device-tabs--{{deviceTab}}">
+        <view class="device-tabs__indicator"></view>
+        <view class="device-tab {{deviceTab === 'wifi' ? 'is-active' : ''}}" hover-class="none" data-tab="wifi" bindtap="switchDeviceTab">WiFi版</view>
+        <view class="device-tab {{deviceTab === 'ble' ? 'is-active' : ''}}" hover-class="none" data-tab="ble" bindtap="switchDeviceTab">蓝牙版</view>
       </view>
+      <view class="device-add-btn" hover-class="device-add-btn--hover" aria-label="添加设备" bindtap="goBind">
+        <image class="device-add-btn__icon" src="/assets/images/home-add-icon.png" mode="aspectFit"></image>
+      </view>
+    </view>
+
+    <view wx:if="{{deviceTab === 'wifi' ? wifiCount : bleCount}}" class="device-count">共 {{deviceTab === 'wifi' ? wifiCount : bleCount}} 台设备</view>
+
+    <view wx:if="{{deviceTab === 'wifi' ? wifiCount : bleCount}}" class="device-list">
+      <block wx:if="{{deviceTab === 'wifi'}}">
       <block wx:for="{{devices}}" wx:key="id" wx:for-index="index">
         <!-- WiFi 版卡片（2026-10-27）：不走蓝牙，状态来自 IoT 设备信息（在线 / 信号 / 电量）；
              按钮：投屏、轮播设置（V1.4 更新说明 1.5：原「刷新状态」改为「轮播设置」，状态只在进页时查一次，本页没有下拉刷新）。设备图、改名同蓝牙版。 -->
@@ -51,7 +58,7 @@
                   <image class="edit-name-icon" src="/assets/images/edit-icon01.png" mode="aspectFit"></image>
                 </view>
               </view>
-              <!-- 设备ID 前加尺寸（2026-10-27）：只显示后台产品配置的 sizeModel，不带 WiFi版 / 蓝牙版（分组标题已区分），没配 --寸 -->
+              <!-- 设备ID 前加尺寸（2026-10-27）：只显示后台产品配置的 sizeModel，不带 WiFi版 / 蓝牙版（Tab 已区分），没配 --寸 -->
               <view class="device-id"><text>{{item.sizeModel || '--寸'}}</text><text wx:if="{{item.productDeviceId}}"> · 设备ID {{item.productDeviceId}}</text></view>
               <view class="device-meta">
                 <view class="wifi-state is-{{item.wifiStatus}}">
@@ -89,11 +96,9 @@
           </view>
         </view>
       </block>
+      </block>
 
-      <view wx:if="{{bleCount}}" class="device-group-title {{wifiCount ? 'device-group-title--gap' : ''}}">
-        <image class="device-group-title__icon" src="/assets/images/badge-bluetooth.svg" mode="aspectFit"></image>
-        <text>蓝牙版</text>
-      </view>
+      <block wx:else>
       <block wx:for="{{devices}}" wx:key="id" wx:for-index="index">
         <view class="device-card glass-panel {{item.connected ? '' : 'is-offline'}} {{reorderingDeviceId === '' + item.id ? 'device-card--promoted' : ''}}" wx:if="{{!item.isWifi}}" data-id="{{item.id}}" bindtap="selectDevice">
           <view class="device-card__main">
@@ -147,16 +152,19 @@
           </view>
         </view>
       </block>
+      </block>
     </view>
 
-    <view class="empty-device glass-panel" wx:else>
-      <view class="empty-device__art">
-        <view class="frame-logo"></view>
+    <!-- 当前 Tab 没有设备：默认设备图 + 右下角加号，整块可点，进搜索设备页 -->
+    <view wx:else class="empty-tab glass-panel" hover-class="empty-tab--hover" aria-label="添加设备" bindtap="goBind">
+      <view class="empty-tab__art">
+        <image class="empty-tab__img" src="/assets/images/empty_device_art.png" mode="aspectFit"></image>
+        <image class="empty-tab__plus" src="/assets/images/home-add-icon.png" mode="aspectFit"></image>
       </view>
-      <view class="empty-device__title">暂无电子纸设备</view>
-      <view class="empty-device__desc">请先搜索并绑定附近的智能相框。</view>
-      <view class="empty-device__btn" hover-class="none" bindtap="goBind">添加设备</view>
+      <view class="empty-tab__title">{{deviceTab === 'wifi' ? '暂无WiFi版设备' : '暂无蓝牙版设备'}}</view>
+      <view class="empty-tab__desc">点击添加设备</view>
     </view>
+    </block>
   </view>
 
   <!-- 「拍照 / 相册」选择弹层：点某台设备的「投屏」后弹出，交互与设备详情页一致。
