@@ -13,6 +13,8 @@
 //      每张都带，重试不再查。
 //   ⑩ 进度条（2026-10-29）：上传折算到 0~50%，处理阶段按时间爬向 99、不到 100；100% 只在 SENT / UPLOADED 时给出，失败停在原处；
 //      结果页写相册记录时不改文案（100% 只显示「已发送，屏幕即将刷新」）。
+//   ⑪ 相册记录存原图（2026-11-06）：投屏用图已按设备 verticalRotation 转过（IJ_101 竖向 180°，「我的上传」显示倒置），
+//      记录改传预览页备份的原图 _origSrc（云端先下载），长边缩到设备长边；没有 _origSrc / 下载失败才退回投屏图；投屏本身仍用转过的图。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -248,14 +250,22 @@ async function main() {
       device: { id: '7', userProductId: '7', productDeviceId: 'E3:48:C2:1E:D4:28', name: '客厅' },
       images: [1, 2, 3].map(i => ({ tempFilePath: `wxfile://${i}.png` }))
     }
+    const downloads = []
+    const wxStub = {
+      getStorageSync: () => pending,
+      getAccountInfoSync: () => ({ miniProgram: { envVersion: 'release' } }),
+      setKeepScreenOn() {},
+      // ⑪ 原图是云端地址时先下载；地址里带 fail 的模拟下载失败
+      downloadFile({ url, success, fail }) {
+        downloads.push(url)
+        if (/fail/.test(url)) fail({ errMsg: 'downloadFile:fail' })
+        else success({ statusCode: 200, tempFilePath: `wxfile://dl-${url.split('/').at(-1)}` })
+      }
+    }
     vm.runInNewContext(fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.js'), 'utf8'), {
       require: target => modules[target.split('/').at(-1)],
       Page: value => { definition = value },
-      wx: {
-        getStorageSync: () => pending,
-        getAccountInfoSync: () => ({ miniProgram: { envVersion: 'release' } }),
-        setKeepScreenOn() {}
-      },
+      wx: wxStub,
       console: { log() {}, warn() {} }
     }, { filename: 'wifi-result.js' })
     const page = { ...definition, data: plain(definition.data), setData(values) { Object.keys(values).forEach(key => {
@@ -310,6 +320,46 @@ async function main() {
     const resultTpl = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.wxml'), 'utf8')
     assert.ok(/wx:if="\{\{phase === 'done' && carouselTip\}\}"/.test(resultTpl), '结果下方追加一行')
     checked('结果页：同时加入轮播，未加入时提示')
+
+    // ⑪ 相册记录存原图：投屏仍用转过的成品，记录 img 用 _origSrc（本地直用 / 云端下载 / 下载失败退回投屏图）
+    calls.plays.length = 0
+    calls.records.length = 0
+    pending.addToCarousel = false
+    pending.images = [
+      { tempFilePath: 'wxfile://baked-1.png', _origSrc: 'wxfile://orig-1.jpg' },
+      { tempFilePath: 'wxfile://baked-2.png', _origSrc: 'https://img/orig-2.jpg' },
+      { tempFilePath: 'wxfile://baked-3.png', _origSrc: 'https://img/fail-3.jpg' },
+      { tempFilePath: 'wxfile://raw-4.png' }
+    ]
+    const page4 = { ...definition, data: plain(definition.data), setData: page.setData }
+    page4.onLoad()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    assert.deepEqual(calls.plays.map(item => item.file), ['wxfile://baked-1.png', 'wxfile://baked-2.png', 'wxfile://baked-3.png', 'wxfile://raw-4.png'], '投屏仍用预览页导出（已按设备旋转角转过）的图')
+    assert.deepEqual(calls.records.map(item => item.filePath), ['wxfile://orig-1.jpg', 'wxfile://dl-orig-2.jpg', 'wxfile://baked-3.png', 'wxfile://raw-4.png'], '记录 img 用原图：本地直用、云端先下载、下载失败或无备份退回投屏图')
+    assert.deepEqual(downloads, ['https://img/orig-2.jpg', 'https://img/fail-3.jpg'])
+    assert.deepEqual(calls.records.map(item => item.imgBle), ['https://oss/0.bin', 'https://oss/1.bin', 'https://oss/2.bin', 'https://oss/3.bin'], 'imgBle 仍是本次投屏的 binUrl')
+
+    // 原图长边大于设备长边才缩（与蓝牙版 compressForUpload 同口径：不改比例、质量 90）
+    const compressCalls = []
+    wxStub.getImageInfo = ({ src, success }) => success(src === 'wxfile://orig-1.jpg' ? { width: 3000, height: 4000 } : { width: 480, height: 720 })
+    wxStub.compressImage = opts => { compressCalls.push(plain({ src: opts.src, quality: opts.quality, w: opts.compressedWidth, h: opts.compressedHeight })); opts.success({ tempFilePath: `wxfile://small-${compressCalls.length}.jpg` }) }
+    calls.plays.length = 0
+    calls.records.length = 0
+    pending.device = Object.assign({}, pending.device, { width: 480, height: 720 })
+    pending.images = [
+      { tempFilePath: 'wxfile://baked-1.png', _origSrc: 'wxfile://orig-1.jpg' },
+      { tempFilePath: 'wxfile://baked-5.png', _origSrc: 'wxfile://orig-5.jpg' }
+    ]
+    const page5 = { ...definition, data: plain(definition.data), setData: page.setData }
+    page5.onLoad()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    assert.deepEqual(compressCalls, [{ src: 'wxfile://orig-1.jpg', quality: 90, w: 540, h: 720 }], '只缩超过设备长边的原图，按比例缩到 720')
+    assert.deepEqual(calls.records.map(item => item.filePath), ['wxfile://small-1.jpg', 'wxfile://orig-5.jpg'], '不大于设备长边的原样上传')
+    delete wxStub.getImageInfo
+    delete wxStub.compressImage
+    const resultSrc = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.js'), 'utf8')
+    assert.ok(/this\.saveAlbumRecord\(this\.images\[index\], filePath, result\.binUrl\)/.test(resultSrc), '写记录时带上本张 image（取 _origSrc）')
+    checked('结果页：相册记录存原图，不存按设备旋转角转过的投屏图')
   }
   {
     const tpl = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.wxml'), 'utf8')

@@ -770,7 +770,8 @@ module.exports = {
 
   // WiFi 版投屏后写老服务相册记录（V1.4 更新说明 1.4 / 2.4 / 9.1：相册数据由 App 调老服务维护，
   // IoT 服务不写）。「我的上传」列表、轮播选图（imgUrls）、设备拉的播放列表、删除都认这条记录的 imgBle。
-  //   ① setFileUpload 上传投屏用的那张图 → img（相册缩略图 / 再次投屏用）；
+  //   ① setFileUpload 上传原图 → img（相册缩略图 / 再次投屏用；2026-11-06 起结果页传原图 _origSrc，
+  //      不传按设备旋转角转过的投屏图，见 wifi-result recordImageFile）；
   //   ② addUserProductImgRecord 建记录：img + imgBle（= 投屏接口返回的 binUrl）+ deviceUploadState=1。
   // WiFi 版没有槽位，不传 imgIndex。两步都静默（showError:false），失败抛给调用方，由结果页记日志并提示。
   // ⚠️ 待联调：addUserProductImgRecord 不带 upirId / taskId 时能否新建记录、列表能否按 userProductId 查回来。

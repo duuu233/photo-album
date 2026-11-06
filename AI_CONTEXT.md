@@ -118,6 +118,8 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 开发版 / 体验版每个页面左下角有「日志 N」浮窗（`components/debug-log`，app.json 全局注册，每个页面 wxml 末尾一个 `<debug-log>`；新增页面记得加），点开可复制 / 清空。数据来自 `utils/debug-log.js`：`app.js` 最先 `install()` 包装 console，另有老服务 `[HTTP]`、IoT `[IoT]`、`[WS]` 摘要；最近 500 行只在内存，token / 密码入库前打码。正式版整套不生效。
 
+「我的上传」记录用图（2026-11-06）：WiFi 版结果页写相册记录（`addWifiAlbumRecord` 的 img）与蓝牙版同口径，传预览页备份的原图 `_origSrc`（云端先下载，长边缩到设备长边），不传按设备 `verticalRotation` / `rotationDegree` 转过的投屏图（原先竖向 180° 的 IJ_101 在「我的上传」倒置）；没有 `_origSrc` / 下载失败才退回投屏图。见 `docs/changes/2026-11-06-WiFi版我的上传存原图.md`。
+
 「我的上传」删除（2026-11-06）：`api.deleteProjectionRecords` / `iotApi.deletePhotos` 支持 `options.onLog`，逐条回调「接口【名称】POST 路径 参数」与「→ 返回 / → 失败」，页面以 `[相册删除]` / `[相册删除][WiFi]` 前缀打进 console。见 `docs/changes/2026-11-06-我的上传删除写请求日志.md`。
 
 ## 设备图按机型区分（2026-10-22）

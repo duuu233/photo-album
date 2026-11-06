@@ -16,6 +16,9 @@ const toast = require('../../../utils/toast')
 // 整批只刷一次屏（更新说明 2.4）。重试时同样按「本轮最后一张刷屏」。
 // 每张拿到 binUrl 后写老服务相册记录（api.addWifiAlbumRecord，img + imgBle），「我的上传」、轮播选图、删除都靠它；
 // 写记录失败不算投屏失败，只在这一张的文案后注明「未存入我的上传」并记日志。
+// 记录的 img 存原图（2026-11-06）：投屏用的那张是预览页按设备 verticalRotation / rotationDegree 转过的成品，
+// 竖向 180° 的机型（如 IJ_101）存进去，「我的上传」和轮播选图就是倒的；与蓝牙版结果页（uploadOriginalForRecord）同口径，
+// 改存进预览页前的原图（_origSrc），长边缩到设备长边。见 saveAlbumRecord / recordImageFile。
 // 结束后两个按钮，与蓝牙版结果页一致（2026-11-05，docs/wifi/前端对接文档20261105.md 第一节第 10 项）：
 //   全部成功 →「再投一张」（当前页弹拍照 / 相册，选图后同一台设备进预览页）+「返回首页」；
 //   有失败 →「重试未成功的」+「返回首页」。
@@ -85,6 +88,69 @@ function downloadToLocal(url) {
       fail: () => reject(new Error('原图下载失败'))
     })
   })
+}
+
+// 相册记录用图（2026-11-06）：与蓝牙版结果页 resolveOriginalLocalPath + compressForUpload 同口径——
+// 取预览页烘焙 / 导出前备份的原图 _origSrc（云端地址先下载），长边缩到设备长边、不改比例（质量 90，已不大于就原样）。
+// 没有 _origSrc（预览页没处理过，发出去的就是原图本身）或原图下载失败，退回投屏用的那张；缩放失败用未缩的原图。
+// 返回 { filePath, source }，source 只进日志。
+const RECORD_COMPRESS_QUALITY = 90
+
+function resolveRecordSource(image, projectedPath) {
+  const orig = (image && image._origSrc) || ''
+  if (!orig) {
+    return Promise.resolve({ filePath: projectedPath, source: '投屏图（预览页未处理，即原图）' })
+  }
+  if (!/^https?:\/\//i.test(orig)) {
+    return Promise.resolve({ filePath: orig, source: '原图' })
+  }
+  return downloadToLocal(orig).then(
+    filePath => ({ filePath, source: '原图（云端图已下载）' }),
+    () => ({ filePath: projectedPath, source: '投屏图（原图下载失败）' })
+  )
+}
+
+function shrinkToDevice(filePath, device) {
+  const deviceLongEdge = Math.max(Number(device && device.width) || 0, Number(device && device.height) || 0)
+  if (!filePath || !(deviceLongEdge > 0) || typeof wx.getImageInfo !== 'function' || typeof wx.compressImage !== 'function') {
+    return Promise.resolve(filePath)
+  }
+  return new Promise(resolve => {
+    try {
+      wx.getImageInfo({
+        src: filePath,
+        success: size => {
+          const longEdge = Math.max(Number(size.width) || 0, Number(size.height) || 0)
+          if (!(longEdge > deviceLongEdge)) {
+            resolve(filePath)
+            return
+          }
+          const ratio = deviceLongEdge / longEdge
+          try {
+            wx.compressImage({
+              src: filePath,
+              quality: RECORD_COMPRESS_QUALITY,
+              compressedWidth: Math.max(1, Math.round(size.width * ratio)),
+              compressedHeight: Math.max(1, Math.round(size.height * ratio)),
+              success: res => resolve((res && res.tempFilePath) || filePath),
+              fail: () => resolve(filePath)
+            })
+          } catch (error) {
+            resolve(filePath)
+          }
+        },
+        fail: () => resolve(filePath)
+      })
+    } catch (error) {
+      resolve(filePath)
+    }
+  })
+}
+
+async function recordImageFile(image, projectedPath, device) {
+  const picked = await resolveRecordSource(image, projectedPath)
+  const filePath = await shrinkToDevice(picked.filePath, device)
+  return { filePath, source: picked.source }
 }
 
 // 本地图直接用；只有 https 地址的（再次投屏的云端图）先下载到本地再上传
@@ -186,8 +252,9 @@ Page(fold.adapt(tapGuard.wrap({
     this.setData({ [`items[${index}]`]: item })
   },
 
-  // 写老服务相册记录（img + imgBle）。失败只记日志、返回 false，不影响投屏结果
-  async saveAlbumRecord(filePath, binUrl) {
+  // 写老服务相册记录（img + imgBle）。失败只记日志、返回 false，不影响投屏结果。
+  // img 传原图（2026-11-06，见 recordImageFile），不传 projectedPath（已按设备旋转角转过）；imgBle 仍是这次投屏的 binUrl
+  async saveAlbumRecord(image, projectedPath, binUrl) {
     const device = this.device || {}
     const userProductId = device.userProductId || device.id
     if (!binUrl || !userProductId) {
@@ -196,7 +263,9 @@ Page(fold.adapt(tapGuard.wrap({
     }
     this.appendLog(`接口【写相册记录】setFileUpload + addUserProductImgRecord 参数 ${JSON.stringify({ userProductId, imgBle: binUrl })}`)
     try {
-      const saved = await api.addWifiAlbumRecord({ userProductId, filePath, imgBle: binUrl })
+      const record = await recordImageFile(image, projectedPath, device)
+      this.appendLog(`相册记录用图：${record.source} ${record.filePath}`)
+      const saved = await api.addWifiAlbumRecord({ userProductId, filePath: record.filePath, imgBle: binUrl })
       this.appendLog(`返回 img=${saved.img}`)
       return true
     } catch (error) {
@@ -273,7 +342,7 @@ Page(fold.adapt(tapGuard.wrap({
       let text = result.message || result.text || ''
       // 写相册记录时不改阶段文案：100% 只显示「已发送，屏幕即将刷新」（2026-10-29），过程只进日志
       if (isSent(result.status)) {
-        const saved = await this.saveAlbumRecord(filePath, result.binUrl)
+        const saved = await this.saveAlbumRecord(this.images[index], filePath, result.binUrl)
         if (this.unloaded) {
           return
         }
