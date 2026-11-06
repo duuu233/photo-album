@@ -118,8 +118,10 @@ module.exports = {
   },
 
   // 恢复设备内置图片（2026-11-06）：{ deviceNo, renderMode } → POST /api/device/restore-builtin（JSON）。
-  // 只在 WiFi 版「删除设备」里调：删完云端照片之后、删设备记录之前，成功才继续删设备；解除绑定不调。
+  // 只在 WiFi 版「删除设备」里调：删完云端照片之后、删设备记录之前；解除绑定不调。
   // renderMode 同投屏，取后台产品配置（esp32 / fpga16，见 api.resolveRenderMode），有值才带、原样传。
+  // 返回 { deviceNo, status }：status 只有 SENT（已下发）/ SKIPPED（没下发，不用重试）；
+  // 错误码只有 4000 参数错误 / 401 登录失效 / 403 无权限 / 5000 服务异常，怎么收场由调用方决定（见 wifi-detail）。
   restoreBuiltin(payload, options) {
     const p = payload || {}
     const body = { deviceNo: plainDeviceNo(p.deviceNo) }

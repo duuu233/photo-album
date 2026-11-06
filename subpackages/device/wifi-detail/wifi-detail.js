@@ -459,17 +459,24 @@ Page(fold.adapt(tapGuard.wrap({
       toast.warn({ title: `云端照片删除失败：${String((error && error.message) || '请稍后重试').replace(/^接口\(IoT\)-/, '')}`, icon: 'none' })
       return
     }
-    // ③ IoT 恢复设备内置图片（2026-11-06）：renderMode 取产品配置（同投屏，取不到不传）；失败不删设备
+    // ③ IoT 恢复设备内置图片（2026-11-06）：renderMode 取产品配置（同投屏，取不到不传）。
+    //    返回 data.status 只有 SENT（已下发）/ SKIPPED（离线、关机、休眠、本地模式、升级中、下发失败等没下发），都继续删、不重试。
+    //    出错只有 401（登录失效，接口层已引导重登）和 403（无权限：设备已删，顺序有问题）停下；4000 / 5000 / 网络等其余错误照常删设备。
     try {
       const renderMode = await api.resolveRenderMode(this.data.device)
       const res = await iotApi.restoreBuiltin({ deviceNo, renderMode }, { showError: false })
-      console.log('[WiFi删除设备] 恢复内置图片返回', JSON.stringify(res))
+      console.log('[WiFi删除设备] 恢复内置图片返回', res && res.status, JSON.stringify(res))
     } catch (error) {
-      wx.hideLoading()
-      this._deleting = false
-      console.warn('[WiFi删除设备] 恢复内置图片失败', error && error.code, error && error.message)
-      toast.warn({ title: `恢复内置图片失败：${String((error && error.message) || '请稍后重试').replace(/^接口\(IoT\)-/, '')}`, icon: 'none' })
-      return
+      const code = error && error.code
+      console.warn('[WiFi删除设备] 恢复内置图片失败', code, error && error.message)
+      if (code === 401 || code === 403) {
+        wx.hideLoading()
+        this._deleting = false
+        if (code === 403) {
+          toast.warn({ title: `恢复内置图片失败：${String((error && error.message) || '无该设备操作权限').replace(/^接口\(IoT\)-/, '')}`, icon: 'none' })
+        }
+        return
+      }
     }
     // ④ 删设备记录
     try {

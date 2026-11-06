@@ -5,7 +5,8 @@
 //   ③ utils/wifi-share：所有者判定（老记录按所有者）、分享列表分出所有者与接收者；
 //   ④ 消息类型 TF_LOCAL_MODE 有文案；
 //   ⑤ WiFi 详情：本地模式下投屏 / 轮播设置 / TF卡 只提示；未插卡不可点；解除绑定只删设备；
-//      删除设备按「清相册记录 → 删全部云端 bin → 恢复内置图片（2026-11-06）→ 删设备」顺序，任一步失败不删设备；
+//      删除设备按「清相册记录 → 删全部云端 bin → 恢复内置图片（2026-11-06）→ 删设备」顺序，前两步失败不删设备，
+//      恢复内置图片只有 401 / 403 不删设备、其余错误照删；
 //   ⑥ 模板：功能栏顺序、分享 / 删除仅所有者、电量在状态栏、新页面已注册；投屏进度页中间改为状态图标。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -216,9 +217,23 @@ async function main() {
     page = make()
     await page.load()
     state.calls.length = 0
-    state.restoreError = Object.assign(new Error('接口(IoT)-服务异常'), { code: 5000 })
-    await page.confirmDeleteDevice()
-    assert.deepEqual(state.calls.map(item => item[0]), ['clear', 'cloud', 'restore'], '恢复内置图片失败不删设备')
+    // 2026-11-06 接口简化后有意改口径：恢复内置图片只有 401 / 403 停下，5000 / 4000 / 网络错误照常删设备
+    for (const code of [5000, 4000, 'NETWORK_ERROR']) {
+      page = make()
+      await page.load()
+      state.calls.length = 0
+      state.restoreError = Object.assign(new Error('接口(IoT)-失败'), { code })
+      await page.confirmDeleteDevice()
+      assert.deepEqual(state.calls.map(item => item[0]), ['clear', 'cloud', 'restore', 'delete'], `恢复内置图片 ${code} 照常删设备`)
+    }
+    for (const code of [401, 403]) {
+      page = make()
+      await page.load()
+      state.calls.length = 0
+      state.restoreError = Object.assign(new Error('接口(IoT)-失败'), { code })
+      await page.confirmDeleteDevice()
+      assert.deepEqual(state.calls.map(item => item[0]), ['clear', 'cloud', 'restore'], `恢复内置图片 ${code} 不删设备`)
+    }
     state.restoreError = null
     checked('WiFi 详情：本地模式拦截、解绑与删除')
   }
