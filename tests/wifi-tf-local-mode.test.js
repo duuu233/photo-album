@@ -5,7 +5,7 @@
 //   ③ utils/wifi-share：所有者判定（老记录按所有者）、分享列表分出所有者与接收者；
 //   ④ 消息类型 TF_LOCAL_MODE 有文案；
 //   ⑤ WiFi 详情：本地模式下投屏 / 轮播设置 / TF卡 只提示；未插卡不可点；解除绑定只删设备；
-//      删除设备按「清相册记录 → 删全部云端 bin → 删设备」顺序，任一步失败不删设备；
+//      删除设备按「清相册记录 → 删全部云端 bin → 恢复内置图片（2026-11-06）→ 删设备」顺序，任一步失败不删设备；
 //   ⑥ 模板：功能栏顺序、分享 / 删除仅所有者、电量在状态栏、新页面已注册；投屏进度页中间改为状态图标。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -121,17 +121,19 @@ async function main() {
   {
     // WiFi 详情页（vm 沙箱，依赖按文件名注入）
     let definition
-    const state = { navs: [], calls: [], deleteError: null, cloudError: null }
+    const state = { navs: [], calls: [], deleteError: null, cloudError: null, restoreError: null }
     const modules = {
       api: {
         getDeviceDetail: async () => ({ id: '7', productDeviceId: 'D0:CF:13', isToHave: 1 }),
         clearUserProductImg: async id => { state.calls.push(['clear', id]) },
+        resolveRenderMode: async () => 'fpga16',
         deleteDevice: async id => { state.calls.push(['delete', id]); if (state.deleteError) throw state.deleteError }
       },
       'iot-api': {
         getDeviceInfo: async () => infoReply,
         getUnreadCount: async () => ({ unreadCount: 0 }),
-        deletePhotos: async payload => { state.calls.push(['cloud', JSON.parse(JSON.stringify(payload))]); if (state.cloudError) throw state.cloudError; return {} }
+        deletePhotos: async payload => { state.calls.push(['cloud', JSON.parse(JSON.stringify(payload))]); if (state.cloudError) throw state.cloudError; return {} },
+        restoreBuiltin: async payload => { state.calls.push(['restore', JSON.parse(JSON.stringify(payload))]); if (state.restoreError) throw state.restoreError; return {} }
       },
       'iot-ws': { on: () => () => {}, subscribe() {}, unsubscribe() {}, getSubscriptions: () => [] },
       toast: { show: value => toasts.push(value.title), warn: value => toasts.push(value.title) },
@@ -194,13 +196,14 @@ async function main() {
 
     state.calls.length = 0
     await page.confirmUnbind()
-    assert.deepEqual(state.calls, [['delete', '7']], '解除绑定只删设备')
+    assert.deepEqual(state.calls, [['delete', '7']], '解除绑定只删设备（不调恢复内置图片）')
 
     page = make()
     await page.load()
     state.calls.length = 0
     await page.confirmDeleteDevice()
-    assert.deepEqual(state.calls, [['clear', '7'], ['cloud', { deviceNo: 'D0CF13', all: true }], ['delete', '7']], '先删图片（记录 + 云端）再删设备')
+    // 2026-11-06 有意改口径：删云端图片之后、删设备之前插入「恢复内置图片」（restore-builtin，带产品 renderMode）
+    assert.deepEqual(state.calls, [['clear', '7'], ['cloud', { deviceNo: 'D0CF13', all: true }], ['restore', { deviceNo: 'D0CF13', renderMode: 'fpga16' }], ['delete', '7']], '先删图片（记录 + 云端）→ 恢复内置图片 → 再删设备')
 
     page = make()
     await page.load()
@@ -209,6 +212,14 @@ async function main() {
     await page.confirmDeleteDevice()
     assert.deepEqual(state.calls.map(item => item[0]), ['clear', 'cloud'], '云端图片删失败不删设备')
     state.cloudError = null
+
+    page = make()
+    await page.load()
+    state.calls.length = 0
+    state.restoreError = Object.assign(new Error('接口(IoT)-服务异常'), { code: 5000 })
+    await page.confirmDeleteDevice()
+    assert.deepEqual(state.calls.map(item => item[0]), ['clear', 'cloud', 'restore'], '恢复内置图片失败不删设备')
+    state.restoreError = null
     checked('WiFi 详情：本地模式拦截、解绑与删除')
   }
   {

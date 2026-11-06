@@ -117,6 +117,18 @@ module.exports = {
     )
   },
 
+  // 恢复设备内置图片（2026-11-06）：{ deviceNo, renderMode } → POST /api/device/restore-builtin（JSON）。
+  // 只在 WiFi 版「删除设备」里调：删完云端照片之后、删设备记录之前，成功才继续删设备；解除绑定不调。
+  // renderMode 同投屏，取后台产品配置（esp32 / fpga16，见 api.resolveRenderMode），有值才带、原样传。
+  restoreBuiltin(payload, options) {
+    const p = payload || {}
+    const body = { deviceNo: plainDeviceNo(p.deviceNo) }
+    if (p.renderMode) {
+      body.renderMode = String(p.renderMode)
+    }
+    return iot.post('/api/device/restore-builtin', body, options)
+  },
+
   // 休眠计划查询（V1.4 实现报告反馈 2.1）：{ configured, mode, enabled, beginTime, endTime, sleepTime, wakeTime, updatedAt }。
   // configured=false 从未设置；mode 0 关闭 / 1 一次性（beginTime/endTime：yyyy-MM-dd HH:mm）/ 2 周期（sleepTime/wakeTime：HH:mm）。
   // 只要权限，离线也能查。

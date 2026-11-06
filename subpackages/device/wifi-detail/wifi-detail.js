@@ -24,7 +24,7 @@ const app = getApp()
 //   · 功能栏依次：设备信息（二级页 wifi-info：WiFi信号 / WiFi名称 / 最后上线 / 最后心跳 / 固件版本）、
 //     设备ID、屏幕尺寸（2026-11-02，同蓝牙版，只展示；顶部卡片不再显示屏幕尺寸与设备ID）、休眠设置、
 //     消息中心（未读红点）、TF卡（未插卡不可点；有卡显示已用 / 总量，进 wifi-tf）、共享设备（所有者与接收者都显示，进 wifi-share；接收者在那页只看不改）、
-//     解除绑定（只删设备）；页底「删除设备」（仅所有者，样式同蓝牙版：先删云端图片再删设备）。
+//     解除绑定（只删设备）；页底「删除设备」（仅所有者，样式同蓝牙版：先删云端图片，再恢复内置图片（2026-11-06），最后删设备）。
 //   · 本地模式（status=LOCAL_TF，2026-10-29）：投屏 / 轮播设置 / TF卡 可以点，但只提示「当前设备状态：本地模式，
 //     请恢复设备网络再试」；设备信息、休眠设置、消息中心、分享、解绑、删除照常。
 //   · 固件升级（2026-11-02，docs/前端对接文档20261031.md）：功能栏「消息中心」之后，右侧显示设备当前固件版本，
@@ -403,7 +403,7 @@ Page(fold.adapt(tapGuard.wrap({
     this.afterRemoved()
   },
 
-  // 删除设备（仅所有者）：两级确认 → 清「我的上传」记录 → 删该设备全部云端图片 → 删设备记录
+  // 删除设备（仅所有者）：两级确认 → 清「我的上传」记录 → 删该设备全部云端图片 → 恢复内置图片 → 删设备记录
   showDeleteConfirm() {
     if (this.data.isOwner) {
       this.setData({ showDeleteConfirm: true, deleteClosing: false })
@@ -459,7 +459,19 @@ Page(fold.adapt(tapGuard.wrap({
       toast.warn({ title: `云端照片删除失败：${String((error && error.message) || '请稍后重试').replace(/^接口\(IoT\)-/, '')}`, icon: 'none' })
       return
     }
-    // ③ 删设备记录
+    // ③ IoT 恢复设备内置图片（2026-11-06）：renderMode 取产品配置（同投屏，取不到不传）；失败不删设备
+    try {
+      const renderMode = await api.resolveRenderMode(this.data.device)
+      const res = await iotApi.restoreBuiltin({ deviceNo, renderMode }, { showError: false })
+      console.log('[WiFi删除设备] 恢复内置图片返回', JSON.stringify(res))
+    } catch (error) {
+      wx.hideLoading()
+      this._deleting = false
+      console.warn('[WiFi删除设备] 恢复内置图片失败', error && error.code, error && error.message)
+      toast.warn({ title: `恢复内置图片失败：${String((error && error.message) || '请稍后重试').replace(/^接口\(IoT\)-/, '')}`, icon: 'none' })
+      return
+    }
+    // ④ 删设备记录
     try {
       await api.deleteDevice(this.data.id)
     } catch (error) {
