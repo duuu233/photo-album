@@ -369,6 +369,12 @@ const unmute = () => {
   })
   const resultTpl = require('fs').readFileSync(require('path').join(__dirname, '../subpackages/projection/result/result.wxml'), 'utf8')
   assert.ok(/wx:if="\{\{items\.length > 1\}\}" class="batch-list/.test(resultTpl), '模板：多张才显示逐张列表')
+  // 2026-11-06：逐张列表最多露 4 行，多出的框内上下滑动；传到哪张自动滚到那一行
+  assert.ok(/class="batch-list glass-panel">[\s\S]*?<scroll-view scroll-y[^>]*class="batch-list__scroll"[^>]*scroll-into-view="\{\{batchAnchor\}\}"/.test(resultTpl), '模板：行包在 scroll-view 里，跟 batchAnchor')
+  assert.ok(/id="batch-row-\{\{index\}\}" class="batch-row/.test(resultTpl), '模板：行带锚点 id')
+  const resultCss = require('fs').readFileSync(require('path').join(__dirname, '../subpackages/projection/result/result.wxss'), 'utf8')
+  assert.ok(/\.batch-list__scroll \{\s*max-height: 384rpx;/.test(resultCss) && /\.batch-row \{[^}]*height: 96rpx;/.test(resultCss), '最多 4 行（4 × 96rpx）')
+  assert.ok(/batchAnchor: `batch-row-\$\{i\}`/.test(resultSrc) && /batchAnchor: ''/.test(resultSrc), '传输中滚到那一行，新一批清空锚点')
 
   // ⑧ 图传卡住：用户只看到能照做的一句，包号 / MTU 不上页面
   mute()

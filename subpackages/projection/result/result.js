@@ -202,6 +202,7 @@ Page(fold.adapt(tapGuard.wrap({
     progressPercent: 0,
     // 批量投屏逐张状态（多张才有，见 BATCH_TEXT）：[{ key, src, status, text }]
     items: [],
+    batchAnchor: '', // 逐张列表滚到正在传的那一行（列表最多露 4 行）
     // 「继续投屏」在当前页弹出的「拍照/相册」选择弹层显隐 + 退场动画标记
     showMediaSheet: false,
     mediaSheetClosing: false
@@ -321,7 +322,7 @@ Page(fold.adapt(tapGuard.wrap({
       text: BATCH_TEXT.pending
     }))
     if (!this._unloaded) {
-      this.setData({ items: this._items.length > 1 ? this._items : [] })
+      this.setData({ items: this._items.length > 1 ? this._items : [], batchAnchor: '' })
     }
   },
 
@@ -738,7 +739,7 @@ Page(fold.adapt(tapGuard.wrap({
           )
           throw new Error('图片文件错误，请尝试通过工具转码后重新投屏')
         }
-        this.setData({ title: '图片传输中', desc: `正在投第 ${i + 1}/${total} 张…` })
+        this.setData({ title: '图片传输中', desc: `正在投第 ${i + 1}/${total} 张…`, batchAnchor: `batch-row-${i}` })
         this.setBatchItem(i, 'transferring')
 
         const index = protocol.firstFreeIndex(

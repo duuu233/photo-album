@@ -205,6 +205,11 @@
   text-align: left;
 }
 
+/* 最多露 4 行（行高 96rpx，border-box 含分隔线），多出的在框内上下滑动 */
+.batch-list__scroll {
+  max-height: 384rpx;
+}
+
 .batch-row {
   display: flex;
   align-items: center;

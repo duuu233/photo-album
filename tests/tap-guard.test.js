@@ -98,7 +98,7 @@ async function main() {
       'subpackages/album/list/list.js': "{ retryProjection: 'projection' }",
       'subpackages/projection/records/records.js': "{ retryProjection: 'projection' }",
       'subpackages/projection/result/result.js': "{ continueProjection: 'projection', retry: 'projection', chooseCamera: 'pick', chooseAlbum: 'pick' }",
-      // 2026-11-05：WiFi 结果页新增「再投一张」（与蓝牙版结果页同一套锁）
+      // 2026-11-05：WiFi 结果页新增「再投一张」（与蓝牙版结果页同一套锁；2026-11-06 文案改为「继续投屏」）
       'subpackages/projection/wifi-result/wifi-result.js': "{ retryFailed: 'projection', continueProjection: 'projection', chooseCamera: 'pick', chooseAlbum: 'pick' }",
       'subpackages/projection/preview/preview.js': "{ confirmProjection: 'projection' }"
     }

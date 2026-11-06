@@ -54,11 +54,14 @@
     <!-- 批量投屏逐张状态（2026-11-06，仿 WiFi 版结果页；多张才显示，单张界面不变）：投屏中在进度条下方，结束后留在结果卡片下方。
          缩略图用原图（与「我的上传」同方位），文案见 result.js BATCH_TEXT -->
     <view wx:if="{{items.length > 1}}" class="batch-list glass-panel">
-      <view wx:for="{{items}}" wx:key="key" class="batch-row is-{{item.status}}">
-        <image class="batch-row__thumb" src="{{item.src}}" mode="aspectFill"></image>
-        <text class="batch-row__no">第 {{index + 1}} 张</text>
-        <text class="batch-row__text">{{item.text}}</text>
-      </view>
+      <!-- 最多露 4 行，多出的上下滑动查看；传到第几张就滚到那一行（batchAnchor） -->
+      <scroll-view scroll-y scroll-with-animation class="batch-list__scroll" scroll-into-view="{{batchAnchor}}">
+        <view wx:for="{{items}}" wx:key="key" id="batch-row-{{index}}" class="batch-row is-{{item.status}}">
+          <image class="batch-row__thumb" src="{{item.src}}" mode="aspectFill"></image>
+          <text class="batch-row__no">第 {{index + 1}} 张</text>
+          <text class="batch-row__text">{{item.text}}</text>
+        </view>
+      </scroll-view>
     </view>
 
     <block wx:if="{{status === 'progress'}}">

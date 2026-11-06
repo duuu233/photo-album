@@ -20,7 +20,7 @@ const toast = require('../../../utils/toast')
 // 竖向 180° 的机型（如 IJ_101）存进去，「我的上传」和轮播选图就是倒的；与蓝牙版结果页（uploadOriginalForRecord）同口径，
 // 改存进预览页前的原图（_origSrc），长边缩到设备长边。见 saveAlbumRecord / recordImageFile。
 // 结束后两个按钮，与蓝牙版结果页一致（2026-11-05，docs/wifi/前端对接文档20261105.md 第一节第 10 项）：
-//   全部成功 →「再投一张」（当前页弹拍照 / 相册，选图后同一台设备进预览页）+「返回首页」；
+//   全部成功 →「继续投屏」（当前页弹拍照 / 相册，选图后同一台设备进预览页）+「返回首页」；
 //   有失败 →「重试未成功的」+「返回首页」。
 // 同时加入轮播（2026-10-27 追加内容第二节）：预览页勾了「同时加入轮播」时 pendingProjection.addToCarousel=true，
 // 每张（含只上传的）都带 addToCarousel=true；有任何一张成功投出但 carouselUpdated=false，结束后在结果下方追加
@@ -184,6 +184,7 @@ Page(fold.adapt(tapGuard.wrap({
     deviceName: '',
     phase: 'running', // running / done
     current: 0, // 正在投第几张（从 0 起）
+    listAnchor: '', // 逐张列表滚到正在投的那一行（列表最多露 4 行）
     total: 0,
     stageText: '准备投屏',
     progress: 0,
@@ -313,7 +314,7 @@ Page(fold.adapt(tapGuard.wrap({
       }
       const index = indexes[n]
       const refresh = n === indexes.length - 1
-      this.setData({ current: index, progress: 0, stageText: '图片上传中' })
+      this.setData({ current: index, progress: 0, stageText: '图片上传中', listAnchor: `wifi-row-${index}` })
       this.setItem(index, { status: 'running', text: itemStageText('图片上传中') })
       let result
       let filePath = ''
@@ -399,7 +400,7 @@ Page(fold.adapt(tapGuard.wrap({
     wx.switchTab({ url: '/pages/home/home' })
   },
 
-  // 「再投一张」：不跳首页，在当前页弹出「拍照 / 相册」二选一弹层（与蓝牙版结果页「继续投屏」同一做法）
+  // 「继续投屏」：不跳首页，在当前页弹出「拍照 / 相册」二选一弹层（与蓝牙版结果页「继续投屏」同一做法）
   continueProjection() {
     if (!this.device) {
       return

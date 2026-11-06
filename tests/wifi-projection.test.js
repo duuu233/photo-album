@@ -378,6 +378,18 @@ async function main() {
     assert.ok(/\.wifi-result-row\.is-SENT/.test(css) && /\.wifi-result-row\.is-UPLOADED/.test(css), 'SENT / UPLOADED 按成功配色')
     checked('结果页：开发版 / 体验版日志面板，可复制')
   }
+  {
+    // 2026-11-06：逐张列表最多露 4 行，多出的框内上下滑动；当前那张自动滚到
+    const tpl = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.wxml'), 'utf8')
+    assert.ok(/class="wifi-result-list glass-panel">\s*<scroll-view scroll-y[^>]*class="wifi-result-list__scroll"[^>]*scroll-into-view="\{\{listAnchor\}\}"/.test(tpl), '列表行包在 scroll-view 里，跟 listAnchor')
+    assert.ok(/id="wifi-row-\{\{index\}\}" class="wifi-result-row/.test(tpl), '行带锚点 id')
+    const css = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.wxss'), 'utf8')
+    assert.ok(/\.wifi-result-list__scroll \{\s*max-height: 384rpx;/.test(css), '最多 4 行（4 × 96rpx）')
+    assert.ok(/\.wifi-result-row \{[^}]*height: 96rpx;/.test(css), '行高仍为 96rpx（与 384rpx 对应）')
+    const page = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.js'), 'utf8')
+    assert.ok(/this\.setData\(\{ current: index, progress: 0, stageText: '图片上传中', listAnchor: `wifi-row-\$\{index\}` \}\)/.test(page), '每张开始时滚到那一行')
+    checked('结果页：逐张列表最多 4 行可滑动')
+  }
   console.log(`wifi-projection: ${checks} groups passed`)
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

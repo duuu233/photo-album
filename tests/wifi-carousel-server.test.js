@@ -2,7 +2,7 @@
 //   ① utils/time-zone：只认 IANA 名（UTC+8 不算）、手机时区（系统 / Intl / 按偏移兜底）、分组搜索；
 //      展示 2026-11-05（20261105-1 第 2 条）起按语种「国家 / 城市」、不带 UTC 偏移、列表每行一段文字（原「Asia/Shanghai（UTC+8）」断言随之改写）；
 //   ② 消息类型 CAROUSEL_NOT_SENT「轮播未发送成功」，内容带未发送的时刻；
-//   ③ WiFi 投屏结果页与蓝牙版一样两个按钮：成功「再投一张」（当前页弹拍照 / 相册）/ 有失败「重试未成功的」+「返回首页」；
+//   ③ WiFi 投屏结果页与蓝牙版一样两个按钮：成功「继续投屏」（11-06 前叫「再投一张」）（当前页弹拍照 / 相册）/ 有失败「重试未成功的」+「返回首页」；
 //   ④ 配网「设备正在连接云端」等待窗口 120 秒（轮询次数断言在 wifi-provision.test.js）。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -75,7 +75,9 @@ function checked(name) { checks++; console.log('PASS ' + name) }
 {
   const tpl = read('subpackages/projection/wifi-result/wifi-result.wxml')
   assert.ok(/wx:if="\{\{retryable && total\}\}" class="wifi-result-primary"[^>]*bindtap="retryFailed">重试未成功的</.test(tpl), '有失败：重试未成功的')
-  assert.ok(/wx:elif="\{\{canContinue\}\}" class="wifi-result-primary"[^>]*bindtap="continueProjection">再投一张</.test(tpl), '成功：再投一张')
+  // 2026-11-06 有意改口径：成功按钮文案「再投一张」→「继续投屏」（同蓝牙版结果页），按钮位置与绑定不变
+  assert.ok(/wx:elif="\{\{canContinue\}\}" class="wifi-result-primary"[^>]*bindtap="continueProjection">继续投屏</.test(tpl), '成功：继续投屏')
+  assert.equal(tpl.indexOf('>再投一张<'), -1, '不再叫「再投一张」')
   assert.ok(/class="wifi-result-secondary"[^>]*bindtap="backHome">返回首页</.test(tpl), '第二个按钮：返回首页')
   assert.equal(tpl.indexOf('bindtap="finish"'), -1, '不再有「完成」')
   assert.ok(/wx:if="\{\{showMediaSheet\}\}"/.test(tpl) && /bindtap="chooseCamera"/.test(tpl) && /bindtap="chooseAlbum"/.test(tpl), '拍照 / 相册弹层')
@@ -86,7 +88,7 @@ function checked(name) { checks++; console.log('PASS ' + name) }
   assert.ok(/wx\.switchTab\(\{ url: '\/pages\/home\/home' \}\)/.test(page), '返回首页')
   const css = read('subpackages/projection/wifi-result/wifi-result.wxss')
   assert.ok(/\.wifi-result-secondary \{/.test(css) && /\.media-mask \{/.test(css) && /\.cancel-action \{/.test(css), '按钮与弹层样式')
-  checked('WiFi 投屏结果页：两个按钮 + 再投一张')
+  checked('WiFi 投屏结果页：两个按钮 + 继续投屏')
 }
 {
   assert.ok(/const ONLINE_TIMEOUT_MS = 120000/.test(read('utils/wifi-provision.js')), '配网等待设备上云 120 秒')
