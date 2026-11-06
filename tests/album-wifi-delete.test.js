@@ -9,7 +9,9 @@
 //   ③ 再次投屏：确认在线后带 isWifi 进预览页，不走蓝牙连接；离线 / 本地模式 / 状态未知被拦下
 //      （2026-10-29 起改走 wifiStatus.projectBlockedTip，提示「设备不在线」；原 ensureOnline 对「查不到」放行，
 //      产品要求「我的上传」切到这类设备点投屏要提示不在线，所以换了判据，拦截断言不变）；
-//   ④ 蓝牙版照片仍走原链路（ensureConnectedDevice）。
+//   ④ 蓝牙版照片仍走原链路（ensureConnectedDevice）；
+//   ⑤ 2026-11-06：按设备 ID 查出的共享成员 / 重绑前上传的照片（记录的 userProductId 不在本人设备列表里）
+//      不再提示「未找到照片所属电子纸设备」：按完整设备 ID、再按当前选中设备归属，照常删除（接口已支持）。
 const assert = require('assert')
 
 const storage = {}
@@ -195,9 +197,44 @@ const reset = () => {
       assert.equal(calls.cloud.length, 0)
       log('PASS 蓝牙版照片不受影响')
     }
+    {
+      // ⑤ WiFi 版：一张自己的 + 一张共享成员的（userProductId 不在本人设备里，带完整设备 ID）+ 一张什么都没带的
+      reset()
+      const records = [
+        rec('m', 'W1', { imgBle: 'https://oss/m.bin' }),
+        rec('o', 'OTHER-9', { imgBle: 'https://oss/o.bin', productDeviceId: 'D0:CF:13:F0:2F:F8' }),
+        rec('n', 'OTHER-8', { imgBle: 'https://oss/n.bin' }),
+        rec('k', 'W1', { imgBle: 'https://oss/k.bin' })
+      ]
+      const page = makePage(records, ['m', 'o', 'n'])
+      page.data.currentFilter = 'W1'
+      assert.equal(page.resolveOwnerDevice(['o']).device, wifiDevice, '按完整设备 ID 归属')
+      assert.equal(page.resolveOwnerDevice(['n']).device, wifiDevice, '设备 ID 也没有：归到当前选中的那台')
+      assert.equal(page.resolveOwnerDevice(['m', 'o', 'n']).mixed, false, '归属后是同一台，不算跨设备')
+      await page.confirmDeleteSelected()
+      assert.ok(!toasts.some(text => /未找到照片所属/.test(text)), '不再提示未找到所属设备')
+      assert.deepEqual(calls.records, [['m', 'o', 'n']], '三张记录都删')
+      assert.deepEqual(calls.cloud.map(item => item.imgUrls), [['https://oss/m.bin', 'https://oss/o.bin', 'https://oss/n.bin']], '云端三张都删')
+      assert.equal(calls.ble, 0)
+      log('PASS 共享成员上传的 WiFi 照片照常删除')
+    }
+    {
+      // ⑤ 蓝牙版：共享成员的照片归到当前蓝牙设备，照常去连那台（不再拦下）；真跨设备仍拦
+      reset()
+      const records = [rec('x', 'OTHER-1', { imgIndex: '1' }), rec('y', 'B1', { imgIndex: '2' }), rec('z', 'W1', { imgIndex: '3' })]
+      const page = makePage(records, ['x', 'y'])
+      page.data.currentFilter = 'B1'
+      const device = await page.ensureConnectedDevice(['x', 'y'])
+      assert.equal(device && device.userProductId, 'B1', '归到当前蓝牙设备并连接')
+      assert.equal(device.deviceId, 'BLE-1')
+      assert.ok(!toasts.some(text => /未找到照片所属/.test(text)))
+      assert.equal(await page.ensureConnectedDevice(['y', 'z']), null, '对上的是两台不同的本人设备：仍拦下')
+      assert.deepEqual(toasts, ['只能操作同一台电子纸设备的照片'])
+      log('PASS 共享成员上传的蓝牙照片归到当前设备')
+    }
   } finally {
     console.log = log
     console.warn = warn
   }
-  console.log('album-wifi-delete: 5 groups passed')
+  console.log('album-wifi-delete: 7 groups passed')
 })().catch(error => { console.error(error); process.exitCode = 1 })

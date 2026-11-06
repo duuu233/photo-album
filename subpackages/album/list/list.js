@@ -761,25 +761,44 @@ Page(fold.adapt(tapGuard.wrap({
     })
   },
 
-  // 操作前的连接校验：删除要同时删设备(0x12)与后端、再次投屏要走 BLE 图传，都必须先连上设备。
-  // 已连接返回带当下有效 deviceId 的 device；连不上返回 null（提示已在内部弹出）。
+  // 照片所属设备（删除、再次投屏共用）：返回 { device, mixed }。device 为本人设备列表里的那台，找不到为 null。
   //
   // ⚠️ 2026-08-03 起的口径不变：必须按**这些照片自己所属的设备**找，不能一律用首页选中的那台。
   //    选中的是 B 设备的照片却对 A 设备下 0x12/0x24，等于拿 B 的槽位号去删 / 刷 A 上的图。
   //    Flutter 侧（state.dart deleteAlbumPhotos / refreshGalleryPhotoOnScreen）同口径。
-  //  · 记录带 userProductId → 按它找设备；跨设备直接拦下（同一份掩码解析出的槽位只对一台设备成立）；
-  //  · 记录没带 userProductId（后端未回）→ 退回当前设备下拉选中的那台——本页列表本就是
-  //    按该设备ID向后端筛出来的，归属一致。
-  async ensureConnectedDevice(recordIds) {
+  // 每条记录依次按：① 记录的 userProductId 对上本人设备；② 记录的完整设备 ID（productDeviceId）对上本人设备；
+  // ③ 都对不上 → 当前设备下拉选中的那台。
+  // 2026-11-06：记录按设备 ID 查（2026-11-03 起）会带出这台设备上**所有人**上传的照片，共享成员 / 解绑重绑前上传的
+  //    记录带的是上传人自己那条绑定的 userProductId，本人设备列表里没有；原来据此提示「未找到照片所属电子纸设备，
+  //    请刷新后重试」并拦下。删除接口已支持删除这类记录，这条拦截去掉，按 ②③ 归到这台设备
+  //    （列表本就是按当前设备查出来的，归属一致）。跨设备判断按归属后的设备比，不按原始 userProductId 比。
+  resolveOwnerDevice(recordIds) {
+    const devices = this.devices || []
+    const keyOf = item => String((item && (item.userProductId || item.id)) || '')
+    const current = String(this.data.currentFilter || '')
+    const currentDevice = current ? devices.filter(item => keyOf(item) === current)[0] || null : null
     const owners = []
     ;(recordIds || []).forEach(id => {
       const record = this.findRecord(id)
-      const owner = String((record && record.userProductId) || '')
-      if (owners.indexOf(owner) === -1) {
-        owners.push(owner)
+      const ownerId = String((record && record.userProductId) || '')
+      const hardware = String((record && record.productDeviceId) || '')
+      const device =
+        (ownerId && devices.filter(item => keyOf(item) === ownerId)[0]) ||
+        (hardware && devices.filter(item => String(item.productDeviceId || '') === hardware)[0]) ||
+        currentDevice
+      if (owners.indexOf(device) === -1) {
+        owners.push(device)
       }
     })
-    if (owners.length > 1) {
+    return { device: owners.length === 1 ? owners[0] : null, mixed: owners.length > 1 }
+  },
+
+  // 操作前的连接校验：删除要同时删设备(0x12)与后端、再次投屏要走 BLE 图传，都必须先连上设备。
+  // 已连接返回带当下有效 deviceId 的 device；连不上返回 null（提示已在内部弹出）。
+  // 所属设备见 resolveOwnerDevice；跨设备直接拦下（同一份掩码解析出的槽位只对一台设备成立）。
+  async ensureConnectedDevice(recordIds) {
+    const owner = this.resolveOwnerDevice(recordIds)
+    if (owner.mixed) {
       toast.warn({
         title: '只能操作同一台电子纸设备的照片',
         icon: 'none'
@@ -787,19 +806,7 @@ Page(fold.adapt(tapGuard.wrap({
       return null
     }
 
-    const ownerId = owners[0] || String(this.data.currentFilter || '')
-    let device = ownerId
-      ? (this.devices || []).filter(
-          item => String(item.userProductId || item.id || '') === ownerId
-        )[0]
-      : null
-    if (ownerId && !device) {
-      toast.warn({
-        title: '未找到照片所属电子纸设备，请刷新后重试',
-        icon: 'none'
-      })
-      return null
-    }
+    let device = owner.device
     if (!device) {
       device = activeDevice.getActiveDevice()
     }
@@ -1070,21 +1077,11 @@ Page(fold.adapt(tapGuard.wrap({
   },
 
   // 照片属于同一台 WiFi 版设备时返回那台设备，其余（蓝牙版 / 跨设备 / 找不到）一律返回 null、不提示，
-  // 交回原蓝牙链路，由 ensureConnectedDevice 照旧提示「只能操作同一台」「未找到所属设备」等
+  // 交回原蓝牙链路，由 ensureConnectedDevice 照旧提示「只能操作同一台」等。所属设备同 resolveOwnerDevice
+  //（2026-11-06 起共享成员上传的照片也归到当前这台 WiFi 版设备）
   ownerIfWifi(ids) {
-    const owners = []
-    ;(ids || []).forEach(id => {
-      const record = this.findRecord(id)
-      const owner = String((record && record.userProductId) || '')
-      if (owners.indexOf(owner) === -1) {
-        owners.push(owner)
-      }
-    })
-    const ownerId = owners.length === 1 ? owners[0] || String(this.data.currentFilter || '') : ''
-    const device = ownerId
-      ? (this.devices || []).filter(item => String(item.userProductId || item.id || '') === ownerId)[0]
-      : null
-    return device && broadcastMatch.isWifiDevice(device) ? device : null
+    const owner = this.resolveOwnerDevice(ids)
+    return !owner.mixed && owner.device && broadcastMatch.isWifiDevice(owner.device) ? owner.device : null
   },
 
   // WiFi 版删除（V1.4 更新说明 9.4）：① 老服务删相册记录 → ② IoT 删云端 bin（只删记录真删掉了的那些）。
