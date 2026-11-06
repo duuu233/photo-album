@@ -118,6 +118,8 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 开发版 / 体验版每个页面左下角有「日志 N」浮窗（`components/debug-log`，app.json 全局注册，每个页面 wxml 末尾一个 `<debug-log>`；新增页面记得加），点开可复制 / 清空。数据来自 `utils/debug-log.js`：`app.js` 最先 `install()` 包装 console，另有老服务 `[HTTP]`、IoT `[IoT]`、`[WS]` 摘要；最近 500 行只在内存，token / 密码入库前打码。正式版整套不生效。
 
+「我的上传」删除（2026-11-06）：`api.deleteProjectionRecords` / `iotApi.deletePhotos` 支持 `options.onLog`，逐条回调「接口【名称】POST 路径 参数」与「→ 返回 / → 失败」，页面以 `[相册删除]` / `[相册删除][WiFi]` 前缀打进 console。见 `docs/changes/2026-11-06-我的上传删除写请求日志.md`。
+
 ## 设备图按机型区分（2026-10-22）
 
 首页设备卡、我的设备、设备详情、搜索设备、命名弹窗、投屏选设备六处设备图统一由 `utils/device-thumb.js` 按产品 `broadcastId` 决定：EB-169（圆屏）用 `home-device-circle-thumb`，EC-370 用 `home-device-rectangle-thumb`，其余用原 `home-device-thumb`。已绑定记录用设备列表接口下发的 `broadcastId`，缺失或不是产品列表里的广播名时（2026-10-23）由 `api.getDevices/getDeviceDetail` 按 productId 回查产品列表补上，`getDevices` 仍认不出的记录再按 userProductId 静默调详情接口补（会话内复用，2026-10-23），`bindDevice` 按广播名命中产品 broadcastId 加权匹配产品并写入；搜索结果按蓝牙广播名；用户起的设备名不参与；兜底 `shapeType === 1` 视为圆屏。新增机型只需在 `THUMB_BY_BROADCAST_ID` 加一行。详见 `docs/changes/2026-10-22-设备图按机型区分.md`。

@@ -95,8 +95,26 @@ module.exports = {
   // payload：{ deviceNo, imgUrls（imgBle，最多 200）| all, currentImageUrl?, nextImageUrl? }；
   // 删的是屏上当前图且带了 nextImageUrl 时服务端自动 play 下一张。
   // 返回 { requested, deleted, failed, skipped, current, deviceAction: NONE / PLAY_NEXT / CLEAN_TF, deviceNotified }。
+  // options.onLog(text)（2026-11-06，「我的上传」删除）：发出前记「接口【删除云端照片】方法 路径 参数」（实际发出的 body，
+  // deviceNo 已去冒号），结束记「→ 返回 / → 失败 code message」；不给就不记。其余 options 照常交给 iot.post。
   deletePhotos(payload, options) {
-    return iot.post('/api/device/photo/delete', Object.assign({}, payload, { deviceNo: plainDeviceNo(payload && payload.deviceNo) }), options)
+    const url = '/api/device/photo/delete'
+    const body = Object.assign({}, payload, { deviceNo: plainDeviceNo(payload && payload.deviceNo) })
+    const onLog = options && typeof options.onLog === 'function' ? options.onLog : null
+    if (!onLog) {
+      return iot.post(url, body, options)
+    }
+    onLog(`接口【删除云端照片】POST ${url} 参数 ${JSON.stringify(body)}`)
+    return iot.post(url, body, options).then(
+      res => {
+        onLog(`→ 返回 ${res === undefined ? 'undefined' : JSON.stringify(res)}`)
+        return res
+      },
+      error => {
+        onLog(`→ 失败 ${(error && error.code) || ''} ${(error && error.message) || error}`)
+        throw error
+      }
+    )
   },
 
   // 休眠计划查询（V1.4 实现报告反馈 2.1）：{ configured, mode, enabled, beginTime, endTime, sleepTime, wakeTime, updatedAt }。

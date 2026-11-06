@@ -111,6 +111,12 @@ function parseImgIndex(value) {
   return Number.isInteger(index) && index >= 0 && index < 96 ? index : -1
 }
 
+// 删除请求日志（2026-11-06）：api / iotApi 删除接口逐条回调「接口【名称】方法 路径 参数」与「→ 返回 / → 失败」，
+// 这里加上页面前缀打进 console——控制台能看到，开发版 / 体验版的联调日志浮窗也会收进去（debug-log 包装了 console）。
+function deleteLog(tag) {
+  return text => console.log(tag, text)
+}
+
 // 投屏成功记录 → 网格瓦片。id 取记录 id(upirId)：选中/删除/再次投屏都按它走。
 function buildRecordTile(record, index) {
   return {
@@ -1041,10 +1047,11 @@ Page(fold.adapt(tapGuard.wrap({
     let recordResult = { total: ids.length, failed: 0 }
     wx.showLoading({ title: '删除中', mask: true })
     try {
-      recordResult = await api.deleteProjectionRecords(ids)
+      recordResult = await api.deleteProjectionRecords(ids, { onLog: deleteLog('[相册删除]') })
     } catch (error) {
       recordResult = { total: ids.length, failed: ids.length }
     }
+    console.log('[相册删除] 记录删除结果', JSON.stringify(recordResult))
     wx.hideLoading()
 
     // 6) 两半的结果合并成一条提示：谁失败就说谁，都失败就都说，都成功才是「已删除」。
@@ -1089,8 +1096,9 @@ Page(fold.adapt(tapGuard.wrap({
     const deviceNo = device.productDeviceId || device.deviceNo
     wx.showLoading({ title: '删除中', mask: true })
     let recordResult
+    const wifiLog = deleteLog('[相册删除][WiFi]')
     try {
-      recordResult = await api.deleteProjectionRecords(ids)
+      recordResult = await api.deleteProjectionRecords(ids, { onLog: wifiLog })
     } catch (error) {
       recordResult = { total: ids.length, failed: ids.length, failedIds: ids.slice() }
     }
@@ -1116,8 +1124,7 @@ Page(fold.adapt(tapGuard.wrap({
         payload.nextImageUrl = next.imgBle
       }
       try {
-        const res = await iotApi.deletePhotos(payload, { showError: false })
-        console.log('[相册删除][WiFi] 云端删除返回', JSON.stringify(res))
+        const res = await iotApi.deletePhotos(payload, { showError: false, onLog: wifiLog })
         if (res && res.deviceNotified === false) {
           offline = true
         } else if (res && res.deviceAction === 'PLAY_NEXT') {

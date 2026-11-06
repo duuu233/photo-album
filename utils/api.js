@@ -14,6 +14,18 @@ const UPLOAD_COMPRESS_SIZE_KB = 1024
 const RECORD_COUNT_PAGE_SIZE = 100
 const RECORD_COUNT_MAX_PAGES = 20
 
+// 请求日志里的返回值：undefined 也写出来（不让日志里只剩「返回」两个字），序列化不了的按字符串
+function logText(value) {
+  if (value === undefined) {
+    return 'undefined'
+  }
+  try {
+    return JSON.stringify(value)
+  } catch (error) {
+    return String(value)
+  }
+}
+
 function normalizeFilePaths(input) {
   const files = Array.isArray(input) ? input : [input]
 
@@ -1537,29 +1549,35 @@ module.exports = {
   // 批量删 10 张会闪 10 次「删除中」、失败时弹 10 条 toast，统一由调用方一次 loading + 一次提示。
   // 返回 { total, failed, failedIds }：允许部分失败（设备与相册记录已删成功时不能整体回滚），由调用方决定文案。
   // failedIds（2026-10-27）：WiFi 版删完记录还要删云端 bin，只能删记录真删掉了的那些，见相册页 deleteWifiPhotos。
-  deleteProjectionRecords(ids) {
+  // options.onLog(text)（2026-11-06）：逐条记请求日志——发出前一行「接口【删除相册记录】方法 路径 参数」，
+  // 结束一行「→ 返回 / → 失败 code message」，由「我的上传」页打进控制台与联调日志浮窗。
+  deleteProjectionRecords(ids, options) {
     const list = (Array.isArray(ids) ? ids : [ids]).filter(
       id => id !== undefined && id !== null && id !== ''
     )
+    const onLog = options && typeof options.onLog === 'function' ? options.onLog : () => {}
+    const url = '/Client/UserProduct/delUserProductImgRecord'
 
     return list.reduce(
       (chain, id) =>
-        chain.then(result =>
-          http
-            .post(
-              '/Client/UserProduct/delUserProductImgRecord',
-              { id },
-              { mock: false, showError: false }
-            )
+        chain.then(result => {
+          onLog(`接口【删除相册记录】POST ${url} 参数 ${JSON.stringify({ id })}`)
+          return http
+            .post(url, { id }, { mock: false, showError: false })
             .then(
-              () => result,
-              () =>
-                Object.assign(result, {
+              res => {
+                onLog(`→ 返回 ${logText(res)}`)
+                return result
+              },
+              error => {
+                onLog(`→ 失败 ${(error && error.code) || ''} ${(error && error.message) || error}`)
+                return Object.assign(result, {
                   failed: result.failed + 1,
                   failedIds: result.failedIds.concat(String(id))
                 })
+              }
             )
-        ),
+        }),
       Promise.resolve({ total: list.length, failed: 0, failedIds: [] })
     )
   }
