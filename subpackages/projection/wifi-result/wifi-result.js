@@ -80,6 +80,17 @@ function imageSrc(image) {
   return (image && (image.tempFilePath || image.url)) || ''
 }
 
+// 逐张列表缩略图（2026-11-06）：用原图 _origSrc，与「我的上传」记录图同方位。
+// tempFilePath 是预览页按设备 verticalRotation / rotationDegree 转过的投屏图，竖向 180° 的机型（如 IJ_101）显示是倒的
+function thumbSrc(image) {
+  return (image && image._origSrc) || imageSrc(image)
+}
+
+// 逐张列表文案跟着进度条阶段走（2026-11-06）：「图片上传中」→「上传中」、「图片处理中」→「处理中」，不再统一叫「投屏中」
+function itemStageText(stageText) {
+  return String(stageText || '').replace(/^图片/, '') || '处理中'
+}
+
 function downloadToLocal(url) {
   return new Promise((resolve, reject) => {
     wx.downloadFile({
@@ -197,7 +208,7 @@ Page(fold.adapt(tapGuard.wrap({
     this.setData({
       deviceName: (this.device && (this.device.name || this.device.productName)) || '',
       total: this.images.length,
-      items: this.images.map((image, index) => ({ key: index, src: imageSrc(image), status: 'pending', text: '等待投屏' })),
+      items: this.images.map((image, index) => ({ key: index, src: thumbSrc(image), status: 'pending', text: '等待投屏' })),
       canContinue: !!this.device,
       showLog: showLogPanel()
     })
@@ -303,7 +314,7 @@ Page(fold.adapt(tapGuard.wrap({
       const index = indexes[n]
       const refresh = n === indexes.length - 1
       this.setData({ current: index, progress: 0, stageText: '图片上传中' })
-      this.setItem(index, { status: 'running', text: '投屏中' })
+      this.setItem(index, { status: 'running', text: itemStageText('图片上传中') })
       let result
       let filePath = ''
       try {
@@ -329,6 +340,10 @@ Page(fold.adapt(tapGuard.wrap({
           onStage: ({ text, progress }) => {
             if (!this.unloaded) {
               this.setData({ stageText: text, progress })
+              // 这一张还在进行中时，列表文案跟着阶段变（上传中 / 处理中）
+              if (this.data.items[index] && this.data.items[index].status === 'running' && this.data.items[index].text !== itemStageText(text)) {
+                this.setItem(index, { text: itemStageText(text) })
+              }
             }
           }
         })

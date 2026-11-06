@@ -24,24 +24,6 @@
         </view>
         <text class="progress-count">{{progressCurrent}}/{{progressTotal}}</text>
       </view>
-      <view class="progress-tips glass-panel">
-        <view class="progress-tip-item">
-          <text class="progress-tip-index">1</text>
-          <text class="progress-tip-text">投屏过程请保持手机亮屏，不要远离电子纸设备</text>
-        </view>
-        <view class="progress-tip-item">
-          <text class="progress-tip-index">2</text>
-          <text class="progress-tip-text">批量投屏如果意外中断，请前往图库主动刷新屏幕</text>
-        </view>
-        <view class="progress-tip-item">
-          <text class="progress-tip-index">3</text>
-          <text class="progress-tip-text">图片在投屏记录中可继续操作</text>
-        </view>
-        <view class="progress-tip-item">
-          <text class="progress-tip-index">4</text>
-          <text class="progress-tip-text">投屏完成后电子纸设备会自动刷新，刷新期间电子纸设备繁忙无法投屏，请等待刷新结束</text>
-        </view>
-      </view>
     </block>
 
     <view wx:else class="info-card glass-panel">
@@ -68,6 +50,37 @@
         <view class="ui-chevron info-arrow"></view>
       </view>
     </view>
+
+    <!-- 批量投屏逐张状态（2026-11-06，仿 WiFi 版结果页；多张才显示，单张界面不变）：投屏中在进度条下方，结束后留在结果卡片下方。
+         缩略图用原图（与「我的上传」同方位），文案见 result.js BATCH_TEXT -->
+    <view wx:if="{{items.length > 1}}" class="batch-list glass-panel">
+      <view wx:for="{{items}}" wx:key="key" class="batch-row is-{{item.status}}">
+        <image class="batch-row__thumb" src="{{item.src}}" mode="aspectFill"></image>
+        <text class="batch-row__no">第 {{index + 1}} 张</text>
+        <text class="batch-row__text">{{item.text}}</text>
+      </view>
+    </view>
+
+    <block wx:if="{{status === 'progress'}}">
+      <view class="progress-tips glass-panel">
+        <view class="progress-tip-item">
+          <text class="progress-tip-index">1</text>
+          <text class="progress-tip-text">投屏过程请保持手机亮屏，不要远离电子纸设备</text>
+        </view>
+        <view class="progress-tip-item">
+          <text class="progress-tip-index">2</text>
+          <text class="progress-tip-text">批量投屏如果意外中断，请前往图库主动刷新屏幕</text>
+        </view>
+        <view class="progress-tip-item">
+          <text class="progress-tip-index">3</text>
+          <text class="progress-tip-text">图片在投屏记录中可继续操作</text>
+        </view>
+        <view class="progress-tip-item">
+          <text class="progress-tip-index">4</text>
+          <text class="progress-tip-text">投屏完成后电子纸设备会自动刷新，刷新期间电子纸设备繁忙无法投屏，请等待刷新结束</text>
+        </view>
+      </view>
+    </block>
 
     <!-- 失败页固定排查提示：确认蓝牙连接 / 屏幕刷新中 / 网络故障 / 失败图可去投屏记录重传 -->
     <view wx:if="{{status === 'fail'}}" class="fail-tips glass-panel">

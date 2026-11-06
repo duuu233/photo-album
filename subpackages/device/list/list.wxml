@@ -24,18 +24,20 @@
 
     <!-- WiFi 版 / 蓝牙版改为 Tab 切换（2026-11-06，样式与交互同投屏记录页 record-tabs：胶囊底 + 滑动橙色指示器，点击即切）。
          取代 2026-10-27 的上下分组标题；两个 Tab 都遍历同一份 devices（各自按 isWifi 过滤），本地切换不重新请求，
-         连接 / 投屏 / 改名等原有逻辑都按 devices 找设备，不受 Tab 影响。右侧添加按钮常驻（原只在有设备时显示）。
+         连接 / 投屏 / 改名等原有逻辑都按 devices 找设备，不受 Tab 影响。添加按钮常驻（原只在有设备时显示），
+         同日按用户要求放回 Tab 上方单独一行（右对齐），Tab 在下一行占满宽度。
          当前 Tab 没有设备时显示默认设备图 + 加号，整块点击进搜索设备页（goBind）。 -->
     <block wx:else>
-    <view class="device-tab-bar">
-      <view class="device-tabs device-tabs--{{deviceTab}}">
-        <view class="device-tabs__indicator"></view>
-        <view class="device-tab {{deviceTab === 'wifi' ? 'is-active' : ''}}" hover-class="none" data-tab="wifi" bindtap="switchDeviceTab">WiFi版</view>
-        <view class="device-tab {{deviceTab === 'ble' ? 'is-active' : ''}}" hover-class="none" data-tab="ble" bindtap="switchDeviceTab">蓝牙版</view>
-      </view>
+    <view class="device-toolbar">
       <view class="device-add-btn" hover-class="device-add-btn--hover" aria-label="添加设备" bindtap="goBind">
         <image class="device-add-btn__icon" src="/assets/images/home-add-icon.png" mode="aspectFit"></image>
       </view>
+    </view>
+
+    <view class="device-tabs device-tabs--{{deviceTab}}">
+      <view class="device-tabs__indicator"></view>
+      <view class="device-tab {{deviceTab === 'wifi' ? 'is-active' : ''}}" hover-class="none" data-tab="wifi" bindtap="switchDeviceTab">WiFi版</view>
+      <view class="device-tab {{deviceTab === 'ble' ? 'is-active' : ''}}" hover-class="none" data-tab="ble" bindtap="switchDeviceTab">蓝牙版</view>
     </view>
 
     <view wx:if="{{deviceTab === 'wifi' ? wifiCount : bleCount}}" class="device-count">共 {{deviceTab === 'wifi' ? wifiCount : bleCount}} 台设备</view>

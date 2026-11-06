@@ -1,15 +1,15 @@
-/* ── 顶部 Tab 栏（2026-11-06）：左 WiFi版 / 蓝牙版 Tab，右添加按钮（原 .device-toolbar 只放添加按钮，已并入）。
-   Tab 样式与交互照投屏记录页 .record-tabs：白色胶囊底 + 橙色滑动指示器，切到蓝牙版时指示器平移一格 ── */
-.device-tab-bar {
+/* 顶部添加按钮：单独一行，右对齐到与下方卡片相同的内容边缘（2026-11-06 起常驻，Tab 在它下一行） */
+.device-toolbar {
   display: flex;
-  align-items: center;
-  gap: 20rpx;
+  justify-content: flex-end;
+  margin-bottom: 24rpx;
 }
 
+/* ── WiFi版 / 蓝牙版 Tab（2026-11-06）：样式与交互照投屏记录页 .record-tabs，
+   白色胶囊底 + 橙色滑动指示器，切到蓝牙版时指示器平移一格；单独一行占满宽度 ── */
 .device-tabs {
   position: relative;
   display: flex;
-  flex: 1;
   height: 82rpx;
   padding: 8rpx;
   background: rgba(255, 255, 255, 0.84);

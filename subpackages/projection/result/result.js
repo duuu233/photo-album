@@ -75,6 +75,31 @@ const STATUS_TEXT = {
   }
 }
 
+// 图传卡住时给用户的提示（见 classifyFailureMessage）
+const STALL_MESSAGE = '电子纸设备忙或处理不过来，请重新尝试'
+
+// 批量投屏逐张状态（2026-11-06，仿 WiFi 版结果页的逐张列表；只在多张时显示，单张界面不变）：
+//   等待投屏 → 处理中（出帧 + 建记录，含与上一张图传并行的预取）→ 已发送（帧已就绪、排队等蓝牙）
+//   → 传输中（蓝牙图传）→ 投屏完成；失败的那张「投屏失败」/ 中断「已中断」，之后没投的「未投屏」。
+// 状态只往前走（RANK），迟到的预取回调不会把「传输中」拉回「已发送」。
+const BATCH_TEXT = {
+  pending: '等待投屏',
+  processing: '处理中',
+  sent: '已发送',
+  transferring: '传输中',
+  done: '投屏完成',
+  failed: '投屏失败',
+  aborted: '已中断',
+  skipped: '未投屏'
+}
+const BATCH_RANK = { pending: 0, processing: 1, sent: 2, transferring: 3, done: 4, failed: 4, aborted: 4, skipped: 4 }
+
+// 列表缩略图用原图（_origSrc）：投屏用图已按设备 verticalRotation / rotationDegree 转过（竖向 180° 的机型是倒的），
+// 与「我的上传」记录图（原图）同方位；预览页没处理过的图没有 _origSrc，本身就是原图
+function batchThumbOf(image) {
+  return (image && (image._origSrc || image.tempFilePath || image.url)) || ''
+}
+
 // 不同投屏状态对应的插画图片
 const STATUS_ART = {
   progress: '/assets/images/upload-icon01.png',
@@ -103,6 +128,11 @@ function classifyFailureMessage(rawMessage, deviceId) {
     /连接已断开|连接中断|连接失败|已断开|连接超时|链路/.test(msg)
   if (connLost) {
     return '电子纸设备未连接，请检查手机或电子纸设备连接后继续'
+  }
+  // 图传卡住（2026-11-06）：device-ble 抛「图传中断：电子纸设备停在已接收第 N 包不再前进（窗口 / 间隔）… MTU、每包字节」，
+  // 包号、窗口、MTU 只对排查有用，用户看不懂；改成一句能照做的话。原文仍在 console 的「原始错误」里。
+  if (/图传中断|不再前进|处理不过来/.test(msg)) {
+    return STALL_MESSAGE
   }
   if (/应答超时/.test(msg)) {
     return '电子纸设备应答超时，请稍后重试'
@@ -170,6 +200,8 @@ Page(fold.adapt(tapGuard.wrap({
     progressCurrent: 0,
     progressTotal: 0,
     progressPercent: 0,
+    // 批量投屏逐张状态（多张才有，见 BATCH_TEXT）：[{ key, src, status, text }]
+    items: [],
     // 「继续投屏」在当前页弹出的「拍照/相册」选择弹层显隐 + 退场动画标记
     showMediaSheet: false,
     mediaSheetClosing: false
@@ -280,6 +312,44 @@ Page(fold.adapt(tapGuard.wrap({
     }
   },
 
+  // 批量逐张状态：初始化（单张不显示列表，items 留空）
+  initBatchItems(images) {
+    this._items = (images || []).map((image, index) => ({
+      key: index,
+      src: batchThumbOf(image),
+      status: 'pending',
+      text: BATCH_TEXT.pending
+    }))
+    if (!this._unloaded) {
+      this.setData({ items: this._items.length > 1 ? this._items : [] })
+    }
+  },
+
+  // 批量逐张状态：只往前推进（BATCH_RANK），单张 / 越界 / 已卸载不处理
+  setBatchItem(index, status) {
+    const items = this._items || []
+    const item = items[index]
+    if (!item || items.length < 2 || !(status in BATCH_RANK) || BATCH_RANK[status] <= BATCH_RANK[item.status]) {
+      return
+    }
+    const next = Object.assign({}, item, { status, text: BATCH_TEXT[status] })
+    items[index] = next
+    if (!this._unloaded) {
+      this.setData({ [`items[${index}]`]: next })
+    }
+  },
+
+  // 批量收尾：出错那张标失败 / 中断，后面没投的标「未投屏」（已完成的不动）
+  closeBatchItems(failedIndex, aborted) {
+    const items = this._items || []
+    if (failedIndex >= 0) {
+      this.setBatchItem(failedIndex, aborted ? 'aborted' : 'failed')
+    }
+    for (let j = Math.max(failedIndex + 1, 0); j < items.length; j++) {
+      this.setBatchItem(j, 'skipped')
+    }
+  },
+
   queueRecordTask(label, taskFactory, imagePerformance) {
     const startedAt = Date.now()
     const task = Promise.resolve()
@@ -377,6 +447,7 @@ Page(fold.adapt(tapGuard.wrap({
     }
 
     const total = images.length
+    this.initBatchItems(images)
     const pendingPerformance = pending.performance || {}
     const performance = {
       traceId:
@@ -398,6 +469,8 @@ Page(fold.adapt(tapGuard.wrap({
     console.log(`[投屏] 开始：目标设备=${device.id || device.deviceNo || '--'}，待投 ${total} 张`)
 
     let uploaded = 0
+    // 正在投的第几张（从 0 起，-1 = 还没进逐张循环）：失败时标这一张，后面的标「未投屏」
+    let currentIndex = -1
     // 本批第一张成功写入设备的真实槽位：整单收尾只刷一次屏，刷的就是它（最终展示首张）。
     // 用 null 作为未设置标记，避免合法槽位 0 被误判成空值。
     let firstSuccessfulIndex = null
@@ -481,9 +554,17 @@ Page(fold.adapt(tapGuard.wrap({
         if (idx >= total || framePrefetch[idx]) {
           return
         }
-        framePrefetch[idx] = this.acquireFrame(images[idx], device, sizeInfo, idx, total)
+        this.setBatchItem(idx, 'processing')
+        const prefetch = this.acquireFrame(images[idx], device, sizeInfo, idx, total)
           .then(result => ({ result }))
           .catch(error => ({ error }))
+        framePrefetch[idx] = prefetch
+        // 帧就绪 → 这张标「已发送」；被作废重取的旧预取（framePrefetch[idx] 已换掉）不算
+        prefetch.then(outcome => {
+          if (outcome.result && framePrefetch[idx] === prefetch) {
+            this.setBatchItem(idx, 'sent')
+          }
+        })
       }
 
       // F1 首张网络准备与「连接 → 0x01」并行（性能优化）：出帧目标尺寸/抖动 type 只依赖设备记录里
@@ -601,6 +682,7 @@ Page(fold.adapt(tapGuard.wrap({
         if (this._aborted) {
           throw new Error('UPLOAD_ABORTED')
         }
+        currentIndex = i
         const image = images[i]
         const imagePerformance = {
           imageNumber: i + 1,
@@ -657,6 +739,7 @@ Page(fold.adapt(tapGuard.wrap({
           throw new Error('图片文件错误，请尝试通过工具转码后重新投屏')
         }
         this.setData({ title: '图片传输中', desc: `正在投第 ${i + 1}/${total} 张…` })
+        this.setBatchItem(i, 'transferring')
 
         const index = protocol.firstFreeIndex(
           protocol.indexesToMask(usedIndexes),
@@ -754,6 +837,7 @@ Page(fold.adapt(tapGuard.wrap({
         // 该槽位记为已用，供下一张选空闲槽位
         usedIndexes = usedIndexes.concat(index)
         uploaded++
+        this.setBatchItem(i, 'done')
         // 本张传输完成：进度条直接置 100%（不再走递进动画，收尾要干脆），张数 +1（下一张从 0 开始）
         this.ensureProgressAnimator().jumpTo(100)
         this.setData({ progressCurrent: uploaded })
@@ -788,6 +872,8 @@ Page(fold.adapt(tapGuard.wrap({
       const message = aborted
         ? rawMessage
         : classifyFailureMessage(rawMessage, deviceId)
+      // 批量列表：出错的这张标失败 / 中断，后面的标「未投屏」（在第 i 张开头因中断抛出时，currentIndex 仍是上一张、已完成不动）
+      this.closeBatchItems(currentIndex, aborted)
       console.error(
         `[投屏] 失败（已成功 ${uploaded}/${total} 张，原始错误：${rawMessage}）：${message}`,
         error

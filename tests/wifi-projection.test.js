@@ -337,6 +337,8 @@ async function main() {
     assert.deepEqual(calls.plays.map(item => item.file), ['wxfile://baked-1.png', 'wxfile://baked-2.png', 'wxfile://baked-3.png', 'wxfile://raw-4.png'], '投屏仍用预览页导出（已按设备旋转角转过）的图')
     assert.deepEqual(calls.records.map(item => item.filePath), ['wxfile://orig-1.jpg', 'wxfile://dl-orig-2.jpg', 'wxfile://baked-3.png', 'wxfile://raw-4.png'], '记录 img 用原图：本地直用、云端先下载、下载失败或无备份退回投屏图')
     assert.deepEqual(downloads, ['https://img/orig-2.jpg', 'https://img/fail-3.jpg'])
+    // 逐张列表缩略图同样用原图（2026-11-06：投屏图转过 180° 时缩略图是倒的）
+    assert.deepEqual(page4.data.items.map(item => item.src), ['wxfile://orig-1.jpg', 'https://img/orig-2.jpg', 'https://img/fail-3.jpg', 'wxfile://raw-4.png'], '缩略图用原图，与「我的上传」同方位')
     assert.deepEqual(calls.records.map(item => item.imgBle), ['https://oss/0.bin', 'https://oss/1.bin', 'https://oss/2.bin', 'https://oss/3.bin'], 'imgBle 仍是本次投屏的 binUrl')
 
     // 原图长边大于设备长边才缩（与蓝牙版 compressForUpload 同口径：不改比例、质量 90）
@@ -359,7 +361,10 @@ async function main() {
     delete wxStub.compressImage
     const resultSrc = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.js'), 'utf8')
     assert.ok(/this\.saveAlbumRecord\(this\.images\[index\], filePath, result\.binUrl\)/.test(resultSrc), '写记录时带上本张 image（取 _origSrc）')
-    checked('结果页：相册记录存原图，不存按设备旋转角转过的投屏图')
+    // 逐张文案跟进度条阶段走（2026-11-06）：「图片上传中 / 图片处理中」对应「上传中 / 处理中」，不再叫「投屏中」
+    assert.equal(/text: '投屏中'/.test(resultSrc), false, '进行中不再叫投屏中')
+    assert.ok(/itemStageText\('图片上传中'\)/.test(resultSrc) && /setItem\(index, \{ text: itemStageText\(text\) \}\)/.test(resultSrc), '列表文案跟阶段')
+    checked('结果页：相册记录存原图，不存按设备旋转角转过的投屏图；列表缩略图原图、文案跟阶段')
   }
   {
     const tpl = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.wxml'), 'utf8')

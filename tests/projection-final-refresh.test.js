@@ -11,6 +11,11 @@
 // 收尾刷屏有总开关 FINAL_REFRESH_ENABLED（**默认开启**；2026-08-20 曾临时关闭做真机对照，
 //    当日已恢复。存储键 finalRefreshEnabled 可覆盖）。用例分两拨：前 5 组显式把开关打开验刷屏
 //    口径，最后一组显式关掉验屏蔽态——整批传完也一条 0x24 都不发。默认值改动不影响本文件。
+//
+// 2026-11-06 追加（顺带借这套驱动）：
+//   ⑦ 批量逐张状态：多张时每张 等待投屏 → 处理中 → 已发送 → 传输中 → 投屏完成；失败那张「投屏失败」，
+//      后面没投的「未投屏」；单张不出列表（items 为空）。缩略图用原图 _origSrc（与「我的上传」同方位）；
+//   ⑧ 图传卡住（「图传中断：…不再前进…MTU…」）给用户的提示改成「电子纸设备忙或处理不过来，请重新尝试」。
 const assert = require('assert')
 const protocol = require('../utils/frame-protocol')
 
@@ -140,9 +145,15 @@ const runProjection = async (imageCount, plan, usedSlots = [], refreshEnabled = 
       tempFilePath: `local-${i}.jpg`
     }))
   }
+  if (options.images) {
+    storage.pendingProjection.images = options.images
+  }
   const ctx = Object.create(pageOptions)
   ctx.data = {}
-  ctx.setData = () => {}
+  let listData = null
+  ctx.setData = values => {
+    if (values && 'items' in values) listData = values.items
+  }
   // 进度条与整单汇总不是本用例的关注点，替成空实现，免得把 smooth-progress 的定时器拖进测试
   const animator = {
     reset: () => {},
@@ -169,7 +180,15 @@ const runProjection = async (imageCount, plan, usedSlots = [], refreshEnabled = 
   await ctx.runRealProjection()
   // 刷屏是 fire-and-forget：让已排上的微任务跑完再断言
   await new Promise(resolve => setImmediate(resolve))
-  return { trace, sentImages, finished: finished[0] || {} }
+  return {
+    trace,
+    sentImages,
+    finished: finished[0] || {},
+    itemStatuses: (ctx._items || []).map(item => item.status),
+    itemTexts: (ctx._items || []).map(item => item.text),
+    itemSrcs: (ctx._items || []).map(item => item.src),
+    listData
+  }
 }
 
 // 跑测试时静音页面日志，只留断言失败
@@ -323,7 +342,41 @@ const unmute = () => {
   assert.match(r.finished.message, /不支持的命令/)
   assert.doesNotMatch(r.finished.message, /未连接/)
 
-  console.log('projection-final-refresh: 6组既有刷屏回归及10组动态尺寸/身份/槽位/固件拒绝场景通过')
+  // ⑦ 批量逐张状态
+  mute()
+  r = await runProjection(3, [true, true, true])
+  unmute()
+  assert.deepStrictEqual(r.itemStatuses, ['done', 'done', 'done'])
+  assert.deepStrictEqual(r.itemTexts, ['投屏完成', '投屏完成', '投屏完成'])
+  assert.strictEqual(r.listData.length, 3, '多张才出列表')
+  mute()
+  r = await runProjection(3, [true, new Error('电子纸设备-不支持的命令'), true])
+  unmute()
+  assert.deepStrictEqual(r.itemTexts, ['投屏完成', '投屏失败', '未投屏'], '失败那张标失败，后面的未投屏')
+  mute()
+  r = await runProjection(1, [true])
+  unmute()
+  assert.deepStrictEqual(r.listData, [], '单张不出列表，界面同原来')
+  mute()
+  r = await runProjection(2, [true, true], [], true, {
+    images: [{ tempFilePath: 'baked-0.png', _origSrc: 'orig-0.jpg' }, { tempFilePath: 'raw-1.jpg' }]
+  })
+  unmute()
+  assert.deepStrictEqual(r.itemSrcs, ['orig-0.jpg', 'raw-1.jpg'], '缩略图用原图（与「我的上传」同方位），没处理过的就是本身')
+  const resultSrc = require('fs').readFileSync(require('path').join(__dirname, '../subpackages/projection/result/result.js'), 'utf8')
+  ;['等待投屏', '处理中', '已发送', '传输中', '投屏完成'].forEach(text => {
+    assert.ok(resultSrc.indexOf(`'${text}'`) !== -1, `逐张文案「${text}」`)
+  })
+  const resultTpl = require('fs').readFileSync(require('path').join(__dirname, '../subpackages/projection/result/result.wxml'), 'utf8')
+  assert.ok(/wx:if="\{\{items\.length > 1\}\}" class="batch-list/.test(resultTpl), '模板：多张才显示逐张列表')
+
+  // ⑧ 图传卡住：用户只看到能照做的一句，包号 / MTU 不上页面
+  mute()
+  r = await runProjection(1, [new Error('电子纸设备-图传中断：电子纸设备停在已接收第 72 包不再前进（已自动退让到窗口 1 包 / 每包间隔 16ms 仍无推进）。可能电子纸设备忙或处理不过来。当前 MTU=500、每包 489 字节')])
+  unmute()
+  assert.strictEqual(r.finished.message, '电子纸设备忙或处理不过来，请重新尝试')
+
+  console.log('projection-final-refresh: 6组既有刷屏回归及10组动态尺寸/身份/槽位/固件拒绝场景、批量逐张状态、图传卡住文案通过')
 })().catch(error => {
   unmute()
   console.error(error)

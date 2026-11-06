@@ -242,6 +242,11 @@ async function main() {
     assert.ok(/data-tab="wifi" bindtap="switchDeviceTab">WiFi版<\/view>/.test(tpl) && /data-tab="ble" bindtap="switchDeviceTab">蓝牙版<\/view>/.test(tpl), '两个 Tab')
     assert.ok(tpl.indexOf('data-tab="wifi"') < tpl.indexOf('data-tab="ble"'), 'WiFi版 Tab 在前')
     assert.ok(/class="device-tabs device-tabs--\{\{deviceTab\}\}"/.test(tpl) && /class="device-tabs__indicator"/.test(tpl), '滑动指示器按当前 Tab 定位')
+    // 同日追加：添加按钮单独一行在上，Tab 在下一行（不与加号同行）
+    const toolbarAt = tpl.indexOf('<view class="device-toolbar">')
+    assert.ok(toolbarAt > -1 && toolbarAt < tpl.indexOf('class="device-tabs '), '添加按钮一行在 Tab 上方')
+    assert.ok(tpl.slice(toolbarAt, tpl.indexOf('class="device-tabs ')).indexOf('bindtap="goBind"') > -1, '添加按钮仍进搜索设备页')
+    assert.equal(tpl.indexOf('device-tab-bar'), -1, '不再把 Tab 和加号放同一行')
     assert.ok(/wx:if="\{\{deviceTab === 'wifi' \? wifiCount : bleCount\}\}" class="device-list"/.test(tpl), '当前 Tab 有设备才出列表')
     const emptyTab = tpl.slice(tpl.indexOf('class="empty-tab glass-panel"'))
     assert.ok(/^class="empty-tab glass-panel"[^>]*bindtap="goBind"/.test(emptyTab), '空态整块点击进搜索设备页')
