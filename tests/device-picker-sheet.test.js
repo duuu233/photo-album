@@ -116,4 +116,24 @@ assert.deepStrictEqual(
   )
 })
 
+// ── ④ 类型角标（2026-11-06）：WiFi 版挂「WiFi版」，蓝牙版挂「蓝牙版」，与搜索列表同款图标与配色 ──
+;(() => {
+  const wxml = readCode('components/device-picker-sheet/device-picker-sheet.wxml')
+  const wxss = readCode('components/device-picker-sheet/device-picker-sheet.wxss')
+  assert.ok(
+    /<view wx:if="\{\{item\.isWifi\}\}" class="picker-device__badge picker-device__badge--wifi">[\s\S]*?badge-wifi\.svg[\s\S]*?WiFi版<\/text>\s*<\/view>\s*<view wx:else class="picker-device__badge picker-device__badge--ble">[\s\S]*?badge-bluetooth\.svg[\s\S]*?蓝牙版<\/text>/.test(wxml),
+    '非 WiFi 版（蓝牙版）的行要挂「蓝牙版」角标，与 WiFi 版二选一'
+  )
+  const rule = selector => {
+    const m = wxss.match(new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{([^}]*)\\}'))
+    return m ? m[1] : ''
+  }
+  assert.ok(/rgba\(14, 159, 135, 0\.32\)/.test(rule('.picker-device__badge--wifi')), 'WiFi 版青绿描边')
+  assert.ok(/#0e9f87/.test(rule('.picker-device__badge--wifi .picker-device__badge-text')), 'WiFi 版青绿字')
+  assert.ok(/rgba\(47, 111, 235, 0\.3\)/.test(rule('.picker-device__badge--ble')), '蓝牙版蓝色描边（同搜索列表 .comm-badge--ble）')
+  assert.ok(/#2f6feb/.test(rule('.picker-device__badge--ble .picker-device__badge-text')), '蓝牙版蓝字')
+  assert.ok(!/background|border:|color:/.test(rule('.picker-device__badge')), '基础规则不带颜色，否则蓝牙版会被染成 WiFi 青绿')
+  assert.ok(fs.existsSync(path.join(__dirname, '..', 'assets/images/badge-bluetooth.svg')), '蓝牙角标图标存在')
+})()
+
 console.log('device-picker-sheet.test.js 全部通过')
