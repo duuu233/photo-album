@@ -356,20 +356,6 @@
   gap: 16rpx;
 }
 
-.wifi-detail-badge {
-  min-width: 36rpx;
-  height: 36rpx;
-  padding: 0 10rpx;
-  box-sizing: border-box;
-  color: #ffffff;
-  background: #e5533d;
-  border-radius: 999rpx;
-  font-size: 22rpx;
-  font-weight: 700;
-  line-height: 36rpx;
-  text-align: center;
-}
-
 .wifi-detail-entry__value {
   max-width: 400rpx;
   overflow: hidden;
@@ -379,7 +365,7 @@
   white-space: nowrap;
 }
 
-/* 固件升级行的新版本红点（2026-11-02，同蓝牙版 .firmware-dot） */
+/* 固件升级行的新版本红点（2026-11-02，同蓝牙版 .firmware-dot）；消息中心未读也用它（2026-11-06） */
 .wifi-detail-dot {
   flex: 0 0 auto;
   width: 14rpx;

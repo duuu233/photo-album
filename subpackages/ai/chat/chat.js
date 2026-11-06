@@ -33,6 +33,7 @@ const activeDevice = require('../../../utils/active-device')
 const lowBattery = require('../../../utils/low-battery')
 const broadcastMatch = require('../../../utils/broadcast-match')
 const wifiStatus = require('../../../utils/wifi-status')
+const pickerDevices = require('../../../utils/picker-devices')
 const language = require('../../../utils/language')
 const aiServiceConsent = require('../../../utils/ai-service-consent')
 const aiLastSession = require('../../../utils/ai-last-session')
@@ -2703,20 +2704,16 @@ Page(fold.adapt(tapGuard.wrap({
   },
 
   // ==================== 投屏（复用现有投屏链路） ====================
-  // 需求：已连接→直接进投屏流程；未连接→弹已绑定设备列表，选择后自动连接进投屏。
+  // 需求：点投屏一律弹已绑定设备列表（2026-11-06 起，原「已连接→直接进投屏流程」取消；行上带连接状态），
+  // 选择后按「投屏」自动连接进投屏。
   // 做法：选定设备后**先连上**（2026-09-21，见 startProjection），再把 AI 生成图（OSS URL）下载成
   // 本地临时文件，包装成与首页手选照片同形态的 pendingProjection 写 Storage，跳投屏预览页；
   // 结果页照旧 ensureConnection 再确认一次身份，链路与手选照片完全一致。
   async projectImage(url) {
-    const device = activeDevice.getActiveDevice()
-    if (device && activeDevice.isDeviceConnected(device)) {
-      return this.startProjection(device, url)
-    }
-
-    // 未连接：弹已绑定设备列表。
+    // 一律弹已绑定设备列表（2026-11-06：取消「已连上蓝牙设备就直接进投屏」，同官方图库）。
     // ⚠️ 不预置选中项（2026-08-13 需求 2）：此前进来就把当前设备选上，用户以为是自己选的，
     // 实际是端上替他选的——投屏是往设备写图，选错了就得再投一次。改为一律从「未选中」开始，
-    // 选完还要再按一次「连接并投屏」才真的动设备。
+    // 选完还要再按一次「投屏」才真的动设备。
     this._pendingProjectImage = url
     this.setData({
       devicePicker: {
@@ -2732,29 +2729,17 @@ Page(fold.adapt(tapGuard.wrap({
         toast.show({ title: '暂无已绑定电子纸设备，请先绑定电子纸设备', icon: 'none' })
         return
       }
-      // 2026-10-29：离线 / 本地模式 / 状态未知的 WiFi 版不进列表（蓝牙版不受影响）
-      const devices = await wifiStatus.filterPickable(bound, item => broadcastMatch.isWifiDevice(item))
-      if (!devices.length) {
-        this.setData({ 'devicePicker.show': false })
-        toast.show({ title: '暂无可投屏的电子纸设备', icon: 'none' })
-        return
-      }
-      // isWifi：WiFi 版行挂「WiFi版」角标，选中后不连蓝牙（同官方图库）
-      const pickerDevices = devices.map((item, index) =>
-        Object.assign({}, item, {
-          pickerId: String(
-            item.id != null
-              ? item.id
-              : (item.deviceId || item.deviceNo || item.name || index)
-          ),
-          isWifi: broadcastMatch.isWifiDevice(item)
-        })
-      )
+      // 行上带连接状态（2026-11-06，见 utils/picker-devices.js，同官方图库）：所有已绑定设备都列出，
+      // WiFi 版在线 / 离线等、蓝牙版已连接 / 未连接；不可投的 WiFi 版选了由 startProjection 提示
+      const rows = await pickerDevices.buildPickerDevices(bound, {
+        isWifi: item => broadcastMatch.isWifiDevice(item),
+        findConnectedDeviceId: item => activeDevice.findConnectedDeviceId(item)
+      })
       this.setData({
         devicePicker: {
           show: true,
           loading: false,
-          devices: pickerDevices
+          devices: rows
         }
       })
     } catch (error) {
@@ -2762,7 +2747,7 @@ Page(fold.adapt(tapGuard.wrap({
     }
   },
 
-  // 弹层里按下「连接并投屏」才真正开投（选中只是选中，见 device-picker-sheet）
+  // 弹层里按下「投屏」才真正开投（选中只是选中，见 device-picker-sheet）
   onDevicePickerConfirm(event) {
     const device = event.detail && event.detail.device
     this.setData({ 'devicePicker.show': false })

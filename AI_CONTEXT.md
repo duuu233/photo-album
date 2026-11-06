@@ -82,7 +82,7 @@ WiFi 投屏（STEP 3，2026-10-27 按 V1.4 改）：预览页对 WiFi 版不预�
 
 ## WiFi 版休眠设置与消息中心（2026-10-27，`main-wifi`）
 
-WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/POST /api/device/sleep`，逻辑在 `utils/wifi-sleep.js`）与「消息中心」（`subpackages/device/wifi-messages`，未读角标、分页、已读、`notification.new` 刷新，文案在 `utils/wifi-messages.js`）。轮播设置回显 `imgUrls=null` 全选、不选不让存（保存后立即投第一张已于 2026-11-05 取消，见下文轮播服务端化）。见 `docs/changes/2026-10-27-WiFi版休眠设置与消息中心.md`。
+WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/POST /api/device/sleep`，逻辑在 `utils/wifi-sleep.js`）与「消息中心」（`subpackages/device/wifi-messages`，分页、已读、`notification.new` 刷新，文案在 `utils/wifi-messages.js`；详情页入口有未读只亮红点、不显示数字，2026-11-06）。轮播设置简单模式默认不选（2026-11-06），只有保存过的基础配置 `imgUrls=null`（全部相册）回显全选、不选不让存（保存后立即投第一张已于 2026-11-05 取消，见下文轮播服务端化）。见 `docs/changes/2026-10-27-WiFi版休眠设置与消息中心.md`。
 
 2026-10-28：轮播选图上限 100（`wifi-strategy.MAX_IMG_URLS`，「已选 X/100」、选满置灰）；投屏预览页 WiFi 版进页查轮播，`running` 时显示「同时加入轮播」开关，经 `pendingProjection.addToCarousel` 让结果页每张带 `addToCarousel`，`carouselUpdated=false` 提示「未成功加入轮播」；「我的上传」WiFi 删除提示「若相框未更新，请手动切换或重新设置轮播」。见 `docs/changes/2026-10-28-WiFi版轮播上限100与同时加入轮播.md`。
 
@@ -92,7 +92,7 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 ## WiFi 版 TF 卡本地模式与详情改版（2026-10-29，`main-wifi`）
 
-`status=LOCAL_TF` 映射为 `local`「本地模式」（`utils/wifi-status.js`；不认识的状态值按 unknown 降级，缺 status 仍按 online 回退）。本地模式下投屏 / 轮播设置 / TF卡 / 轮播保存只提示「当前设备状态：本地模式，请恢复设备网络再试」。投屏严格口径 `projectBlockedTip`（我的上传投屏、预览页开始投屏：只放行在线，离线 / 本地模式 / 查不到提示「设备不在线」）；AI 生图与官方图库的选择设备列表经 `filterPickable` 过滤离线 / 本地模式 / 未知的 WiFi 版，AI 生图选 WiFi 版不连蓝牙。WiFi 详情：设备卡（状态 + 电量同栏）→ 投屏 / 轮播设置 → 设备信息（`wifi-info`）、休眠设置、消息中心、TF卡（`wifi-tf`，`utils/wifi-tf.js`：play-tf + 按 msgid 等 `command.result`，开关只看状态不存本地）、共享设备（2026-11-05 起所有者与接收者都显示，`wifi-share`，老服务 `getShareUserProductList`；接收者只看不改：无移除 / 分享设备按钮，自己那行在原移除位置显示「我」，见 `docs/changes/2026-11-05-WiFi版共享设备接收者可见.md`；简化版分享见下）、解除绑定（只 `delUserProduct`）→ 删除设备（仅所有者：`clearUserProductImg` → IoT `photo/delete all=true` → `delUserProduct`）。所有者判定见 `utils/wifi-share.js`。见 `docs/changes/2026-10-29-WiFi版TF卡本地模式与详情页改版.md`。
+`status=LOCAL_TF` 映射为 `local`「本地模式」（`utils/wifi-status.js`；不认识的状态值按 unknown 降级，缺 status 仍按 online 回退）。本地模式下投屏 / 轮播设置 / TF卡 / 轮播保存只提示「当前设备状态：本地模式，请恢复设备网络再试」。投屏严格口径 `projectBlockedTip`（我的上传投屏、预览页开始投屏：只放行在线，离线 / 本地模式 / 查不到提示「设备不在线」）；AI 生图与官方图库点投屏一律弹选择设备框（2026-11-06 起已连蓝牙也不直接投），行由 `utils/picker-devices.js` 生成：所有已绑定设备都列出并带连接状态（WiFi 版在线 / 离线等、蓝牙版已连接 / 未连接），不可投的 WiFi 版选了由 `ensureOnline` 提示（原 `filterPickable` 过滤已不用）；按钮文字「投屏」；AI 生图选 WiFi 版不连蓝牙。WiFi 详情：设备卡（状态 + 电量同栏）→ 投屏 / 轮播设置 → 设备信息（`wifi-info`）、休眠设置、消息中心、TF卡（`wifi-tf`，`utils/wifi-tf.js`：play-tf + 按 msgid 等 `command.result`，开关只看状态不存本地）、共享设备（2026-11-05 起所有者与接收者都显示，`wifi-share`，老服务 `getShareUserProductList`；接收者只看不改：无移除 / 分享设备按钮，自己那行在原移除位置显示「我」，见 `docs/changes/2026-11-05-WiFi版共享设备接收者可见.md`；简化版分享见下）、解除绑定（只 `delUserProduct`）→ 删除设备（仅所有者：`clearUserProductImg` → IoT `photo/delete all=true` → `delUserProduct`）。所有者判定见 `utils/wifi-share.js`。见 `docs/changes/2026-10-29-WiFi版TF卡本地模式与详情页改版.md`。
 
 ## WiFi 版设备分享·简化版（2026-10-29，`main-wifi`）
 
@@ -416,7 +416,7 @@ App.onShow
 多张投屏会让下一张网络出帧、CRC 和预组包与当前张 BLE 传输重叠。预取只用于性能优化，使用前仍要重新校验设备尺寸、帧长度和 chunk 参数。
 
 **进预览前要先连上（2026-09-21）**：后端设备记录**不带本机 BLE 句柄**（`normalizeDevice` 的 `deviceId` 只取
-`bleDeviceId/wxDeviceId/…`，后端不下发），连过才有。官方图库、AI 对话选完设备按「连接并投屏」时先
+`bleDeviceId/wxDeviceId/…`，后端不下发），连过才有。官方图库、AI 对话选完设备按「投屏」（2026-11-06 前叫「连接并投屏」）时先
 `ensureConnectedForAction`，带着 `applyConnectedIdentity` 后的设备进预览（与「我的相册」「投屏管理」的再次投屏同口径；
 原来直接塞后端记录、靠预览页后台预热，预热没连完就报「未连接」）。预览页「开始投屏」若仍无句柄，先等进页面时那次预热
 （`_warmup`），还没有就当场连一次（`ensureDeviceHandle`），不再报「请重新绑定后再投屏」。

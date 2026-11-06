@@ -8,6 +8,9 @@
 //   ③ 已有活动会话 → 直接认领，不再扫描，低电量照旧提醒一次；
 //   ④ 图片下载超时 → 中文提示，不再把「downloadFile:fail timeout」原样 toast 出去（同日需求 2）；
 //   ⑤ WiFi 版（2026-10-27）：不连蓝牙，先确认云端在线，带 isWifi 进预览；明确离线停在本页；弹层里 WiFi 行带 isWifi。
+//   ⑥ 2026-11-06：点投屏一律弹设备选择框（已连上蓝牙设备也不再直接投）；所有已绑定设备都列出并带连接状态
+//      （WiFi 在线 / 离线…、蓝牙已连接 / 未连接），原「离线 / 本地模式 / 未知的 WiFi 版不进列表」「暂无可投屏」取消；
+//      没绑定任何设备的判断与提示不变。
 const assert = require('assert')
 
 const storage = {}
@@ -72,13 +75,14 @@ stubModule('../utils/toast', {
 })
 stubModule('../utils/fold-adapt', { adapt: options => options })
 let wifiOnline = true
-let pickerHidden = [] // 2026-10-29：选择设备列表过滤掉离线 / 本地模式 / 状态未知的 WiFi 版（这里按 id 模拟）
+// 2026-11-06：选择框里 WiFi 行的云端状态（按 id 模拟 fetchFields），不再过滤
+let wifiFields = {}
 stubModule('../utils/wifi-status', {
   ensureOnline: async device => {
     trace.push(`wifiOnline:${device.id}`)
     return wifiOnline
   },
-  filterPickable: async (devices, isWifi) => devices.filter(item => !(isWifi(item) && pickerHidden.indexOf(item.id) > -1))
+  fetchFields: async device => wifiFields[device.id] || { wifiStatus: 'unknown', wifiStatusText: '状态未知' }
 })
 
 let pageOptions = null
@@ -191,29 +195,48 @@ async function main() {
   reset()
   connectedId = ''
   backendList = [backendDevice, wifiDevice]
+  wifiFields = { 21: { wifiStatus: 'online', wifiStatusText: '在线' } }
   {
     const page = newPage()
     await page.onProject()
     const rows = page.data.devicePicker.devices
     assert.deepStrictEqual(rows.map(item => item.isWifi), [false, true], '弹层里 WiFi 行带 isWifi（挂角标）')
+    assert.deepStrictEqual(rows.map(item => [item.statusText, item.statusTone]), [['未连接', 'off'], ['在线', 'online']], '行上带连接状态')
   }
+  // ⑥ 离线的 WiFi 版也列出（显示「离线」），不再过滤、不再提示「暂无可投屏」
   reset()
-  pickerHidden = ['21']
-  {
-    const page = newPage()
-    await page.onProject()
-    const rows = page.data.devicePicker.devices
-    assert.deepStrictEqual(rows.map(item => item.id), ['12'], '不可投的 WiFi 版不进选择列表，蓝牙版保留')
-  }
-  reset()
+  wifiFields = { 21: { wifiStatus: 'offline', wifiStatusText: '离线' } }
   backendList = [wifiDevice]
   {
     const page = newPage()
     await page.onProject()
-    assert.strictEqual(page.data.devicePicker.show, false, '一台可投的都没有：不弹列表')
-    assert.deepStrictEqual(toasts, ['暂无可投屏的电子纸设备'])
+    assert.strictEqual(page.data.devicePicker.show, true, '只有一台离线 WiFi 版也弹选择框')
+    assert.deepStrictEqual(page.data.devicePicker.devices.map(item => [item.id, item.statusText, item.statusTone]), [['21', '离线', 'off']])
+    assert.deepStrictEqual(toasts, [], '不再提示「暂无可投屏的电子纸设备」')
   }
-  pickerHidden = []
+  // ⑥ 已连上蓝牙设备：不再直接进投屏，照样弹选择框，那台显示「已连接」
+  reset()
+  connectedId = 'BLE-1'
+  backendList = [backendDevice, wifiDevice]
+  {
+    const page = newPage()
+    await page.onProject()
+    assert.strictEqual(page.data.devicePicker.show, true, '已连接也弹选择框')
+    assert.deepStrictEqual(trace, [], '不连接、不下载、不跳转')
+    assert.strictEqual(page.data.devicePicker.devices[0].statusText, '已连接')
+    assert.strictEqual(page.data.devicePicker.devices[0].statusTone, 'connected')
+  }
+  // 没绑定任何设备：判断与提示不变
+  reset()
+  connectedId = ''
+  backendList = []
+  {
+    const page = newPage()
+    await page.onProject()
+    assert.strictEqual(page.data.devicePicker.show, false)
+    assert.deepStrictEqual(toasts, ['暂无已绑定电子纸设备，请先绑定电子纸设备'])
+  }
+  wifiFields = {}
 
   console.log('gallery-connect-before-preview.test.js: all passed')
 }

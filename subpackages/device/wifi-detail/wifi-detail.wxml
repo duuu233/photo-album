@@ -85,7 +85,8 @@
         <view class="wifi-detail-entry" hover-class="none" bindtap="openMessages">
           <text class="wifi-detail-entry__label">消息中心</text>
           <view class="wifi-detail-entry__right">
-            <text wx:if="{{unreadCount}}" class="wifi-detail-badge">{{unreadText}}</text>
+            <!-- 有未读只亮红点、不显示具体数字（2026-11-06），样式同固件升级行；消息列表页不变 -->
+            <view wx:if="{{unreadCount}}" class="wifi-detail-dot"></view>
             <view class="ui-chevron"></view>
           </view>
         </view>

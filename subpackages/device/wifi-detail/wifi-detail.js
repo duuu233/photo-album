@@ -23,7 +23,7 @@ const app = getApp()
 //   · 顶部卡片下方：「投屏」「轮播设置」（与蓝牙版位置一致）；轮播开启中（strategy.running）时「轮播设置」带绿点 +「轮播中」（2026-11-02）；
 //   · 功能栏依次：设备信息（二级页 wifi-info：WiFi信号 / WiFi名称 / 最后上线 / 最后心跳 / 固件版本）、
 //     设备ID、屏幕尺寸（2026-11-02，同蓝牙版，只展示；顶部卡片不再显示屏幕尺寸与设备ID）、休眠设置、
-//     消息中心（未读角标）、TF卡（未插卡不可点；有卡显示已用 / 总量，进 wifi-tf）、共享设备（所有者与接收者都显示，进 wifi-share；接收者在那页只看不改）、
+//     消息中心（未读红点）、TF卡（未插卡不可点；有卡显示已用 / 总量，进 wifi-tf）、共享设备（所有者与接收者都显示，进 wifi-share；接收者在那页只看不改）、
 //     解除绑定（只删设备）；页底「删除设备」（仅所有者，样式同蓝牙版：先删云端图片再删设备）。
 //   · 本地模式（status=LOCAL_TF，2026-10-29）：投屏 / 轮播设置 / TF卡 可以点，但只提示「当前设备状态：本地模式，
 //     请恢复设备网络再试」；设备信息、休眠设置、消息中心、分享、解绑、删除照常。
@@ -77,7 +77,6 @@ Page(fold.adapt(tapGuard.wrap({
     tfState: 'unknown', // absent / present / unknown
     tfText: '--',
     unreadCount: 0,
-    unreadText: '',
     firmwareVersion: '',
     otaText: '--',
     otaHasUpdate: false,
@@ -204,7 +203,7 @@ Page(fold.adapt(tapGuard.wrap({
     }
   },
 
-  // 消息中心未读角标；查不到不显示，不弹错
+  // 消息中心未读红点（2026-11-06 起只亮红点、不显示数字）；查不到不显示，不弹错
   async refreshUnread() {
     const deviceNo = this.deviceNo()
     if (!deviceNo) {
@@ -219,7 +218,7 @@ Page(fold.adapt(tapGuard.wrap({
       return
     }
     if (!this.unloaded) {
-      this.setData({ unreadCount: count, unreadText: count > 99 ? '99+' : String(count) })
+      this.setData({ unreadCount: count })
     }
   },
 

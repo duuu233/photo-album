@@ -15,7 +15,8 @@ Component({
       type: Boolean,
       value: false
     },
-    // 每项需带 pickerId（这一屏内的行标识，页面负责生成）；展示读 name/productDeviceId
+    // 每项需带 pickerId（这一屏内的行标识，页面负责生成）；展示读 name / productDeviceId / isWifi / statusText / statusTone
+    //（官方图库与 AI 对话用 utils/picker-devices.js 生成）
     devices: {
       type: Array,
       value: []
@@ -26,11 +27,12 @@ Component({
     },
     desc: {
       type: String,
-      value: '选择要投屏的电子纸设备，点击下方按钮开始连接'
+      value: '选择要投屏的电子纸设备，点击下方按钮开始投屏'
     },
+    // 2026-11-06：原「连接并投屏」改为「投屏」（蓝牙版按下后照旧先连上再投）
     confirmText: {
       type: String,
-      value: '连接并投屏'
+      value: '投屏'
     }
   },
 

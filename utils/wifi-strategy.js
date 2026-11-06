@@ -26,7 +26,7 @@
 //   · imgUrls：「我的上传」里选中照片的 imgBle，按选择顺序，最多 100；不传 = 轮播全部相册；**不能传空数组**（服务端回 4000）；
 //   · 开启轮播必须至少选一张（2026-11-05 确认）：基础配置与每张启用的卡片都要选，一张没选不让保存；
 //   · 基础配置按相册顺序全选时不带 imgUrls（= 全部相册，之后新上传的也进轮播）；卡片的图片组一律按所选明确提交；
-//   · 回显 imgUrls：null = 没选过（全部相册，页面上全选；相册超过 100 张只选前 100 张）；[] = 选过但照片都删了（提示重新选择）。
+//   · 回显 imgUrls：null = 简单模式保存过时是「全部相册」（页面上全选；相册超过 100 张只选前 100 张），没配置过 / 简单模式没保存时默认不选（2026-11-06）；[] = 选过但照片都删了（提示重新选择）。
 const timeZone = require('./time-zone')
 
 const UPDATE_INTERVAL = 2
@@ -190,12 +190,16 @@ function wholeAlbum(album) {
   return { selected: album.slice(), hint: '' }
 }
 
-// 基础配置的回显选择。查询失败（strategy 为空）不选
+// 基础配置的回显选择。查询失败（strategy 为空）不选。
+// imgUrls 为 null 时（2026-11-06 起「默认不选」）：只有简单模式确实保存过（configured 且基础字段在）才是用户选的「全部相册」，
+// 按相册顺序全选；没配置过、或只配过高级卡片（简单模式没保存）一律不选，由用户自己挑
 function selectionFromStrategy(strategy, albumUrls) {
   const urls = strategy && strategy.imgUrls
   const album = Array.isArray(albumUrls) ? albumUrls : []
   if (!Array.isArray(urls)) {
-    return strategy ? wholeAlbum(album) : { selected: [], hint: '' }
+    const savedWhole = !!(strategy && strategy.configured) &&
+      hasBaseConfig(strategy, Number(strategy.updateType) === UPDATE_FIXED ? UPDATE_FIXED : UPDATE_INTERVAL)
+    return savedWhole ? wholeAlbum(album) : { selected: [], hint: '' }
   }
   return pickFromAlbum(urls, album)
 }

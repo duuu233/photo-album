@@ -242,8 +242,12 @@ async function main() {
     assert.ok(['wifi-info/wifi-info', 'wifi-tf/wifi-tf', 'wifi-share/wifi-share'].every(page => device.pages.includes(page)), '新页面已注册')
     assert.ok(/wifiStatus\.queryBlockedTip/.test(read('subpackages/device/wifi-slideshow/wifi-slideshow.js')), '轮播保存前判断设备状态')
     assert.ok(/wifiStatus\.projectBlockedTip/.test(read('subpackages/projection/preview/preview-page.js')), '预览页开始投屏判断设备状态')
-    assert.ok(/wifiStatus\.filterPickable/.test(read('subpackages/ai/chat/chat.js')), 'AI 生图选择设备过滤')
-    assert.ok(/wifiStatus\.filterPickable/.test(read('subpackages/gallery/detail/detail.js')), '官方图库选择设备过滤')
+    // 2026-11-06：选择设备框由「过滤不可投的 WiFi 版」改为「全部列出 + 带连接状态」（utils/picker-devices.js 用 fetchFields 取状态），
+    // 断言挪到新入口上：两页都经 buildPickerDevices 生成行、不再调 filterPickable；不可投的选了仍由 ensureOnline 拦下
+    assert.ok(/pickerDevices\.buildPickerDevices/.test(read('subpackages/ai/chat/chat.js')) && !/filterPickable/.test(read('subpackages/ai/chat/chat.js')), 'AI 生图选择设备带状态')
+    assert.ok(/pickerDevices\.buildPickerDevices/.test(read('subpackages/gallery/detail/detail.js')) && !/filterPickable/.test(read('subpackages/gallery/detail/detail.js')), '官方图库选择设备带状态')
+    assert.ok(/wifiStatus\.fetchFields/.test(read('utils/picker-devices.js')), 'WiFi 行状态来自云端状态查询')
+    assert.ok(/wifiStatus\.ensureOnline/.test(read('subpackages/ai/chat/chat.js')) && /wifiStatus\.ensureOnline/.test(read('subpackages/gallery/detail/detail.js')), '不可投的 WiFi 版选了仍拦下')
     const resultTpl = read('subpackages/projection/wifi-result/wifi-result.wxml')
     assert.equal(resultTpl.indexOf('src="{{items[current].src}}"'), -1, '投屏进度页中间不再放投屏图片')
     assert.ok(/class="wifi-result-art"[^>]*upload-icon01\.png/.test(resultTpl), '改为状态图标')

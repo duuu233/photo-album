@@ -102,7 +102,13 @@ const plain = value => JSON.parse(JSON.stringify(value))
 }
 {
   const album = ['a', 'b', 'c']
-  assert.deepEqual(plain(s.selectionFromStrategy({ imgUrls: null }, album)), { selected: ['a', 'b', 'c'], hint: '' }, 'null = 全部相册，页面全选')
+  // 2026-11-06 简单模式「默认不选」：没配置过 / 简单模式没保存过的 null 不再全选；保存过「全部相册」（基础字段在）才全选
+  const savedAll = { configured: true, updateType: 2, intervalMinutes: 60, imgUrls: null }
+  assert.deepEqual(plain(s.selectionFromStrategy(savedAll, album)), { selected: ['a', 'b', 'c'], hint: '' }, '简单模式保存过、null = 全部相册，页面全选')
+  assert.deepEqual(plain(s.selectionFromStrategy({ configured: true, updateType: 1, updateTimeList: ['08:00'], imgUrls: null }, album)).selected, ['a', 'b', 'c'], '固定模式保存过同样全选')
+  assert.deepEqual(plain(s.selectionFromStrategy({ configured: false, imgUrls: null }, album)), { selected: [], hint: '' }, '没配置过：默认不选')
+  assert.deepEqual(plain(s.selectionFromStrategy({ imgUrls: null }, album)), { selected: [], hint: '' }, '没有 configured：默认不选')
+  assert.deepEqual(plain(s.selectionFromStrategy({ configured: true, updateType: 2, imgUrls: null, weekday: { enabled: true } }, album)).selected, [], '只配过高级卡片（简单模式没保存）：不选')
   assert.equal(s.selectionFromStrategy({ imgUrls: [] }, album).hint, '之前选择的照片已全部删除，请重新选择')
   const part = s.selectionFromStrategy({ imgUrls: ['c', 'x', 'a'] }, album)
   assert.deepEqual(plain(part.selected), ['c', 'a'], '保持原顺序，跳过相册里没有的')
@@ -110,7 +116,7 @@ const plain = value => JSON.parse(JSON.stringify(value))
   assert.equal(s.selectionFromStrategy({ imgUrls: ['x'] }, album).hint, '之前选择的照片已不在「我的上传」中')
   assert.deepEqual(plain(s.selectionFromStrategy(null, album)), { selected: [], hint: '' }, '查询失败不选')
   const big = Array.from({ length: 130 }, (v, i) => `p${i}`)
-  const whole = s.selectionFromStrategy({ imgUrls: null }, big)
+  const whole = s.selectionFromStrategy(savedAll, big)
   assert.equal(whole.selected.length, 100, 'null 且相册超过 100：只选前 100')
   assert.equal(whole.selected[99], 'p99')
   assert.ok(/最多选择 100 张/.test(whole.hint), '并说明')

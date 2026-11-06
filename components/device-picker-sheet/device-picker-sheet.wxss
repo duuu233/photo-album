@@ -160,6 +160,41 @@
 }
 
 /* 设备ID 那行可能退化成很长的串，必须截断，否则整行被撑破 */
+/* 连接状态（2026-11-06）：圆点 + 文字，在线（WiFi）青绿、已连接（蓝牙）蓝、其余灰 */
+.picker-device__status {
+  display: flex;
+  align-items: center;
+  margin-top: 8rpx;
+  color: #8b9098;
+  font-size: 22rpx;
+  line-height: 1.2;
+}
+
+.picker-device__status-dot {
+  flex: 0 0 auto;
+  width: 12rpx;
+  height: 12rpx;
+  margin-right: 8rpx;
+  background: #c3c8cf;
+  border-radius: 50%;
+}
+
+.picker-device__status--online {
+  color: #0e9f87;
+}
+
+.picker-device__status--online .picker-device__status-dot {
+  background: #12b896;
+}
+
+.picker-device__status--connected {
+  color: #2f6feb;
+}
+
+.picker-device__status--connected .picker-device__status-dot {
+  background: #2f6feb;
+}
+
 .picker-device__sub {
   display: block;
   margin-top: 8rpx;

@@ -136,4 +136,23 @@ assert.deepStrictEqual(
   assert.ok(fs.existsSync(path.join(__dirname, '..', 'assets/images/badge-bluetooth.svg')), '蓝牙角标图标存在')
 })()
 
+// ── ⑤ 2026-11-06：按钮文字「投屏」；每行带连接状态（圆点 + 文字，颜色按 tone） ──
+;(() => {
+  assert.strictEqual(sheet.data.confirmText, '投屏', '主按钮默认文字「投屏」（原「连接并投屏」）')
+  const wxml = readCode('components/device-picker-sheet/device-picker-sheet.wxml')
+  const wxss = readCode('components/device-picker-sheet/device-picker-sheet.wxss')
+  assert.ok(
+    /<view wx:if="\{\{item\.statusText\}\}" class="picker-device__status picker-device__status--\{\{item\.statusTone \|\| 'off'\}\}">[\s\S]*?\{\{item\.statusText\}\}<\/text>/.test(wxml),
+    '每行显示 statusText，颜色修饰按 statusTone'
+  )
+  assert.ok(wxml.indexOf('picker-device__status') < wxml.indexOf('设备ID {{item.productDeviceId}}'), '状态在设备ID 上面一行')
+  ;['online', 'connected'].forEach(tone => {
+    assert.ok(new RegExp(`\\.picker-device__status--${tone} \\.picker-device__status-dot\\s*\\{[^}]*background`).test(wxss), `${tone} 圆点有颜色`)
+  })
+  // 两个调用页都不再自己传按钮文字（否则默认值改了不生效）
+  ;['subpackages/ai/chat/chat.wxml', 'subpackages/gallery/detail/detail.wxml'].forEach(file => {
+    assert.ok(!/confirmText=/.test(readCode(file)), `${file} 用组件默认按钮文字`)
+  })
+})()
+
 console.log('device-picker-sheet.test.js 全部通过')

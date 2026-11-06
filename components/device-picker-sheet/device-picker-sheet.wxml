@@ -1,6 +1,7 @@
 <!-- 「选择投屏设备」底部弹层（2026-08-13 需求 2/3）：AI 对话页与图片详情页共用同一份。
      列表版式照搬「搜索设备」页（bind.wxml 的 .nearby-device）：设备图 + 名称 + 设备ID + 右侧单选圈，
      两处入口看到的是同一种设备行。
+     2026-11-06：主按钮文字「连接并投屏」改为「投屏」；每行带连接状态；调用方点投屏一律弹本弹层（不再已连接直接投）。
      ⚠️ 交互与旧版不同：点一行**只选中**，真正连接要按下面的主按钮（旧版是点中即刻连接投屏，
         误触一下就开始往设备写图；且进来默认选中当前设备，用户以为自己选了、其实是端上替他选的）。 -->
 <view wx:if="{{show}}" class="picker-mask" catchtouchmove="noop" bindtap="onCancel">
@@ -40,6 +41,12 @@
               <image class="picker-device__badge-icon" src="/assets/images/badge-bluetooth.svg" mode="aspectFit"></image>
               <text class="picker-device__badge-text">蓝牙版</text>
             </view>
+          </view>
+          <!-- 连接状态（2026-11-06，调用方给 statusText / statusTone，见 utils/picker-devices.js）：
+               WiFi 版在线 / 离线等，蓝牙版已连接 / 未连接；圆点 + 文字，颜色按 tone -->
+          <view wx:if="{{item.statusText}}" class="picker-device__status picker-device__status--{{item.statusTone || 'off'}}">
+            <view class="picker-device__status-dot"></view>
+            <text class="picker-device__status-text">{{item.statusText}}</text>
           </view>
           <!-- 设备ID：同型号同名设备靠它区分，与搜索页/设备列表同一口径（完整 6 字节） -->
           <text wx:if="{{item.productDeviceId}}" class="picker-device__sub">设备ID {{item.productDeviceId}}</text>

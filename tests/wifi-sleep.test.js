@@ -49,7 +49,9 @@ const now = new Date(2026, 9, 27, 21, 0)
   assert.ok(/Number\(error\.code\) !== 4041/.test(page), '4041 补查')
   const detail = fs.readFileSync(path.join(root, 'subpackages/device/wifi-detail/wifi-detail.wxml'), 'utf8')
   assert.ok(/bindtap="openSleep"/.test(detail) && /bindtap="openMessages"/.test(detail), 'WiFi 详情有两个入口')
-  assert.ok(/wx:if="\{\{unreadCount\}\}" class="wifi-detail-badge"/.test(detail), '消息中心未读角标')
+  // 2026-11-06：消息中心未读由数字角标改为红点（同固件升级行 .wifi-detail-dot），断言挪到红点上，并锁住不再显示数字
+  assert.ok(/bindtap="openMessages"[\s\S]*?<view wx:if="\{\{unreadCount\}\}" class="wifi-detail-dot"><\/view>[\s\S]*?bindtap="openOta"/.test(detail), '消息中心未读红点')
+  assert.ok(!/unreadText|wifi-detail-badge/.test(detail), '消息中心不再显示未读数字')
   checked('页面注册与详情入口')
 }
 console.log(`wifi-sleep: ${checks} groups passed`)
