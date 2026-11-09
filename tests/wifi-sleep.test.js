@@ -48,7 +48,10 @@ const now = new Date(2026, 9, 27, 21, 0)
   assert.ok(/sleep\.MODE_OFF[\s\S]*?wx\.showModal/.test(page), '关闭先确认')
   assert.ok(/Number\(error\.code\) !== 4041/.test(page), '4041 补查')
   const detail = fs.readFileSync(path.join(root, 'subpackages/device/wifi-detail/wifi-detail.wxml'), 'utf8')
-  assert.ok(/bindtap="openSleep"/.test(detail) && /bindtap="openMessages"/.test(detail), 'WiFi 详情有两个入口')
+  // 2026-11-09 有意改口径：产品要求 WiFi 详情隐藏「休眠设置」入口（页面与 openSleep 保留，上面页面注册断言照守），只剩消息中心入口
+  assert.ok(!/bindtap="openSleep"/.test(detail) && !/休眠设置<\/text>/.test(detail), 'WiFi 详情不显示休眠设置入口')
+  assert.ok(/bindtap="openMessages"/.test(detail), 'WiFi 详情有消息中心入口')
+  assert.ok(/openSleep\(\) \{/.test(fs.readFileSync(path.join(root, 'subpackages/device/wifi-detail/wifi-detail.js'), 'utf8')), '跳转方法保留，恢复入口只需改模板')
   // 2026-11-06：消息中心未读由数字角标改为红点（同固件升级行 .wifi-detail-dot），断言挪到红点上，并锁住不再显示数字
   assert.ok(/bindtap="openMessages"[\s\S]*?<view wx:if="\{\{unreadCount\}\}" class="wifi-detail-dot"><\/view>[\s\S]*?bindtap="openOta"/.test(detail), '消息中心未读红点')
   assert.ok(!/unreadText|wifi-detail-badge/.test(detail), '消息中心不再显示未读数字')

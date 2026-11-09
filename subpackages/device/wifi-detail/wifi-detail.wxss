@@ -381,10 +381,88 @@
   line-height: 1.2;
 }
 
-/* 解除绑定（2026-10-29）：红字，同蓝牙版 .delete-row */
-.unbind-entry .wifi-detail-entry__label {
-  color: #ff3045;
+/* 一键清空 + 解除绑定卡片（2026-11-09）：照搬蓝牙版 detail.wxss 的 .detail-list / .detail-row / .action-list 一组，
+   两页看起来一致；解除绑定原来是功能栏里的红字行（.unbind-entry），挪到这张卡片后那条规则已删 */
+.detail-list {
+  overflow: hidden;
+  padding: 0 38rpx;
+}
+
+.detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 120rpx;
+  gap: 22rpx;
+  text-align: left;
+}
+
+.row-left,
+.row-right {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.row-left {
+  flex: 1;
+  gap: 30rpx;
+}
+
+.row-left text {
+  overflow: hidden;
+  color: #33373d;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-right {
+  flex-shrink: 0;
+  gap: 16rpx;
+  max-width: 386rpx;
+  color: #777e88;
+  font-size: 28rpx;
+  line-height: 1.2;
+}
+
+.row-right text {
+  overflow: hidden;
+  color: #777e88;
+  font-size: 28rpx;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-icon {
+  position: relative;
+  flex: 0 0 auto;
+  width: 40rpx;
+  height: 40rpx;
+  color: #7d858f;
+}
+
+/* 蓝牙版两卡之间是 gap 24rpx + .action-list 2rpx */
+.action-list {
+  margin-top: 26rpx;
+}
+
+.action-row .row-left text {
   font-weight: 500;
+}
+
+.clear-row .row-left,
+.clear-row .row-icon {
+  color: #ff6a20;
+}
+
+.delete-row .row-left,
+.delete-row .row-icon {
+  color: #ff3045;
 }
 
 /* 「删除设备」页底入口：与蓝牙版 detail.wxss .outline-delete-device 同款（无描边、不引导点击） */
@@ -440,7 +518,13 @@
   background: rgba(255, 48, 69, 0.08);
 }
 
-.trash-icon {
+.clear-icon {
+  color: #ff6a20;
+  background: rgba(255, 106, 32, 0.08);
+}
+
+.trash-icon,
+.broom-icon {
   width: 48rpx;
   height: 48rpx;
 }

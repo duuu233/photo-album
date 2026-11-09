@@ -3,7 +3,8 @@
 //   ② 分页：第一页整页替换，加载更多按 id 去重；hasMore 按 total；
 //   ③ 单条已读：原样回传 id、角标减 1；失败回滚；全部已读 ids=[]；
 //   ④ 只看未读切换带 unreadOnly=true；收到本设备 notification.new 刷新第一页；自己订阅的退出时退订；
-//   ⑤ WiFi 详情：进页查未读数，收到 notification.new 再查。
+//   ⑤ WiFi 详情：进页查未读数，收到 notification.new 再查；
+//   ⑥ 2026-11-09：列表请求带 lang=zh-CN，接口返回的 title / content 直接显示，没给才用本地文案。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -27,6 +28,21 @@ const plain = value => JSON.parse(JSON.stringify(value))
   const merged = m.mergePage(m.mergePage([], [{ id: 1 }, { id: 2 }]), [{ id: 2 }, { id: 3 }])
   assert.deepEqual(merged.map(item => item.id), ['1', '2', '3'], '翻页按 id 去重')
   checked('文案与分页合并')
+}
+{
+  // 2026-11-09：服务端按 lang 翻译好的 title / content 直接显示，优先于本地按 type 拼的文案
+  const item = m.toItem({ id: 11, type: 'PLAY_SUCCESS', payload: { result: 113 }, title: ' 投屏成功啦 ', content: '图片已显示在相框上' })
+  assert.equal(item.title, '投屏成功啦', '标题用接口 title（去首尾空白）')
+  assert.equal(item.detail, '图片已显示在相框上', '正文用接口 content，不再拼「设备返回码」')
+  assert.equal(m.toItem({ id: 12, type: 'NEW_THING', title: 'Device message', content: '' }).detail, '', 'content 给了空串就不显示正文')
+  assert.equal(m.toItem({ id: 13, type: 'NEW_THING', title: 'Device message' }).title, 'Device message', '未知 type 也直接用接口标题')
+  const legacy = m.toItem({ id: 14, type: 'LOW_BATTERY', payload: { level: 2 }, title: '  ' })
+  assert.equal(legacy.title, '设备电量低', '接口 title 为空 / 没给时本地兜底')
+  assert.equal(legacy.detail, '电量等级 2', '没给 content 时本地拼正文')
+  assert.equal(m.NOTIFICATION_LANG, 'zh-CN', '小程序默认中文')
+  const iotSource = fs.readFileSync(path.join(root, 'utils/iot-api.js'), 'utf8')
+  assert.ok(/'\/api\/notification\/list'[\s\S]{0,260}lang: p\.lang \|\| undefined/.test(iotSource), '列表接口带 lang（有值才带）')
+  checked('接口文案直接显示与 lang')
 }
 
 function loadPage() {
@@ -88,12 +104,14 @@ async function main() {
     page.onLoad({ deviceNo: 'D0:CF:13:F0:2F:F8' })
     await flush()
     assert.deepEqual(state.subs, ['D0CF13F02FF8'], '没订阅就自己订阅（去冒号）')
-    assert.deepEqual(state.calls[0], { deviceNo: 'D0CF13F02FF8', page: 1, size: 20, unreadOnly: false })
+    // 2026-11-09 有意改口径：请求多带 lang=zh-CN（接口新增参数，原参数不变）
+    assert.deepEqual(state.calls[0], { deviceNo: 'D0CF13F02FF8', page: 1, size: 20, unreadOnly: false, lang: 'zh-CN' })
     assert.equal(page.data.items.length, 20)
     assert.equal(page.data.hasMore, true)
     await page.loadMore()
     assert.equal(page.data.items.length, 25, '第二页与第一页重叠的两条去重')
     assert.equal(page.data.hasMore, false)
+    assert.equal(state.calls.at(-1).lang, 'zh-CN', '加载更多也带 lang')
     checked('分页：第一页 + 加载更多去重')
 
     await page.tapItem({ currentTarget: { dataset: { index: 0 } } })

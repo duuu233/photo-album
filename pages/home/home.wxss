@@ -423,15 +423,10 @@ button {
   align-items: center;
   height: 32rpx;
   margin-bottom: 16rpx;
-  padding: 0 14rpx 0 10rpx;
+  /* 2026-11-09 标签前不再放图标，左右内边距拉齐 */
+  padding: 0 14rpx;
   border-radius: 999rpx;
   box-sizing: border-box;
-}
-
-.comm-badge__icon {
-  width: 24rpx;
-  height: 24rpx;
-  margin-right: 4rpx;
 }
 
 .comm-badge__text {

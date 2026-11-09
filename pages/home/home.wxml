@@ -108,12 +108,9 @@
                 mode="aspectFill" />
               <view class="device-info">
                 <view class="device-title">{{item.name}}</view>
-                <!-- 类型 + 尺寸标签（2026-10-27）：与搜索列表同款「WiFi版·5.89寸 / 蓝牙版·5.89寸」，没配尺寸显示 --寸 -->
+                <!-- 类型 + 尺寸标签（2026-10-27）：与搜索列表同款「WiFi版·5.89寸 / 蓝牙版·5.89寸」，没配尺寸显示 --寸。
+                     2026-11-09 去掉标签前的 WiFi / 蓝牙小图标：WiFi 卡下面的在线状态行已有 WiFi 图标，两个重复 -->
                 <view class="comm-badge {{item.isWifi ? 'comm-badge--wifi' : 'comm-badge--ble'}}">
-                  <image
-                    class="comm-badge__icon"
-                    src="{{item.isWifi ? '/assets/images/badge-wifi.svg' : '/assets/images/badge-bluetooth.svg'}}"
-                    mode="aspectFit" />
                   <text class="comm-badge__text">{{item.isWifi ? 'WiFi版' : '蓝牙版'}}·{{item.sizeModel || '--寸'}}</text>
                 </view>
                 <!-- 蓝牙版：连接状态 / 电量 / 「连接蓝牙」（原样） -->

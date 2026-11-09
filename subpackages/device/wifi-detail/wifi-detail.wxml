@@ -62,7 +62,7 @@
         </view>
       </view>
 
-      <!-- 功能栏（2026-10-29）：设备信息、设备ID、屏幕尺寸（2026-11-02）、休眠设置、消息中心、固件升级（2026-11-02）、TF卡、共享设备（2026-11-05 起所有者与接收者都显示，接收者进去只看不改）、解除绑定 -->
+      <!-- 功能栏（2026-10-29）：设备信息、设备ID、屏幕尺寸（2026-11-02）、消息中心（休眠设置 2026-11-09 隐藏）、固件升级（2026-11-02）、TF卡、共享设备（2026-11-05 起所有者与接收者都显示，接收者进去只看不改）、解除绑定 -->
       <view class="wifi-detail-entries glass-panel">
         <view class="wifi-detail-entry" hover-class="none" bindtap="openInfo">
           <text class="wifi-detail-entry__label">设备信息</text>
@@ -78,10 +78,7 @@
           <text class="wifi-detail-entry__label">屏幕尺寸</text>
           <text class="wifi-detail-entry__value wifi-detail-entry__value--plain">{{device.sizeModel}}</text>
         </view>
-        <view class="wifi-detail-entry" hover-class="none" bindtap="openSleep">
-          <text class="wifi-detail-entry__label">休眠设置</text>
-          <view class="ui-chevron"></view>
-        </view>
+        <!-- 休眠设置入口 2026-11-09 按产品要求隐藏（wifi-sleep 页与 openSleep 保留，恢复时把入口加回这里即可） -->
         <view class="wifi-detail-entry" hover-class="none" bindtap="openMessages">
           <text class="wifi-detail-entry__label">消息中心</text>
           <view class="wifi-detail-entry__right">
@@ -111,10 +108,31 @@
           <text class="wifi-detail-entry__label">共享设备</text>
           <view class="ui-chevron"></view>
         </view>
-        <view class="wifi-detail-entry unbind-entry" hover-class="none" bindtap="showUnbindConfirm">
-          <text class="wifi-detail-entry__label">解除绑定</text>
-          <view class="wifi-detail-entry__right">
-            <text class="wifi-detail-entry__value">解除绑定电子纸设备，保留照片</text>
+      </view>
+
+      <!-- 一键清空 + 解除绑定（2026-11-09）：布局样式同蓝牙版详情 .action-list（图标 + 橙 / 红字，中间细分隔线）。
+           一键清空仅所有者（会删掉这台设备全部云端照片），接收者这张卡片只有解除绑定 -->
+      <view class="detail-list action-list glass-panel">
+        <block wx:if="{{isOwner}}">
+          <view class="detail-row action-row clear-row" hover-class="none" bindtap="clearCopies">
+            <view class="row-left">
+              <image class="row-icon" src="/assets/images/device-detail-icon05.png" mode="aspectFit"></image>
+              <text>一键清空</text>
+            </view>
+            <view class="row-right">
+              <text>清空电子纸设备及小程序/APP内的照片</text>
+              <view class="ui-chevron"></view>
+            </view>
+          </view>
+          <view class="thin-divider"></view>
+        </block>
+        <view class="detail-row action-row delete-row" hover-class="none" bindtap="showUnbindConfirm">
+          <view class="row-left">
+            <image class="row-icon" src="/assets/images/device-detail-icon06.png" mode="aspectFit"></image>
+            <text>解除绑定</text>
+          </view>
+          <view class="row-right">
+            <text>解除绑定电子纸设备，保留照片</text>
             <view class="ui-chevron"></view>
           </view>
         </view>
@@ -172,6 +190,40 @@
       <view class="confirm-actions">
         <view class="confirm-cancel" hover-class="none" bindtap="hideDeleteConfirm2">取消</view>
         <view class="confirm-primary" hover-class="none" bindtap="confirmDeleteDevice">确认</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 一键清空 · 一级确认（2026-11-09，交互同蓝牙版）：点「继续」进二级确认 -->
+  <view class="confirm-mask" wx:if="{{showClearConfirm}}" catchtouchmove="noop" bindtap="hideClearConfirm">
+    <view class="confirm-dialog {{clearClosing ? 'pop-closing-dialog' : ''}}" catchtap="noop">
+      <view class="confirm-icon clear-icon">
+        <image class="broom-icon" src="/assets/images/device-detail-icon05.png" mode="aspectFit"></image>
+      </view>
+      <view class="confirm-copy">
+        <view class="confirm-title">一键清空</view>
+        <view class="confirm-desc">将清空该设备的云端照片并恢复设备内置图片，同时清空小程序/APP的图库，请谨慎选择是否继续。</view>
+      </view>
+      <view class="confirm-actions">
+        <view class="confirm-cancel" hover-class="none" bindtap="hideClearConfirm">再想想</view>
+        <view class="confirm-primary" hover-class="none" bindtap="openClearStep2">继续</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 一键清空 · 二级确认：清相册记录 → 删云端图片 → 恢复内置图片（设备记录保留） -->
+  <view class="confirm-mask" wx:if="{{showClearConfirm2}}" catchtouchmove="noop" bindtap="hideClearConfirm2">
+    <view class="confirm-dialog {{clearClosing2 ? 'pop-closing-dialog' : ''}}" catchtap="noop">
+      <view class="confirm-icon clear-icon">
+        <image class="broom-icon" src="/assets/images/device-detail-icon05.png" mode="aspectFit"></image>
+      </view>
+      <view class="confirm-copy">
+        <view class="confirm-title">一键清空</view>
+        <view class="confirm-desc">我已阅读并了解此操作的结果，确认继续。</view>
+      </view>
+      <view class="confirm-actions">
+        <view class="confirm-cancel" hover-class="none" bindtap="hideClearConfirm2">取消</view>
+        <view class="confirm-primary" hover-class="none" bindtap="confirmClearCopies">确认</view>
       </view>
     </view>
   </view>

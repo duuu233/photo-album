@@ -60,6 +60,10 @@ async function main() {
     const card = tpl.slice(tpl.indexOf('class="device-title"'), tpl.indexOf('<block wx:if="{{!item.isWifi}}">'))
     assert.ok(/class="comm-badge \{\{item\.isWifi \? 'comm-badge--wifi' : 'comm-badge--ble'\}\}"/.test(card), '标签在名称下、状态前，两类卡都有')
     assert.ok(card.includes("{{item.isWifi ? 'WiFi版' : '蓝牙版'}}·{{item.sizeModel || '--寸'}}"), '类型 + 尺寸，没配显示 --寸')
+    // 2026-11-09：标签前的 WiFi / 蓝牙小图标去掉（WiFi 卡状态行已有 WiFi 图标，两个重复）；状态行图标保留
+    const badge = card.slice(card.indexOf('class="comm-badge '), card.indexOf('</view>', card.indexOf('class="comm-badge ')))
+    assert.ok(!/<image/.test(badge) && !/comm-badge__icon|badge-wifi\.svg|badge-bluetooth\.svg/.test(badge), '首页类型标签前不再有图标')
+    assert.ok(/class="mini-wifi" src="\/assets\/images\/badge-wifi\.svg"/.test(tpl), 'WiFi 卡在线状态行的 WiFi 图标保留')
     assert.ok(/sizeModel: String\(device\.sizeModel \|\| ''\)\.trim\(\)/.test(read('pages/home/home.js')), '首页归一化透传 sizeModel')
     console.log('PASS 设备卡：显示类型 + 尺寸')
   }

@@ -163,14 +163,17 @@ module.exports = {
     return iot.get('/api/device/ota/status', { msgid }, options)
   },
 
-  // 消息列表（对接文档 8.1）：{ total, page, size, unreadCount, list: [{ id, category, type, payload, read, createdAt }] }，按时间倒序
+  // 消息列表（对接文档 8.1）：{ total, page, size, unreadCount, list: [{ id, category, type, payload, read, createdAt, title, content }] }，按时间倒序。
+  // 2026-11-09 接口新增选填 lang（zh-CN / zh-TW / en / ja，不传按简中），返回多 title / content（服务端按 lang 翻译好、可直接展示）；
+  // lang 有值才带，原参数不变
   getNotifications(params, options) {
     const p = params || {}
     return iot.get('/api/notification/list', {
       deviceNo: plainDeviceNo(p.deviceNo),
       page: p.page || 1,
       size: p.size || 20,
-      unreadOnly: p.unreadOnly ? 'true' : undefined
+      unreadOnly: p.unreadOnly ? 'true' : undefined,
+      lang: p.lang || undefined
     }, options)
   },
 

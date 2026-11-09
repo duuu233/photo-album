@@ -1,5 +1,9 @@
 // WiFi 版消息中心的纯逻辑（2026-10-27，docs/wifi/V1.4对接实现报告反馈.md 第三节、对接文档第八节、V1.4 更新说明 2.2）。
-// 服务端只给短码 type + payload，文案由 App 维护；未知 type 显示通用文案。
+// 2026-11-09 起列表接口带 lang，返回服务端翻译好的 title / content，**有就直接显示**；
+// 下面按 type + payload 拼的本地文案只在接口没给（老服务端 / 字段缺失）时兜底，未知 type 显示通用文案。
+
+// 列表接口的 lang（2026-11-09）：小程序默认中文，固定传简中（接口可选 zh-CN / zh-TW / en / ja，不传也按简中）
+const NOTIFICATION_LANG = 'zh-CN'
 
 const TYPE_TEXT = {
   DEVICE_ONLINE: '设备已上线',
@@ -85,18 +89,25 @@ function detailText(type, payload) {
   return parts.join('，')
 }
 
-// 列表项 → 页面行
+// 服务端给的文案：是字符串就用（去首尾空白）；没有这个字段返回 null，交给本地兜底
+function serverText(value) {
+  return typeof value === 'string' ? value.trim() : null
+}
+
+// 列表项 → 页面行。标题：服务端 title 非空用它，否则本地文案；正文：服务端给了 content 就用它（空串即不显示），没给才本地拼
 function toItem(raw) {
   const r = raw || {}
   const type = String(r.type || '')
+  const title = serverText(r.title)
+  const content = serverText(r.content)
   return {
     id: String(r.id),
     rawId: r.id, // 标记已读原样回传（Long 型 ID 可能按字符串返回，不转数字）
     type,
     category: String(r.category || ''),
     categoryText: CATEGORY_TEXT[r.category] || '消息',
-    title: TYPE_TEXT[type] || `设备消息${type ? `（${type}）` : ''}`,
-    detail: detailText(type, r.payload),
+    title: title || TYPE_TEXT[type] || `设备消息${type ? `（${type}）` : ''}`,
+    detail: content !== null ? content : detailText(type, r.payload),
     read: !!r.read,
     createdAt: r.createdAt || ''
   }
@@ -120,6 +131,7 @@ function mergePage(existing, rawList) {
 }
 
 module.exports = {
+  NOTIFICATION_LANG,
   TYPE_TEXT,
   CATEGORY_TEXT,
   detailText,

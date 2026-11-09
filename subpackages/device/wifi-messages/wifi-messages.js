@@ -7,7 +7,8 @@ const messages = require('../../../utils/wifi-messages')
 
 // WiFi 版消息中心（2026-10-27，docs/wifi/V1.4对接实现报告反馈.md 第三节、对接文档第八节）。入口：WiFi 设备详情「消息中心」。
 //   · 列表：IoT GET /api/notification/list，按时间倒序，每页 20 条；下拉刷新回第一页、触底加载下一页（按 id 去重）；
-//   · 「只看未读」开关（unreadOnly=true）；文案按 type 翻译（utils/wifi-messages.js），未知 type 显示通用文案；
+//   · 「只看未读」开关（unreadOnly=true）；文案直接用接口返回的 title / content（2026-11-09 起带 lang=zh-CN 请求），
+//     接口没给时才按 type 本地翻译（utils/wifi-messages.js），未知 type 显示通用文案；
 //   · 点单条：未读的标记已读（POST /api/notification/read ids=[id]），角标减 1；「全部已读」ids 传空数组；
 //     只看未读时点过的那条不立刻移走，下拉刷新后才消失（免得列表跳）；
 //   · 实时：订阅该设备，收到 WS notification.new（只推信号）或长连接重连成功后刷新第一页与未读数（合并 500ms）。
@@ -100,7 +101,7 @@ Page(fold.adapt({
     }
     let res
     try {
-      res = await iotApi.getNotifications({ deviceNo: this.data.deviceNo, page: 1, size: PAGE_SIZE, unreadOnly: this.data.unreadOnly }, { showError: false })
+      res = await iotApi.getNotifications({ deviceNo: this.data.deviceNo, page: 1, size: PAGE_SIZE, unreadOnly: this.data.unreadOnly, lang: messages.NOTIFICATION_LANG }, { showError: false })
     } catch (error) {
       if (this.unloaded || seq !== this.seq) {
         return
@@ -138,7 +139,7 @@ Page(fold.adapt({
     this.setData({ loadingMore: true, moreError: false })
     let res
     try {
-      res = await iotApi.getNotifications({ deviceNo: this.data.deviceNo, page: this.page + 1, size: PAGE_SIZE, unreadOnly: this.data.unreadOnly }, { showError: false })
+      res = await iotApi.getNotifications({ deviceNo: this.data.deviceNo, page: this.page + 1, size: PAGE_SIZE, unreadOnly: this.data.unreadOnly, lang: messages.NOTIFICATION_LANG }, { showError: false })
     } catch (error) {
       if (!this.unloaded && seq === this.seq) {
         this.setData({ loadingMore: false, moreError: true })

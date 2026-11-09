@@ -7,6 +7,7 @@
 //   ⑤ WiFi 详情：本地模式下投屏 / 轮播设置 / TF卡 只提示；未插卡不可点；解除绑定只删设备；
 //      删除设备按「清相册记录 → 删全部云端 bin → 恢复内置图片（2026-11-06）→ 删设备」顺序，前两步失败不删设备，
 //      恢复内置图片只有 401 / 403 不删设备、其余错误照删；
+//      一键清空（2026-11-09，仅所有者）= 删除设备前三步，不删设备；
 //   ⑥ 模板：功能栏顺序、分享 / 删除仅所有者、电量在状态栏、新页面已注册；投屏进度页中间改为状态图标。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -235,14 +236,60 @@ async function main() {
       assert.deepEqual(state.calls.map(item => item[0]), ['clear', 'cloud', 'restore'], `恢复内置图片 ${code} 不删设备`)
     }
     state.restoreError = null
+
+    // 2026-11-09 一键清空（仅所有者）：同删除设备前三步（记录 → 云端 → 恢复内置图片），设备记录保留
+    page = make()
+    await page.load()
+    state.calls.length = 0
+    page.clearCopies()
+    assert.equal(page.data.showClearConfirm, true, '所有者点一键清空弹一级确认')
+    page.openClearStep2()
+    assert.equal(page.data.showClearConfirm, false)
+    assert.equal(page.data.showClearConfirm2, true, '继续进二级确认')
+    toasts.length = 0
+    await page.confirmClearCopies()
+    assert.deepEqual(state.calls, [['clear', '7'], ['cloud', { deviceNo: 'D0CF13', all: true }], ['restore', { deviceNo: 'D0CF13', renderMode: 'fpga16' }]], '一键清空：记录 → 云端 → 恢复内置图片，不删设备')
+    assert.ok(toasts.includes('已清空'))
+    assert.ok(!page._removed, '设备还在，页面不退出')
+
+    page = make()
+    await page.load()
+    state.calls.length = 0
+    state.cloudError = Object.assign(new Error('接口(IoT)-服务异常'), { code: 5000 })
+    await page.confirmClearCopies()
+    assert.deepEqual(state.calls.map(item => item[0]), ['clear', 'cloud'], '云端图片删失败就停下，不再恢复内置图片')
+    state.cloudError = null
+    state.calls.length = 0
+    state.restoreError = Object.assign(new Error('接口(IoT)-失败'), { code: 5000 })
+    await page.confirmClearCopies()
+    assert.deepEqual(state.calls.map(item => item[0]), ['clear', 'cloud', 'restore'], '恢复内置图片 5000 也算清空完成（同删除设备口径），且失败后可再点')
+    state.restoreError = null
+
+    page = make()
+    await page.load()
+    page.setData({ isOwner: false })
+    state.calls.length = 0
+    page.clearCopies()
+    await page.confirmClearCopies()
+    assert.equal(page.data.showClearConfirm, false, '接收者不弹确认')
+    assert.deepEqual(state.calls, [], '接收者不能一键清空')
     checked('WiFi 详情：本地模式拦截、解绑与删除')
   }
   {
     const tpl = read('subpackages/device/wifi-detail/wifi-detail.wxml')
-    const order = ['bindtap="startProjection"', 'bindtap="openInfo"', 'bindtap="openSleep"', 'bindtap="openMessages"', 'bindtap="openTf"', 'bindtap="openShare"', 'bindtap="showUnbindConfirm"', 'bindtap="showDeleteConfirm"']
+    // 2026-11-09 有意改口径：「休眠设置」入口隐藏（tests/wifi-sleep.test.js 守不显示）；新增「一键清空」，与「解除绑定」
+    // 一起挪出功能栏、单独一张卡片（同蓝牙版 .action-list），一键清空在解绑之上
+    const order = ['bindtap="startProjection"', 'bindtap="openInfo"', 'bindtap="openMessages"', 'bindtap="openTf"', 'bindtap="openShare"', 'bindtap="clearCopies"', 'bindtap="showUnbindConfirm"', 'bindtap="showDeleteConfirm"']
     const positions = order.map(key => tpl.indexOf(key))
     assert.ok(positions.every(pos => pos > -1), '入口齐全')
-    assert.deepEqual(positions.slice().sort((a, b) => a - b), positions, '投屏 / 轮播在功能栏之前，功能栏顺序：设备信息、休眠、消息、TF卡、分享、解绑，页底删除')
+    assert.deepEqual(positions.slice().sort((a, b) => a - b), positions, '投屏 / 轮播在功能栏之前，功能栏顺序：设备信息、消息、TF卡、分享；再一张卡片：一键清空、解绑；页底删除')
+    const actionCard = tpl.slice(tpl.indexOf('<view class="detail-list action-list glass-panel">'), tpl.indexOf('class="outline-delete-device"'))
+    assert.ok(/<block wx:if="\{\{isOwner\}\}">\s*<view class="detail-row action-row clear-row" hover-class="none" bindtap="clearCopies">/.test(actionCard), '一键清空仅所有者，行样式同蓝牙版 clear-row')
+    assert.ok(/device-detail-icon05\.png[\s\S]*?<text>一键清空<\/text>[\s\S]*?class="thin-divider"[\s\S]*?class="detail-row action-row delete-row" hover-class="none" bindtap="showUnbindConfirm">[\s\S]*?device-detail-icon06\.png[\s\S]*?<text>解除绑定<\/text>/.test(actionCard), '一键清空 / 分隔线 / 解除绑定，图标同蓝牙版')
+    assert.equal(tpl.indexOf('unbind-entry'), -1, '解除绑定不再在功能栏里')
+    assert.ok(/bindtap="openClearStep2"/.test(tpl) && /bindtap="confirmClearCopies"/.test(tpl) && /confirm-icon clear-icon/.test(tpl), '一键清空两级确认同蓝牙版')
+    const detailCss = read('subpackages/device/wifi-detail/wifi-detail.wxss')
+    assert.ok(/\.clear-row \.row-left,\s*\.clear-row \.row-icon \{\s*color: #ff6a20;/.test(detailCss) && /\.detail-row \{[^}]*min-height: 120rpx;/.test(detailCss), '行样式照蓝牙版')
     // 2026-11-05 有意改口径：入口改名「共享设备」，接收者也显示（进去只看不改，移除 / 分享按钮由 wifi-share 按身份隐藏）。
     // 原「分享仅所有者」断言挪到 tests/wifi-share.test.js 的接收者用例里守（接收者没有移除 / 分享按钮）。
     assert.ok(/<view class="wifi-detail-entry" hover-class="none" bindtap="openShare">\s*<text class="wifi-detail-entry__label">共享设备<\/text>/.test(tpl), '共享设备入口所有者与接收者都显示')
@@ -252,7 +299,8 @@ async function main() {
     // 2026-11-02：设备ID、屏幕尺寸放进功能栏「设备信息」之下（同蓝牙版），顶部卡片不再显示屏幕尺寸
     const idRow = tpl.indexOf('<text class="wifi-detail-entry__label">设备ID</text>')
     const sizeRow = tpl.indexOf('<text class="wifi-detail-entry__label">屏幕尺寸</text>')
-    assert.ok(tpl.indexOf('bindtap="openInfo"') < idRow && idRow < sizeRow && sizeRow < tpl.indexOf('bindtap="openSleep"'), '设备信息 → 设备ID → 屏幕尺寸 → 休眠设置')
+    // 2026-11-09：休眠设置入口隐藏，屏幕尺寸之后接消息中心（原断言判据「设备ID、屏幕尺寸紧跟设备信息」不变）
+    assert.ok(tpl.indexOf('bindtap="openInfo"') < idRow && idRow < sizeRow && sizeRow < tpl.indexOf('bindtap="openMessages"'), '设备信息 → 设备ID → 屏幕尺寸 → 消息中心')
     assert.ok(/wx:if="\{\{device\.sizeModel\}\}" class="wifi-detail-entry size-model-entry"/.test(tpl), '屏幕尺寸没配整行不展示')
     assert.equal(tpl.slice(0, tpl.indexOf('wifi-detail-actions')).indexOf('屏幕尺寸'), -1, '顶部卡片不再显示屏幕尺寸')
     assert.equal(tpl.slice(0, tpl.indexOf('wifi-detail-actions')).indexOf('设备ID'), -1, '顶部卡片不再显示设备ID（与功能栏重复）')
