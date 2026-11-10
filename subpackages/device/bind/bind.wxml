@@ -22,11 +22,11 @@
     </view>
 
 
-    <!-- radar-wrap--found：搜索结束且搜到设备时雷达缩小，把高度让给下面的设备列表，见 bind.wxss 那段注释。
-         搜索中（GIF 在转）挂 radar-wrap--scanning：尺寸固定不变，哪怕已经边搜边显示出设备（2026-11-05 产品要求）。 -->
-    <view class="radar-wrap {{devices.length && !scanning ? 'radar-wrap--found' : ''}} {{scanning ? 'radar-wrap--scanning' : ''}}">
+    <!-- 雷达区尺寸各状态一律不变（2026-11-10 产品要求）：搜索中 GIF、已搜到、未发现三张图只按状态切换，
+         外框固定 500rpx、不缩小也不参与 flex 收缩，三张图占同样宽高（见 bind.wxss 那段注释）。 -->
+    <view class="radar-wrap">
       <!-- 搜索期间雷达一直转（哪怕已经搜到设备）：下面的列表同步追加，两者并存才是「边搜边显示」 -->
-      <image wx:if="{{scanning}}" class="radar-art radar-art-gif" src="https://oss.boltfox.cn/prodFile/202606161504054302273.gif" mode="aspectFit"></image>
+      <image wx:if="{{scanning}}" class="radar-art" src="https://oss.boltfox.cn/prodFile/202606161504054302273.gif" mode="aspectFit"></image>
       <image wx:elif="{{devices.length}}" class="radar-art" src="/assets/images/device_found_art.png" mode="aspectFit"></image>
       <image wx:else class="radar-art" src="/assets/images/device_not_found_art.png" mode="aspectFit"></image>
     </view>

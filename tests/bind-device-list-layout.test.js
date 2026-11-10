@@ -5,6 +5,9 @@
 // 中间三块——雷达 / 统计行 / 设备列表——按 flex 分高度：
 //   · 列表目标高度 = **4.5 张设备卡**（产品要求：最后一张露一半，表示还能滑）；
 //   · 一屏装不下时**先压雷达**（`flex-shrink: 8`，列表只有 1），压到 `min-height` 才轮到列表。
+//   · 2026-11-10 起有意改口径：雷达区各状态尺寸一律不变（产品要求，搜索中 GIF ↔ 已搜到图切换不许缩），
+//     雷达固定 500rpx、不参与收缩，装不下由列表让；所以下面 ③ ④ 改守「雷达不变 + 列表不越过按钮」，
+//     4.5 张只在列表上限（max-height）上守，各机型实际可见张数按新版面重设了下限。
 //
 // 上一版（2026-08-27）是一条经验值 max-height：
 //   `calc(100vh - --nav-h - 960rpx - --safe-bottom)`，960rpx 是「上面几块加按钮一共多高」。
@@ -46,7 +49,6 @@ const rpxOf = value => {
 const content = ruleBody('.bind-content')
 const list = ruleBody('.device-list')
 const radar = ruleBody('.radar-wrap')
-const radarFound = ruleBody('.radar-wrap--found')
 const card = ruleBody('.nearby-device')
 const bottom = ruleBody('.bind-bottom')
 const button = ruleBody('.primary-action')
@@ -126,34 +128,33 @@ LINE_HEIGHTS.forEach(({ name, lh }) => {
   )
 })
 
-// ── ③ 雷达：已发现态让位，且先于列表被压 ──────────────────────────
-const radarShrink = Number(declaration(radar, 'flex').split(/\s+/)[1])
+// ── ③ 雷达：各状态尺寸不变（2026-11-10 有意改口径）─────────────────
+// 原判据「雷达 shrink 大于列表、已发现态 radar-wrap--found 比默认态矮且按 devices.length 挂上」
+// 已按产品要求整体撤掉（勾选设备停扫后 GIF 换成「已搜到」图时一下缩小，正是这次要修的缺陷）。
+// 现在守的是反面：雷达不参与收缩、外框宽高相等且没有任何按状态改尺寸的修饰类，三张图同一尺寸。
+const radarFlex = declaration(radar, 'flex').split(/\s+/)
+assert.equal(radarFlex[1], '0', '.radar-wrap 不参与 flex 收缩：列表变长 / 矮屏时也不许压小雷达')
+const radarHeightRpx = rpxOf(declaration(radar, 'height'))
+assert.equal(rpxOf(declaration(radar, 'width')), radarHeightRpx, '.radar-wrap 宽高相等')
 assert.ok(
-  radarShrink > Number(listFlex[1]),
-  '雷达的 flex-shrink 必须大于列表的：矮屏上要先压雷达，不能反过来切设备卡'
+  !/\.radar-wrap--[\w-]+\s*\{/.test(wxss),
+  'bind.wxss 不能再有 .radar-wrap--xxx 修饰规则：雷达尺寸不随状态变化'
 )
-assert.ok(
-  rpxOf(declaration(radarFound, 'height')) < rpxOf(declaration(radar, 'height')),
-  '.radar-wrap--found 要比默认态矮：让出来的高度正是列表从 2 张多长到 4.5 张的那一截'
-)
-const radarMinRpx = rpxOf(declaration(radarFound, 'min-height'))
+const radarArt = ruleBody('.radar-art')
+assert.equal(declaration(radarArt, 'width'), '80%', '三张雷达图统一占外框 80%（原搜索中 GIF 的尺寸）')
+assert.equal(declaration(radarArt, 'height'), '80%')
 
-// 已发现态那个类要真的挂上去，否则样式写了也用不上
 const wxml = fs.readFileSync(
   path.join(root, 'subpackages/device/bind/bind.wxml'),
   'utf8'
 ).replace(/<!--[\s\S]*?-->/g, '')
-// 2026-11-05 条件有意改为「搜到设备且搜索已结束」：搜索中 GIF 尺寸不变（产品要求），
-// 所以已发现态只在 !scanning 时挂；守的判据不变——让位的类真的挂得上、且有设备时才挂
-assert.ok(
-  /class="radar-wrap \{\{devices\.length && !scanning \? 'radar-wrap--found' : ''\}\} \{\{scanning \? 'radar-wrap--scanning' : ''\}\}"/.test(wxml),
-  '雷达缩小要按 devices.length && !scanning 挂 radar-wrap--found；搜索中挂 radar-wrap--scanning'
-)
-// 搜索中 GIF 尺寸固定：不改宽高、不参与 flex 收缩（否则列表一长 GIF 又会被一点点压小）
-const radarScanning = ruleBody('.radar-wrap--scanning')
-assert.equal(declaration(radarScanning, 'flex-shrink'), '0', '搜索中雷达不参与收缩，GIF 尺寸不变')
-assert.equal(declaration(radarScanning, 'height'), null, '搜索中雷达沿用默认 500rpx，不另设高度')
-assert.equal(declaration(radarScanning, 'width'), null, '搜索中雷达沿用默认 500rpx，不另设宽度')
+assert.ok(/class="radar-wrap"/.test(wxml), '雷达外框只挂 radar-wrap，不按 scanning / devices 挂状态类')
+assert.ok(!/radar-wrap--/.test(wxml), 'bind.wxml 不能再挂 radar-wrap--xxx 状态类')
+const radarImages = wxml.match(/<image[^>]*(?:202606161504054302273\.gif|device_found_art|device_not_found_art)[^>]*>/g) || []
+assert.equal(radarImages.length, 3, '雷达区三张图：搜索中 GIF / 已搜到 / 未发现')
+radarImages.forEach(tag => {
+  assert.ok(/class="radar-art"/.test(tag), `雷达图都只用 radar-art 一个类，宽高才一致：${tag}`)
+})
 
 // ── ④ 按机型跑一遍 flex 收缩 ──────────────────────────────────────
 const substituteVars = (expr, vars) => {
@@ -222,10 +223,12 @@ const resolveFlex = (items, avail) => {
 // ⚠️ 折叠屏展开（宽而矮，1rpx 被放得很大）仍不在这张表里：那种形态下光是雷达加调试台横幅
 // 就几乎吃满一屏，本页会退化成「雷达很小 + 列表很矮」。这一版至少不会再把卡片塞到按钮底下
 // （padding-bottom 是硬预留），但版式仍然挤，见变更文档「待办」。
+// 2026-11-10 雷达固定 500rpx 后按新版面重设下限（改前已发现态雷达让位时是 4.2 / 3 / 4.2 张）：
+// 推算值 iPhone 13 ≈3.0 张、SE ≈2.0、大屏安卓 ≈3.3；开发版带调试台横幅 ≈2.3 / 1.3 / 2.7。
 const viewports = [
-  { name: 'iPhone 13（全面屏）', vw: 390, vh: 844, navHeight: 91, statusBar: 47, safeBottom: 34, wantCards: 4.2 },
-  { name: '小屏 SE', vw: 320, vh: 568, navHeight: 64, statusBar: 20, safeBottom: 0, wantCards: 3 },
-  { name: '大屏安卓', vw: 412, vh: 915, navHeight: 96, statusBar: 32, safeBottom: 24, wantCards: 4.2 }
+  { name: 'iPhone 13（全面屏）', vw: 390, vh: 844, navHeight: 91, statusBar: 47, safeBottom: 34, wantCards: 2.8, wantCardsDebug: 2.1 },
+  { name: '小屏 SE', vw: 320, vh: 568, navHeight: 64, statusBar: 20, safeBottom: 0, wantCards: 1.8, wantCardsDebug: 1.1 },
+  { name: '大屏安卓', vw: 412, vh: 915, navHeight: 96, statusBar: 32, safeBottom: 24, wantCards: 3.0, wantCardsDebug: 2.4 }
 ]
 
 // 统计行整行高度 ≈ 文案行高 + 上下 margin；调试台横幅只在开发版渲染（正式版整块不在）。
@@ -241,16 +244,13 @@ viewports.forEach(vp => {
 
   ;[false, true].forEach(withDebugEntry => {
     const label = `${vp.name}${withDebugEntry ? '（开发版，带调试台横幅）' : ''}`
-    const radarMarginTop = rpxOf(declaration(radarFound, 'margin-top')) * rpx
+    // margin 写成「上 左右 下」简写，取第一段上外边距
+    const radarMarginTop = rpxOf(declaration(radar, 'margin').split(/\s+/)[0]) * rpx
     const fixed = (withDebugEntry ? DEBUG_ENTRY_RPX * rpx : 0) + HEAD_RPX * rpx + radarMarginTop
+    const radarPx = radarHeightRpx * rpx
     const items = [
       { name: 'fixed', basis: fixed, shrink: 0, min: fixed },
-      {
-        name: 'radar',
-        basis: rpxOf(declaration(radarFound, 'height')) * rpx,
-        shrink: radarShrink,
-        min: radarMinRpx * rpx
-      },
+      { name: 'radar', basis: radarPx, shrink: Number(radarFlex[1]), min: radarPx },
       { name: 'list', basis: listMaxRpx * rpx, shrink: Number(listFlex[1]), min: 0 }
     ]
     const size = resolveFlex(items, avail)
@@ -261,15 +261,15 @@ viewports.forEach(vp => {
       used <= avail + 0.5 && used <= buttonTop + 0.5,
       `${label}：三块共 ${used.toFixed(1)}px，越过了按钮顶 ${buttonTop.toFixed(1)}px`
     )
-    // 雷达不许被压过头（压没了就只剩一片空白，看不出是「找到设备了」）
+    // 雷达尺寸不变（2026-11-10）：任何机型上都不许被压
     assert.ok(
-      size.get('radar') >= radarMinRpx * rpx - 0.5,
-      `${label}：雷达被压到 ${(size.get('radar') / rpx).toFixed(0)}rpx，低于 min-height`
+      Math.abs(size.get('radar') - radarPx) < 0.5,
+      `${label}：雷达被压到 ${(size.get('radar') / rpx).toFixed(0)}rpx，应固定 ${radarHeightRpx}rpx`
     )
-    // 正式版要给到 4.5 张；开发版的调试台横幅会吃掉约一张的高度，只要求别退回改版前的 2 张多
+    // 列表可见张数不低于新版面的推算下限（开发版的调试台横幅会吃掉约一张的高度，单独给下限）
     const listRpx = size.get('list') / rpx
     const shown = Math.min(...LINE_HEIGHTS.map(({ lh }) => visibleCards(listRpx, lh)))
-    const want = withDebugEntry ? Math.min(vp.wantCards, 3.2) : vp.wantCards
+    const want = withDebugEntry ? vp.wantCardsDebug : vp.wantCards
     assert.ok(
       shown >= want,
       `${label}：列表只剩 ${listRpx.toFixed(0)}rpx ≈ ${shown.toFixed(2)} 张，低于预期的 ${want} 张`
