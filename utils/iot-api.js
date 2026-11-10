@@ -11,8 +11,12 @@ function plainDeviceNo(deviceNo) {
 // 投屏上传超时：文档要求 30 秒以上（服务端同步处理最长约 8 秒，图片上传另算），这里给 60 秒
 const PLAY_TIMEOUT_MS = 60000
 
+// restore-builtin 的 scene（2026-11-10）：设备照片已全部删掉
+const RESTORE_SCENE_DELETE_ALL_PHOTOS = 'DELETE_ALL_PHOTOS'
+
 module.exports = {
   PLAY_TIMEOUT_MS,
+  RESTORE_SCENE_DELETE_ALL_PHOTOS,
   // 在线状态：{ deviceNo, online, lastOnlineAt }。
   // since（毫秒时间戳，可选）：配网时传本次配网开始时间，只有 lastOnlineAt 晚于它才算 online，避免旧连接误判。
   getDeviceOnline(deviceNo, since, options) {
@@ -118,15 +122,20 @@ module.exports = {
   },
 
   // 恢复设备内置图片（2026-11-06）：{ deviceNo, renderMode } → POST /api/device/restore-builtin（JSON）。
-  // 只在 WiFi 版「删除设备」里调：删完云端照片之后、删设备记录之前；解除绑定不调。
+  // WiFi 版「删除设备」「一键清空」（删完云端照片之后、删设备记录之前）与「我的上传」全删后调；解除绑定不调。
   // renderMode 同投屏，取后台产品配置（esp32 / fpga16，见 api.resolveRenderMode），有值才带、原样传。
   // 返回 { deviceNo, status }：status 只有 SENT（已下发）/ SKIPPED（没下发，不用重试）；
   // 错误码只有 4000 参数错误 / 401 登录失效 / 403 无权限 / 5000 服务异常，怎么收场由调用方决定（见 wifi-detail）。
+  // scene（2026-11-10，选填，有值才带、原样传）：删光照片后调时传 RESTORE_SCENE_DELETE_ALL_PHOTOS
+  // （WiFi 详情一键清空、「我的上传」把这台设备的照片全删了）；删除设备不传。入参其余字段与返回不变。
   restoreBuiltin(payload, options) {
     const p = payload || {}
     const body = { deviceNo: plainDeviceNo(p.deviceNo) }
     if (p.renderMode) {
       body.renderMode = String(p.renderMode)
+    }
+    if (p.scene) {
+      body.scene = String(p.scene)
     }
     return iot.post('/api/device/restore-builtin', body, options)
   },

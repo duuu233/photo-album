@@ -135,7 +135,8 @@ async function main() {
         getDeviceInfo: async () => infoReply,
         getUnreadCount: async () => ({ unreadCount: 0 }),
         deletePhotos: async payload => { state.calls.push(['cloud', JSON.parse(JSON.stringify(payload))]); if (state.cloudError) throw state.cloudError; return {} },
-        restoreBuiltin: async payload => { state.calls.push(['restore', JSON.parse(JSON.stringify(payload))]); if (state.restoreError) throw state.restoreError; return {} }
+        restoreBuiltin: async payload => { state.calls.push(['restore', JSON.parse(JSON.stringify(payload))]); if (state.restoreError) throw state.restoreError; return {} },
+        RESTORE_SCENE_DELETE_ALL_PHOTOS: 'DELETE_ALL_PHOTOS'
       },
       'iot-ws': { on: () => () => {}, subscribe() {}, unsubscribe() {}, getSubscriptions: () => [] },
       toast: { show: value => toasts.push(value.title), warn: value => toasts.push(value.title) },
@@ -248,7 +249,8 @@ async function main() {
     assert.equal(page.data.showClearConfirm2, true, '继续进二级确认')
     toasts.length = 0
     await page.confirmClearCopies()
-    assert.deepEqual(state.calls, [['clear', '7'], ['cloud', { deviceNo: 'D0CF13', all: true }], ['restore', { deviceNo: 'D0CF13', renderMode: 'fpga16' }]], '一键清空：记录 → 云端 → 恢复内置图片，不删设备')
+    // 2026-11-10 有意改口径：一键清空的恢复内置图片带 scene=DELETE_ALL_PHOTOS（删除设备那次仍不带，见上方删除设备断言）
+    assert.deepEqual(state.calls, [['clear', '7'], ['cloud', { deviceNo: 'D0CF13', all: true }], ['restore', { deviceNo: 'D0CF13', renderMode: 'fpga16', scene: 'DELETE_ALL_PHOTOS' }]], '一键清空：记录 → 云端 → 恢复内置图片（scene=DELETE_ALL_PHOTOS），不删设备')
     assert.ok(toasts.includes('已清空'))
     assert.ok(!page._removed, '设备还在，页面不退出')
 

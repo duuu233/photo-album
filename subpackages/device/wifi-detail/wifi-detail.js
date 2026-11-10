@@ -27,6 +27,7 @@ const app = getApp()
 //     解除绑定（只删设备）；页底「删除设备」（仅所有者，样式同蓝牙版：先删云端图片，再恢复内置图片（2026-11-06），最后删设备）。
 //   · 一键清空（2026-11-09，仅所有者）：布局与两级确认同蓝牙版，和解除绑定放同一张卡片；做的是删除设备的前三步
 //     （清相册记录 → 删全部云端图片 → 恢复内置图片），设备记录保留。WiFi 版设备端不存图，不需要连蓝牙。
+//     恢复内置图片带 scene=DELETE_ALL_PHOTOS（2026-11-10）；删除设备那次不带。
 //   · 本地模式（status=LOCAL_TF，2026-10-29）：投屏 / 轮播设置 / TF卡 可以点，但只提示「当前设备状态：本地模式，
 //     请恢复设备网络再试」；设备信息、休眠设置、消息中心、分享、解绑、删除照常。
 //   · 固件升级（2026-11-02，docs/前端对接文档20261031.md）：功能栏「消息中心」之后，右侧显示设备当前固件版本，
@@ -441,8 +442,9 @@ Page(fold.adapt(tapGuard.wrap({
   },
 
   // 清掉这台设备的照片（删除设备与一键清空共用）：① 老服务清相册记录 → ② IoT 删全部云端 bin → ③ IoT 恢复内置图片。
+  // scene 交给 restore-builtin（2026-11-10）：一键清空传 DELETE_ALL_PHOTOS，删除设备不传。
   // 返回 true 表示可以继续，此时 loading 还开着、由调用方关；返回 false 表示已停下（提示已给出、loading 已关）。
-  async wipePhotos(tag, loadingTitle) {
+  async wipePhotos(tag, loadingTitle, scene) {
     const deviceNo = this.deviceNo()
     // ① 老服务清这台设备的相册记录（含级联删投屏记录，同蓝牙版一键清空的后端那一步）；失败已由接口层提示
     try {
@@ -466,7 +468,11 @@ Page(fold.adapt(tapGuard.wrap({
     //    出错只有 401（登录失效，接口层已引导重登）和 403（无权限：设备已删，顺序有问题）停下；4000 / 5000 / 网络等其余错误照常继续。
     try {
       const renderMode = await api.resolveRenderMode(this.data.device)
-      const res = await iotApi.restoreBuiltin({ deviceNo, renderMode }, { showError: false })
+      const payload = { deviceNo, renderMode }
+      if (scene) {
+        payload.scene = scene
+      }
+      const res = await iotApi.restoreBuiltin(payload, { showError: false })
       console.log(`${tag} 恢复内置图片返回`, res && res.status, JSON.stringify(res))
     } catch (error) {
       const code = error && error.code
@@ -542,7 +548,7 @@ Page(fold.adapt(tapGuard.wrap({
       return
     }
     this._clearing = true
-    const ok = await this.wipePhotos('[WiFi一键清空]', '清空中')
+    const ok = await this.wipePhotos('[WiFi一键清空]', '清空中', iotApi.RESTORE_SCENE_DELETE_ALL_PHOTOS)
     this._clearing = false
     if (!ok) {
       return // 已提示；确认弹窗保留供重试

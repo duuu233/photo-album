@@ -11,7 +11,9 @@
 //      产品要求「我的上传」切到这类设备点投屏要提示不在线，所以换了判据，拦截断言不变）；
 //   ④ 蓝牙版照片仍走原链路（ensureConnectedDevice）；
 //   ⑤ 2026-11-06：按设备 ID 查出的共享成员 / 重绑前上传的照片（记录的 userProductId 不在本人设备列表里）
-//      不再提示「未找到照片所属电子纸设备」：按完整设备 ID、再按当前选中设备归属，照常删除（接口已支持）。
+//      不再提示「未找到照片所属电子纸设备」：按完整设备 ID、再按当前选中设备归属，照常删除（接口已支持）；
+//   ⑥ 2026-11-10：全删（已加载的全选、没有下一页，记录与云端都删成功）后调 restore-builtin，带 scene=DELETE_ALL_PHOTOS
+//      与产品 renderMode；SENT 提示「相框将恢复显示内置图片」，SKIPPED / 出错照原提示；没全删、有下一页、部分失败、云端失败都不调。
 const assert = require('assert')
 
 const storage = {}
@@ -34,7 +36,8 @@ const stubModule = (request, exports) => {
   require.cache[filename] = { id: filename, filename, loaded: true, children: [], paths: [], exports }
 }
 
-const calls = { records: [], cloud: [], ble: 0, online: [] }
+const calls = { records: [], cloud: [], ble: 0, online: [], restore: [] }
+let restoreReply = null
 let recordReply = null
 let cloudReply = null
 let onlineReply = true
@@ -44,13 +47,19 @@ stubModule('../utils/api', {
   deleteProjectionRecords: ids => {
     calls.records.push(ids.slice())
     return Promise.resolve(recordReply || { total: ids.length, failed: 0, failedIds: [] })
-  }
+  },
+  resolveRenderMode: () => Promise.resolve('fpga16')
 })
 stubModule('../utils/iot-api', {
   deletePhotos: payload => {
     calls.cloud.push(JSON.parse(JSON.stringify(payload)))
     return cloudReply instanceof Error ? Promise.reject(cloudReply) : Promise.resolve(cloudReply || { deleted: 1, deviceNotified: true })
-  }
+  },
+  restoreBuiltin: payload => {
+    calls.restore.push(JSON.parse(JSON.stringify(payload)))
+    return restoreReply instanceof Error ? Promise.reject(restoreReply) : Promise.resolve(restoreReply || { deviceNo: 'D0CF13F02FF8', status: 'SENT' })
+  },
+  RESTORE_SCENE_DELETE_ALL_PHOTOS: 'DELETE_ALL_PHOTOS'
 })
 stubModule('../utils/wifi-status', {
   projectBlockedTip: device => { calls.online.push(device.id); return Promise.resolve(onlineReply ? '' : '设备不在线') }
@@ -97,8 +106,8 @@ function makePage(records, selected) {
 }
 
 const reset = () => {
-  calls.records = []; calls.cloud = []; calls.ble = 0; calls.online = []
-  toasts.length = 0; navs.length = 0; recordReply = null; cloudReply = null; onlineReply = true
+  calls.records = []; calls.cloud = []; calls.ble = 0; calls.online = []; calls.restore = []
+  toasts.length = 0; navs.length = 0; recordReply = null; cloudReply = null; onlineReply = true; restoreReply = null
 }
 
 ;(async () => {
@@ -168,6 +177,7 @@ const reset = () => {
       await makePage([rec('a', 'W1', { imgBle: 'https://oss/a.bin' }), rec('x', 'W1')], ['a', 'x']).confirmDeleteSelected()
       assert.deepEqual(calls.cloud[0].imgUrls, ['https://oss/a.bin'], '没有 imgBle 的旧记录只删记录')
       assert.equal('nextImageUrl' in calls.cloud[0], false, '剩下的都没 imgBle 时不带下一张')
+      assert.deepEqual(toasts, ['已删除，相框将恢复显示内置图片'], '这两张就是全部：全删后恢复内置图片（⑥）')
       log('PASS WiFi 删除：部分失败 / 设备离线 / 云端失败 / 无 imgBle')
     }
     {
@@ -232,9 +242,52 @@ const reset = () => {
       assert.deepEqual(toasts, ['只能操作同一台电子纸设备的照片'])
       log('PASS 共享成员上传的蓝牙照片归到当前设备')
     }
+    {
+      // ⑥ 全删后恢复内置图片
+      reset()
+      const page = makePage(wifiRecords(), ['a', 'b', 'c'])
+      await page.confirmDeleteSelected()
+      assert.deepEqual(calls.cloud, [{ deviceNo: 'D0:CF:13:F0:2F:F8', imgUrls: ['https://oss/a.bin', 'https://oss/b.bin', 'https://oss/c.bin'] }], '全删不带下一张')
+      assert.deepEqual(calls.restore, [{ deviceNo: 'D0:CF:13:F0:2F:F8', scene: 'DELETE_ALL_PHOTOS', renderMode: 'fpga16' }], '删完再调 restore-builtin，带 scene 与 renderMode')
+      assert.deepEqual(toasts, ['已删除，相框将恢复显示内置图片'])
+      assert.equal(page.reloaded, 1)
+
+      reset()
+      restoreReply = { deviceNo: 'D0CF13F02FF8', status: 'SKIPPED' }
+      await makePage(wifiRecords(), ['a', 'b', 'c']).confirmDeleteSelected()
+      assert.equal(calls.restore.length, 1)
+      assert.deepEqual(toasts, ['已删除；若相框未更新，请手动切换或重新设置轮播'], 'SKIPPED 照原提示')
+
+      reset()
+      restoreReply = Object.assign(new Error('接口(IoT)-无权限'), { code: 403 })
+      await makePage(wifiRecords(), ['a', 'b', 'c']).confirmDeleteSelected()
+      assert.equal(calls.restore.length, 1)
+      assert.deepEqual(toasts, ['已删除；若相框未更新，请手动切换或重新设置轮播'], '恢复出错不改删除结果')
+
+      reset()
+      await makePage(wifiRecords(), ['a', 'b']).confirmDeleteSelected()
+      assert.equal(calls.restore.length, 0, '没全删不调')
+
+      reset()
+      const more = makePage(wifiRecords(), ['a', 'b', 'c'])
+      more.data.hasMore = true
+      await more.confirmDeleteSelected()
+      assert.equal(calls.restore.length, 0, '还有下一页没加载：不算全删')
+
+      reset()
+      recordReply = { total: 3, failed: 1, failedIds: ['b'] }
+      await makePage(wifiRecords(), ['a', 'b', 'c']).confirmDeleteSelected()
+      assert.equal(calls.restore.length, 0, '有记录没删掉：不调')
+
+      reset()
+      cloudReply = Object.assign(new Error('接口(IoT)-服务暂不可用'), { code: 503 })
+      await makePage(wifiRecords(), ['a', 'b', 'c']).confirmDeleteSelected()
+      assert.equal(calls.restore.length, 0, '云端删除失败：不调')
+      log('PASS WiFi 全删后调 restore-builtin（scene=DELETE_ALL_PHOTOS）')
+    }
   } finally {
     console.log = log
     console.warn = warn
   }
-  console.log('album-wifi-delete: 7 groups passed')
+  console.log('album-wifi-delete: 8 groups passed')
 })().catch(error => { console.error(error); process.exitCode = 1 })

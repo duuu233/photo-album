@@ -34,6 +34,8 @@
 //      同时带 nextImageUrl（相册里剩下的第一张），删到的若正是屏上那张，服务端自动换图；
 //      服务端靠设备下载记录反推当前图，反推不到就不切图（2026-10-27 追加内容第三节），所以确认弹窗多一句
 //      「删除后相框可能需手动切换才会更新」，没自动切图时提示「若相框未更新，请手动切换或重新设置轮播」；
+//    · 全删（2026-11-10）：这台设备的照片一张不剩（已加载的全选、没有下一页）且记录与云端都删成功后，
+//      再调 IoT POST /api/device/restore-builtin（scene=DELETE_ALL_PHOTOS）让相框回到内置图片；它失败不影响删除结果；
 //    · 再次投屏 = 确认在线后进预览页，导出后去 WiFi 投屏结果页（会写一条新的相册记录）。
 //
 // ⚠️ 多手机共用一台设备（2026-08-10 下午补）：另一部手机删过图后，本机列表里那条记录还在，
@@ -1132,10 +1134,18 @@ Page(fold.adapt(tapGuard.wrap({
         cloudError = String((error && error.message) || '云端删除失败').replace(/^接口\(IoT\)-/, '')
       }
     }
+    // 全删：当前设备的照片已全部加载（没有下一页）、全部选中，且记录与云端都删成功 → 恢复内置图片
+    let restored = false
+    const remaining = (this.records || []).filter(record => ids.indexOf(record.id) === -1)
+    if (deletedIds.length && !failedIds.length && !cloudError && !this.data.hasMore && !remaining.length) {
+      restored = await this.restoreBuiltinAfterDeleteAll(device, deviceNo, wifiLog)
+    }
     wx.hideLoading()
 
     if (!deletedIds.length) {
       toast.warn({ title: '删除失败，请稍后重试', icon: 'none' })
+    } else if (restored) {
+      toast.show({ title: '已删除，相框将恢复显示内置图片', icon: 'none' })
     } else if (cloudError) {
       toast.warn({ title: `照片已从我的上传删除，相框播放列表更新失败：${cloudError}`, icon: 'none' })
     } else if (failedIds.length) {
@@ -1148,6 +1158,26 @@ Page(fold.adapt(tapGuard.wrap({
       toast.show({ title: '已删除；若相框未更新，请手动切换或重新设置轮播', icon: 'none' })
     }
     this.loadPhotos()
+  },
+
+  // 「我的上传」把这台 WiFi 版设备的照片全删了（2026-11-10）：调 restore-builtin 并带 scene=DELETE_ALL_PHOTOS，
+  // renderMode 同投屏取产品配置（取不到不传）。照片已经删掉，这一步出错只记日志（401 已由接口层引导重登）、不改删除结果。
+  // 返回 true = 已下发（status=SENT）；SKIPPED（离线 / 休眠 / 本地模式等没下发）或出错返回 false，照原提示收场。
+  async restoreBuiltinAfterDeleteAll(device, deviceNo, log) {
+    const payload = { deviceNo, scene: iotApi.RESTORE_SCENE_DELETE_ALL_PHOTOS }
+    try {
+      const renderMode = await api.resolveRenderMode(device)
+      if (renderMode) {
+        payload.renderMode = renderMode
+      }
+      log(`接口【恢复内置图片】POST /api/device/restore-builtin 参数 ${JSON.stringify(payload)}`)
+      const res = await iotApi.restoreBuiltin(payload, { showError: false })
+      log(`→ 返回 ${res === undefined ? 'undefined' : JSON.stringify(res)}`)
+      return !!(res && res.status === 'SENT')
+    } catch (error) {
+      log(`→ 失败 ${(error && error.code) || ''} ${(error && error.message) || error}`)
+      return false
+    }
   },
 
   // 再次投屏（2026-08-04 取代原「刷新屏幕」按钮）：与投屏管理页的「再次投屏」完全同链路——
