@@ -41,7 +41,27 @@ function loadBluetooth(productIds) {
   return { bluetooth: sandbox.module.exports, emit: devices => handler({ devices }) }
 }
 
-function loadPage(file, dependencies, wxExtra) {
+// 手动推进的定时器（2026-11-11）：选择 WiFi 页「搜一个显示一个」靠 setTimeout 逐条亮出，用例逐拍推进核对
+function manualTimers() {
+  let next = 1
+  const queue = new Map()
+  const tick = () => {
+    const first = queue.entries().next()
+    if (!first.done) {
+      queue.delete(first.value[0])
+      first.value[1]()
+    }
+  }
+  return {
+    setTimeout: fn => { const id = next++; queue.set(id, fn); return id },
+    clearTimeout: id => { queue.delete(id) },
+    tick,
+    drain: () => { while (queue.size) tick() },
+    size: () => queue.size
+  }
+}
+
+function loadPage(file, dependencies, wxExtra, timers) {
   let definition
   const state = { modals: [], navs: [], toasts: [] }
   vm.runInNewContext(fs.readFileSync(path.join(root, file), 'utf8'), {
@@ -53,7 +73,9 @@ function loadPage(file, dependencies, wxExtra) {
       showModal: options => state.modals.push(options),
       navigateTo: options => state.navs.push(options)
     }, wxExtra),
-    console: { log() {}, warn() {} }, setTimeout: () => 0, clearTimeout() {}
+    console: { log() {}, warn() {} },
+    setTimeout: timers ? timers.setTimeout : () => 0,
+    clearTimeout: timers ? timers.clearTimeout : () => {}
   }, { filename: path.basename(file) })
   const page = { ...definition, data: JSON.parse(JSON.stringify(definition.data)), scanSeq: 1, setData(values) { Object.assign(this.data, values) } }
   return { page, state }
@@ -291,12 +313,17 @@ async function main() {
       async scanWifi(timeout, onBatch) {
         world.scans++
         if (options.scanError) throw options.scanError
+        if (options.manual) {
+          // 手动驱动：用例自己决定何时回一批、何时结束（2026-11-11 搜一个显示一个）
+          return new Promise((resolve, reject) => options.manual.push({ onBatch, resolve, reject }))
+        }
         if (options.batches) {
           const all = []
           world.seen = []
           for (const batch of options.batches) {
             batch.forEach(item => all.push(item))
             onBatch(all, batch)
+            if (options.afterBatch) options.afterBatch()
             world.seen.push(world.page.data.wifiList.map(item => item.ssid))
           }
           return all
@@ -317,13 +344,16 @@ async function main() {
       },
       signal: require('../utils/signal'),
       'wifi-provision': { getTarget: () => (options.noTarget ? null : { bleDeviceId: 'ble-w1', deviceNo: 'E348C21ED428' }) }
-    }), options.envVersion ? { getAccountInfoSync: () => ({ miniProgram: { envVersion: options.envVersion } }) } : {})
+    }), options.envVersion ? { getAccountInfoSync: () => ({ miniProgram: { envVersion: options.envVersion } }) } : {}, options.timers)
     world.page = loaded.page
     return Object.assign(loaded, { world })
   }
   {
     // 分批回时边收边显示；2026-11-05 再次取消按信道只留 2.4G（10-28 取消、10-29 恢复），5G、2.4G 都列出（原「5G 被过滤」断言随之改写）
-    const batched = loadList({ batches: [
+    // 2026-11-11 起每批逐条亮出（搜一个显示一个，逐条节奏见下一个用例）：这里每批之后把亮出定时器走完再记录，
+    // 守的仍是「每收到一批就刷新列表、不等扫描结束」
+    const revealTimers = manualTimers()
+    const batched = loadList({ timers: revealTimers, afterBatch: revealTimers.drain, batches: [
       [{ ssid: 'starhc520', rssi: -27, channel: 1 }, { ssid: 'starhc520_5G', rssi: -29, channel: 48 }],
       [{ ssid: 'tyw-1308', rssi: -47, channel: 6 }, { ssid: '1308_5G', rssi: -60, channel: 157 }, { ssid: 'EricRachel', rssi: -84, channel: 13 }]
     ] })
@@ -334,6 +364,52 @@ async function main() {
     assert.deepEqual(batched.page.data.wifiList.map(item => item.ssid), ['starhc520', 'starhc520_5G', 'tyw-1308', '1308_5G', 'EricRachel'], '5G（ch 48 / 157）与 2.4G 都列出，按信号排序')
     assert.equal(batched.page.data.scanning, false)
     checked('5G、2.4G 都列出，分批回时边收边显示')
+  }
+  {
+    // 2026-11-11 搜一个显示一个（仿搜索设备页）：每批里没显示过的按信号从强到弱逐条亮出；
+    // 列表出来后头部不再转圈、可直接重新搜索，旧一轮之后回来的批次 / 结果作废；结束时没亮完的一次补齐
+    const timers = manualTimers()
+    const rounds = []
+    const one = loadList({ timers, manual: rounds })
+    const ssids = () => one.page.data.wifiList.map(item => item.ssid)
+    one.page.onLoad({})
+    assert.equal(one.page.data.scanning, true)
+    await flush()
+    await flush()
+    assert.equal(rounds.length, 1, '已让设备扫描')
+    const all = [{ ssid: 'B', rssi: -50 }, { ssid: 'A', rssi: -30 }]
+    rounds[0].onBatch(all, all)
+    assert.deepEqual(ssids(), ['A'], '收到一批先亮信号最强的一条')
+    assert.equal(one.page.data.scanning, true, '后台仍在收设备后续的批次')
+    timers.tick()
+    assert.deepEqual(ssids(), ['A', 'B'], '隔一拍再亮下一条')
+    assert.equal(timers.size(), 0, '亮完不再排队')
+    const batch2 = [{ ssid: 'C', rssi: -40 }, { ssid: 'D', rssi: -80 }, { ssid: 'A', rssi: -20 }]
+    batch2.forEach(item => all.push(item))
+    rounds[0].onBatch(all, batch2)
+    assert.deepEqual(ssids(), ['A', 'C', 'B'], '新一批立即亮一条，按信号排在对应位置；同名取信号强的')
+    timers.tick()
+    assert.deepEqual(ssids(), ['A', 'C', 'B', 'D'])
+    one.page.rescan()
+    assert.equal(one.page.data.phase, 'connecting', '列表出来后不等收尾即可重新搜索')
+    assert.deepEqual(one.page.data.wifiList, [], '重新搜索先清空列表')
+    await flush()
+    await flush()
+    assert.equal(rounds.length, 2, '重新让设备扫描')
+    rounds[0].onBatch(all, all)
+    assert.deepEqual(one.page.data.wifiList, [], '旧一轮之后回来的批次作废')
+    rounds[0].resolve(all)
+    await flush()
+    assert.equal(one.page.data.scanning, true, '旧一轮结束不影响新一轮')
+    const fresh = [{ ssid: 'X', rssi: -60 }, { ssid: 'Y', rssi: -70 }, { ssid: 'Z', rssi: -90 }]
+    rounds[1].onBatch(fresh, fresh)
+    assert.deepEqual(ssids(), ['X'])
+    rounds[1].resolve(fresh)
+    await flush()
+    assert.equal(one.page.data.scanning, false)
+    assert.deepEqual(ssids(), ['X', 'Y', 'Z'], '扫描结束时没亮完的一次补齐')
+    assert.equal(timers.size(), 0, '收尾清掉逐条亮出的定时器')
+    checked('搜一个显示一个：逐条亮出、列表出来后可重新搜索、旧一轮结果作废')
   }
   {
     // 设备回了空列表时给提示：2026-11-05 再次去掉 2.4G 字样（10-28 去掉、10-29 恢复）
@@ -432,6 +508,11 @@ async function main() {
     assert.ok(manual && /text-align:\s*center/.test(manual[1]), '文字居中')
     assert.ok(!/position:\s*fixed/.test(manual[1]) && !/border:/.test(manual[1]) && !/background/.test(manual[1]), '不是按钮样式（无底色、描边、固定定位）')
     assert.ok(!/wifi-item__connect|connectSelected/.test(tpl), '列表行不再有「连接」按钮')
+    // 2026-11-11：列表出来后头部不再挂「正在搜索网络...」，换成「重新搜索」，底部手动输入同时出现；新出现的行淡入
+    assert.ok(/wx:if="\{\{scanning && !wifiList\.length\}\}" class="wifi-list-scanning"/.test(tpl), '只在一条都没有时转圈')
+    assert.ok(/wx:if="\{\{!scanning \|\| wifiList\.length\}\}" class="wifi-list-head__rescan"/.test(tpl), '列表出来即显示重新搜索')
+    assert.ok(/wx:if="\{\{!scanning \|\| wifiList\.length\}\}" class="wifi-manual-text"/.test(tpl), '列表出来即显示手动输入')
+    assert.ok(/\.wifi-item\s*\{[^}]*animation:\s*wifiItemIn/.test(css) && /@keyframes wifiItemIn/.test(css), '新出现的行淡入')
     checked('各环境同一套界面：无调试内容，隐藏网络不列，提示语下可手动输入')
   }
   {
