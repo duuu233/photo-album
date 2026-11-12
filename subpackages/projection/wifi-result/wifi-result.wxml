@@ -20,6 +20,20 @@
       <view class="wifi-result-note">进度含图片上传与处理；发送后设备会自行下载并刷新屏幕，多张时只在最后一张刷屏</view>
     </view>
 
+    <!-- 投屏步骤（2026-11-12）：准备投屏 → 图片上传中 → 图片处理中 → 已发送，屏幕即将刷新，对应上方进度文案；
+         样式与交互同配网状态页：未开始白圈序号、进行中转圈、通过打勾、失败在当前步打叉。多张时跟着正在投的那一张走 -->
+    <view class="cast-steps glass-panel">
+      <view wx:for="{{steps}}" wx:key="key" class="cast-step is-{{item.status}}">
+        <view class="step-icon">
+          <view wx:if="{{item.status === 'loading'}}" class="step-icon__spinner"></view>
+          <text wx:elif="{{item.status === 'done'}}" class="step-icon__mark">✓</text>
+          <text wx:elif="{{item.status === 'fail'}}" class="step-icon__mark">×</text>
+          <text wx:else class="step-icon__no">{{index + 1}}</text>
+        </view>
+        <text class="step-text">{{item.text}}</text>
+      </view>
+    </view>
+
     <!-- 逐张列表最多露 4 行，多出的上下滑动查看；投到第几张就滚到那一行（listAnchor） -->
     <view wx:if="{{total > 1}}" class="wifi-result-list glass-panel">
       <scroll-view scroll-y scroll-with-animation class="wifi-result-list__scroll" scroll-into-view="{{listAnchor}}">
@@ -28,18 +42,6 @@
           <text class="wifi-result-row__no">第 {{index + 1}} 张</text>
           <text class="wifi-result-row__text">{{item.text}}</text>
         </view>
-      </scroll-view>
-    </view>
-
-    <!-- 投屏日志（开发版 / 体验版显示，正式版不显示）：设备尺寸与旋转字段、每张图尺寸、接口参数与返回、WS 推送、状态查询 -->
-    <view wx:if="{{showLog}}" class="projection-log">
-      <view class="projection-log__head">
-        <text class="projection-log__title">投屏日志</text>
-        <text class="projection-log__copy" hover-class="none" bindtap="copyLogs">复制日志</text>
-      </view>
-      <scroll-view scroll-y class="projection-log__body" scroll-into-view="{{logAnchor}}">
-        <view wx:if="{{!logs.length}}" class="projection-log__line">（暂无）</view>
-        <text wx:for="{{logs}}" wx:key="id" id="{{item.id}}" class="projection-log__line" user-select>{{item.text}}</text>
       </scroll-view>
     </view>
   </view>

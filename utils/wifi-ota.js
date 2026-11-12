@@ -14,6 +14,8 @@
 // 所以用独立 key `ota_inflight:{deviceNo}` 存 { deviceNo, type: 'ota', msgid, version, savedAt }，一台设备只留一条。
 // 终态（SUCCESS / FAILED / TIMEOUT）或查询 4044（任务只保留 2 小时）时清掉。
 // 「有新版本」之前先看本地有没有进行中的记录：有就显示「升级进行中 · 等待设备重启」，不再提示升级（3.3）。
+//
+// 进度条（2026-11-12）：ota/status 与 WS ota.result 新增 progress（0~100），规则见下方「升级进度条」一节。
 const iotApi = require('./iot-api')
 
 const STORAGE_PREFIX = 'ota_inflight:'
@@ -81,6 +83,60 @@ function stepIndex(status) {
 
 function failTitle(status) {
   return normalizeStatus(status) === 'TIMEOUT' ? '升级超时' : '升级失败'
+}
+
+// ── 升级进度条（2026-11-12）──────────────────────────
+// 服务端 progress（GET /api/device/ota/status 与 WS ota.result 新增，可选）：设备私有进度回执 182 / 184 / 186 / 188
+// 换算为 20 / 40 / 60 / 80，每收到一条回执 WS 推一次；进入 VERIFYING 后为 100；固件不上报进度时为 null。
+// 页面显示值只增不减、匀速前进（每 PROGRESS_TICK_MS 走 1%），走到「上限」就停住等下一次上报：
+//   · 还没收到任何进度（SENT 等设备响应）→ 停在 19；
+//   · 收到 20 / 40 / 60 / 80 → 可走到 39 / 59 / 79 / 98（下一档减 1；80 之后与「不上报」同为 98）；
+//     例：走到 39 没收到 40 就停住，收到 40 后继续前进；
+//   · 已进入下载（DOWNLOADING）却一直没有进度值（固件不上报，为 null）或已进入写入（FLASHING）→ 匀速走到 98 停住；
+//   · VERIFYING（SUCCESS 同）→ 100。FAILED / TIMEOUT 停在当时的位置。
+// 进度条左边的文案用当前那一步的步骤文案（activeStep）。
+const PROGRESS_FIRST_CAP = 19
+const PROGRESS_STEP_GAP = 19
+const PROGRESS_SILENT_CAP = 98
+const PROGRESS_TICK_MS = 200 // 1% / 200ms：一档 20% 约 4 秒
+
+// progress 字段 → 0~100 整数；null / 缺省 / 非数字 → null（不上报）
+function parseProgress(value) {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+  const n = Number(value)
+  if (!isFinite(n)) {
+    return null
+  }
+  return Math.max(0, Math.min(100, Math.round(n)))
+}
+
+// 显示值能走到的上限。reported：本次升级收到过的最大进度（null = 一次都没收到）
+function progressCap(status, reported) {
+  const s = normalizeStatus(status)
+  const value = typeof reported === 'number' ? reported : 0
+  if (s === 'VERIFYING' || s === 'SUCCESS' || value >= 100) {
+    return 100
+  }
+  if (s === 'FLASHING') {
+    return PROGRESS_SILENT_CAP
+  }
+  if (value > 0) {
+    return Math.min(value + PROGRESS_STEP_GAP, PROGRESS_SILENT_CAP)
+  }
+  return s === 'DOWNLOADING' ? PROGRESS_SILENT_CAP : PROGRESS_FIRST_CAP
+}
+
+// stepsFor 结果里「当前那一步」：转圈或打叉的那一步；全勾（VERIFYING）为最后一步
+function activeStep(view) {
+  const steps = (view && view.steps) || []
+  for (let i = 0; i < steps.length; i++) {
+    if (steps[i].status === 'loading' || steps[i].status === 'fail') {
+      return i
+    }
+  }
+  return STEP_TEXTS.length - 1
 }
 
 // ── 版本号 ─────────────────────────────────────────────
@@ -226,7 +282,13 @@ async function refreshInflight(deviceNo, options) {
     return { record: null, status, data }
   }
   const lastStep = Math.max(stepIndex(status), typeof record.lastStep === 'number' ? record.lastStep : -1)
-  const next = updateInflight(deviceNo, { status, lastStep }) || record
+  const patch = { status, lastStep }
+  // 进度条：记下收到过的最大进度，重进页面从这里接着走
+  const progress = parseProgress(data && data.progress)
+  if (progress !== null) {
+    patch.progress = Math.max(progress, parseProgress(record.progress) || 0)
+  }
+  const next = updateInflight(deviceNo, patch) || record
   return { record: next, status, data }
 }
 
@@ -247,6 +309,10 @@ function isBusyError(error) {
 module.exports = {
   OTA_TYPE_MAIN,
   STEP_TEXTS,
+  PROGRESS_TICK_MS,
+  parseProgress,
+  progressCap,
+  activeStep,
   IN_PROGRESS_TIP,
   WAIT_REBOOT_TEXT,
   plainDeviceNo,

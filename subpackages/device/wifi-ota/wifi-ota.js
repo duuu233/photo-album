@@ -20,6 +20,9 @@ const wifiOta = require('../../../utils/wifi-ota')
 //     （WS 只是加速，断线丢事件由轮询兜底）。VERIFYING 第 4 步打勾即可离开；FAILED / TIMEOUT 在当前步打叉、给「重新升级」。
 //   · 4000 / 4045（已有进行中的升级）：切到「设备正在升级」，不当普通失败。
 //   · 最终结果（SUCCESS / FAILED）由服务端通过消息通知送达（OTA_SUCCESS / OTA_FAILED），本页不提供历史结果入口。
+//   · 进度条（2026-11-12）：步骤上方一条，左边当前那一步的文案、右边百分比。服务端 progress（轮询与 WS 都带）只抬「上限」，
+//     显示值由本页计时器匀速往上限走（规则见 utils/wifi-ota.js「升级进度条」）；失败停住，VERIFYING 走到 100。
+//     收到过的最大进度存进本地记录，重进页面从那里接着走。
 const POLL_MS = 3000
 
 const OTA_ART = {
@@ -55,19 +58,22 @@ Page(fold.adapt({
     steps: wifiOta.stepsFor('').steps,
     currentVersion: '',
     latestVersion: '',
-    showVersions: false
+    showVersions: false,
+    progress: 0,
+    progressText: ''
   },
 
   onLoad(options) {
     this.setData(Object.assign(system.getLayoutMetrics(), { id: (options && options.id) || '' }))
     this._lastStep = -1
-    // WS 只推状态信号：带了 status 就先按它画，再补查一次（3.9.2）
+    this.resetProgress()
+    // WS 只推状态信号：带了 status 就先按它画，再补查一次（3.9.2）；progress（2026-11-12）每条进度回执推一次，同样交给 applyStatus
     this._offOta = iotWs.on('ota.result', event => {
       if (!event || !this._msgid || String(event.msgid) !== String(this._msgid)) {
         return
       }
-      if (event.status) {
-        this.applyStatus(event.status, null)
+      if (event.status || wifiOta.parseProgress(event.progress) !== null) {
+        this.applyStatus(event.status || this._status, event)
       }
       this.pollOnce()
     })
@@ -97,6 +103,7 @@ Page(fold.adapt({
   onUnload() {
     this.unloaded = true
     this.stopPolling()
+    this.stopProgress()
     if (this._offOta) {
       this._offOta()
     }
@@ -123,6 +130,7 @@ Page(fold.adapt({
     this.stopPolling()
     this._msgid = ''
     this._lastStep = -1
+    this.resetProgress()
     this.setScreen({
       phase: 'checking',
       title: '检测版本中',
@@ -240,6 +248,14 @@ Page(fold.adapt({
     const record = inflight.record
     this._msgid = record.msgid
     this._lastStep = typeof record.lastStep === 'number' ? record.lastStep : -1
+    // 进度条从收到过的最大进度接着走（本地记录与这次查询取大的）
+    this.resetProgress()
+    const saved = wifiOta.parseProgress(record.progress)
+    const fresh = wifiOta.parseProgress(inflight.data && inflight.data.progress)
+    if (saved !== null || fresh !== null) {
+      this._reported = Math.max(saved || 0, fresh || 0)
+      this._shown = Math.min(this._reported, 99)
+    }
     const status = wifiOta.normalizeStatus(inflight.status || record.status || 'SENT')
     if (status === 'VERIFYING') {
       this.showWaitingReboot()
@@ -287,17 +303,26 @@ Page(fold.adapt({
     if (index > this._lastStep) {
       this._lastStep = index
     }
+    if (status) {
+      this._status = status
+    }
+    const reported = wifiOta.parseProgress(data && data.progress)
+    if (reported !== null && reported > (this._reported || 0)) {
+      this._reported = reported
+    }
     const deviceNo = this.deviceNo()
     if (wifiOta.isFinal(status)) {
       wifiOta.clearInflight(deviceNo)
     } else if (index > -1) {
-      wifiOta.updateInflight(deviceNo, { status, lastStep: this._lastStep })
+      wifiOta.updateInflight(deviceNo, Object.assign({ status, lastStep: this._lastStep }, this._reported !== null ? { progress: this._reported } : {}))
     }
 
     // SUCCESS 不在步骤页口径内；万一跳过 VERIFYING 直接到了，也按完成收尾，不让第 4 步一直转圈
     const view = wifiOta.stepsFor(status === 'SUCCESS' ? 'VERIFYING' : status, this._lastStep)
+    const progressText = wifiOta.STEP_TEXTS[wifiOta.activeStep(view)]
     if (view.phase === 'failed') {
       this.stopPolling()
+      this.stopProgress() // 失败停在当时的位置
       this.setScreen({
         phase: 'failed',
         title: wifiOta.failTitle(status),
@@ -305,10 +330,17 @@ Page(fold.adapt({
         art: OTA_ART.fail,
         showSteps: true,
         showVersions: false,
-        steps: view.steps
+        steps: view.steps,
+        progress: this._shown,
+        progressText
       })
       return
     }
+    // 不认识的状态值不动上限；其余按状态与收到过的最大进度定上限，计时器匀速往上走
+    if (index > -1 || status === 'SUCCESS') {
+      this._cap = wifiOta.progressCap(status, this._reported)
+    }
+    this.runProgress()
     if (view.phase === 'verifying') {
       this.stopPolling()
       this.setScreen({
@@ -318,7 +350,9 @@ Page(fold.adapt({
         art: OTA_ART.success,
         showSteps: true,
         showVersions: false,
-        steps: view.steps
+        steps: view.steps,
+        progress: this._shown,
+        progressText
       })
       return
     }
@@ -330,8 +364,41 @@ Page(fold.adapt({
       art: OTA_ART.progress,
       showSteps: true,
       showVersions: false,
-      steps: view.steps
+      steps: view.steps,
+      progress: this._shown,
+      progressText
     })
+  },
+
+  // ── 进度条（2026-11-12，规则见 utils/wifi-ota.js「升级进度条」）──
+  resetProgress() {
+    this.stopProgress()
+    this._reported = null // 本次升级收到过的最大 progress
+    this._shown = 0 // 进度条显示值，只增不减
+    this._cap = 0 // 显示值能走到的上限
+    this._status = ''
+  },
+
+  // 显示值没到上限就每 PROGRESS_TICK_MS 走 1%，到了就停表，上限抬高后再开
+  runProgress() {
+    if (this._progressTimer || this.unloaded || this._shown >= this._cap) {
+      return
+    }
+    this._progressTimer = setInterval(() => {
+      if (this.unloaded || this._shown >= this._cap) {
+        this.stopProgress()
+        return
+      }
+      this._shown += 1
+      this.setScreen({ progress: this._shown })
+    }, wifiOta.PROGRESS_TICK_MS)
+  },
+
+  stopProgress() {
+    if (this._progressTimer) {
+      clearInterval(this._progressTimer)
+      this._progressTimer = null
+    }
   },
 
   startPolling() {
@@ -446,6 +513,7 @@ Page(fold.adapt({
     })
     this._msgid = String(msgid)
     this._lastStep = -1
+    this.resetProgress()
     this.applyStatus('SENT', null)
     this.startPolling()
   },

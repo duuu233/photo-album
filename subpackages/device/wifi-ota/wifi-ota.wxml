@@ -27,6 +27,15 @@
       </view>
     </view>
 
+    <!-- 升级进度条（2026-11-12）：左边当前那一步的文案、右边百分比；匀速前进、分档停住，规则见 utils/wifi-ota.js「升级进度条」 -->
+    <view wx:if="{{showSteps}}" class="ota-progress glass-panel {{phase === 'failed' ? 'is-failed' : ''}}">
+      <view class="ota-progress__head">
+        <text class="ota-progress__text">{{progressText}}</text>
+        <text class="ota-progress__num">{{progress}}%</text>
+      </view>
+      <view class="ota-progress__bar"><view class="ota-progress__fill" style="width: {{progress}}%;"></view></view>
+    </view>
+
     <!-- 升级步骤：SENT / DOWNLOADING / FLASHING / VERIFYING 四步；FAILED / TIMEOUT 在当前那一步打叉 -->
     <view wx:if="{{showSteps}}" class="provision-steps glass-panel">
       <view wx:for="{{steps}}" wx:key="key" class="provision-step is-{{item.status}}">

@@ -25,15 +25,30 @@ const toast = require('../../../utils/toast')
 // 同时加入轮播（2026-10-27 追加内容第二节）：预览页勾了「同时加入轮播」时 pendingProjection.addToCarousel=true，
 // 每张（含只上传的）都带 addToCarousel=true；有任何一张成功投出但 carouselUpdated=false，结束后在结果下方追加
 // 「未成功加入轮播，请前往轮播设置添加」；true / null 不额外提示。相册记录照常写（全部相册轮播靠它才拉得到这张）。
-// 投屏日志（2026-10-27，与当初配网日志同款）：开发版 / 体验版在页面下方显示、可一键复制；正式版不显示，只打控制台 [WiFi投屏]。
+// 投屏日志：2026-11-12 起去掉页面下方的黑底日志面板，过程只打控制台 [WiFi投屏]（开发版 / 体验版用左下角「日志」浮窗查看、复制）。
 // 渲染模式 renderMode（2026-10-28）：首轮投屏前按设备取一次后台产品配置（api.resolveRenderMode），每张原样带上，重试复用。
 // type 同日改取产品屏幕方向 screenType（api.resolveScreenType），同样只查一次。
-// 本页记设备信息（尺寸 / 旋转字段，排查横竖向用）与每张图上传前的像素尺寸、文件大小；接口与 WS 过程由 projectOne 的 onLog 给出。
-// 重试不清空，一次进页面的全部过程都在一份日志里。
-const LOG_LIMIT = 500
+// 本页记设备信息（尺寸 / 旋转字段，排查横竖向用）与每张图上传前的像素尺寸、文件大小；接口过程由 projectOne 自己打。
+// 投屏步骤（2026-11-12）：进度条下方四步，对应进度文案「准备投屏 → 图片上传中 → 图片处理中 → 已发送，屏幕即将刷新」，
+// 样式与交互同配网状态页（未开始白圈序号、进行中转圈、通过打勾、失败在当时那一步打叉、后续不再执行）。
+// 准备投屏 = 取产品屏幕方向 / 渲染模式；多张时步骤跟着正在投的那一张走（每张从「图片上传中」重新开始），
+// 结束后全部成功四步全勾，有失败按最后一张失败的那一步打叉。
 const CAROUSEL_FAILED_TIP = '未成功加入轮播，请前往轮播设置添加'
 
-function showLogPanel() {
+const CAST_STEP_TEXTS = ['准备投屏', '图片上传中', '图片处理中', '已发送，屏幕即将刷新']
+const CAST_STEP_OF = { UPLOADING: 1, PROCESSING: 2 }
+
+// current：当前那一步（0~3）；state：running（当前步转圈）/ done（当前步及之前全勾）/ fail（当前步打叉）
+function castSteps(current, state) {
+  return CAST_STEP_TEXTS.map((text, index) => ({
+    key: index,
+    text,
+    status: index < current ? 'done' : index > current ? 'pending' : state === 'running' ? 'loading' : state
+  }))
+}
+
+// 开发版 / 体验版才记每张图的像素与大小（要多读一次文件）
+function isDevBuild() {
   try {
     return wx.getAccountInfoSync().miniProgram.envVersion !== 'release'
   } catch (error) {
@@ -195,9 +210,7 @@ Page(fold.adapt(tapGuard.wrap({
     canContinue: false,
     showMediaSheet: false,
     mediaSheetClosing: false,
-    showLog: false,
-    logs: [],
-    logAnchor: ''
+    steps: castSteps(0, 'running')
   },
 
   onLoad() {
@@ -210,11 +223,12 @@ Page(fold.adapt(tapGuard.wrap({
       deviceName: (this.device && (this.device.name || this.device.productName)) || '',
       total: this.images.length,
       items: this.images.map((image, index) => ({ key: index, src: thumbSrc(image), status: 'pending', text: '等待投屏' })),
-      canContinue: !!this.device,
-      showLog: showLogPanel()
+      canContinue: !!this.device
     })
+    this.verbose = isDevBuild()
     if (!this.device || !this.images.length) {
       this.appendLog(`投屏信息已失效：${this.device ? '' : '没有设备'}${this.images.length ? '' : ' 没有图片'}`)
+      this.setStep(0, 'fail')
       this.setData({ phase: 'done', stageText: '投屏信息已失效，请返回重新选择' })
       return
     }
@@ -228,25 +242,19 @@ Page(fold.adapt(tapGuard.wrap({
     this.run(this.images.map((image, index) => index))
   },
 
-  // 追加一行投屏日志（带时分秒毫秒）；只在显示日志面板时写页面数据
+  // 投屏日志只打控制台（2026-11-12 去掉页面日志面板）；开发版 / 体验版左下角「日志」浮窗能看到
   appendLog(text) {
-    if (this.unloaded || !this.data.showLog) {
-      return
-    }
-    const now = new Date()
-    const pad = (n, len) => String(n).padStart(len || 2, '0')
-    this._logId = (this._logId || 0) + 1
-    const line = { id: `log${this._logId}`, text: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${pad(now.getMilliseconds(), 3)} ${text}` }
-    this.setData({ logs: this.data.logs.concat(line).slice(-LOG_LIMIT), logAnchor: line.id })
+    console.log('[WiFi投屏]', text)
   },
 
-  // 复制全部日志，方便发给开发对照
-  copyLogs() {
-    const text = this.data.logs.map(line => line.text).join('\n')
-    if (!text) {
+  // 步骤卡（见文件头）：只在变化时刷新，上传 / 处理进度回调很密
+  setStep(current, state) {
+    if (this.unloaded || (this._step === current && this._stepState === state)) {
       return
     }
-    wx.setClipboardData({ data: text })
+    this._step = current
+    this._stepState = state
+    this.setData({ steps: castSteps(current, state) })
   },
 
   onUnload() {
@@ -289,6 +297,7 @@ Page(fold.adapt(tapGuard.wrap({
   // 按顺序投 indexes 里的这些张：本轮最后一张刷屏，前面的只上传
   async run(indexes) {
     this.setData({ phase: 'running', retryable: false, carouselTip: '' })
+    this.setStep(0, 'running')
     if (wx.setKeepScreenOn) {
       wx.setKeepScreenOn({ keepScreenOn: true })
     }
@@ -315,6 +324,7 @@ Page(fold.adapt(tapGuard.wrap({
       const index = indexes[n]
       const refresh = n === indexes.length - 1
       this.setData({ current: index, progress: 0, stageText: '图片上传中', listAnchor: `wifi-row-${index}` })
+      this.setStep(CAST_STEP_OF.UPLOADING, 'running')
       this.setItem(index, { status: 'running', text: itemStageText('图片上传中') })
       let result
       let filePath = ''
@@ -322,7 +332,7 @@ Page(fold.adapt(tapGuard.wrap({
         const image = this.images[index]
         this.appendLog(`—— 第 ${index + 1} / ${this.images.length} 张${refresh ? '（本轮最后一张，刷屏）' : '（只上传，不刷屏）'} ——`)
         filePath = await resolveLocalFile(image)
-        if (this.data.showLog) {
+        if (this.verbose) {
           this.appendLog(
             `图片：${filePath}，取景 ${image.exportOrientation || '-'}，导出角 ${image.exportRotation === undefined ? '-' : image.exportRotation}°，` +
               `导出记录 ${image.cropW || '-'}×${image.cropH || '-'}，实际 ${await describeFile(filePath)}` +
@@ -337,10 +347,13 @@ Page(fold.adapt(tapGuard.wrap({
           refresh,
           addToCarousel: this.addToCarousel,
           isCancelled: () => this.unloaded,
-          onLog: text => this.appendLog(text),
-          onStage: ({ text, progress }) => {
+          onStage: ({ stage, text, progress }) => {
             if (!this.unloaded) {
               this.setData({ stageText: text, progress })
+              // 上传中 / 处理中推进步骤；成功 / 失败等接口返回后再定（见下方）
+              if (CAST_STEP_OF[stage] !== undefined) {
+                this.setStep(CAST_STEP_OF[stage], 'running')
+              }
               // 这一张还在进行中时，列表文案跟着阶段变（上传中 / 处理中）
               if (this.data.items[index] && this.data.items[index].status === 'running' && this.data.items[index].text !== itemStageText(text)) {
                 this.setItem(index, { text: itemStageText(text) })
@@ -356,6 +369,9 @@ Page(fold.adapt(tapGuard.wrap({
         return
       }
       let text = result.message || result.text || ''
+      // 步骤：发出去了第 4 步打勾（写相册记录不另占一步）；失败在当时那一步打叉，记下来供结束时用
+      const failStep = isSent(result.status) ? -1 : Math.max(CAST_STEP_OF.UPLOADING, this._step || 0)
+      this.setStep(isSent(result.status) ? 3 : failStep, isSent(result.status) ? 'done' : 'fail')
       // 写相册记录时不改阶段文案：100% 只显示「已发送，屏幕即将刷新」（2026-10-29），过程只进日志
       if (isSent(result.status)) {
         const saved = await this.saveAlbumRecord(this.images[index], filePath, result.binUrl)
@@ -367,11 +383,14 @@ Page(fold.adapt(tapGuard.wrap({
         }
       }
       // carouselFailed：这张投出去了但没加进轮播（只认 carouselUpdated=false）
-      this.setItem(index, { status: result.status, text, carouselFailed: isSent(result.status) && result.carouselUpdated === false })
+      this.setItem(index, { status: result.status, text, failStep, carouselFailed: isSent(result.status) && result.carouselUpdated === false })
       this.setData({ stageText: text })
     }
     const successCount = this.data.items.filter(item => isSent(item.status)).length
     const total = this.data.items.length
+    const failedItems = this.data.items.filter(item => !isSent(item.status))
+    const lastFailed = failedItems[failedItems.length - 1]
+    this.setStep(lastFailed ? Math.max(CAST_STEP_OF.UPLOADING, lastFailed.failStep || 0) : 3, lastFailed ? 'fail' : 'done')
     this.setData({
       phase: 'done',
       successCount,

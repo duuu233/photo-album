@@ -237,6 +237,9 @@ async function main() {
         projectOne: async opts => {
           const n = calls.plays.length
           calls.plays.push({ file: opts.filePath, type: opts.type, refresh: opts.refresh, addToCarousel: opts.addToCarousel, renderMode: opts.renderMode })
+          // 与真实 projectOne 一样先报上传中、处理中（步骤卡跟着推进）
+          opts.onStage({ stage: 'UPLOADING', text: '图片上传中', progress: 10 })
+          opts.onStage({ stage: 'PROCESSING', text: '图片处理中', progress: 60 })
           if (n === failIndex.value) return { status: 'FAILED', message: '投屏失败' }
           const carouselUpdated = opts.addToCarousel ? n !== carouselFailIndex.value : null
           return opts.refresh
@@ -284,6 +287,11 @@ async function main() {
     assert.equal(page.data.successCount, 2)
     assert.equal(page.data.retryable, true)
     assert.equal(page.data.stageText, '成功 2 张，1 张未成功')
+    // 投屏步骤（2026-11-12）：第三张在「图片处理中」失败 → 前两步勾、第 3 步打叉、第 4 步不执行
+    const stepStatuses = target => target.data.steps.map(step => step.status)
+    assert.deepEqual(page.data.steps.map(step => step.text), ['准备投屏', '图片上传中', '图片处理中', '已发送，屏幕即将刷新'], '四步对应进度文案')
+    assert.deepEqual(stepStatuses(page), ['done', 'done', 'fail', 'pending'], '失败在当时那一步打叉')
+    assert.equal(page.data.items[2].failStep, 2)
     assert.equal(/正在存入我的上传/.test(fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.js'), 'utf8')), false, '写相册记录时不改文案')
     failIndex.value = -1
     page.retryFailed()
@@ -291,6 +299,7 @@ async function main() {
     assert.deepEqual(calls.plays.slice(3).map(item => [item.file, item.refresh]), [['wxfile://3.png', true]], '重试只投没成功的，本轮最后一张刷屏')
     assert.equal(page.data.items[2].status, 'SENT')
     assert.equal(page.data.stageText, '已发送 3 张，屏幕即将刷新')
+    assert.deepEqual(stepStatuses(page), ['done', 'done', 'done', 'done'], '全部成功四步全勾')
     assert.equal(page.data.retryable, false)
     assert.ok(calls.plays.every(item => item.addToCarousel === false), '没勾同时加入轮播：都不带')
     assert.equal(page.data.carouselTip, '')
@@ -367,16 +376,30 @@ async function main() {
     checked('结果页：相册记录存原图，不存按设备旋转角转过的投屏图；列表缩略图原图、文案跟阶段')
   }
   {
+    // 2026-11-12 起去掉页面下方的黑底投屏日志面板（原「开发版 / 体验版显示、可复制」），过程只打控制台，
+    // 开发版 / 体验版用左下角「日志」浮窗看；排查横竖向用的设备宽高与旋转字段照记
     const tpl = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.wxml'), 'utf8')
-    assert.ok(/wx:if="\{\{showLog\}\}" class="projection-log"/.test(tpl), '日志面板按 showLog 显示')
-    assert.ok(/bindtap="copyLogs"/.test(tpl), '可复制')
+    assert.equal(/projection-log|copyLogs|showLog/.test(tpl), false, '页面上不再有投屏日志面板')
     const page = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.js'), 'utf8')
-    assert.ok(/envVersion !== 'release'/.test(page), '正式版不显示')
-    assert.ok(/onLog: text => this\.appendLog\(text\)/.test(page), '投屏过程接进页面日志')
+    assert.equal(/onLog: text => this\.appendLog|setClipboardData|logAnchor/.test(page), false, '不再往页面写日志、不再复制')
+    assert.ok(/console\.log\('\[WiFi投屏\]', text\)/.test(page), '页面日志改打控制台')
     assert.ok(/接口宽高 \$\{d\.width/.test(page) && /verticalRotation/.test(page), '记设备宽高与旋转字段（排查横竖向）')
     const css = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.wxss'), 'utf8')
+    assert.equal(/\.projection-log/.test(css), false, '日志面板样式一并删掉')
     assert.ok(/\.wifi-result-row\.is-SENT/.test(css) && /\.wifi-result-row\.is-UPLOADED/.test(css), 'SENT / UPLOADED 按成功配色')
-    checked('结果页：开发版 / 体验版日志面板，可复制')
+    checked('结果页：去掉黑底投屏日志面板，日志只打控制台')
+  }
+  {
+    // 2026-11-12：投屏步骤卡，样式与交互同配网状态页（白圈序号 / 转圈 / 勾 / 叉）
+    const tpl = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.wxml'), 'utf8')
+    assert.ok(/class="cast-steps glass-panel">\s*<view wx:for="\{\{steps\}\}" wx:key="key" class="cast-step is-\{\{item\.status\}\}">/.test(tpl), '四步按 steps 渲染')
+    assert.ok(/item\.status === 'loading'[^>]*class="step-icon__spinner"/.test(tpl) && /class="step-icon__no">\{\{index \+ 1\}\}</.test(tpl), '进行中转圈、未开始显示序号')
+    const css = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.wxss'), 'utf8')
+    assert.ok(/\.cast-step \{[^}]*height: 96rpx;/.test(css), '行高同配网页 96rpx')
+    assert.ok(/\.cast-step\.is-done \.step-icon \{\s*background: linear-gradient\(135deg, #ff8338, #ff621f\);/.test(css), '通过：橙色实心勾')
+    assert.ok(/\.cast-step\.is-fail \.step-icon \{\s*background: #e5533d;/.test(css), '失败：红色实心叉')
+    assert.ok(/animation: castStepSpin 0\.8s linear infinite;/.test(css) && /@keyframes castStepSpin/.test(css), '转圈动画')
+    checked('结果页：投屏步骤卡同配网步骤样式')
   }
   {
     // 2026-11-06：逐张列表最多露 4 行，多出的框内上下滑动；当前那张自动滚到

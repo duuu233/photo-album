@@ -58,3 +58,61 @@
   color: #777e88;
   font-size: 28rpx;
 }
+
+/* 升级进度条（2026-11-12）：与 WiFi 投屏结果页进度条同一套颜色；下面紧跟步骤卡 */
+.ota-progress {
+  margin-top: 48rpx;
+  padding: 28rpx 36rpx 32rpx;
+}
+
+.ota-progress + .provision-steps {
+  margin-top: 24rpx;
+}
+
+.ota-progress__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+}
+
+.ota-progress__text {
+  flex: 1;
+  overflow: hidden;
+  color: #2a2d32;
+  font-size: 28rpx;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ota-progress__num {
+  margin-left: 24rpx;
+  color: #ff621f;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.ota-progress__bar {
+  height: 16rpx;
+  overflow: hidden;
+  background: rgba(255, 98, 31, 0.12);
+  border-radius: 999rpx;
+}
+
+.ota-progress__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
+  border-radius: 999rpx;
+  transition: width 0.2s linear;
+}
+
+/* 失败：文案与百分比转红，进度停在当时的位置 */
+.ota-progress.is-failed .ota-progress__text,
+.ota-progress.is-failed .ota-progress__num {
+  color: #e5533d;
+}
+
+.ota-progress.is-failed .ota-progress__fill {
+  background: #e5533d;
+}

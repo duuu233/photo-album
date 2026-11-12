@@ -7,6 +7,8 @@
 //   ⑤ 页面：下发成功立即存 msgid → 第 1 步；WS ota.result 按 msgid 推进；失败在当前步打叉；4045 切「设备正在升级」；
 //      重进页面有 VERIFYING 记录 → 不进步骤页、不提示升级；有 FLASHING 记录 → 直接接着展示步骤；
 //   ⑥ 消息类型 OTA_SUCCESS / OTA_FAILED 有文案；页面已注册、详情页有入口、接口路径对。
+//   ⑦ 进度条（2026-11-12）：progress 20/40/60/80 抬上限、显示值匀速走到 19/39/59/79 停住；固件不上报（null）走到 98 停住；
+//      VERIFYING 到 100；失败停住；收到过的最大进度存进本地记录，重进接着走；文案用当前那一步的步骤文案。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -107,6 +109,28 @@ async function main() {
     checked('本地记录')
   }
   {
+    assert.equal(ota.parseProgress(40), 40)
+    assert.equal(ota.parseProgress('60'), 60)
+    assert.equal(ota.parseProgress(null), null, 'null = 固件不上报')
+    assert.equal(ota.parseProgress(undefined), null, '老服务端不带该字段')
+    assert.equal(ota.parseProgress('abc'), null)
+    assert.equal(ota.parseProgress(130), 100)
+    assert.equal(ota.progressCap('SENT', null), 19, '没收到进度：停在 19')
+    assert.equal(ota.progressCap('DOWNLOADING', 20), 39)
+    assert.equal(ota.progressCap('DOWNLOADING', 40), 59)
+    assert.equal(ota.progressCap('DOWNLOADING', 60), 79)
+    assert.equal(ota.progressCap('DOWNLOADING', 80), 98, '80 之后最多 98，等 VERIFYING')
+    assert.equal(ota.progressCap('DOWNLOADING', null), 98, '进入下载却不上报进度：走到 98')
+    assert.equal(ota.progressCap('DOWNLOADING', 0), 98)
+    assert.equal(ota.progressCap('FLASHING', 40), 98, '写入阶段下载已完成')
+    assert.equal(ota.progressCap('VERIFYING', 80), 100)
+    assert.equal(ota.progressCap('SUCCESS', null), 100)
+    assert.equal(ota.activeStep(ota.stepsFor('DOWNLOADING')), 1)
+    assert.equal(ota.activeStep(ota.stepsFor('VERIFYING')), 3, '全勾为最后一步')
+    assert.equal(ota.activeStep(ota.stepsFor('TIMEOUT', 2)), 2, '打叉那一步')
+    checked('进度条上限与文案')
+  }
+  {
     assert.equal(ota.isBusyError(codeError(4045)), true)
     assert.equal(ota.isBusyError(codeError(4000, '已有升级任务进行中')), true)
     assert.equal(ota.isBusyError(codeError(4000)), true, '4000 无文案按文档口径视为进行中')
@@ -119,7 +143,7 @@ async function main() {
   const wifiStatus = require('../utils/wifi-status')
   function loadPage(setup) {
     let definition
-    const state = { toasts: [], started: [], subs: [], handlers: {}, intervals: 0, modals: [] }
+    const state = { toasts: [], started: [], subs: [], handlers: {}, intervals: 0, modals: [], timers: [], cleared: [] }
     const modules = {
       api: { getDeviceDetail: async () => ({ id: '9', productDeviceId: '38:44:BE:2E:52:20', newVersionNo: '0.6.2', downloadPath: 'https://oss/fw.bin' }) },
       'iot-api': {
@@ -152,13 +176,19 @@ async function main() {
         hideLoading() {},
         navigateBack() {}
       },
-      setInterval: () => { state.intervals++; return state.intervals },
-      clearInterval() {},
+      setInterval: (fn, ms) => { state.intervals++; state.timers.push({ id: state.intervals, fn, ms }); return state.intervals },
+      clearInterval: id => state.cleared.push(id),
       console: { log() {}, warn() {} }
     }, { filename: 'wifi-ota.js' })
     const page = { ...definition, data: plain(definition.data), setData(values) { Object.assign(this.data, plain(values)) } }
     const emit = (type, payload) => (state.handlers[type] || []).forEach(fn => fn(payload))
-    return { page, state, emit }
+    // 进度条计时器走 n 下（轮询计时器不动）
+    const tick = n => {
+      for (let i = 0; i < n; i++) {
+        state.timers.filter(timer => timer.ms === ota.PROGRESS_TICK_MS && state.cleared.indexOf(timer.id) === -1).forEach(timer => timer.fn())
+      }
+    }
+    return { page, state, emit, tick }
   }
   const statuses = page => page.data.steps.map(step => step.status)
 
@@ -234,6 +264,85 @@ async function main() {
     assert.equal(state.started.length, 0)
     assert.ok(state.intervals > 0)
     checked('页面：重进按本地 msgid 恢复进度')
+  }
+  {
+    // ⑦ 进度条：示例时间线 SENT → 20 → 40 → 60 → 80 → VERIFYING
+    Object.keys(storage).forEach(key => delete storage[key])
+    const { page, emit, tick } = loadPage({ info: { status: 'ONLINE', online: true, firmwareVersion: '0.6.1' } })
+    page.onLoad({ id: '9' })
+    await flush()
+    page.startUpgrade()
+    await flush()
+    assert.equal(page.data.progress, 0, '刚下发为 0')
+    assert.equal(page.data.progressText, '已下发，等待设备响应')
+    tick(5)
+    assert.equal(page.data.progress, 5, '匀速前进')
+    tick(50)
+    assert.equal(page.data.progress, 19, '没收到进度停在 19')
+    const report = async (status, progress) => {
+      otaReplies['555'] = { status, progress }
+      emit('ota.result', { msgid: '555', status, progress })
+      await flush()
+    }
+    await report('DOWNLOADING', 20)
+    assert.equal(page.data.progressText, '设备下载固件中', '文案对应步骤文案')
+    tick(50)
+    assert.equal(page.data.progress, 39, '39 没收到 40 停住')
+    await report('DOWNLOADING', 40)
+    tick(3)
+    assert.equal(page.data.progress, 42, '收到 40 后从 39 继续匀速前进')
+    tick(50)
+    assert.equal(page.data.progress, 59)
+    assert.equal(storage['ota_inflight:3844BE2E5220'].progress, 40, '收到过的最大进度存进本地记录')
+    await report('DOWNLOADING', null)
+    tick(50)
+    assert.equal(page.data.progress, 59, '收到过进度后偶发的 null 不放开到 98')
+    await report('DOWNLOADING', 80)
+    tick(100)
+    assert.equal(page.data.progress, 98, '80 之后停在 98 等 VERIFYING')
+    await report('VERIFYING', 100)
+    assert.equal(page.data.phase, 'verifying')
+    tick(10)
+    assert.equal(page.data.progress, 100, 'VERIFYING 到 100')
+    assert.equal(page.data.progressText, '升级完成')
+
+    // 固件不上报进度：匀速走到 98 停住
+    Object.keys(storage).forEach(key => delete storage[key])
+    const silent = loadPage({ info: { status: 'ONLINE', online: true, firmwareVersion: '0.6.1' } })
+    silent.page.onLoad({ id: '9' })
+    await flush()
+    silent.page.startUpgrade()
+    await flush()
+    otaReplies['555'] = { status: 'DOWNLOADING', progress: null }
+    silent.emit('ota.result', { msgid: '555', status: 'DOWNLOADING', progress: null })
+    await flush()
+    silent.tick(200)
+    assert.equal(silent.page.data.progress, 98, '不上报进度停在 98')
+
+    // 失败停在当时的位置
+    otaReplies['555'] = { status: 'FAILED', progress: null }
+    silent.emit('ota.result', { msgid: '555', status: 'FAILED' })
+    await flush()
+    silent.tick(10)
+    assert.equal(silent.page.data.phase, 'failed')
+    assert.equal(silent.page.data.progress, 98, '失败停住')
+
+    // 重进页面：从记录里的最大进度接着走
+    Object.keys(storage).forEach(key => delete storage[key])
+    ota.saveInflight('3844BE2E5220', '888', { status: 'DOWNLOADING', lastStep: 1, progress: 40 })
+    otaReplies['888'] = { status: 'DOWNLOADING', progress: 60 }
+    const resumed = loadPage({ info: { status: 'ONLINE', online: true, firmwareVersion: '0.6.1' } })
+    resumed.page.onLoad({ id: '9' })
+    await flush()
+    assert.equal(resumed.page.data.progress, 60, '从收到过的最大进度开始')
+    resumed.tick(50)
+    assert.equal(resumed.page.data.progress, 79)
+
+    const tpl = read('subpackages/device/wifi-ota/wifi-ota.wxml')
+    assert.ok(/wx:if="\{\{showSteps\}\}" class="ota-progress glass-panel/.test(tpl), '进度条与步骤同时显示')
+    assert.ok(/class="ota-progress__text">\{\{progressText\}\}</.test(tpl) && /width: \{\{progress\}\}%;/.test(tpl))
+    assert.ok(tpl.indexOf('ota-progress') < tpl.indexOf('class="provision-steps'), '进度条在步骤上方')
+    checked('页面：进度条分档匀速、不上报停 98、VERIFYING 到 100、失败停住、重进接着走')
   }
   {
     Object.keys(storage).forEach(key => delete storage[key])

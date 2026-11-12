@@ -86,6 +86,98 @@
   text-align: center;
 }
 
+/* 投屏步骤（2026-11-12）：与配网状态页 .provision-steps 同一套尺寸、颜色与转圈（不同分包不能互相 @import，照搬一份） */
+.cast-steps {
+  margin-top: 24rpx;
+  padding: 16rpx 36rpx;
+}
+
+.cast-step {
+  display: flex;
+  align-items: center;
+  height: 96rpx;
+}
+
+.cast-step + .cast-step {
+  border-top: 1rpx solid rgba(42, 43, 43, 0.06);
+}
+
+.step-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 40rpx;
+  width: 40rpx;
+  height: 40rpx;
+  margin-right: 24rpx;
+  box-sizing: border-box;
+  border-radius: 50%;
+}
+
+/* 未开始：白底灰边圆圈，圈里是序号 1~4 */
+.cast-step.is-pending .step-icon {
+  background: #ffffff;
+  border: 3rpx solid #c8cdd5;
+}
+
+.step-icon__no {
+  color: #8b9098;
+  font-size: 24rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* 执行中：橙色转圈 */
+.step-icon__spinner {
+  width: 40rpx;
+  height: 40rpx;
+  box-sizing: border-box;
+  border: 4rpx solid rgba(255, 98, 31, 0.18);
+  border-top-color: #ff621f;
+  border-radius: 50%;
+  animation: castStepSpin 0.8s linear infinite;
+}
+
+/* 通过：橙色实心勾；失败：红色实心叉 */
+.cast-step.is-done .step-icon {
+  background: linear-gradient(135deg, #ff8338, #ff621f);
+}
+
+.cast-step.is-fail .step-icon {
+  background: #e5533d;
+}
+
+.step-icon__mark {
+  color: #ffffff;
+  font-size: 26rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.step-text {
+  color: #8b9098;
+  font-size: 28rpx;
+}
+
+.cast-step.is-loading .step-text,
+.cast-step.is-done .step-text {
+  color: #2a2d32;
+}
+
+.cast-step.is-loading .step-text {
+  font-weight: 700;
+}
+
+.cast-step.is-fail .step-text {
+  color: #e5533d;
+}
+
+@keyframes castStepSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .wifi-result-list {
   margin-top: 24rpx;
   padding: 8rpx 32rpx;
@@ -278,43 +370,4 @@
   border-radius: 999rpx;
   font-size: 36rpx;
   font-weight: 500;
-}
-
-/* 投屏日志（开发版 / 体验版，2026-10-27）：与当初配网日志同款，深色底等宽小字，固定高度内部滚动，自动滚到最新一行 */
-.projection-log {
-  margin-top: 24rpx;
-  padding: 20rpx 24rpx;
-  background: rgba(30, 33, 38, 0.88);
-  border-radius: 16rpx;
-}
-
-.projection-log__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8rpx;
-}
-
-.projection-log__title {
-  color: #ffffff;
-  font-size: 24rpx;
-  font-weight: 700;
-}
-
-.projection-log__copy {
-  color: #ffb48a;
-  font-size: 22rpx;
-}
-
-.projection-log__body {
-  height: 360rpx;
-}
-
-.projection-log__line {
-  display: block;
-  color: #c9f7d8;
-  font-family: Menlo, monospace;
-  font-size: 20rpx;
-  line-height: 1.5;
-  word-break: break-all;
 }
