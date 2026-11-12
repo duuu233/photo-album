@@ -104,9 +104,14 @@ Page(fold.adapt(tapGuard.wrap({
     this.setSystemMetrics()
     // select=1 表示“选择设备”模式（从投屏等场景进入，点选即切换并返回）；否则为普通管理列表
     const selectMode = options.select === '1'
-    this.setData({
-      selectMode
-    })
+    // 首页设备卡进来带 tab（2026-11-12）：点的是 WiFi 版卡就默认 WiFi版 Tab，蓝牙版同理；
+    // 按「用户选过」处理（deviceTabChosen），列表加载后不再被默认规则改掉，没有该类设备时显示该 Tab 的空态。
+    // 选相框模式不认（只能选蓝牙版，仍按默认规则）
+    const tab = !selectMode && (options.tab === 'wifi' || options.tab === 'ble') ? options.tab : ''
+    if (tab) {
+      this.deviceTabChosen = true
+    }
+    this.setData(tab ? { selectMode, deviceTab: tab } : { selectMode })
   },
 
   onShow() {

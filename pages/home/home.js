@@ -935,13 +935,17 @@ Page(tapGuard.wrap({
   // 轮播卡片面积大易被快速连点，连点会触发两次 navigateTo，
   // 第二次路由找不到首次正在切换的 webview 即报 “routeDone with a webviewId X is not found”，
   // 故加锁：路由完成（complete）前忽略后续点击。
-  goDeviceList() {
+  // 2026-11-12：从设备卡进来带 tab（卡片 data-tab，WiFi 版 wifi / 蓝牙版 ble），列表默认停在该类 Tab；
+  // 六宫格「我的设备」也走这里但不带事件，仍按列表页默认规则选 Tab。
+  goDeviceList(event) {
     if (this.navigatingDeviceList) {
       return
     }
+    const dataset = (event && event.currentTarget && event.currentTarget.dataset) || {}
+    const tab = dataset.tab === 'wifi' || dataset.tab === 'ble' ? dataset.tab : ''
     this.navigatingDeviceList = true
     wx.navigateTo({
-      url: '/subpackages/device/list/list',
+      url: tab ? `/subpackages/device/list/list?tab=${tab}` : '/subpackages/device/list/list',
       complete: () => {
         this.navigatingDeviceList = false
       }

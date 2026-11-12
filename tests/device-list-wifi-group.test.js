@@ -236,6 +236,36 @@ async function main() {
     checked('Tab：默认 / 切换 / 重载保持 / 空态 / 选相框模式')
   }
   {
+    // 首页设备卡带 tab 进来（2026-11-12）：点 WiFi 版卡默认 WiFi版 Tab，蓝牙版卡默认蓝牙版 Tab，重拉列表不被默认规则改掉
+    const ble = loadListPage()
+    ble.page.onLoad({ tab: 'ble' })
+    await ble.page.loadDevices()
+    assert.equal(ble.page.data.deviceTab, 'ble', '两类都有，从蓝牙版卡进来停在蓝牙版')
+    await ble.page.loadDevices()
+    assert.equal(ble.page.data.deviceTab, 'ble', '重拉列表保持')
+    const wifi = loadListPage({ devices: [{ id: '9', name: '蓝牙', broadcastId: 'EB-169', productDeviceId: 'AA:BB:CC:DD:EE:09' }] })
+    wifi.page.onLoad({ tab: 'wifi' })
+    await wifi.page.loadDevices()
+    assert.equal(wifi.page.data.deviceTab, 'wifi', '指定了 WiFi版：没有 WiFi 版也停在该 Tab（空态），不落到蓝牙版')
+    const none = loadListPage({ devices: [{ id: '9', name: '蓝牙', broadcastId: 'EB-169', productDeviceId: 'AA:BB:CC:DD:EE:09' }] })
+    none.page.onLoad({})
+    await none.page.loadDevices()
+    assert.equal(none.page.data.deviceTab, 'ble', '不带 tab（六宫格「我的设备」）仍按默认规则')
+    const bad = loadListPage()
+    bad.page.onLoad({ tab: 'x' })
+    await bad.page.loadDevices()
+    assert.equal(bad.page.data.deviceTab, 'wifi', '非法 tab 不认')
+    const select = loadListPage()
+    select.page.onLoad({ select: '1', tab: 'wifi' })
+    await select.page.loadDevices()
+    assert.equal(select.page.data.deviceTab, 'ble', '选相框模式不认 tab')
+    const homeTpl = fs.readFileSync(path.join(root, 'pages/home/home.wxml'), 'utf8')
+    const homeJs = fs.readFileSync(path.join(root, 'pages/home/home.js'), 'utf8')
+    assert.ok(/class="device-carousel" data-tab="\{\{item\.isWifi \? 'wifi' : 'ble'\}\}" bindtap="goDeviceList"/.test(homeTpl), '首页设备卡带 data-tab')
+    assert.ok(homeJs.includes('`/subpackages/device/list/list?tab=${tab}`'), '首页按卡片类型带 tab 跳设备列表')
+    checked('首页设备卡带 tab：列表默认停在对应 Tab')
+  }
+  {
     const tpl = fs.readFileSync(path.join(root, 'subpackages/device/list/list.wxml'), 'utf8')
     // 2026-11-06：分组标题改 Tab，「按数量显示」挪到当前 Tab 有无设备决定列表 / 空态，「WiFi 版在前」挪到 Tab 顺序
     assert.equal(tpl.indexOf('device-group-title'), -1, '分组标题已删（改 Tab）')
