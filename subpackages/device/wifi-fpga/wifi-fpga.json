@@ -1,6 +1,6 @@
 {
   "navigationStyle": "custom",
-  "navigationBarTitleText": "渲染固件管理",
+  "navigationBarTitleText": "优雅刷新升级",
   "usingComponents": {
     "page-nav": "/components/page-nav/page-nav"
   },

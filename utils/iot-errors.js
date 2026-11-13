@@ -18,6 +18,8 @@ const CODE_TABLE = {
   4041: { message: '设备已离线，请检查设备网络', action: 'none' },
   4044: { message: '任务不存在或已过期', action: 'none' },
   4045: { message: '设备升级中，请稍后', action: 'retry' },
+  // 2026-11-13：POST /api/device/ota（type=fpga）当日升级次数用完；页面按语种另行提示（utils/fpga-firmware.limitText）
+  4047: { message: '今日升级次数已达上限', action: 'none' },
   4130: { message: '图片过大，请压缩后重试', action: 'none' },
   429: { message: '操作太频繁，请稍后重试', action: 'retry' },
   503: { message: '服务暂时不可用，请稍后重试', action: 'retry' },

@@ -1,6 +1,8 @@
-// WiFi 版「渲染固件管理」（2026-11-13，产品需求）：只有产品渲染模式 = fpga16 的设备才有（目前只有 10.1 寸）。
+// WiFi 版「优雅刷新升级」（2026-11-13，产品需求；原名渲染固件管理）：只有产品渲染模式 = fpga16 的设备才有（目前只有 10.1 寸）。
 //
-//   · 设备详情 → 设备信息 → 「渲染固件管理」：列出后台「FPGA版本」里启用的版本（版本号、简介、安装），未启用的不显示；
+//   · 设备详情 → 设备信息 → 「优雅刷新升级」：列出后台「优雅刷新管理」（FPGA 版本）里启用的版本（版本号、简介、安装），未启用的不显示；
+//   · 设备不上报 FPGA 版本（ota/status 的 baseVersion 为 null），列表与安装页都不显示设备当前版本；
+//   · 下发返回 4047 = 今日升级次数已达上限，按当前语种提示（limitText）；
 //   · 点「安装」进安装步骤页 = 固件升级页（subpackages/device/wifi-ota）的 fpga 模式：版式、进度条、四步状态全部复用，只改文字、带出简介；
 //   · 下发复用 POST /api/device/ota，type=fpga、version = FPGA 目标版本、url = 该版本固件地址；
 //     返回值、进度字段、四步交互、本地进行中记录（ota_inflight:{deviceNo}）都与固件升级一致，不单独判断状态。
@@ -83,6 +85,31 @@ function readTarget(deviceId) {
   }
 }
 
+// 4047：今日升级次数已达上限（2026-11-13 服务端新增，type=fpga 下发时返回）。按用户选的语种（没选跟随系统）
+const LIMIT_CODE = 4047
+const LIMIT_TEXTS = {
+  'zh-Hans': '今日升级次数已达上限',
+  'zh-Hant': '今日升級次數已達上限',
+  en: "You've reached today's upgrade limit",
+  ja: '本日のアップデート回数の上限に達しました'
+}
+
+function isLimitError(error) {
+  return Number(error && error.code) === LIMIT_CODE
+}
+
+function limitText(language) {
+  let lang = language
+  if (!lang) {
+    try {
+      lang = require('./language').getSelectedLanguage()
+    } catch (error) {
+      lang = ''
+    }
+  }
+  return LIMIT_TEXTS[lang] || LIMIT_TEXTS['zh-Hans']
+}
+
 // 安装页文字（与固件升级页同一套版式，只换文字）
 const TEXTS = {
   main: {
@@ -102,16 +129,16 @@ const TEXTS = {
     targetLabel: '最新版本'
   },
   fpga: {
-    nav: '渲染固件安装',
+    nav: '优雅刷新升级',
     checkingTitle: '准备安装',
     checkingHint: '正在读取设备信息，请稍候…',
-    runningTitle: '设备正在安装渲染固件',
+    runningTitle: '设备正在安装优雅刷新固件',
     runningHint: '安装期间请保持设备通电和网络连接，可离开本页，进度不受影响',
     doneTitle: '安装完成',
     doneStep: '安装完成',
     failTitle: '安装失败',
     timeoutTitle: '安装超时',
-    confirmTitle: '渲染固件安装',
+    confirmTitle: '优雅刷新升级',
     confirmText: '立即安装',
     retryText: '重新安装',
     sending: '下发中',
@@ -136,5 +163,9 @@ module.exports = {
   saveTarget,
   readTarget,
   TEXTS,
-  textsFor
+  textsFor,
+  LIMIT_CODE,
+  LIMIT_TEXTS,
+  isLimitError,
+  limitText
 }

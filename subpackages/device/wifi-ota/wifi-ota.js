@@ -24,9 +24,10 @@ const fpgaFirmware = require('../../../utils/fpga-firmware')
 //   · 进度条（2026-11-12）：步骤上方一条，左边当前那一步的文案、右边百分比。服务端 progress（轮询与 WS 都带）只抬「上限」，
 //     显示值由本页计时器匀速往上限走（规则见 utils/wifi-ota.js「升级进度条」）；失败停住，VERIFYING 走到 100。
 //     收到过的最大进度存进本地记录，重进页面从那里接着走。
-//   · 渲染固件安装（2026-11-13，mode=fpga，从「渲染固件管理」进来，见 utils/fpga-firmware.js）：不比对版本，安装目标
+//   · 优雅刷新升级（2026-11-13，mode=fpga，从「优雅刷新升级」列表进来，见 utils/fpga-firmware.js）：不比对版本，安装目标
 //     （版本号、简介、固件地址）由列表页经本地存储带来；下发同一个 POST /api/device/ota，type=fpga、version=目标版本；
 //     进度条、四步、轮询 / WS、本地进行中记录与固件升级完全一致，只换文字（fpgaFirmware.TEXTS）并显示简介。
+//     设备不上报 FPGA 版本（baseVersion 为 null），版本卡只显示安装版本；下发返回 4047（今日升级次数已达上限）按语种提示。
 //     本地记录带 otaType，重进时（无论从哪个入口）按记录里的类型选文字。
 const POLL_MS = 3000
 
@@ -60,16 +61,17 @@ Page(fold.adapt({
     showSteps: false,
     steps: wifiOta.stepsFor('').steps,
     currentVersion: '',
+    showCurrent: true, // 优雅刷新不显示设备当前版本（设备不上报）
     latestVersion: '',
     showVersions: false,
     progress: 0,
     progressText: '',
-    // 文字随模式切换（固件升级 / 渲染固件安装）
+    // 文字随模式切换（固件升级 / 优雅刷新升级）
     navTitle: fpgaFirmware.TEXTS.main.nav,
     confirmText: fpgaFirmware.TEXTS.main.confirmText,
     retryText: fpgaFirmware.TEXTS.main.retryText,
     targetLabel: fpgaFirmware.TEXTS.main.targetLabel,
-    intro: '' // 渲染固件简介
+    intro: '' // 优雅刷新版本简介
   },
 
   onLoad(options) {
@@ -126,11 +128,17 @@ Page(fold.adapt({
     }
   },
 
-  // 按升级类型切文字：main 固件升级 / fpga 渲染固件安装
+  // 按升级类型切文字：main 固件升级 / fpga 优雅刷新升级
   useType(type) {
     this._otaType = type === fpgaFirmware.OTA_TYPE_FPGA ? fpgaFirmware.OTA_TYPE_FPGA : wifiOta.OTA_TYPE_MAIN
     this.texts = fpgaFirmware.textsFor(this._otaType)
-    this.setScreen({ navTitle: this.texts.nav, confirmText: this.texts.confirmText, retryText: this.texts.retryText, targetLabel: this.texts.targetLabel })
+    this.setScreen({
+      navTitle: this.texts.nav,
+      confirmText: this.texts.confirmText,
+      retryText: this.texts.retryText,
+      targetLabel: this.texts.targetLabel,
+      showCurrent: this._otaType !== fpgaFirmware.OTA_TYPE_FPGA
+    })
   },
 
   // 四步里最后一步的文字跟着模式换（其余三步两种模式相同）
@@ -225,17 +233,16 @@ Page(fold.adapt({
     this.showEvaluation(result)
   },
 
-  // 渲染固件安装：不比对版本，直接展示列表页选中的目标（版本号 + 简介）
+  // 优雅刷新升级：不比对版本，直接展示列表页选中的目标（版本号 + 简介）；设备不上报 FPGA 版本，不显示当前版本
   showFpgaTarget(info) {
     const target = fpgaFirmware.readTarget(this.data.id)
     if (!target) {
-      this.showError('没有选中要安装的版本，请返回「渲染固件管理」重新选择')
+      this.showError('没有选中要安装的版本，请返回「优雅刷新升级」重新选择')
       return
     }
-    const current = String(((info && info.shadow) || {}).fpgaVersion || '').trim()
     const result = {
       state: fpgaFirmware.isHttpUrl(target.url) ? 'available' : 'invalid',
-      current,
+      current: '',
       latest: target.version,
       url: target.url,
       intro: target.intro || ''
@@ -243,10 +250,10 @@ Page(fold.adapt({
     this.evaluation = result
     this.setScreen({
       phase: result.state,
-      title: `安装渲染固件 ${result.latest}`,
+      title: `安装优雅刷新固件 ${result.latest}`,
       hint: result.state === 'available' ? '安装期间设备会自动重启，请保持设备通电和网络连接' : '该版本固件地址无效，暂时无法安装',
       art: result.state === 'available' ? OTA_ART.progress : OTA_ART.fail,
-      currentVersion: current || '--',
+      currentVersion: '--',
       latestVersion: result.latest,
       showVersions: true,
       showSteps: false,
@@ -415,7 +422,7 @@ Page(fold.adapt({
       this.setScreen({
         phase: 'verifying',
         title: this.texts.doneTitle,
-        hint: status === 'SUCCESS' ? (this._otaType === fpgaFirmware.OTA_TYPE_FPGA ? '设备已重启，渲染固件安装成功' : '设备已重启，固件升级成功') : `${wifiOta.WAIT_REBOOT_TEXT}，结果将通过消息中心通知您`,
+        hint: status === 'SUCCESS' ? (this._otaType === fpgaFirmware.OTA_TYPE_FPGA ? '设备已重启，优雅刷新固件安装成功' : '设备已重启，固件升级成功') : `${wifiOta.WAIT_REBOOT_TEXT}，结果将通过消息中心通知您`,
         art: OTA_ART.success,
         showSteps: true,
         showVersions: false,
@@ -530,7 +537,7 @@ Page(fold.adapt({
     wx.showModal({
       title: this.texts.confirmTitle,
       content: fpga
-        ? `将安装渲染固件 ${result.latest}，安装期间设备会自动重启，请保持设备通电和网络连接`
+        ? `将安装优雅刷新固件 ${result.latest}，安装期间设备会自动重启，请保持设备通电和网络连接`
         : `将升级到 ${result.latest}，升级期间设备会自动重启，请保持设备通电和网络连接`,
       confirmText: this.texts.confirmText,
       success: res => {
@@ -549,7 +556,7 @@ Page(fold.adapt({
     }
     this._starting = true
     wx.showLoading({ title: this.texts.sending, mask: true })
-    const type = this._otaType // main 固件升级 / fpga 渲染固件（version 为 FPGA 目标版本）
+    const type = this._otaType // main 固件升级 / fpga 优雅刷新（version 为 FPGA 目标版本）
     let res
     try {
       res = await iotApi.startOta({
@@ -561,6 +568,11 @@ Page(fold.adapt({
     } catch (error) {
       wx.hideLoading()
       this._starting = false
+      if (fpgaFirmware.isLimitError(error)) {
+        // 4047：今日升级次数已达上限（多语种），停在当前页，不算失败
+        toast.show({ title: fpgaFirmware.limitText(), icon: 'none' })
+        return
+      }
       if (wifiOta.isBusyError(error)) {
         toast.show({ title: wifiOta.IN_PROGRESS_TIP, icon: 'none' })
         this.showBusy()

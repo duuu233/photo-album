@@ -1,10 +1,10 @@
-<!-- WiFi 版渲染固件管理（说明见 wifi-fpga.js 文件头） -->
+<!-- WiFi 版优雅刷新升级（说明见 wifi-fpga.js 文件头） -->
 <view class="mock-root wifi-info-page wifi-fpga-page" style="--status-bar: {{statusBarHeight}}px; --safe-bottom: {{safeBottom}}px;">
   <view class="mock-bg">
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
   </view>
 
-  <page-nav title="渲染固件管理"></page-nav>
+  <page-nav title="优雅刷新升级"></page-nav>
 
   <view wx:if="{{loading}}" class="page-loading">
     <view class="page-loading__spinner"></view>
@@ -21,25 +21,18 @@
 
   <view wx:elif="{{notFpga}}" class="mock-content info-content">
     <view class="info-error glass-panel">
-      <view class="info-error__title">该设备不支持渲染固件管理</view>
-      <view class="info-error__desc">只有渲染模式为 FPGA16 的设备可以安装渲染固件。</view>
+      <view class="info-error__title">该设备不支持优雅刷新升级</view>
+      <view class="info-error__desc">只有渲染模式为 FPGA16 的设备可以安装优雅刷新固件。</view>
     </view>
   </view>
 
   <view wx:else class="mock-content info-content">
-    <view class="info-rows glass-panel">
-      <view class="info-row">
-        <text class="info-row__label">当前 FPGA 版本</text>
-        <view class="info-row__value"><text>{{currentVersion || '--'}}</text></view>
-      </view>
-    </view>
-
-    <view wx:if="{{pending}}" class="info-error glass-panel fpga-empty">
+    <view wx:if="{{pending}}" class="info-error glass-panel">
       <view class="info-error__title">版本列表暂未开放</view>
-      <view class="info-error__desc">渲染固件版本列表接口尚未上线，开放后即可在这里安装。</view>
+      <view class="info-error__desc">优雅刷新版本列表接口尚未上线，开放后即可在这里安装。</view>
     </view>
-    <view wx:elif="{{!versions.length}}" class="info-error glass-panel fpga-empty">
-      <view class="info-error__title">暂无可安装的渲染固件</view>
+    <view wx:elif="{{!versions.length}}" class="info-error glass-panel">
+      <view class="info-error__title">暂无可安装的优雅刷新固件</view>
       <view class="info-error__desc">后台还没有启用的版本。</view>
     </view>
     <view wx:else class="fpga-list">
@@ -47,11 +40,10 @@
         <view class="fpga-item__main">
           <view class="fpga-item__head">
             <text class="fpga-item__version">{{item.version}}</text>
-            <text wx:if="{{item.version === currentVersion}}" class="fpga-item__tag">当前版本</text>
           </view>
           <text class="fpga-item__intro">{{item.intro || '暂无简介'}}</text>
         </view>
-        <view class="fpga-item__btn" hover-class="fpga-item__btn--hover" data-index="{{index}}" bindtap="install">{{item.version === currentVersion ? '重新安装' : '安装'}}</view>
+        <view class="fpga-item__btn" hover-class="fpga-item__btn--hover" data-index="{{index}}" bindtap="install">安装</view>
       </view>
     </view>
   </view>

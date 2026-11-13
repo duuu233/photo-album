@@ -8,8 +8,8 @@ const fpgaFirmware = require('../../../utils/fpga-firmware')
 
 // WiFi 版「设备信息」二级页（2026-10-29，原详情页的信息行挪到这里）：WiFi信号、WiFi名称、最后上线、最后心跳、固件版本；
 // 不再显示国家码。数据：老服务 getDeviceDetail 取设备号 → IoT GET /api/device/info。非在线时信号不显示（本地模式影子冻结）。
-// 2026-11-13：产品渲染模式 = fpga16 的设备多一行「渲染固件管理」（进 wifi-fpga，见 utils/fpga-firmware.js）；
-// 同时显示 FPGA 版本（影子 fpgaVersion）。
+// 2026-11-13：产品渲染模式 = fpga16 的设备多一个「优雅刷新升级」入口（进 wifi-fpga，见 utils/fpga-firmware.js）；
+// 设备不上报 FPGA 版本，不显示版本号。
 function infoRows(info) {
   const i = info || {}
   const shadow = i.shadow || {}
@@ -32,7 +32,7 @@ Page(fold.adapt({
     loading: true,
     loadError: false,
     rows: [],
-    showFpga: false // 渲染模式 = fpga16 才显示「渲染固件管理」
+    showFpga: false // 渲染模式 = fpga16 才显示「优雅刷新升级」
   },
 
   onLoad(options) {
@@ -59,17 +59,11 @@ Page(fold.adapt({
       api.resolveRenderMode(device).catch(() => '')
     ])
     if (!this.unloaded) {
-      const showFpga = fpgaFirmware.isFpgaRender(renderMode)
-      const rows = infoRows(info)
-      if (showFpga) {
-        const shadow = (info && info.shadow) || {}
-        rows.push({ key: 'fpgaVersion', label: 'FPGA版本', value: shadow.fpgaVersion || '--', level: 0 })
-      }
-      this.setData({ loading: false, loadError: false, rows, showFpga })
+      this.setData({ loading: false, loadError: false, rows: infoRows(info), showFpga: fpgaFirmware.isFpgaRender(renderMode) })
     }
   },
 
-  // 「渲染固件管理」：列出后台启用的 FPGA 版本，可安装
+  // 「优雅刷新升级」：列出后台启用的版本，可安装
   openFpga() {
     wx.navigateTo({ url: `/subpackages/device/wifi-fpga/wifi-fpga?id=${this.data.id}` })
   },

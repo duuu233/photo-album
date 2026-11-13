@@ -117,7 +117,7 @@
   background: #e5533d;
 }
 
-/* 渲染固件简介（2026-11-13） */
+/* 优雅刷新版本简介（2026-11-13） */
 .ota-intro {
   margin-top: 24rpx;
   padding: 24rpx 32rpx;

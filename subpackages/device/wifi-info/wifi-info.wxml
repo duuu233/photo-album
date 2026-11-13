@@ -30,10 +30,10 @@
       </view>
     </view>
 
-    <!-- 渲染固件管理（2026-11-13）：只有渲染模式 = fpga16 的设备才有 -->
+    <!-- 优雅刷新升级（2026-11-13，原名渲染固件管理）：只有渲染模式 = fpga16 的设备才有 -->
     <view wx:if="{{showFpga}}" class="info-rows glass-panel info-links">
       <view class="info-row info-row--link" hover-class="info-row--hover" bindtap="openFpga">
-        <text class="info-row__name">渲染固件管理</text>
+        <text class="info-row__name">优雅刷新升级</text>
         <text class="info-row__arrow">›</text>
       </view>
     </view>

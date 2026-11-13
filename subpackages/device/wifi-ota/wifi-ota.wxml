@@ -17,7 +17,7 @@
 
     <!-- 版本比对结果：当前版本 / 最新版本 -->
     <view wx:if="{{showVersions}}" class="ota-versions glass-panel">
-      <view class="ota-version-row">
+      <view wx:if="{{showCurrent}}" class="ota-version-row">
         <text class="ota-version-row__label">当前版本</text>
         <text class="ota-version-row__value">{{currentVersion}}</text>
       </view>
@@ -27,7 +27,7 @@
       </view>
     </view>
 
-    <!-- 渲染固件简介（2026-11-13，mode=fpga）：安装确认与进度页都带出 -->
+    <!-- 优雅刷新版本简介（2026-11-13，mode=fpga）：安装确认与进度页都带出 -->
     <view wx:if="{{intro}}" class="ota-intro glass-panel">
       <text class="ota-intro__label">版本简介</text>
       <text class="ota-intro__text">{{intro}}</text>
