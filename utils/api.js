@@ -9,10 +9,11 @@ const { md5 } = require('./md5')
 // 图库/再次投屏预览看着偏肉，放宽到 1MB 上下（2026-07-14）。见下方 setUserProductUpload 的字段说明。
 const UPLOAD_COMPRESS_SIZE_KB = 1024
 
-// 统计「投屏成功记录条数」时的翻页参数：单页 100 条与列表页同口径；
-// MAX_PAGES 是后端分页元数据异常（recordCount/pageCount 都不回）时的死循环保险丝。
-const RECORD_COUNT_PAGE_SIZE = 100
-const RECORD_COUNT_MAX_PAGES = 20
+// 统计「投屏成功记录条数」时的翻页参数：单页 21 条与「我的上传」同口径（2026-11-14，原 100，一次少传更快）；
+// 后端按 deviceUploadState 过滤时仍是一次请求、直接用 recordCount 拿总数。
+// MAX_PAGES 是后端分页元数据异常（recordCount/pageCount 都不回）时的死循环保险丝（100 × 21 与原 20 × 100 覆盖量相当）。
+const RECORD_COUNT_PAGE_SIZE = 21
+const RECORD_COUNT_MAX_PAGES = 100
 
 // 请求日志里的返回值：undefined 也写出来（不让日志里只剩「返回」两个字），序列化不了的按字符串
 function logText(value) {
