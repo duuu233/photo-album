@@ -253,15 +253,26 @@ function hasFirmwareUpdate(device) {
   }
 
   const result = evaluateFirmwareUpdate(device, device.firmwareVersion)
-  if (result.state !== 'unknown') {
-    return result.state === 'update'
-  }
-  return isUpdateFlag(device) && !firmwarePackageError(device)
+  const lit = result.state !== 'unknown'
+    ? result.state === 'update'
+    : isUpdateFlag(device) && !firmwarePackageError(device)
+  // 调试日志（2026-11-13）：红点判定 = 进入详情页弹强提醒的依据
+  console.log('[固件升级] 蓝牙详情红点', lit ? '亮' : '不亮', {
+    id: device.id,
+    当前版本: textValue(device.firmwareVersion) || '-',
+    newVersionNo: device.newVersionNo,
+    downloadPath: device.downloadPath,
+    isUpdate: device.isUpdate,
+    updateType: device.updateType,
+    版本对比: result.state,
+    原因: result.reason || (result.state === 'unknown' ? '读不到当前版本，退回 isUpdate' : '')
+  })
+  return lit
 }
 
 // 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
 // styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
-Page(fold.adapt(tapGuard.wrap(firmwareGate.wrapActions({
+Page(fold.adapt(tapGuard.wrap({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -505,27 +516,16 @@ Page(fold.adapt(tapGuard.wrap(firmwareGate.wrapActions({
     this.checkFirmwareOnEnter()
   },
 
-  // ── 固件升级判断（2026-11-13，规则见 utils/firmware-gate.js）──
-  // 已连接才判断。判定直接用「固件升级」行红点的结果（firmwareHasUpdate），红点亮 = 有新版本。
-  // 功能按钮只判强制升级（取消后每次点都再弹、操作不继续）；强提醒只在进入时弹，每次启动小程序一次。
-  // 不用弹返回 true；要弹返回 Promise<boolean>（true = 这次操作继续）。
-  firmwareGate() {
-    const device = this.data.device
-    if (!device || !device.connected) {
-      return true
-    }
-    const decision = firmwareGate.decide(device, { connected: true, hasUpdate: !!this.data.firmwareHasUpdate, forceOnly: true })
-    if (!decision.mode) {
-      return true
-    }
-    this._fwEntered = true // 按钮已弹过强制升级，不再补「进入后」那一次，免得连弹两次
-    return firmwareGate.prompt(device, decision, { liveId: activeDevice.findConnectedDeviceId(device) || device.deviceId })
-  },
-
-  // 进入后判断一次：本页第一次拿到「已连接」的设备信息时（进页已连着，或在本页连上后）；结果写进本地缓存供列表页 / 首页用
+  // ── 固件升级强提醒（2026-11-13 产品改口，规则见 utils/firmware-gate.js）──
+  // 强制升级已去掉，功能按钮不再判断。只在进入后判断一次强提醒：本页第一次拿到「已连接」的设备信息时
+  //（进页已连着，或在本页连上后）；判定直接用「固件升级」行红点的结果（firmwareHasUpdate），红点亮才会弹。
   checkFirmwareOnEnter() {
     const device = this.data.device
-    if (this._fwEntered || !device || !device.connected) {
+    if (this._fwEntered) {
+      return
+    }
+    if (!device || !device.connected) {
+      console.log('[固件升级] 蓝牙详情进入判断：未连接，连上后再判')
       return
     }
     this._fwEntered = true
@@ -706,10 +706,6 @@ Page(fold.adapt(tapGuard.wrap(firmwareGate.wrapActions({
     } else {
       // 已连接这一支没走 connectDevice，低电量提醒在这里补（2026-08-21：主动点投屏就要提示）
       await lowBattery.warnIfLow(activeDevice.findConnectedDeviceId(device), { device })
-    }
-    // 固件升级判断放在连上之后（未连接时无从判断）：强制升级取消或去升级了就不弹拍照 / 相册
-    if (!(await this.firmwareGate())) {
-      return
     }
 
     // 设为当前选中设备，预览/结果页据此连接并图传
@@ -1500,6 +1496,4 @@ Page(fold.adapt(tapGuard.wrap(firmwareGate.wrapActions({
       }
     })
   }
-// 固件升级判断（2026-11-13）：功能按钮先判断再执行。投屏在方法内连上之后判断；
-// 连接 / 断开、固件升级行、删除设备、重新加载不判断
-}, ['renameDevice', 'goSlideshow', 'clearCopies']), { startProjection: 'projection', chooseCamera: 'pick', chooseAlbum: 'pick' })))
+}, { startProjection: 'projection', chooseCamera: 'pick', chooseAlbum: 'pick' })))

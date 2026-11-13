@@ -116,7 +116,9 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 渲染模式 `fpga16` 的设备（`api.resolveRenderMode`），设备信息页（`wifi-info`）有「优雅刷新升级」入口，直接进 `wifi-ota?mode=fpga`。最新版本只读设备详情 `newVersionNoFpga` / `downloadPathFpga` / `upgradeTipsFpga`（版本说明），没有版本列表。红点：本地缓存看过的版本号 `fpga_seen:{deviceNo}`，最新版本比缓存新（或缓存为空）时 WiFi 详情「设备信息」与设备信息页入口亮红点，进优雅刷新升级页即记下、消失（`utils/fpga-firmware.js` 的 `hasNew` / `markSeen`）。安装：不比对版本，`POST /api/device/ota` 传 `type=fpga`、`version`、`url`；进度 / 四步 / 本地记录与固件升级一致，只换文字并显示版本说明，记录带 `otaType`。设备不上报 FPGA 版本，不显示版本号；下发 4047 = 今日升级次数已达上限，按语种提示。见 `docs/changes/2026-11-13-WiFi渲染固件管理.md`。
 
-## 固件强制升级 / 强提醒升级（2026-11-13，`main`）
+## 固件升级强提醒（2026-11-13，`main`）
+
+**现行口径（同日产品改口）**：强制升级整套去掉，只保留强提醒 / 弱提示。`utils/firmware-gate.js` 只在进入设备详情页（`detail` / `wifi-detail`）时判断一次：WiFi 版在线、蓝牙版已连接、「固件升级」红点亮，且升级类型为 2 强提醒（1 原强制按强提醒，后台已隐藏）才弹；取消后本次启动不再弹这台，关闭 / 重启小程序再弹。3 弱提示 / 4 不提示只亮红点。功能按钮、设备列表页、首页都不判断，无 loading 现查、无本地缓存。调试日志 `[固件升级]`（含详情接口返回的整套升级参数，`utils/api.js`）。见 `docs/changes/2026-11-13-固件升级只保留强提醒.md`。以下两段为当日早些时候的口径，仅供追溯：
 
 `utils/firmware-gate.js`。WiFi 版在线、蓝牙版已连接才判断；升级方式取详情出参 `compulsory`（兜底 `updateType` 等，归一到 `updateType`；1 强制、2 强提醒，3 弱提示 / 4 不提示只亮红点不弹）；有无新版本与详情页「固件升级」红点同一套判定（WiFi 有进行中的升级不弹）。设备详情页（`detail` / `wifi-detail`）进入后判断一次、点功能按钮先判断（强制 + 强提醒，按钮用 `wrapActions` 包，不用弹时同步执行）；设备列表页投屏 / WiFi 轮播设置、首页拍照 / 相册投屏用 `guardAction` 现查，只判强制。强制升级取消 → 这次操作不继续；强提醒取消 → 继续；立即升级进升级页（蓝牙 `ota?auto=1`）。连接 / 断开、固件升级行、解绑、删除不判断；查询失败放行。见 `docs/changes/2026-11-13-固件强制升级与强提醒升级判断.md`。
 同日产品复核后调整：强提醒只在进入详情页时弹，每台设备每次启动一次（`checkOnEnter`），详情页按钮只判强制；列表页 / 首页每次启动第一次点 loading 现查并写本地缓存 `fw_gate_cache`，之后按缓存判断；升级完成（蓝牙 ota 成功、WiFi 主固件重启确认）缓存改成无需升级。见 `docs/changes/2026-11-13-固件升级判断按升级类型与本地缓存.md`。

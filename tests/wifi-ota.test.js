@@ -173,9 +173,7 @@ async function main() {
       'wifi-status': wifiStatus,
       'wifi-ota': ota,
       // 2026-11-13 渲染固件安装（mode=fpga）多了这个依赖；纯逻辑 + 本地存储，直接用真实模块
-      'fpga-firmware': fpga,
-      // 2026-11-13：主固件升级完成后把固件升级判断的本地缓存改成无需升级
-      'firmware-gate': { markUpgraded: id => (state.upgradedMarks = state.upgradedMarks || []).push(id) }
+      'fpga-firmware': fpga
     }
     vm.runInNewContext(read('subpackages/device/wifi-ota/wifi-ota.js'), {
       require: target => modules[target.split('/').at(-1)],
@@ -504,10 +502,10 @@ async function main() {
     const api = read('utils/iot-api.js')
     assert.ok(api.indexOf("'/api/device/ota'") > -1 && api.indexOf("'/api/device/ota/status'") > -1, '接口路径')
     assert.ok(/@import "\.\.\/wifi-provision\/wifi-provision\.wxss"/.test(read('subpackages/device/wifi-ota/wifi-ota.wxss')), '与配网页同一形态')
-    // 2026-11-13：启动时的强制升级弹窗撤掉，固件升级判断改到 utils/firmware-gate.js（列表页 / 首页现查那一支）。
-    // 判据跟着挪过去：弹升级提示前先看本地有没有进行中的升级；详情页走红点结果（otaHasUpdate，进行中时本就不亮）
-    const gateJs = read('utils/firmware-gate.js')
-    assert.ok(/wifiOta\.readInflight/.test(gateJs), '弹升级提示前先看进行中的升级')
+    // 2026-11-13：启动时的强制升级弹窗撤掉；同日产品改口只保留详情页进入时的强提醒，判定用红点结果（otaHasUpdate）。
+    // 判据跟着挪到红点所在处：本地有进行中的升级时显示「升级中」、不亮红点，也就不会弹升级提示
+    const detailJs = read('subpackages/device/wifi-detail/wifi-detail.js')
+    assert.ok(/wifiOta\.readInflight/.test(detailJs) && /if \(inflight\) \{[\s\S]*?otaHasUpdate: false/.test(detailJs), '弹升级提示前先看进行中的升级')
     assert.ok(!/checkForcedFirmwareUpgrade/.test(read('app.js')), '启动时不再弹强制升级')
     checked('注册与入口')
   }

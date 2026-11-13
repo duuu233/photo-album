@@ -129,6 +129,24 @@ function normalizeUserProfile(user = {}) {
   }
 }
 
+// 调试日志（2026-11-13）：设备详情接口原样返回的整套升级参数（固件 + 优雅刷新 FPGA），连同归一后的值打一行
+// 「[固件升级] 接口 … 返回升级参数」；开发版 / 体验版左下角「日志」浮窗可看。按字段名挑，后端加了新字段也能带出来。
+const UPGRADE_FIELD = /version|update|upgrade|compulsory|download|fpga|firmware|force|package|tips|^url$/i
+function logUpgradeFields(source, raw, device) {
+  const picked = {}
+  Object.keys(raw || {}).forEach(key => {
+    if (UPGRADE_FIELD.test(key)) {
+      picked[key] = raw[key]
+    }
+  })
+  console.log(`[固件升级] 接口 ${source} 返回升级参数`, `#${(device && device.id) || ''}`, picked, '→ 归一后', {
+    updateType: device && device.updateType,
+    isUpdate: device && device.isUpdate,
+    newVersionNo: device && device.newVersionNo,
+    downloadPath: device && device.downloadPath
+  })
+}
+
 function normalizeDevice(device = {}) {
   const userProductId = firstValue(device.userProductId, device.id)
   const bleDeviceId = firstValue(
@@ -178,9 +196,9 @@ function normalizeDevice(device = {}) {
     fallbackIntervalSeconds
   )
   const isUpdate = normalizeNumber(device.isUpdate, 0)
-  // 升级方式：1=强制升级 / 其它(含 2=强提示)=强提醒升级（字段名/取值待后端最终确认，仅改此一处即可）。
-  // 2026-11-13：先认详情出参 swagger 的 `compulsory`（与 App 版本接口同名同义：1 强制 2 强提示），再兜底 updateType 等旧猜测字段。
-  // 归一为 updateType（数字）与 upgradeMode: 'force'(强制) | 'remind'(提醒) | ''(无更新)；固件升级判断见 utils/firmware-gate.js。
+  // 升级类型：先认详情出参 swagger 的 `compulsory`（1 强制 2 强提示 3 弱提示 4 不提示），再兜底 updateType 等旧猜测字段。
+  // 归一为 updateType（数字）与 upgradeMode: 'force' | 'remind' | ''（无更新，旧字段，现无页面使用）。
+  // 2026-11-13 产品改口：强制升级已去掉，只在设备详情页弹强提醒（1 按强提醒），见 utils/firmware-gate.js。
   const updateType = normalizeNumber(
     firstValue(device.compulsory, device.updateType, device.upgradeType, device.forceType),
     0
@@ -917,7 +935,7 @@ module.exports = {
   },
 
   // 获取用户设备详情。可传 userProductId 或 { userProductId, productVersionNo }
-  // options（可选）透传请求层，如 { showError: false }（固件升级判断静默查询，2026-11-13）
+  // options（可选）透传请求层，如 { showError: false }
   getUserProductDetail(params, options) {
     const query =
       typeof params === 'object' ? params : { userProductId: params }
@@ -1226,8 +1244,8 @@ module.exports = {
     return Promise.all([
       module.exports.getUserProductDetail(deviceId, options),
       productCatalogWithin(PRODUCT_CATALOG_WAIT_MS)
-    ]).then(([device, products]) =>
-      normalizeDevice(
+    ]).then(([device, products]) => {
+      const normalized = normalizeDevice(
         withProductBroadcastId(
           Object.assign({}, device, {
             userProductId: firstValue(device && device.userProductId, deviceId)
@@ -1235,7 +1253,9 @@ module.exports = {
           products
         )
       )
-    )
+      logUpgradeFields('getUserProductDetail', device, normalized)
+      return normalized
+    })
   },
 
   async bindDevice(device) {

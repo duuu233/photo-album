@@ -34,8 +34,8 @@ const app = getApp()
 //     请恢复设备网络再试」；设备信息、休眠设置、消息中心、分享、解绑、删除照常。
 //   · 固件升级（2026-11-02，docs/前端对接文档20261031.md）：功能栏「消息中心」之后，右侧显示设备当前固件版本，
 //     有新版本亮红点（先看本地有没有进行中的升级记录：有则显示「升级中」、不亮红点，对接文档 3.3）；进 wifi-ota 步骤页。
-//   · 固件升级判断（2026-11-13，规则见 utils/firmware-gate.js）：在线才判断，进入后（拿到在线状态时）判断一次、
-//     点功能按钮再判断；强制升级与强提醒升级都弹，判定用红点结果。解除绑定、删除设备、固件升级行、重试不判断。
+//   · 固件升级强提醒（2026-11-13，规则见 utils/firmware-gate.js）：在线才判断，进入后（拿到在线状态时）判断一次，
+//     判定用红点结果；强制升级已去掉，功能按钮不判断。
 function plainDeviceNo(value) {
   return String(value || '').replace(/[:\-\s]/g, '').toUpperCase()
 }
@@ -62,13 +62,24 @@ function statusFields(info) {
 // 「固件升级」行：右侧当前版本（读不到 '--'）；本地有进行中的升级 → 「升级中」、不亮红点；否则有新版本亮红点
 function otaFields(device, firmwareVersion, inflight) {
   if (inflight) {
+    console.log('[固件升级] WiFi 详情红点 不亮（本地有进行中的升级）', device && device.id)
     return { otaText: '升级中', otaHasUpdate: false }
   }
   const result = wifiOta.evaluate(firmwareVersion, device && device.newVersionNo, device && device.downloadPath)
+  // 调试日志（2026-11-13）：红点判定 = 进入详情页弹强提醒的依据
+  console.log('[固件升级] WiFi 详情红点', result.state === 'available' ? '亮' : '不亮', {
+    id: device && device.id,
+    当前版本: firmwareVersion || '-',
+    newVersionNo: device && device.newVersionNo,
+    downloadPath: device && device.downloadPath,
+    isUpdate: device && device.isUpdate,
+    updateType: device && device.updateType,
+    版本对比: result.state
+  })
   return { otaText: firmwareVersion || '--', otaHasUpdate: result.state === 'available' }
 }
 
-Page(fold.adapt(tapGuard.wrap(firmwareGate.wrapActions({
+Page(fold.adapt(tapGuard.wrap({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -225,20 +236,7 @@ Page(fold.adapt(tapGuard.wrap(firmwareGate.wrapActions({
     }
   },
 
-  // 功能按钮只判强制升级（取消后每次点都再弹、操作不继续）；强提醒只在进入时弹（checkFirmwareOnEnter）。
-  // 不用弹返回 true；要弹返回 Promise<boolean>（true = 这次操作继续）
-  firmwareGate() {
-    const device = this.data.device
-    if (!device || this.data.status !== 'online') {
-      return true
-    }
-    const decision = firmwareGate.decide(device, { isWifi: true, online: true, hasUpdate: !!this.data.otaHasUpdate, forceOnly: true })
-    if (!decision.mode) {
-      return true
-    }
-    return firmwareGate.prompt(device, decision, { isWifi: true })
-  },
-
+  // 固件升级强提醒（2026-11-13 产品改口：强制升级已去掉，功能按钮不再判断）。
   // 进入后判断一次：第一次查到设备状态时（在线才会弹）；之后回到本页、状态推送重查都不再弹
   checkFirmwareOnEnter() {
     const status = this.data.status
@@ -247,9 +245,10 @@ Page(fold.adapt(tapGuard.wrap(firmwareGate.wrapActions({
     }
     this._fwEntered = true
     if (!this.data.device || status !== 'online') {
+      console.log('[固件升级] WiFi 详情进入判断：不在线，不判', status)
       return
     }
-    // 强制 / 强提醒都判（强提醒每次启动小程序只弹一次），结果写进本地缓存供列表页 / 首页用
+    // 只判强提醒（每台设备每次启动小程序只弹一次）
     firmwareGate.checkOnEnter(this.data.device, { isWifi: true, online: true, hasUpdate: !!this.data.otaHasUpdate }, { isWifi: true })
   },
 
@@ -602,5 +601,4 @@ Page(fold.adapt(tapGuard.wrap(firmwareGate.wrapActions({
     // 照片删了，服务端会把轮播里对应的图移掉：重查一次轮播标记
     this.refreshSlideshow()
   }
-// 固件升级判断（2026-11-13）：功能按钮先判断再执行（须在 tapGuard 之内套）
-}, ['startProjection', 'openSlideshow', 'openInfo', 'openMessages', 'openTf', 'openShare', 'clearCopies']), { startProjection: 'projection', chooseCamera: 'pick', chooseAlbum: 'pick' })))
+}, { startProjection: 'projection', chooseCamera: 'pick', chooseAlbum: 'pick' })))

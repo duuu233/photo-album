@@ -14,7 +14,6 @@ const fold = require('../../../utils/fold-adapt')
 const broadcastMatch = require('../../../utils/broadcast-match')
 const wifiStatus = require('../../../utils/wifi-status')
 const wifiWatch = require('../../../utils/wifi-watch')
-const firmwareGate = require('../../../utils/firmware-gate')
 
 const app = getApp()
 const RECENTLY_BOUND_DEVICE_KEY = 'recentlyBoundDeviceId'
@@ -295,7 +294,6 @@ Page(fold.adapt(tapGuard.wrap({
   // WiFi 版「轮播设置」（V1.4 更新说明 1.5，取代原「刷新状态」）：进 WiFi 轮播设置页。
   // 查询只要权限、离线也能看，所以这里不拦离线；保存时轮播页再判断设备状态。
   // 本地模式（2026-10-29）：按钮可点，只提示「当前设备状态：本地模式，请恢复设备网络再试」。
-  // 固件升级判断（2026-11-13，只判强制升级、在线才判，见 utils/firmware-gate.js）：强制升级取消或去升级了就不进。
   async openWifiSlideshow(e) {
     const id = e.currentTarget.dataset.id
     const device = this.data.devices.find(item => item.id === id)
@@ -306,16 +304,12 @@ Page(fold.adapt(tapGuard.wrap({
       toast.show({ title: wifiStatus.LOCAL_TIP, icon: 'none' })
       return
     }
-    if (!(await firmwareGate.guardAction(device))) {
-      return
-    }
     wx.navigateTo({ url: `/subpackages/device/wifi-slideshow/wifi-slideshow?id=${device.id}` })
   },
 
   // WiFi 版「投屏」（STEP 3）：不连蓝牙，直接弹「拍照 / 相册」；选图后进同一个预览页构图，
   // 预览页按设备类型跳 WiFi 投屏结果页（经 IoT 服务上传，见 utils/wifi-projection.js）。
   // 不改当前选中设备：首页等蓝牙链路仍按原选中设备走。
-  // 固件升级判断（2026-11-13，只判强制升级、在线才判）：放在离线等拦截之后、弹拍照 / 相册之前。
   async startWifiProjection(e) {
     const id = e.currentTarget.dataset.id
     const device = this.data.devices.find(item => item.id === id)
@@ -325,9 +319,6 @@ Page(fold.adapt(tapGuard.wrap({
     const tip = wifiStatus.blockedTip(device.wifiStatus) // 本地模式 / 离线 / 休眠中先拦
     if (tip) {
       toast.show({ title: tip, icon: 'none' })
-      return
-    }
-    if (!(await firmwareGate.guardAction(device))) {
       return
     }
     this._projectionDevice = device
@@ -513,10 +504,6 @@ Page(fold.adapt(tapGuard.wrap({
       })
       // 已连接这一支没走 connectDevice，低电量提醒在这里补（2026-08-21：主动点投屏就要提示）
       await lowBattery.warnIfLow(liveId, { device })
-    }
-    // 固件升级判断（2026-11-13，只判强制升级）：放在连上之后（未连接时无从判断，自动连上后照样判）
-    if (!(await firmwareGate.guardAction(device))) {
-      return
     }
 
     // 设为当前选中设备，预览/结果页据此连接并图传；记住本次投屏的设备供选图后使用
