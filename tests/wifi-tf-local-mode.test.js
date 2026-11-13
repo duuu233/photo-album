@@ -294,6 +294,11 @@ async function main() {
     // 「仅所有者能清空」改由 clearCopies / confirmClearCopies 判 isOwner 守，见上面「接收者不弹确认 / 不能一键清空」两条
     assert.ok(/<view class="detail-list action-list glass-panel">\s*<view class="detail-row action-row clear-row" hover-class="none" bindtap="clearCopies">/.test(actionCard), '一键清空随页面显示，行样式同蓝牙版 clear-row')
     assert.ok(!/isOwner/.test(actionCard.slice(0, actionCard.indexOf('bindtap="showUnbindConfirm"'))), '一键清空 / 解除绑定不按身份隐藏')
+    // 2026-11-14：首次进页等详情（含身份）与状态 / 未读 / 升级 / 轮播接口都回来再关 loading，删除设备不在页面显示后才冒出来
+    const detailJs = read('subpackages/device/wifi-detail/wifi-detail.js')
+    assert.ok(/const jobs = \[this\.refreshStatus\(\), this\.refreshUnread\(\), this\.refreshOta\(true\), this\.refreshSlideshow\(\)\]/.test(detailJs), '首次进页等这几个接口')
+    assert.ok(/await settleWithin\(jobs, FIRST_LOAD_WAIT_MS\)\s*if \(!this\.unloaded\) \{\s*this\.setData\(\{ loading: false \}\)/.test(detailJs), '都回来再关 loading')
+    assert.ok(/isOwner: wifiShare\.isOwner\(device\), loadError: false \}, first \? \{\} : \{ loading: false \}/.test(detailJs), '身份随详情一起设置，首次不提前关 loading')
     assert.ok(/device-detail-icon05\.png[\s\S]*?<text>一键清空<\/text>[\s\S]*?class="thin-divider"[\s\S]*?class="detail-row action-row delete-row" hover-class="none" bindtap="showUnbindConfirm">[\s\S]*?device-detail-icon06\.png[\s\S]*?<text>解除绑定<\/text>/.test(actionCard), '一键清空 / 分隔线 / 解除绑定，图标同蓝牙版')
     assert.equal(tpl.indexOf('unbind-entry'), -1, '解除绑定不再在功能栏里')
     assert.ok(/bindtap="openClearStep2"/.test(tpl) && /bindtap="confirmClearCopies"/.test(tpl) && /confirm-icon clear-icon/.test(tpl), '一键清空两级确认同蓝牙版')

@@ -35,6 +35,15 @@ const app = getApp()
 //     有新版本亮红点（先看本地有没有进行中的升级记录：有则显示「升级中」、不亮红点，对接文档 3.3）；进 wifi-ota 步骤页。
 //   · 固件升级强提醒（2026-11-13，规则见 utils/firmware-gate.js）：在线才判断，进入后（拿到在线状态时）判断一次，
 //     判定用红点结果；强制升级已去掉，功能按钮不判断。
+// 首次进页的兜底上限：页面何时出来由接口实际返回决定，这个数只在网络卡住时防止一直转圈
+const FIRST_LOAD_WAIT_MS = 20000
+
+// 等一组请求都结束（成功或失败都算），最多等 ms
+function settleWithin(promises, ms) {
+  const all = Promise.all((promises || []).map(item => Promise.resolve(item).catch(() => null)))
+  return Promise.race([all, new Promise(resolve => setTimeout(resolve, ms))])
+}
+
 function plainDeviceNo(value) {
   return String(value || '').replace(/[:\-\s]/g, '').toUpperCase()
 }
@@ -163,8 +172,12 @@ Page(fold.adapt(tapGuard.wrap({
     return plainDeviceNo(device.productDeviceId || device.deviceNo)
   },
 
+  // 首次进页（2026-11-14 产品要求）：设备详情（含所有者身份，决定是否显示删除设备）回来后，再等状态、未读、
+  // 进行中升级、轮播标记这几个接口（最多 FIRST_LOAD_WAIT_MS），都回来再关 loading、整页一起渲染，
+  // 不再出现页面先显示、过一会儿才按身份 / 状态补出内容。回到本页（onShow 重查）静默刷新，不再转圈。
   async load() {
-    if (!this.data.device) {
+    const first = !this.data.device
+    if (first) {
       this.setData({ loading: true, loadError: false })
     }
     let device
@@ -179,16 +192,21 @@ Page(fold.adapt(tapGuard.wrap({
     if (this.unloaded) {
       return
     }
-    this.setData({ device, isOwner: wifiShare.isOwner(device), loading: false, loadError: false })
+    this.setData(Object.assign({ device, isOwner: wifiShare.isOwner(device), loadError: false }, first ? {} : { loading: false }))
     const deviceNo = this.deviceNo()
     if (deviceNo && this._subscribed !== deviceNo && iotWs.getSubscriptions().indexOf(deviceNo) === -1) {
       iotWs.subscribe(deviceNo)
       this._subscribed = deviceNo
     }
-    this.refreshStatus()
-    this.refreshUnread()
-    this.refreshOta(true)
-    this.refreshSlideshow()
+    const jobs = [this.refreshStatus(), this.refreshUnread(), this.refreshOta(true), this.refreshSlideshow()]
+    if (!first) {
+      return
+    }
+    await settleWithin(jobs, FIRST_LOAD_WAIT_MS)
+    if (!this.unloaded) {
+      this.setData({ loading: false })
+      this.checkFirmwareOnEnter() // loading 期间不弹强提醒，页面出来后再判断
+    }
   },
 
   // 轮播开启中标记：每次进页（含从轮播设置页回来）查一次；查不到保持原样
@@ -229,7 +247,7 @@ Page(fold.adapt(tapGuard.wrap({
   // 进入后判断一次：第一次查到设备状态时（在线才会弹）；之后回到本页、状态推送重查都不再弹
   checkFirmwareOnEnter() {
     const status = this.data.status
-    if (this._fwEntered || !this.data.device || status === 'loading') {
+    if (this._fwEntered || !this.data.device || status === 'loading' || this.data.loading) {
       return
     }
     this._fwEntered = true
