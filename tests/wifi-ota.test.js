@@ -150,7 +150,8 @@ async function main() {
     let definition
     const state = { toasts: [], started: [], subs: [], handlers: {}, intervals: 0, modals: [], timers: [], cleared: [] }
     const modules = {
-      api: { getDeviceDetail: async () => ({ id: '9', productDeviceId: '38:44:BE:2E:52:20', newVersionNo: '0.6.2', downloadPath: 'https://oss/fw.bin' }) },
+      // setup.device：叠加到默认设备详情上（2026-11-13 优雅刷新字段 newVersionNoFpga 等）
+      api: { getDeviceDetail: async () => Object.assign({ id: '9', productDeviceId: '38:44:BE:2E:52:20', newVersionNo: '0.6.2', downloadPath: 'https://oss/fw.bin' }, setup.device) },
       'iot-api': {
         getDeviceInfo: async () => setup.info,
         getOtaStatus: iotApiStub.getOtaStatus,
@@ -234,23 +235,27 @@ async function main() {
     checked('页面：下发、推进与失败')
   }
   {
-    // 优雅刷新升级（2026-11-13，原名渲染固件管理）：mode=fpga 不比对版本，安装目标来自列表页；下发 type=fpga、version=目标版本；
-    // 进度、四步与固件升级一致，只换文字并带出简介；设备不上报 FPGA 版本，不显示当前版本；本地记录带 otaType，重进按它选文字
+    // 优雅刷新升级（2026-11-13，原名渲染固件管理）：最新版本只读设备详情（newVersionNoFpga / downloadPathFpga / upgradeTipsFpga），
+    // 没有版本列表；mode=fpga 不比对版本、显示版本说明；下发 type=fpga、version=最新版本；进度、四步与固件升级一致，只换文字；
+    // 设备不上报 FPGA 版本，不显示当前版本；本地记录带 otaType，重进按它选文字；进页记下看过的版本号（红点消失）；4047 多语种提示
+    const FPGA_DEVICE = { newVersionNoFpga: '1.0.3', downloadPathFpga: 'https://oss/fpga.bin', upgradeTipsFpga: '修复刷新闪烁' }
     Object.keys(storage).forEach(key => delete storage[key])
-    fpga.saveTarget('9', { version: 'v1.02', intro: '修复刷新闪烁', url: 'https://oss/fpga.bin' })
-    const { page, state, emit } = loadPage({ info: { status: 'ONLINE', online: true, firmwareVersion: '0.6.1', shadow: { fpgaVersion: 'v1.01' } } })
+    const { page, state, emit } = loadPage({ device: FPGA_DEVICE, info: { status: 'ONLINE', online: true, firmwareVersion: '0.6.1' } })
+    assert.equal(fpga.hasNew(Object.assign({ productDeviceId: '38:44:BE:2E:52:20' }, FPGA_DEVICE), 'fpga16'), true, '本机没看过：亮红点')
     page.onLoad({ id: '9', mode: 'fpga' })
     await flush()
+    assert.equal(storage['fpga_seen:3844BE2E5220'], '1.0.3', '进优雅刷新升级即记下看过的版本')
+    assert.equal(fpga.hasNew(Object.assign({ productDeviceId: '38:44:BE:2E:52:20' }, FPGA_DEVICE), 'fpga16'), false, '看过后红点消失')
     assert.equal(page.data.navTitle, '优雅刷新升级')
     assert.equal(page.data.phase, 'available', '不比对版本，直接可安装')
     assert.equal(page.data.showCurrent, false, '设备不上报 FPGA 版本，不显示当前版本')
-    assert.equal(page.data.latestVersion, 'v1.02')
-    assert.equal(page.data.targetLabel, '安装版本')
-    assert.equal(page.data.intro, '修复刷新闪烁', '带出简介')
+    assert.equal(page.data.latestVersion, '1.0.3')
+    assert.equal(page.data.targetLabel, '最新版本')
+    assert.equal(page.data.intro, '修复刷新闪烁', '显示版本说明')
     assert.equal(page.data.confirmText, '立即安装')
     page.startUpgrade()
     await flush()
-    assert.deepEqual(state.started, [{ deviceNo: '3844BE2E5220', url: 'https://oss/fpga.bin', type: 'fpga', version: 'v1.02' }], '复用 /api/device/ota，type=fpga')
+    assert.deepEqual(state.started, [{ deviceNo: '3844BE2E5220', url: 'https://oss/fpga.bin', type: 'fpga', version: '1.0.3' }], '复用 /api/device/ota，type=fpga')
     assert.equal(storage['ota_inflight:3844BE2E5220'].otaType, 'fpga')
     assert.equal(page.data.title, '设备正在安装优雅刷新固件')
     assert.deepEqual(statuses(page), ['loading', 'pending', 'pending', 'pending'], '四步与固件升级一致')
@@ -259,7 +264,7 @@ async function main() {
     await flush()
     assert.equal(page.data.title, '安装完成')
     assert.equal(page.data.steps[3].text, '安装完成')
-    assert.equal(page.data.intro, '修复刷新闪烁', '进度页也带出简介')
+    assert.equal(page.data.intro, '修复刷新闪烁', '进度页也显示版本说明')
 
     // 从固件升级入口重进：按记录里的类型显示安装文字
     const again = loadPage({ info: { status: 'ONLINE', online: true, firmwareVersion: '0.6.1' } })
@@ -269,13 +274,13 @@ async function main() {
     assert.equal(again.page.data.navTitle, '优雅刷新升级')
     assert.equal(again.page.data.title, '设备正在安装优雅刷新固件')
 
-    // 没有安装目标：提示回列表重新选择
+    // 后台没有版本：提示暂无，不给安装按钮
     Object.keys(storage).forEach(key => delete storage[key])
     const none = loadPage({ info: { status: 'ONLINE', online: true } })
     none.page.onLoad({ id: '9', mode: 'fpga' })
     await flush()
-    assert.equal(none.page.data.phase, 'error')
-    assert.ok(/优雅刷新升级/.test(none.page.data.hint))
+    assert.equal(none.page.data.phase, 'latest')
+    assert.equal(none.page.data.title, '暂无可用的优雅刷新版本')
 
     // 普通固件升级入口文字不变
     const main = loadPage({ info: { status: 'ONLINE', online: true, firmwareVersion: '0.6.1' } })
@@ -287,8 +292,7 @@ async function main() {
 
     // 4047：今日升级次数已达上限（多语种），不进步骤页、不存记录
     Object.keys(storage).forEach(key => delete storage[key])
-    fpga.saveTarget('9', { version: 'v1.02', intro: '', url: 'https://oss/fpga.bin' })
-    const limited = loadPage({ info: { status: 'ONLINE', online: true }, startError: codeError(4047) })
+    const limited = loadPage({ device: FPGA_DEVICE, info: { status: 'ONLINE', online: true }, startError: codeError(4047) })
     limited.page.onLoad({ id: '9', mode: 'fpga' })
     await flush()
     limited.page.startUpgrade()
@@ -301,19 +305,26 @@ async function main() {
     assert.equal(fpga.limitText('ja'), '本日のアップデート回数の上限に達しました')
     assert.equal(fpga.limitText('xx'), '今日升级次数已达上限', '认不出的语种按简中')
 
-    assert.equal(fpga.isFpgaRender(' FPGA16 '), true)
-    assert.equal(fpga.isFpgaRender('esp32'), false)
-    assert.deepEqual(fpga.normalizeVersions([
-      { id: 1, versionNumber: 'v1.01', verify: 1, grade: 1, downloadPath: 'https://a', versionDesc: '一' },
-      { id: 2, versionNumber: 'v1.02', verify: 0, grade: 9 },
-      { id: 3, versionNumber: 'v1.03', grade: 5, remark: '三' }
-    ]).map(item => [item.version, item.intro]), [['v1.03', '三'], ['v1.01', '一']], '未启用不显示、按权重排、简介字段兜底')
-    assert.equal(fpga.listApiReady(), false, '用户端列表接口待后端提供')
-    assert.ok(/wifiInfo|showFpga/.test(read('subpackages/device/wifi-info/wifi-info.js')) && /fpgaFirmware\.isFpgaRender\(renderMode\)/.test(read('subpackages/device/wifi-info/wifi-info.js')), '设备信息页按渲染模式显示入口')
-    assert.ok(/wx:if="\{\{showFpga\}\}"[\s\S]*?优雅刷新升级/.test(read('subpackages/device/wifi-info/wifi-info.wxml')))
-    assert.equal(read('subpackages/device/wifi-info/wifi-info.js').indexOf('fpgaVersion'), -1, '设备信息页不显示 FPGA 版本号')
-    assert.equal(read('subpackages/device/wifi-fpga/wifi-fpga.wxml').indexOf('currentVersion'), -1, '列表页不显示设备当前版本')
-    assert.ok(JSON.parse(read('app.json')).subpackages.find(item => item.root === 'subpackages/device').pages.includes('wifi-fpga/wifi-fpga'), '页面已注册')
+    // 红点规则：缓存为空或最新版本更高才亮；非 fpga16、没有版本、地址无效都不亮
+    const dev = extra => Object.assign({ productDeviceId: 'AA:BB:CC:DD:EE:FF', newVersionNoFpga: '1.0.3', downloadPathFpga: 'https://oss/f.bin' }, extra)
+    Object.keys(storage).forEach(key => delete storage[key])
+    assert.equal(fpga.hasNew(dev(), 'esp32'), false, '非 fpga16 不亮')
+    assert.equal(fpga.hasNew(dev({ newVersionNoFpga: '' }), 'fpga16'), false, '后台没有版本不亮')
+    assert.equal(fpga.hasNew(dev({ downloadPathFpga: 'ftp://x' }), 'fpga16'), false, '地址无效不亮')
+    fpga.markSeen('AABBCCDDEEFF', '1.0.3')
+    assert.equal(fpga.hasNew(dev(), 'fpga16'), false, '看过同版本不亮')
+    assert.equal(fpga.hasNew(dev({ newVersionNoFpga: '1.0.10' }), 'fpga16'), true, '按数字段比：1.0.10 > 1.0.3')
+    assert.equal(fpga.hasNew(dev({ newVersionNoFpga: '1.0.2' }), 'fpga16'), false, '比看过的旧不亮')
+    assert.equal(fpga.isNewer('V2', 'V1'), true, '非 x.y.z 不同即算新')
+
+    // 接入位置：入口直接进安装页、两处红点、版本列表页已去掉
+    const infoJs = read('subpackages/device/wifi-info/wifi-info.js')
+    assert.ok(/fpgaFirmware\.isFpgaRender\(renderMode\)/.test(infoJs) && /fpgaFirmware\.hasNew\(device, renderMode\)/.test(infoJs), '设备信息页按渲染模式显示入口与红点')
+    assert.ok(/wifi-ota\/wifi-ota\?id=\$\{this\.data\.id\}&mode=fpga/.test(infoJs), '直接进安装页')
+    assert.ok(/wx:if="\{\{showFpga\}\}"[\s\S]*?优雅刷新升级[\s\S]*?wx:if="\{\{fpgaHasNew\}\}"/.test(read('subpackages/device/wifi-info/wifi-info.wxml')), '入口红点')
+    assert.ok(/bindtap="openInfo"[\s\S]*?wx:if="\{\{infoHasNew\}\}"/.test(read('subpackages/device/wifi-detail/wifi-detail.wxml')), '详情页「设备信息」红点')
+    assert.equal(infoJs.indexOf('fpgaVersion'), -1, '设备信息页不显示 FPGA 版本号')
+    assert.ok(!JSON.parse(read('app.json')).subpackages.find(item => item.root === 'subpackages/device').pages.includes('wifi-fpga/wifi-fpga'), '版本列表页已去掉')
     checked('页面：优雅刷新升级（mode=fpga）')
   }
   {

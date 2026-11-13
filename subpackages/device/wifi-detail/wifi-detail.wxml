@@ -66,7 +66,11 @@
       <view class="wifi-detail-entries glass-panel">
         <view class="wifi-detail-entry" hover-class="none" bindtap="openInfo">
           <text class="wifi-detail-entry__label">设备信息</text>
-          <view class="ui-chevron"></view>
+          <view class="wifi-detail-entry__right">
+            <!-- 有没看过的优雅刷新版本（2026-11-13）：亮红点，进优雅刷新升级看过即消失 -->
+            <view wx:if="{{infoHasNew}}" class="wifi-detail-dot"></view>
+            <view class="ui-chevron"></view>
+          </view>
         </view>
         <!-- 设备ID / 屏幕尺寸（2026-11-02，同蓝牙版详情）：只展示、不可点；屏幕尺寸取后台产品配置 sizeModel，没配整行不展示。
              顶部卡片原来的「屏幕尺寸」「设备ID」两行已去掉（与这里重复），改在这里显示 -->

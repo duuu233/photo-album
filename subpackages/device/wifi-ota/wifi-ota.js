@@ -24,8 +24,8 @@ const fpgaFirmware = require('../../../utils/fpga-firmware')
 //   · 进度条（2026-11-12）：步骤上方一条，左边当前那一步的文案、右边百分比。服务端 progress（轮询与 WS 都带）只抬「上限」，
 //     显示值由本页计时器匀速往上限走（规则见 utils/wifi-ota.js「升级进度条」）；失败停住，VERIFYING 走到 100。
 //     收到过的最大进度存进本地记录，重进页面从那里接着走。
-//   · 优雅刷新升级（2026-11-13，mode=fpga，从「优雅刷新升级」列表进来，见 utils/fpga-firmware.js）：不比对版本，安装目标
-//     （版本号、简介、固件地址）由列表页经本地存储带来；下发同一个 POST /api/device/ota，type=fpga、version=目标版本；
+//   · 优雅刷新升级（2026-11-13，mode=fpga，从设备信息页「优雅刷新升级」进来，见 utils/fpga-firmware.js）：不比对版本，安装目标
+//     取设备详情的 newVersionNoFpga / downloadPathFpga / upgradeTipsFpga（版本说明）；进页即记下看过的版本号（红点消失）；下发同一个 POST /api/device/ota，type=fpga、version=目标版本；
 //     进度条、四步、轮询 / WS、本地进行中记录与固件升级完全一致，只换文字（fpgaFirmware.TEXTS）并显示简介。
 //     设备不上报 FPGA 版本（baseVersion 为 null），版本卡只显示安装版本；下发返回 4047（今日升级次数已达上限）按语种提示。
 //     本地记录带 otaType，重进时（无论从哪个入口）按记录里的类型选文字。
@@ -201,6 +201,14 @@ Page(fold.adapt({
       this._subscribed = deviceNo
     }
 
+    // 从「优雅刷新升级」进来即算看过最新版本（含正有安装在进行、直接接着展示的情况），红点消失
+    if (this._entryMode === fpgaFirmware.OTA_TYPE_FPGA) {
+      const latest = fpgaFirmware.latestOf(device)
+      if (latest) {
+        fpgaFirmware.markSeen(deviceNo, latest.version)
+      }
+    }
+
     // ① 先看本地进行中的升级（展示「有新版本」之前必须先查，对接文档 3.3）
     const inflight = await wifiOta.refreshInflight(deviceNo)
     if (this.unloaded) {
@@ -224,7 +232,7 @@ Page(fold.adapt({
     this.info = info
     this.deviceState = info ? wifiStatus.deviceState(info) : 'unknown'
     if (this._otaType === fpgaFirmware.OTA_TYPE_FPGA) {
-      this.showFpgaTarget(info)
+      this.showFpgaTarget()
       return
     }
     const current = (info && (info.firmwareVersion || (info.shadow || {}).version)) || ''
@@ -233,26 +241,32 @@ Page(fold.adapt({
     this.showEvaluation(result)
   },
 
-  // 优雅刷新升级：不比对版本，直接展示列表页选中的目标（版本号 + 简介）；设备不上报 FPGA 版本，不显示当前版本
-  showFpgaTarget(info) {
-    const target = fpgaFirmware.readTarget(this.data.id)
-    if (!target) {
-      this.showError('没有选中要安装的版本，请返回「优雅刷新升级」重新选择')
+  // 优雅刷新升级：不比对版本，直接展示设备详情下发的最新版本（newVersionNoFpga）与版本说明（upgradeTipsFpga）；
+  // 设备不上报 FPGA 版本，不显示当前版本。看到了就把版本号记进本地缓存，详情 / 设备信息的红点随之消失
+  showFpgaTarget() {
+    const latest = fpgaFirmware.latestOf(this.device)
+    if (!latest) {
+      this.evaluation = null
+      this.setScreen({
+        phase: 'latest',
+        title: '暂无可用的优雅刷新版本',
+        hint: '后台发布新版本后会在这里提醒您',
+        art: OTA_ART.success,
+        showVersions: false,
+        showSteps: false,
+        intro: ''
+      })
       return
     }
-    const result = {
-      state: fpgaFirmware.isHttpUrl(target.url) ? 'available' : 'invalid',
-      current: '',
-      latest: target.version,
-      url: target.url,
-      intro: target.intro || ''
-    }
+    fpgaFirmware.markSeen(this.deviceNo(), latest.version)
+    const ok = fpgaFirmware.isHttpUrl(latest.url)
+    const result = { state: ok ? 'available' : 'invalid', current: '', latest: latest.version, url: latest.url, intro: latest.intro }
     this.evaluation = result
     this.setScreen({
       phase: result.state,
       title: `安装优雅刷新固件 ${result.latest}`,
-      hint: result.state === 'available' ? '安装期间设备会自动重启，请保持设备通电和网络连接' : '该版本固件地址无效，暂时无法安装',
-      art: result.state === 'available' ? OTA_ART.progress : OTA_ART.fail,
+      hint: ok ? '安装期间设备会自动重启，请保持设备通电和网络连接' : '该版本固件地址无效，暂时无法安装',
+      art: ok ? OTA_ART.progress : OTA_ART.fail,
       currentVersion: '--',
       latestVersion: result.latest,
       showVersions: true,
