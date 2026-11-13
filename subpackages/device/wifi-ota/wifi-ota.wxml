@@ -4,7 +4,7 @@
     <image class="mock-bg__image" src="https://oss.boltfox.cn/prodFile/202608211340094498724.jpg" mode="aspectFill"></image>
   </view>
 
-  <page-nav title="固件升级"></page-nav>
+  <page-nav title="{{navTitle}}"></page-nav>
 
   <view class="mock-content provision-content">
     <image class="ota-art" src="{{art}}" mode="aspectFit"></image>
@@ -22,9 +22,15 @@
         <text class="ota-version-row__value">{{currentVersion}}</text>
       </view>
       <view class="ota-version-row">
-        <text class="ota-version-row__label">最新版本</text>
+        <text class="ota-version-row__label">{{targetLabel}}</text>
         <text class="ota-version-row__value">{{latestVersion}}</text>
       </view>
+    </view>
+
+    <!-- 渲染固件简介（2026-11-13，mode=fpga）：安装确认与进度页都带出 -->
+    <view wx:if="{{intro}}" class="ota-intro glass-panel">
+      <text class="ota-intro__label">版本简介</text>
+      <text class="ota-intro__text">{{intro}}</text>
     </view>
 
     <!-- 升级进度条（2026-11-12）：左边当前那一步的文案、右边百分比；匀速前进、分档停住，规则见 utils/wifi-ota.js「升级进度条」 -->
@@ -51,13 +57,13 @@
   </view>
 
   <view wx:if="{{phase === 'available'}}" class="provision-actions">
-    <view class="provision-primary ota-start" hover-class="none" bindtap="startUpgrade">立即升级</view>
+    <view class="provision-primary ota-start" hover-class="none" bindtap="startUpgrade">{{confirmText}}</view>
   </view>
   <view wx:elif="{{phase === 'verifying' || phase === 'busy'}}" class="provision-actions">
     <view class="provision-primary" hover-class="none" bindtap="finish">完成</view>
   </view>
   <view wx:elif="{{phase === 'failed'}}" class="provision-actions provision-actions--stack">
-    <view class="provision-primary ota-retry" hover-class="none" bindtap="retryUpgrade">重新升级</view>
+    <view class="provision-primary ota-retry" hover-class="none" bindtap="retryUpgrade">{{retryText}}</view>
     <view class="provision-cancel" hover-class="none" bindtap="finish">取消</view>
   </view>
   <view wx:elif="{{phase === 'unknown' || phase === 'error'}}" class="provision-actions">

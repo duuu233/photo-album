@@ -116,3 +116,25 @@
 .ota-progress.is-failed .ota-progress__fill {
   background: #e5533d;
 }
+
+/* 渲染固件简介（2026-11-13） */
+.ota-intro {
+  margin-top: 24rpx;
+  padding: 24rpx 32rpx;
+}
+
+.ota-intro__label {
+  display: block;
+  color: #8b9098;
+  font-size: 24rpx;
+}
+
+.ota-intro__text {
+  display: block;
+  margin-top: 8rpx;
+  color: #2a2d32;
+  font-size: 26rpx;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

@@ -6,6 +6,7 @@ const system = require('../../../utils/system')
 const fold = require('../../../utils/fold-adapt')
 const wifiStatus = require('../../../utils/wifi-status')
 const wifiOta = require('../../../utils/wifi-ota')
+const fpgaFirmware = require('../../../utils/fpga-firmware')
 
 // WiFi 版设备固件升级（2026-11-02，docs/前端对接文档20261031.md；纯逻辑见 utils/wifi-ota.js）。
 //
@@ -23,6 +24,10 @@ const wifiOta = require('../../../utils/wifi-ota')
 //   · 进度条（2026-11-12）：步骤上方一条，左边当前那一步的文案、右边百分比。服务端 progress（轮询与 WS 都带）只抬「上限」，
 //     显示值由本页计时器匀速往上限走（规则见 utils/wifi-ota.js「升级进度条」）；失败停住，VERIFYING 走到 100。
 //     收到过的最大进度存进本地记录，重进页面从那里接着走。
+//   · 渲染固件安装（2026-11-13，mode=fpga，从「渲染固件管理」进来，见 utils/fpga-firmware.js）：不比对版本，安装目标
+//     （版本号、简介、固件地址）由列表页经本地存储带来；下发同一个 POST /api/device/ota，type=fpga、version=目标版本；
+//     进度条、四步、轮询 / WS、本地进行中记录与固件升级完全一致，只换文字（fpgaFirmware.TEXTS）并显示简介。
+//     本地记录带 otaType，重进时（无论从哪个入口）按记录里的类型选文字。
 const POLL_MS = 3000
 
 const OTA_ART = {
@@ -31,8 +36,6 @@ const OTA_ART = {
   success: '/assets/images/upload-icon03.png'
 }
 
-const RUNNING_TITLE = '设备正在升级'
-const RUNNING_HINT = '升级期间请保持设备通电和网络连接，可离开本页，进度不受影响'
 
 function elapsedText(seconds) {
   const value = Math.max(0, Math.floor(Number(seconds) || 0))
@@ -60,11 +63,19 @@ Page(fold.adapt({
     latestVersion: '',
     showVersions: false,
     progress: 0,
-    progressText: ''
+    progressText: '',
+    // 文字随模式切换（固件升级 / 渲染固件安装）
+    navTitle: fpgaFirmware.TEXTS.main.nav,
+    confirmText: fpgaFirmware.TEXTS.main.confirmText,
+    retryText: fpgaFirmware.TEXTS.main.retryText,
+    targetLabel: fpgaFirmware.TEXTS.main.targetLabel,
+    intro: '' // 渲染固件简介
   },
 
   onLoad(options) {
     this.setData(Object.assign(system.getLayoutMetrics(), { id: (options && options.id) || '' }))
+    this._entryMode = options && options.mode === fpgaFirmware.OTA_TYPE_FPGA ? fpgaFirmware.OTA_TYPE_FPGA : wifiOta.OTA_TYPE_MAIN
+    this.useType(this._entryMode)
     this._lastStep = -1
     this.resetProgress()
     // WS 只推状态信号：带了 status 就先按它画，再补查一次（3.9.2）；progress（2026-11-12）每条进度回执推一次，同样交给 applyStatus
@@ -115,6 +126,26 @@ Page(fold.adapt({
     }
   },
 
+  // 按升级类型切文字：main 固件升级 / fpga 渲染固件安装
+  useType(type) {
+    this._otaType = type === fpgaFirmware.OTA_TYPE_FPGA ? fpgaFirmware.OTA_TYPE_FPGA : wifiOta.OTA_TYPE_MAIN
+    this.texts = fpgaFirmware.textsFor(this._otaType)
+    this.setScreen({ navTitle: this.texts.nav, confirmText: this.texts.confirmText, retryText: this.texts.retryText, targetLabel: this.texts.targetLabel })
+  },
+
+  // 四步里最后一步的文字跟着模式换（其余三步两种模式相同）
+  stepText(index) {
+    return index === wifiOta.STEP_TEXTS.length - 1 ? this.texts.doneStep : wifiOta.STEP_TEXTS[index]
+  },
+
+  withStepTexts(steps) {
+    return (steps || []).map((step, index) => Object.assign({}, step, { text: this.stepText(index) }))
+  },
+
+  failTitleFor(status) {
+    return wifiOta.normalizeStatus(status) === 'TIMEOUT' ? this.texts.timeoutTitle : this.texts.failTitle
+  },
+
   setScreen(values) {
     if (!this.unloaded) {
       this.setData(values)
@@ -131,13 +162,15 @@ Page(fold.adapt({
     this._msgid = ''
     this._lastStep = -1
     this.resetProgress()
+    this.useType(this._entryMode)
     this.setScreen({
       phase: 'checking',
-      title: '检测版本中',
-      hint: '正在检查固件版本，请稍候…',
+      title: this.texts.checkingTitle,
+      hint: this.texts.checkingHint,
       art: OTA_ART.progress,
       showSteps: false,
-      showVersions: false
+      showVersions: false,
+      intro: ''
     })
     let device
     try {
@@ -182,10 +215,43 @@ Page(fold.adapt({
     }
     this.info = info
     this.deviceState = info ? wifiStatus.deviceState(info) : 'unknown'
+    if (this._otaType === fpgaFirmware.OTA_TYPE_FPGA) {
+      this.showFpgaTarget(info)
+      return
+    }
     const current = (info && (info.firmwareVersion || (info.shadow || {}).version)) || ''
     const result = wifiOta.evaluate(current, device.newVersionNo, device.downloadPath)
     this.evaluation = result
     this.showEvaluation(result)
+  },
+
+  // 渲染固件安装：不比对版本，直接展示列表页选中的目标（版本号 + 简介）
+  showFpgaTarget(info) {
+    const target = fpgaFirmware.readTarget(this.data.id)
+    if (!target) {
+      this.showError('没有选中要安装的版本，请返回「渲染固件管理」重新选择')
+      return
+    }
+    const current = String(((info && info.shadow) || {}).fpgaVersion || '').trim()
+    const result = {
+      state: fpgaFirmware.isHttpUrl(target.url) ? 'available' : 'invalid',
+      current,
+      latest: target.version,
+      url: target.url,
+      intro: target.intro || ''
+    }
+    this.evaluation = result
+    this.setScreen({
+      phase: result.state,
+      title: `安装渲染固件 ${result.latest}`,
+      hint: result.state === 'available' ? '安装期间设备会自动重启，请保持设备通电和网络连接' : '该版本固件地址无效，暂时无法安装',
+      art: result.state === 'available' ? OTA_ART.progress : OTA_ART.fail,
+      currentVersion: current || '--',
+      latestVersion: result.latest,
+      showVersions: true,
+      showSteps: false,
+      intro: result.intro
+    })
   },
 
   showError(message) {
@@ -246,6 +312,8 @@ Page(fold.adapt({
   // 重进页面时接着展示本地记录的任务
   resumeInflight(inflight) {
     const record = inflight.record
+    this.useType(record.otaType)
+    this.setScreen({ intro: record.intro || '' })
     this._msgid = record.msgid
     this._lastStep = typeof record.lastStep === 'number' ? record.lastStep : -1
     // 进度条从收到过的最大进度接着走（本地记录与这次查询取大的）
@@ -272,8 +340,8 @@ Page(fold.adapt({
     this.stopPolling()
     this.setScreen({
       phase: 'busy',
-      title: `升级完成 · ${wifiOta.WAIT_REBOOT_TEXT}`,
-      hint: '设备重启后会确认升级结果，并通过消息中心通知您',
+      title: `${this.texts.doneTitle} · ${wifiOta.WAIT_REBOOT_TEXT}`,
+      hint: this._otaType === fpgaFirmware.OTA_TYPE_FPGA ? '设备重启后会确认安装结果，并通过消息中心通知您' : '设备重启后会确认升级结果，并通过消息中心通知您',
       art: OTA_ART.success,
       showSteps: false,
       showVersions: false
@@ -319,13 +387,14 @@ Page(fold.adapt({
 
     // SUCCESS 不在步骤页口径内；万一跳过 VERIFYING 直接到了，也按完成收尾，不让第 4 步一直转圈
     const view = wifiOta.stepsFor(status === 'SUCCESS' ? 'VERIFYING' : status, this._lastStep)
-    const progressText = wifiOta.STEP_TEXTS[wifiOta.activeStep(view)]
+    view.steps = this.withStepTexts(view.steps)
+    const progressText = this.stepText(wifiOta.activeStep(view))
     if (view.phase === 'failed') {
       this.stopPolling()
       this.stopProgress() // 失败停在当时的位置
       this.setScreen({
         phase: 'failed',
-        title: wifiOta.failTitle(status),
+        title: this.failTitleFor(status),
         hint: '请确认设备在线、网络稳定后重新升级',
         art: OTA_ART.fail,
         showSteps: true,
@@ -345,8 +414,8 @@ Page(fold.adapt({
       this.stopPolling()
       this.setScreen({
         phase: 'verifying',
-        title: '升级完成',
-        hint: status === 'SUCCESS' ? '设备已重启，固件升级成功' : `${wifiOta.WAIT_REBOOT_TEXT}，结果将通过消息中心通知您`,
+        title: this.texts.doneTitle,
+        hint: status === 'SUCCESS' ? (this._otaType === fpgaFirmware.OTA_TYPE_FPGA ? '设备已重启，渲染固件安装成功' : '设备已重启，固件升级成功') : `${wifiOta.WAIT_REBOOT_TEXT}，结果将通过消息中心通知您`,
         art: OTA_ART.success,
         showSteps: true,
         showVersions: false,
@@ -359,8 +428,8 @@ Page(fold.adapt({
     const elapsed = elapsedText(data && data.elapsedSeconds)
     this.setScreen({
       phase: 'running',
-      title: RUNNING_TITLE,
-      hint: elapsed ? `${elapsed}，${RUNNING_HINT}` : RUNNING_HINT,
+      title: this.texts.runningTitle,
+      hint: elapsed ? `${elapsed}，${this.texts.runningHint}` : this.texts.runningHint,
       art: OTA_ART.progress,
       showSteps: true,
       showVersions: false,
@@ -457,10 +526,13 @@ Page(fold.adapt({
       toast.show({ title: tip, icon: 'none' })
       return
     }
+    const fpga = this._otaType === fpgaFirmware.OTA_TYPE_FPGA
     wx.showModal({
-      title: '固件升级',
-      content: `将升级到 ${result.latest}，升级期间设备会自动重启，请保持设备通电和网络连接`,
-      confirmText: '立即升级',
+      title: this.texts.confirmTitle,
+      content: fpga
+        ? `将安装渲染固件 ${result.latest}，安装期间设备会自动重启，请保持设备通电和网络连接`
+        : `将升级到 ${result.latest}，升级期间设备会自动重启，请保持设备通电和网络连接`,
+      confirmText: this.texts.confirmText,
       success: res => {
         if (res.confirm) {
           this.sendUpgrade()
@@ -476,13 +548,14 @@ Page(fold.adapt({
       return
     }
     this._starting = true
-    wx.showLoading({ title: '下发中', mask: true })
+    wx.showLoading({ title: this.texts.sending, mask: true })
+    const type = this._otaType // main 固件升级 / fpga 渲染固件（version 为 FPGA 目标版本）
     let res
     try {
       res = await iotApi.startOta({
         deviceNo,
         url: result.url,
-        type: wifiOta.OTA_TYPE_MAIN,
+        type,
         version: result.latest
       }, { showError: false })
     } catch (error) {
@@ -505,12 +578,12 @@ Page(fold.adapt({
       return
     }
     // 下发成功立即保存（带类型），一台设备只留一条（对接文档 3.1 / 3.2）
-    wifiOta.saveInflight(deviceNo, msgid, {
+    wifiOta.saveInflight(deviceNo, msgid, Object.assign({
       version: result.latest,
       baseVersion: result.current,
       status: 'SENT',
       lastStep: 0
-    })
+    }, type === fpgaFirmware.OTA_TYPE_FPGA ? { otaType: type, intro: result.intro || '' } : {}))
     this._msgid = String(msgid)
     this._lastStep = -1
     this.resetProgress()

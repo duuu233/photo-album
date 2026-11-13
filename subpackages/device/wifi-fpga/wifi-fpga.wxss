@@ -1,0 +1,69 @@
+/* 渲染固件管理（2026-11-13）：底子沿用设备信息页 */
+@import "../wifi-info/wifi-info.wxss";
+
+.fpga-empty {
+  margin-top: 24rpx;
+}
+
+.fpga-list {
+  margin-top: 24rpx;
+}
+
+.fpga-item {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  padding: 28rpx 32rpx;
+}
+
+.fpga-item + .fpga-item {
+  margin-top: 20rpx;
+}
+
+.fpga-item__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.fpga-item__head {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.fpga-item__version {
+  color: #2a2d32;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.fpga-item__tag {
+  padding: 4rpx 12rpx;
+  border-radius: 999rpx;
+  color: #ff6a20;
+  background: rgba(255, 106, 32, 0.1);
+  font-size: 22rpx;
+}
+
+.fpga-item__intro {
+  display: block;
+  margin-top: 10rpx;
+  color: #8b9098;
+  font-size: 24rpx;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.fpga-item__btn {
+  flex-shrink: 0;
+  padding: 14rpx 36rpx;
+  border-radius: 999rpx;
+  color: #ffffff;
+  background: linear-gradient(90deg, #ff8338, #ff621f);
+  font-size: 26rpx;
+}
+
+.fpga-item__btn--hover {
+  opacity: 0.8;
+}

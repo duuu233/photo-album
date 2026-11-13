@@ -46,6 +46,7 @@ const iotApiStub = {
 }
 stubModule('../utils/iot-api', iotApiStub)
 const ota = require('../utils/wifi-ota')
+const fpga = require('../utils/fpga-firmware')
 const codeError = (code, serverMessage) => Object.assign(new Error(`接口(IoT)-${code}`), { code, serverMessage: serverMessage || '' })
 
 async function main() {
@@ -169,7 +170,9 @@ async function main() {
       system: { getLayoutMetrics: () => ({}) },
       'fold-adapt': { adapt: value => value },
       'wifi-status': wifiStatus,
-      'wifi-ota': ota
+      'wifi-ota': ota,
+      // 2026-11-13 渲染固件安装（mode=fpga）多了这个依赖；纯逻辑 + 本地存储，直接用真实模块
+      'fpga-firmware': fpga
     }
     vm.runInNewContext(read('subpackages/device/wifi-ota/wifi-ota.js'), {
       require: target => modules[target.split('/').at(-1)],
@@ -229,6 +232,70 @@ async function main() {
     assert.deepEqual(statuses(page), ['done', 'fail', 'pending', 'pending'], '在当前步打叉')
     assert.equal(storage['ota_inflight:3844BE2E5220'], undefined, '终态清记录')
     checked('页面：下发、推进与失败')
+  }
+  {
+    // 渲染固件安装（2026-11-13）：mode=fpga 不比对版本，安装目标来自「渲染固件管理」；下发 type=fpga、version=目标版本；
+    // 进度、四步与固件升级一致，只换文字并带出简介；本地记录带 otaType，重进按它选文字
+    Object.keys(storage).forEach(key => delete storage[key])
+    fpga.saveTarget('9', { version: 'v1.02', intro: '修复刷新闪烁', url: 'https://oss/fpga.bin' })
+    const { page, state, emit } = loadPage({ info: { status: 'ONLINE', online: true, firmwareVersion: '0.6.1', shadow: { fpgaVersion: 'v1.01' } } })
+    page.onLoad({ id: '9', mode: 'fpga' })
+    await flush()
+    assert.equal(page.data.navTitle, '渲染固件安装')
+    assert.equal(page.data.phase, 'available', '不比对版本，直接可安装')
+    assert.equal(page.data.currentVersion, 'v1.01', '当前版本取影子 fpgaVersion')
+    assert.equal(page.data.latestVersion, 'v1.02')
+    assert.equal(page.data.targetLabel, '安装版本')
+    assert.equal(page.data.intro, '修复刷新闪烁', '带出简介')
+    assert.equal(page.data.confirmText, '立即安装')
+    page.startUpgrade()
+    await flush()
+    assert.deepEqual(state.started, [{ deviceNo: '3844BE2E5220', url: 'https://oss/fpga.bin', type: 'fpga', version: 'v1.02' }], '复用 /api/device/ota，type=fpga')
+    assert.equal(storage['ota_inflight:3844BE2E5220'].otaType, 'fpga')
+    assert.equal(page.data.title, '设备正在安装渲染固件')
+    assert.deepEqual(statuses(page), ['loading', 'pending', 'pending', 'pending'], '四步与固件升级一致')
+    otaReplies['555'] = { status: 'VERIFYING', progress: 100 }
+    emit('ota.result', { msgid: '555', status: 'VERIFYING', progress: 100 })
+    await flush()
+    assert.equal(page.data.title, '安装完成')
+    assert.equal(page.data.steps[3].text, '安装完成')
+    assert.equal(page.data.intro, '修复刷新闪烁', '进度页也带出简介')
+
+    // 从固件升级入口重进：按记录里的类型显示安装文字
+    const again = loadPage({ info: { status: 'ONLINE', online: true, firmwareVersion: '0.6.1' } })
+    otaReplies['555'] = { status: 'DOWNLOADING', progress: 20 }
+    again.page.onLoad({ id: '9' })
+    await flush()
+    assert.equal(again.page.data.navTitle, '渲染固件安装')
+    assert.equal(again.page.data.title, '设备正在安装渲染固件')
+
+    // 没有安装目标：提示回列表重新选择
+    Object.keys(storage).forEach(key => delete storage[key])
+    const none = loadPage({ info: { status: 'ONLINE', online: true } })
+    none.page.onLoad({ id: '9', mode: 'fpga' })
+    await flush()
+    assert.equal(none.page.data.phase, 'error')
+    assert.ok(/渲染固件管理/.test(none.page.data.hint))
+
+    // 普通固件升级入口文字不变
+    const main = loadPage({ info: { status: 'ONLINE', online: true, firmwareVersion: '0.6.1' } })
+    main.page.onLoad({ id: '9' })
+    await flush()
+    assert.equal(main.page.data.navTitle, '固件升级')
+    assert.equal(main.page.data.confirmText, '立即升级')
+
+    assert.equal(fpga.isFpgaRender(' FPGA16 '), true)
+    assert.equal(fpga.isFpgaRender('esp32'), false)
+    assert.deepEqual(fpga.normalizeVersions([
+      { id: 1, versionNumber: 'v1.01', verify: 1, grade: 1, downloadPath: 'https://a', versionDesc: '一' },
+      { id: 2, versionNumber: 'v1.02', verify: 0, grade: 9 },
+      { id: 3, versionNumber: 'v1.03', grade: 5, remark: '三' }
+    ]).map(item => [item.version, item.intro]), [['v1.03', '三'], ['v1.01', '一']], '未启用不显示、按权重排、简介字段兜底')
+    assert.equal(fpga.listApiReady(), false, '用户端列表接口待后端提供')
+    assert.ok(/wifiInfo|showFpga/.test(read('subpackages/device/wifi-info/wifi-info.js')) && /fpgaFirmware\.isFpgaRender\(renderMode\)/.test(read('subpackages/device/wifi-info/wifi-info.js')), '设备信息页按渲染模式显示入口')
+    assert.ok(/wx:if="\{\{showFpga\}\}"[\s\S]*?渲染固件管理/.test(read('subpackages/device/wifi-info/wifi-info.wxml')))
+    assert.ok(JSON.parse(read('app.json')).subpackages.find(item => item.root === 'subpackages/device').pages.includes('wifi-fpga/wifi-fpga'), '页面已注册')
+    checked('页面：渲染固件安装（mode=fpga）')
   }
   {
     Object.keys(storage).forEach(key => delete storage[key])

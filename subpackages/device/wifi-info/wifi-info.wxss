@@ -61,3 +61,24 @@
   border-radius: 999rpx;
   font-size: 28rpx;
 }
+
+/* 渲染固件管理入口（2026-11-13） */
+.info-links {
+  margin-top: 24rpx;
+}
+
+.info-row__name {
+  color: #2a2d32;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.info-row__arrow {
+  color: #8b9098;
+  font-size: 40rpx;
+  line-height: 1;
+}
+
+.info-row--hover {
+  opacity: 0.7;
+}

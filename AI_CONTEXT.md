@@ -108,6 +108,10 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 同日按修订版 `docs/wifi/前端对接文档20261105-1.md`（与上一版冲突以它为准）：基础配置做成「简单模式」卡片（启用开关默认开；关闭不提交 `timingTime` / `beginTime` / `endTime` / `updateDays` / `updateTimeList` 与基础 `mode` / `imgUrls`，回显时当前模式基础字段为空即关闭）；简单模式或任一高级卡片启用才能保存，否则按钮置灰「至少配置一项」；固定 `updateDays` 1~30（只跟着 `updateTimeList` 带，存量 > 30 回显并提示）；纪念日月 / 日两列选择，2 月最多 28 日；选图统一底部弹层（上滑动效、每行 3 张同「我的上传」、照片按页取每页 21 张、滑到底显示下一页）；时区按语种显示「中国 / 北京」（`time-zone.label` / `options` 收语种，提交仍 IANA）；「设置时间：」+「下次刷新：MM-dd HH:mm · 卡片类型」（`wifi-strategy.nextRefreshLine`）；我的设备 / WiFi 详情「轮播设置」去掉「轮播中」文字，running 且在线时图标变绿（`device-detail-icon01-on.png`）+ 绿点。见 `docs/changes/2026-11-05-WiFi版轮播按对接文档修订版.md`。
 
+## WiFi 版渲染固件管理（2026-11-13，`main`）
+
+渲染模式 `fpga16` 的设备（`api.resolveRenderMode`），设备信息页（`wifi-info`）多「FPGA版本」行与「渲染固件管理」入口 → `subpackages/device/wifi-fpga` 列出启用的 FPGA 版本（版本号、简介、安装）。安装 = `wifi-ota?mode=fpga`：目标经本地存储带来，不比对版本；`POST /api/device/ota` 传 `type=fpga`、`version` 目标版本、`url`；进度 / 四步 / 本地记录与固件升级一致，只换文字（`utils/fpga-firmware.js` 的 `TEXTS`）并显示简介，记录带 `otaType`。用户端版本列表接口待后端（`LIST_API` 为空时显示「暂未开放」），简介字段名待定（`INTRO_FIELDS` 兜底）。见 `docs/changes/2026-11-13-WiFi渲染固件管理.md`。
+
 ## 固件强制升级 / 强提醒升级（2026-11-13，`main`）
 
 `utils/firmware-gate.js`。WiFi 版在线、蓝牙版已连接才判断；升级方式取详情出参 `compulsory`（兜底 `updateType` 等，归一到 `updateType`；1 强制，其它强提醒）；有无新版本与详情页「固件升级」红点同一套判定（WiFi 有进行中的升级不弹）。设备详情页（`detail` / `wifi-detail`）进入后判断一次、点功能按钮先判断（强制 + 强提醒，按钮用 `wrapActions` 包，不用弹时同步执行）；设备列表页投屏 / WiFi 轮播设置、首页拍照 / 相册投屏用 `guardAction` 现查，只判强制。强制升级取消 → 这次操作不继续；强提醒取消 → 继续；立即升级进升级页（蓝牙 `ota?auto=1`）。连接 / 断开、固件升级行、解绑、删除不判断；查询失败放行。见 `docs/changes/2026-11-13-固件强制升级与强提醒升级判断.md`。
