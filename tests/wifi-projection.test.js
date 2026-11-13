@@ -362,14 +362,14 @@ async function main() {
     calls.plays.length = 0
     pending.addToCarousel = false
     failIndex.value = 1
-    const page5 = { ...definition, data: plain(definition.data), setData: page.setData }
-    page5.onLoad()
+    const pageKeys = { ...definition, data: plain(definition.data), setData: page.setData }
+    pageKeys.onLoad()
     await new Promise(resolve => setTimeout(resolve, 20))
     const firstKeys = calls.plays.map(item => item.key)
     assert.ok(firstKeys.length === 3 && firstKeys.every(key => /^key-\d+$/.test(key)), '每张都带键')
-    assert.equal(page5.data.items[1].status, 'FAILED')
+    assert.equal(pageKeys.data.items[1].status, 'FAILED')
     failIndex.value = -1
-    page5.retryFailed()
+    pageKeys.retryFailed()
     await new Promise(resolve => setTimeout(resolve, 20))
     assert.deepEqual(calls.plays.slice(3).map(item => [item.file, item.refresh]), [['wxfile://2.png', true]])
     assert.notEqual(calls.plays[3].key, firstKeys[1], '刷屏方式变了：换新键')
