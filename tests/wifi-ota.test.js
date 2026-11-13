@@ -173,7 +173,9 @@ async function main() {
       'wifi-status': wifiStatus,
       'wifi-ota': ota,
       // 2026-11-13 渲染固件安装（mode=fpga）多了这个依赖；纯逻辑 + 本地存储，直接用真实模块
-      'fpga-firmware': fpga
+      'fpga-firmware': fpga,
+      // 2026-11-13：主固件升级完成后把固件升级判断的本地缓存改成无需升级
+      'firmware-gate': { markUpgraded: id => (state.upgradedMarks = state.upgradedMarks || []).push(id) }
     }
     vm.runInNewContext(read('subpackages/device/wifi-ota/wifi-ota.js'), {
       require: target => modules[target.split('/').at(-1)],

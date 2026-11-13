@@ -7,6 +7,7 @@ const fold = require('../../../utils/fold-adapt')
 const wifiStatus = require('../../../utils/wifi-status')
 const wifiOta = require('../../../utils/wifi-ota')
 const fpgaFirmware = require('../../../utils/fpga-firmware')
+const firmwareGate = require('../../../utils/firmware-gate')
 
 // WiFi 版设备固件升级（2026-11-02，docs/前端对接文档20261031.md；纯逻辑见 utils/wifi-ota.js）。
 //
@@ -432,6 +433,10 @@ Page(fold.adapt({
     }
     this.runProgress()
     if (view.phase === 'verifying') {
+      // 主固件升级完成（设备重启确认）：固件升级判断的本地缓存改成无需升级；优雅刷新（FPGA）不涉及
+      if (this._otaType !== fpgaFirmware.OTA_TYPE_FPGA) {
+        firmwareGate.markUpgraded(this.data.id)
+      }
       this.stopPolling()
       this.setScreen({
         phase: 'verifying',

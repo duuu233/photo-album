@@ -1041,7 +1041,7 @@ Page(tapGuard.wrap({
       if (!(await wifiStatus.ensureOnline(current))) {
         return false
       }
-      return firmwareGate.guardAction(current)
+      return firmwareGate.guardAction(current, { online: true })
     }
     if (!this.isCurrentDeviceConnected()) {
       // 连上后由它弹低电量提醒，这里不再弹第二次

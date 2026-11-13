@@ -506,27 +506,32 @@ Page(fold.adapt(tapGuard.wrap(firmwareGate.wrapActions({
   },
 
   // ── 固件升级判断（2026-11-13，规则见 utils/firmware-gate.js）──
-  // 已连接才判断；强制升级与强提醒升级都弹。判定直接用「固件升级」行红点的结果（firmwareHasUpdate），红点亮 = 会弹。
+  // 已连接才判断。判定直接用「固件升级」行红点的结果（firmwareHasUpdate），红点亮 = 有新版本。
+  // 功能按钮只判强制升级（取消后每次点都再弹、操作不继续）；强提醒只在进入时弹，每次启动小程序一次。
   // 不用弹返回 true；要弹返回 Promise<boolean>（true = 这次操作继续）。
   firmwareGate() {
     const device = this.data.device
     if (!device || !device.connected) {
       return true
     }
-    this._fwEntered = true // 已连接状态下判断过一次，就不再补「进入后」那一次
-    const decision = firmwareGate.decide(device, { connected: true, hasUpdate: !!this.data.firmwareHasUpdate })
+    const decision = firmwareGate.decide(device, { connected: true, hasUpdate: !!this.data.firmwareHasUpdate, forceOnly: true })
     if (!decision.mode) {
       return true
     }
+    this._fwEntered = true // 按钮已弹过强制升级，不再补「进入后」那一次，免得连弹两次
     return firmwareGate.prompt(device, decision, { liveId: activeDevice.findConnectedDeviceId(device) || device.deviceId })
   },
 
-  // 进入后判断一次：本页第一次拿到「已连接」的设备信息时（进页已连着，或在本页连上后）弹，之后回到本页不再弹
+  // 进入后判断一次：本页第一次拿到「已连接」的设备信息时（进页已连着，或在本页连上后）；结果写进本地缓存供列表页 / 首页用
   checkFirmwareOnEnter() {
-    if (this._fwEntered || !this.data.device || !this.data.device.connected) {
+    const device = this.data.device
+    if (this._fwEntered || !device || !device.connected) {
       return
     }
-    this.firmwareGate()
+    this._fwEntered = true
+    firmwareGate.checkOnEnter(device, { connected: true, hasUpdate: !!this.data.firmwareHasUpdate }, {
+      liveId: activeDevice.findConnectedDeviceId(device) || device.deviceId
+    })
   },
 
   renameDevice() {

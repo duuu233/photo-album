@@ -225,13 +225,14 @@ Page(fold.adapt(tapGuard.wrap(firmwareGate.wrapActions({
     }
   },
 
+  // 功能按钮只判强制升级（取消后每次点都再弹、操作不继续）；强提醒只在进入时弹（checkFirmwareOnEnter）。
   // 不用弹返回 true；要弹返回 Promise<boolean>（true = 这次操作继续）
   firmwareGate() {
     const device = this.data.device
     if (!device || this.data.status !== 'online') {
       return true
     }
-    const decision = firmwareGate.decide(device, { isWifi: true, online: true, hasUpdate: !!this.data.otaHasUpdate })
+    const decision = firmwareGate.decide(device, { isWifi: true, online: true, hasUpdate: !!this.data.otaHasUpdate, forceOnly: true })
     if (!decision.mode) {
       return true
     }
@@ -245,7 +246,11 @@ Page(fold.adapt(tapGuard.wrap(firmwareGate.wrapActions({
       return
     }
     this._fwEntered = true
-    this.firmwareGate()
+    if (!this.data.device || status !== 'online') {
+      return
+    }
+    // 强制 / 强提醒都判（强提醒每次启动小程序只弹一次），结果写进本地缓存供列表页 / 首页用
+    firmwareGate.checkOnEnter(this.data.device, { isWifi: true, online: true, hasUpdate: !!this.data.otaHasUpdate }, { isWifi: true })
   },
 
   // 消息中心未读红点（2026-11-06 起只亮红点、不显示数字）；查不到不显示，不弹错

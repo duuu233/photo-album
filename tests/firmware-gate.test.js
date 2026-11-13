@@ -1,10 +1,12 @@
 // 固件升级判断（2026-11-13）utils/firmware-gate：
-//   ① 升级方式：updateType 1 = 强制升级，其它 = 强提醒升级；
+//   ① 升级类型：updateType 1 = 强制升级、2 = 强提醒升级，3 弱提示 / 4 不提示及其它不弹（只亮红点）；
 //   ② 判断前提：WiFi 版在线才判、蓝牙版已连接才判；有新版本与详情页红点同一套判定；WiFi 有进行中的升级不弹；
 //      列表页 / 首页只判强制升级（forceOnly），强提醒不弹；
 //   ③ 弹框：强制升级取消 → 操作不继续；强提醒取消 → 操作继续；立即升级 → 进升级页、操作不继续（蓝牙带 auto=1）；
 //   ④ 详情页按钮包装：不用弹时同步执行原方法（行为不变），强制升级取消不执行；
 //   ⑤ 列表页 / 首页现查：离线 / 未连接 / 进行中 / 查询失败一律放行，不查详情接口；
+//   ⑦ 本地缓存与强提醒一次（2026-11-13 产品复核）：列表页 / 首页每次启动第一次点现查（loading）并写缓存，
+//      之后按缓存判断不再请求；详情页进入时写缓存；升级完成改成无需升级；强提醒每台设备每次启动只弹一次；
 //   ⑥ 接入位置：两个详情页的功能按钮、进入后判断，列表页投屏 / 轮播设置、首页拍照 / 相册投屏；启动时不再弹。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -14,6 +16,7 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8')
 
 const storage = {}
 const navs = []
+const loadings = []
 const modals = []
 let modalReply = { confirm: false }
 global.wx = {
@@ -21,6 +24,8 @@ global.wx = {
   setStorageSync: (key, value) => { storage[key] = value },
   removeStorageSync: key => { delete storage[key] },
   navigateTo: options => navs.push(options.url),
+  showLoading: options => loadings.push(options.title),
+  hideLoading() {},
   showModal: options => { modals.push(options); options.success(modalReply) }
 }
 let selected = null
@@ -51,7 +56,7 @@ const gate = require('../utils/firmware-gate')
 
 let checks = 0
 const checked = name => { checks++; console.log(`ok - ${name}`) }
-const reset = () => { calls.length = 0; navs.length = 0; modals.length = 0; selected = null; modalReply = { confirm: false } }
+const reset = () => { gate.resetSession(); loadings.length = 0; calls.length = 0; navs.length = 0; modals.length = 0; selected = null; modalReply = { confirm: false } }
 
 const PKG = { newVersionNo: '0.6.2', downloadPath: 'https://oss/fw.bin' }
 
@@ -60,8 +65,11 @@ async function main() {
     assert.equal(gate.modeOf({ updateType: 1 }), 'force')
     assert.equal(gate.modeOf({ updateType: '1' }), 'force', '字符串 1 也算')
     assert.equal(gate.modeOf({ updateType: 2 }), 'remind')
-    assert.equal(gate.modeOf({}), 'remind', '没给按强提醒')
-    checked('升级方式取 updateType')
+    assert.equal(gate.modeOf({ updateType: 3 }), '', '弱提示升级：不弹，只亮红点（改动前逻辑）')
+    assert.equal(gate.modeOf({ updateType: 4 }), '', '不提示升级：不弹')
+    assert.equal(gate.modeOf({}), '', '没给不弹')
+    assert.equal(gate.decide(Object.assign({ updateType: 3 }, PKG), { connected: true, hasUpdate: true }).mode, '', '弱提示红点亮也不弹')
+    checked('升级类型取后台 compulsory：1 强制、2 强提醒，3 / 4 不弹')
   }
   {
     // 蓝牙：已连接 + 版本不同 + 有效 .bin 才算；读不到版本退回 isUpdate
@@ -144,6 +152,7 @@ async function main() {
     assert.equal(await gate.guardAction(wifi), false, '在线 + 强制升级 + 取消 → 不继续')
     assert.ok(calls.indexOf('detail:21:false') > -1, '现查详情接口拿新版本 / 升级方式，静默不弹错')
     assert.equal(modals.length, 1)
+    assert.deepEqual(loadings, ['检查固件版本'], '第一次点：loading 现查')
     reset()
     detailReply = Object.assign({ updateType: 2 }, PKG)
     assert.equal(await gate.guardAction(wifi), true, '强提醒在列表页 / 首页不弹')
@@ -182,12 +191,62 @@ async function main() {
     checked('列表页 / 首页现查')
   }
   {
+    // ⑦ 本地缓存：本次启动第一次点现查并写缓存，再点不请求、取消后照样再弹；升级完成后不再弹
+    const wifi = { id: '31', isWifi: true, productDeviceId: 'E3:48:C2:1E:D4:31', wifiStatus: 'online' }
+    reset()
+    infoReply = { online: true, status: 'ONLINE', firmwareVersion: '0.6.1' }
+    detailReply = Object.assign({ updateType: 1 }, PKG)
+    assert.equal(await gate.guardAction(wifi), false)
+    assert.equal(calls.length, 2, '第一次：查设备信息 + 详情')
+    assert.deepEqual(storage.fw_gate_cache['31'].mode, 'force', '结果写进本地缓存')
+    calls.length = 0
+    loadings.length = 0
+    assert.equal(await gate.guardAction(wifi), false, '取消后再点：照样弹')
+    assert.equal(await gate.guardAction(wifi), false)
+    assert.equal(calls.length, 0, '再点不请求接口')
+    assert.equal(loadings.length, 0, '按缓存判断不再 loading')
+    assert.equal(modals.length, 3)
+    assert.equal(await gate.guardAction(Object.assign({}, wifi, { wifiStatus: 'offline' })), true, '列表里已知离线不判')
+    assert.equal(await gate.guardAction(Object.assign({}, wifi, { wifiStatus: 'offline' }), { online: true }), false, '首页已确认在线：不看记录里的 wifiStatus')
+    gate.markUpgraded('31')
+    modals.length = 0
+    assert.equal(await gate.guardAction(wifi), true, '升级完成：缓存改成无需升级，不再弹')
+    assert.equal(modals.length, 0)
+    assert.equal(calls.length, 0)
+    gate.resetSession()
+    detailReply = Object.assign({ updateType: 1 }, PKG)
+    assert.equal(await gate.guardAction(wifi), false, '重新打开小程序：第一次点重新现查')
+    assert.equal(calls.length, 2)
+
+    // 详情页进入：强制每次进都弹并写缓存，强提醒每台设备每次启动只弹一次
+    const force = Object.assign({ id: '41', updateType: 1 }, PKG)
+    const remind = Object.assign({ id: '42', updateType: 2 }, PKG)
+    reset()
+    assert.equal(await gate.checkOnEnter(force, { connected: true, hasUpdate: true }), false)
+    assert.equal(await gate.checkOnEnter(force, { connected: true, hasUpdate: true }), false, '强制：再进再弹')
+    assert.equal(gate.cachedDecision('41').mode, 'force', '进入时的判定写进缓存（列表页 / 首页直接用）')
+    assert.equal(await gate.checkOnEnter(remind, { connected: true, hasUpdate: true }), true, '强提醒取消：照常')
+    assert.equal(await gate.checkOnEnter(remind, { connected: true, hasUpdate: true }), true)
+    assert.equal(modals.length, 3, '强提醒本次启动只弹一次')
+    gate.resetSession()
+    await gate.checkOnEnter(remind, { connected: true, hasUpdate: true })
+    assert.equal(modals.length, 4, '重新打开小程序再提醒')
+    await gate.checkOnEnter(Object.assign({ id: '43', updateType: 3 }, PKG), { connected: true, hasUpdate: true })
+    assert.equal(modals.length, 4, '弱提示进入也不弹')
+    checked('本地缓存、升级完成更新缓存、强提醒每次启动一次')
+  }
+  {
     const strip = text => text.replace(/\/\/[^\n]*/g, '')
     const bleDetail = strip(read('subpackages/device/detail/detail.js'))
     assert.ok(/firmwareGate\.wrapActions\(\{[\s\S]*\}, \['renameDevice', 'goSlideshow', 'clearCopies'\]\)/.test(bleDetail), '蓝牙详情：重命名 / 轮播设置 / 一键清空先判断')
     assert.ok(/await this\.firmwareGate\(\)[\s\S]*?showMediaSheet: true/.test(bleDetail), '蓝牙详情：投屏连上之后判断再弹拍照 / 相册')
     assert.ok(/this\.checkFirmwareOnEnter\(\)\n  \},/.test(bleDetail), '蓝牙详情：加载完判断一次（进入后）')
     assert.ok(/hasUpdate: !!this\.data\.firmwareHasUpdate/.test(bleDetail), '蓝牙详情：判定用红点结果')
+    assert.ok(/hasUpdate: !!this\.data\.firmwareHasUpdate, forceOnly: true \}/.test(bleDetail) && /firmwareGate\.checkOnEnter\(device,/.test(bleDetail), '蓝牙详情：按钮只判强制，进入时强制 + 强提醒')
+    assert.ok(/hasUpdate: !!this\.data\.otaHasUpdate, forceOnly: true \}/.test(strip(read('subpackages/device/wifi-detail/wifi-detail.js'))), 'WiFi 详情：按钮只判强制')
+    assert.ok(/firmwareGate\.checkOnEnter\(this\.data\.device,/.test(strip(read('subpackages/device/wifi-detail/wifi-detail.js'))), 'WiFi 详情：进入时强制 + 强提醒')
+    assert.ok(/require\('\.\.\/\.\.\/\.\.\/utils\/firmware-gate'\)\.markUpgraded\(this\.data\.id\)/.test(strip(read('subpackages/device/ota/ota.js'))), '蓝牙升级成功：更新缓存')
+    assert.ok(/firmwareGate\.markUpgraded\(this\.data\.id\)/.test(strip(read('subpackages/device/wifi-ota/wifi-ota.js'))), 'WiFi 主固件升级完成：更新缓存')
     const wifiDetail = strip(read('subpackages/device/wifi-detail/wifi-detail.js'))
     assert.ok(/\}, \['startProjection', 'openSlideshow', 'openInfo', 'openMessages', 'openTf', 'openShare', 'clearCopies'\]\)/.test(wifiDetail), 'WiFi 详情：功能按钮先判断')
     assert.ok(/this\.data\.status !== 'online'/.test(wifiDetail) && /hasUpdate: !!this\.data\.otaHasUpdate/.test(wifiDetail), 'WiFi 详情：在线才判、用红点结果')

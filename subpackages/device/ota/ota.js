@@ -813,6 +813,13 @@ Page(fold.adapt({
         设备记录: this.data.id,
         版本: firmware.latestVersion
       })
+      // 固件升级判断的本地缓存改成无需升级（列表页 / 首页按缓存判断，不再弹强制升级）。
+      // 用到时才加载：firmware-gate 连带 WiFi 层，蓝牙升级页平时不需要
+      try {
+        require('../../../utils/firmware-gate').markUpgraded(this.data.id)
+      } catch (error) {
+        console.warn('[OTA页] 更新固件升级缓存失败', error && error.message)
+      }
 
       // ⚠️ connected 必须置 false：设备在 END 校验通过约 100ms 后就复位运行新固件，这条连接已经没了。
       // 之前这里写 connected:true，页面/首页会拿着一条死链路的旧句柄继续发指令，
