@@ -438,6 +438,7 @@ async function main() {
   {
     // 2026-11-12：投屏步骤卡，样式与交互同配网状态页（白圈序号 / 转圈 / 勾 / 叉）
     const tpl = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.wxml'), 'utf8')
+    assert.ok(/<view wx:if="\{\{total <= 1\}\}" class="cast-steps glass-panel">/.test(tpl), '步骤卡只在单张投屏显示，批量不显示（2026-11-13）')
     assert.ok(/class="cast-steps glass-panel">\s*<view wx:for="\{\{steps\}\}" wx:key="key" class="cast-step is-\{\{item\.status\}\}">/.test(tpl), '四步按 steps 渲染')
     assert.ok(/item\.status === 'loading'[^>]*class="step-icon__spinner"/.test(tpl) && /class="step-icon__no">\{\{index \+ 1\}\}</.test(tpl), '进行中转圈、未开始显示序号')
     const css = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.wxss'), 'utf8')

@@ -21,8 +21,9 @@
     </view>
 
     <!-- 投屏步骤（2026-11-12）：准备投屏 → 图片上传中 → 图片处理中 → 已发送，屏幕即将刷新，对应上方进度文案；
-         样式与交互同配网状态页：未开始白圈序号、进行中转圈、通过打勾、失败在当前步打叉。多张时跟着正在投的那一张走 -->
-    <view class="cast-steps glass-panel">
+         样式与交互同配网状态页：未开始白圈序号、进行中转圈、通过打勾、失败在当前步打叉。
+         只有单张投屏显示（2026-11-13）；批量投屏照原样只显示进度卡与逐张列表 -->
+    <view wx:if="{{total <= 1}}" class="cast-steps glass-panel">
       <view wx:for="{{steps}}" wx:key="key" class="cast-step is-{{item.status}}">
         <view class="step-icon">
           <view wx:if="{{item.status === 'loading'}}" class="step-icon__spinner"></view>
