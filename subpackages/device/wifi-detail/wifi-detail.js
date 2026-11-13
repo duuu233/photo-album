@@ -314,11 +314,13 @@ Page(fold.adapt(tapGuard.wrap({
     }
   },
 
-  // 「固件升级」：进步骤页（版本检查、下发与进度都在那页；离线等由那页下发前判断）
-  openOta() {
-    if (this.data.device) {
-      wx.navigateTo({ url: `/subpackages/device/wifi-ota/wifi-ota?id=${this.data.id}` })
+  // 「固件升级」：进步骤页（版本检查、下发与进度都在那页；那页下发前还会再判断一次）。
+  // 2026-11-14：点击即判断在线（现查一次），不在线不能进
+  async openOta() {
+    if (!this.data.device || !(await wifiStatus.requireOnline(this.data.device, this.data.status, { fresh: true }))) {
+      return
     }
+    wx.navigateTo({ url: `/subpackages/device/wifi-ota/wifi-ota?id=${this.data.id}` })
   },
 
   // 「TF卡」：未插卡 / 没上报过不可点；有卡进 TF 卡设置
@@ -336,22 +338,17 @@ Page(fold.adapt(tapGuard.wrap({
     }
   },
 
-  // 「轮播设置」：离线也能查看，不拦；本地模式只提示。保存时轮播页会再判断设备状态
-  openSlideshow() {
-    if (!this.data.device || this.blockedByLocal()) {
+  // 「轮播设置」：2026-11-14 起点击要在线（原「离线也能查看」撤掉），不在线 / 本地模式提示不进。保存时轮播页仍会再判断
+  async openSlideshow() {
+    if (!this.data.device || !(await wifiStatus.requireOnline(this.data.device, this.data.status))) {
       return
     }
     wx.navigateTo({ url: `/subpackages/device/wifi-slideshow/wifi-slideshow?id=${this.data.id}` })
   },
 
-  // 「投屏」：本地模式 / 离线 / 休眠 / 关机先拦；在线 / 状态未知照常弹拍照 / 相册（预览页「开始投屏」再严格判断）
-  startProjection() {
-    if (!this.data.device) {
-      return
-    }
-    const tip = wifiStatus.blockedTip(this.data.status)
-    if (tip) {
-      toast.show({ title: tip, icon: 'none' })
+  // 「投屏」：2026-11-14 起点击要在线——本地模式 / 离线 / 休眠 / 关机直接提示，状态未知现查一次，在线才弹拍照 / 相册
+  async startProjection() {
+    if (!this.data.device || !(await wifiStatus.requireOnline(this.data.device, this.data.status))) {
       return
     }
     this.setData({ showMediaSheet: true, mediaSheetClosing: false })

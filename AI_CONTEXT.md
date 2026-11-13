@@ -116,6 +116,10 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 渲染模式 `fpga16` 的设备（`api.resolveRenderMode`），设备信息页（`wifi-info`）有「优雅刷新升级」入口，直接进 `wifi-ota?mode=fpga`。最新版本只读设备详情 `newVersionNoFpga` / `downloadPathFpga` / `upgradeTipsFpga`（版本说明），没有版本列表。不做红点（2026-11-14 产品要求，原 `fpga_seen` 缓存与两处红点已去掉）。入口文字与上面信息行标签同为灰色。安装：不比对版本，`POST /api/device/ota` 传 `type=fpga`、`version`、`url`；进度 / 四步 / 本地记录与固件升级一致，只换文字并显示版本说明，记录带 `otaType`。设备不上报 FPGA 版本，不显示版本号；下发 4047 = 今日升级次数已达上限，按语种提示。见 `docs/changes/2026-11-13-WiFi渲染固件管理.md`。
 
+## WiFi 版点击入口要在线（2026-11-14，`main`）
+
+`utils/wifi-status.js` 的 `requireOnline`：已知离线 / 休眠 / 关机 / 本地模式直接提示；已知在线放行；查询中 / 状态未知 / `fresh` 时现查一次 `GET /api/device/online`，只放行在线，查不到提示「设备不在线」。接入：投屏（WiFi 详情、我的设备、首页现查、结果页继续投屏现查）、轮播设置（不再离线可进）、固件升级（现查）、优雅刷新升级（现查）；TF卡切换开关原本就现查。一键清空 / 删除 / 解绑不判断，蓝牙版不动。见 `docs/changes/2026-11-14-WiFi版点击入口要在线.md`。
+
 ## 固件升级强提醒（2026-11-13，`main`）
 
 **现行口径（同日产品改口）**：强制升级整套去掉，只保留强提醒 / 弱提示。`utils/firmware-gate.js` 只在进入设备详情页（`detail` / `wifi-detail`）时判断一次：WiFi 版在线、蓝牙版已连接、「固件升级」红点亮，且升级类型为 2 强提醒（1 原强制按强提醒，后台已隐藏）才弹；取消后本次启动不再弹这台，关闭 / 重启小程序再弹。3 弱提示 / 4 不提示只亮红点。功能按钮、设备列表页、首页都不判断，无 loading 现查、无本地缓存。调试日志 `[固件升级]`（含详情接口返回的整套升级参数，`utils/api.js`）。见 `docs/changes/2026-11-13-固件升级只保留强提醒.md`。以下两段为当日早些时候的口径，仅供追溯：

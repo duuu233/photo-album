@@ -1,7 +1,8 @@
 // 我的设备按 WiFi 版 / 蓝牙版分组（2026-10-27）：
 //   ① 已绑定记录按所属产品 broadcastId 认 WiFi 版（IJ_* 模板 / IJ_ 前缀），其余按蓝牙版；
 //   ② WiFi 版状态来自 IoT GET /api/device/info：在线 / 离线 / 查不到（状态未知），在线才显示信号格与电量；
-//   ③ WiFi 版按钮：投屏不连蓝牙、直接弹拍照 / 相册（离线先拦）；轮播设置进 WiFi 轮播页（V1.4 取代原「刷新状态」，不拦离线）；
+//   ③ WiFi 版按钮：投屏不连蓝牙、直接弹拍照 / 相册；轮播设置进 WiFi 轮播页（V1.4 取代原「刷新状态」）；
+//      两个按钮点击都要在线（2026-11-14，原「轮播设置不拦离线」撤掉）；
 //      点卡片进 WiFi 详情；选相框模式不让选 WiFi 版；
 //   ④ 模板：两组标题按数量显示，WiFi 卡用 WiFi 按钮，蓝牙卡仍是「投屏 / 连接」原样；
 //      2026-11-06 有意改动：上下分组改为顶部 Tab 切换（同投屏记录页 record-tabs），分组标题删掉；
@@ -59,6 +60,8 @@ function loadListPage(options = {}) {
     'fold-adapt': { adapt: value => value },
     'broadcast-match': match,
     'iot-api': {
+      // 点击入口要在线（2026-11-14）：状态未知时 requireOnline 现查一次
+      getDeviceOnline: async deviceNo => (state.onlineReplies || {})[deviceNo] || { online: false, status: 'OFFLINE' },
       getDeviceInfo: (deviceNo, opts) => {
         state.infoCalls.push([deviceNo, opts && opts.showError])
         if (state.hang) return new Promise(() => {})
@@ -72,7 +75,7 @@ function loadListPage(options = {}) {
     signal
   }
   // 状态字段来自共用的 utils/wifi-status.js：按真实源码装配，依赖用上面同一组桩
-  const statusSandbox = { module: { exports: {} }, require: target => modules[target.split('/').at(-1)], console: { log() {}, warn() {} } }
+  const statusSandbox = { module: { exports: {} }, require: target => modules[target.split('/').at(-1)], console: { log() {}, warn() {} }, wx: { showLoading() {}, hideLoading() {} } }
   vm.runInNewContext(fs.readFileSync(path.join(root, 'utils/wifi-status.js'), 'utf8'), statusSandbox, { filename: 'wifi-status.js' })
   modules['wifi-status'] = statusSandbox.module.exports
   const watchSandbox = { module: { exports: {} }, require: target => ({ './iot-ws': ws })[target], console: { log() {}, warn() {} } }
@@ -138,9 +141,15 @@ async function main() {
     assert.equal(byId('1').wifiBatteryText, '86%')
     state.hang = false
 
-    // V1.4 更新说明 1.5：原「刷新状态」改为「轮播设置」；状态未知 / 离线也能进（查询只要权限）
+    // V1.4 更新说明 1.5：原「刷新状态」改为「轮播设置」。
+    // 2026-11-14 有意改口径：点击要在线（原「状态未知 / 离线也能进」撤掉）——状态未知现查一次，在线才进，离线提示不进
+    state.onlineReplies = { 'D0:CF:13:F0:2F:F8': { online: false, status: 'OFFLINE' } }
     await page.openWifiSlideshow({ currentTarget: { dataset: { id: '3' } } })
-    assert.equal(state.navs.at(-1), '/subpackages/device/wifi-slideshow/wifi-slideshow?id=3', '进 WiFi 轮播设置页')
+    assert.equal(state.navs.length, 0, '状态未知、现查离线：不进')
+    assert.equal(state.toasts.at(-1), '设备已离线，请检查设备网络')
+    state.onlineReplies = { 'D0:CF:13:F0:2F:F8': { online: true, status: 'ONLINE' } }
+    await page.openWifiSlideshow({ currentTarget: { dataset: { id: '3' } } })
+    assert.equal(state.navs.at(-1), '/subpackages/device/wifi-slideshow/wifi-slideshow?id=3', '现查在线：进 WiFi 轮播设置页')
     // 2026-11-13 产品改口：强制升级去掉，列表页投屏 / 轮播设置不再做固件升级判断（「取消就不进」各条随之撤掉）
     assert.ok(!/firmware-gate|guardAction/.test(fs.readFileSync(path.join(root, 'subpackages/device/list/list.js'), 'utf8')), '列表页不做固件升级判断')
     const navCount = state.navs.length

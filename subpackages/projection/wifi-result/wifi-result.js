@@ -7,6 +7,7 @@ const wifiProjection = require('../../../utils/wifi-projection')
 const config = require('../../../utils/config')
 const media = require('../../../utils/media')
 const toast = require('../../../utils/toast')
+const wifiStatus = require('../../../utils/wifi-status')
 
 // WiFi 版投屏结果页（2026-10-27，对接进度 STEP 3）：预览页构图导出后 redirectTo 到这里（蓝牙版去 result 页）。
 // 逐张调 utils/wifi-projection.projectOne：图片上传中 → 图片处理中（两段合占进度条 0~99%）→ 接口返回成功才到 100%。
@@ -426,9 +427,10 @@ Page(fold.adapt(tapGuard.wrap({
     wx.switchTab({ url: '/pages/home/home' })
   },
 
-  // 「继续投屏」：不跳首页，在当前页弹出「拍照 / 相册」二选一弹层（与蓝牙版结果页「继续投屏」同一做法）
-  continueProjection() {
-    if (!this.device) {
+  // 「继续投屏」：不跳首页，在当前页弹出「拍照 / 相册」二选一弹层（与蓝牙版结果页「继续投屏」同一做法）。
+  // 2026-11-14：点击要在线（现查一次），不在线提示不弹
+  async continueProjection() {
+    if (!this.device || !(await wifiStatus.requireOnline(this.device, '', { fresh: true }))) {
       return
     }
     this.setData({ showMediaSheet: true, mediaSheetClosing: false })

@@ -292,16 +292,11 @@ Page(fold.adapt(tapGuard.wrap({
   },
 
   // WiFi 版「轮播设置」（V1.4 更新说明 1.5，取代原「刷新状态」）：进 WiFi 轮播设置页。
-  // 查询只要权限、离线也能看，所以这里不拦离线；保存时轮播页再判断设备状态。
-  // 本地模式（2026-10-29）：按钮可点，只提示「当前设备状态：本地模式，请恢复设备网络再试」。
+  // 2026-11-14 起点击要在线（原「离线也能看」撤掉）：离线 / 休眠 / 关机 / 本地模式提示不进，状态未知现查一次（utils/wifi-status.requireOnline）。
   async openWifiSlideshow(e) {
     const id = e.currentTarget.dataset.id
     const device = this.data.devices.find(item => item.id === id)
-    if (!device || !device.isWifi) {
-      return
-    }
-    if (device.wifiStatus === 'local') {
-      toast.show({ title: wifiStatus.LOCAL_TIP, icon: 'none' })
+    if (!device || !device.isWifi || !(await wifiStatus.requireOnline(device, device.wifiStatus))) {
       return
     }
     wx.navigateTo({ url: `/subpackages/device/wifi-slideshow/wifi-slideshow?id=${device.id}` })
@@ -316,9 +311,8 @@ Page(fold.adapt(tapGuard.wrap({
     if (!device || !device.isWifi) {
       return
     }
-    const tip = wifiStatus.blockedTip(device.wifiStatus) // 本地模式 / 离线 / 休眠中先拦
-    if (tip) {
-      toast.show({ title: tip, icon: 'none' })
+    // 2026-11-14：点击要在线——本地模式 / 离线 / 休眠 / 关机直接提示，状态未知现查一次
+    if (!(await wifiStatus.requireOnline(device, device.wifiStatus))) {
       return
     }
     this._projectionDevice = device

@@ -1033,10 +1033,10 @@ Page(tapGuard.wrap({
       this.showBindNowSheet()
       return false
     }
-    // WiFi 版不走蓝牙（2026-10-27）：确认云端在线即可（明确离线才拦，查不到放行由投屏接口裁决）
+    // WiFi 版不走蓝牙（2026-10-27）：确认云端在线即可。2026-11-14 起点击要在线：现查一次，只有在线放行（查不到也拦，提示「设备不在线」）
     const current = app.globalData.selectedDevice || this.data.currentDevice
     if (broadcastMatch.isWifiDevice(current)) {
-      return wifiStatus.ensureOnline(current)
+      return wifiStatus.requireOnline(current, '', { fresh: true })
     }
     if (!this.isCurrentDeviceConnected()) {
       // 连上后由它弹低电量提醒，这里不再弹第二次

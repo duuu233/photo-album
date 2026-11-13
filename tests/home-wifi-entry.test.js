@@ -1,6 +1,6 @@
 // 首页接 WiFi 版（2026-10-27）：
 //   ① 设备卡：WiFi 版打 isWifi，状态先沿用上次、没有则「查询中」，再按 IoT 设备信息刷新（在线 / 电量）；蓝牙版只多 isWifi:false；
-//   ② 拍照 / 相册入口：当前设备是 WiFi 版时不走蓝牙连接，确认云端在线即可；明确离线提示并拦下，查不到放行；
+//   ② 拍照 / 相册入口：当前设备是 WiFi 版时不走蓝牙连接，确认云端在线即可；离线提示并拦下，查不到也拦（2026-11-14）；
 //   ③ 进预览时设备带 isWifi，预览页据此去 WiFi 投屏结果页；
 //   ④ 模板：WiFi 卡没有「连接蓝牙」，显示云端状态。
 const assert = require('node:assert/strict')
@@ -115,8 +115,10 @@ async function main() {
     trace.length = 0
     assert.equal(await page.ensureCanProject(), false, '明确离线拦下')
     assert.equal(toasts.at(-1), '设备已离线，请检查设备网络')
+    // 2026-11-14 有意改口径：点击要在线，查不到也拦（原「查不到放行，由投屏接口裁决」撤掉）
     online = Object.assign(new Error('服务暂时不可用'), { code: 503 })
-    assert.equal(await page.ensureCanProject(), true, '查不到放行，由投屏接口裁决')
+    assert.equal(await page.ensureCanProject(), false, '查不到也拦下')
+    assert.equal(toasts.at(-1), '设备不在线')
     console.log('PASS 拍照 / 相册入口：WiFi 版只确认在线，不连蓝牙')
   }
   {

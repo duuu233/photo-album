@@ -134,6 +134,38 @@ async function queryBlockedTip(device) {
   }
 }
 
+// 点击入口前确认在线（2026-11-14 产品要求）：WiFi 版投屏、轮播设置、固件升级、优雅刷新升级点击时必须在线，不在线不能进
+// （TF卡切换在 wifi-tf 开关里本就现查在线；一键清空、删除设备、解绑设备不判断）。
+//   knownStatus：页面上已有的状态（进页查询 + WS 推送保持最新），明确离线 / 休眠 / 关机 / 本地模式直接提示，不发请求；
+//   已知在线直接放行（options.fresh 时仍现查一次）；查询中 / 状态未知 / fresh 时现查一次（loading「检查设备」），
+//   只有在线放行，否则提示（查不到给「设备不在线」）。返回 Promise<boolean>。
+async function requireOnline(device, knownStatus, options) {
+  const o = options || {}
+  const knownTip = blockedTip(knownStatus)
+  if (knownTip) {
+    toast.show({ title: knownTip, icon: 'none' })
+    return false
+  }
+  if (knownStatus === 'online' && !o.fresh) {
+    return true
+  }
+  let state = 'unknown'
+  wx.showLoading({ title: '检查设备', mask: true })
+  try {
+    const res = await iotApi.getDeviceOnline((device && (device.productDeviceId || device.deviceNo)) || '', undefined, { showError: false })
+    state = deviceState(res)
+  } catch (error) {
+    state = 'unknown'
+  } finally {
+    wx.hideLoading()
+  }
+  if (state === 'online') {
+    return true
+  }
+  toast.show({ title: blockedTip(state) || NOT_ONLINE_TIP, icon: 'none' })
+  return false
+}
+
 // 选择投屏设备列表（AI 生图、官方图库，2026-10-29）：WiFi 版查一次状态，离线 / 本地模式 / 状态未知的不进列表；
 // 蓝牙版原样保留。isWifi(item) 由调用方给（broadcast-match.isWifiDevice），这里不依赖蓝牙模块。
 const PICKER_HIDDEN = ['offline', 'local', 'unknown']
@@ -162,5 +194,6 @@ module.exports = {
   ensureOnline,
   projectBlockedTip,
   queryBlockedTip,
+  requireOnline,
   filterPickable
 }

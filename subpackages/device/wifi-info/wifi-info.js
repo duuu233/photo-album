@@ -58,6 +58,9 @@ Page(fold.adapt({
       iotApi.getDeviceInfo(device.productDeviceId || device.deviceNo || '', { showError: false }).catch(() => null),
       api.resolveRenderMode(device).catch(() => '')
     ])
+    // 「优雅刷新升级」点击时判断在线用（进页这次查到的状态；点击时还会现查一次）
+    this._device = device
+    this._state = info ? wifiStatus.deviceState(info) : 'unknown'
     if (!this.unloaded) {
       this.setData({
         loading: false,
@@ -68,8 +71,11 @@ Page(fold.adapt({
     }
   },
 
-  // 「优雅刷新升级」：直接进安装步骤页（最新版本取设备详情）
-  openFpga() {
+  // 「优雅刷新升级」：直接进安装步骤页（最新版本取设备详情）。2026-11-14：点击即判断在线（现查一次），不在线不能进
+  async openFpga() {
+    if (!this._device || !(await wifiStatus.requireOnline(this._device, this._state, { fresh: true }))) {
+      return
+    }
     wx.navigateTo({ url: `/subpackages/device/wifi-ota/wifi-ota?id=${this.data.id}&mode=fpga` })
   },
 

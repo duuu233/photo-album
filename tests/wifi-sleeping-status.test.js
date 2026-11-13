@@ -81,9 +81,11 @@ async function main() {
     assert.ok(/\.device-status\.wifi-status\.is-sleeping\s*\{/.test(read('pages/home/home.wxss')), '首页卡休眠色')
     assert.ok(/\.wifi-state\.is-sleeping\s*\{/.test(read('subpackages/device/list/list.wxss')), '我的设备卡休眠色')
     assert.ok(/\.wifi-detail-state\.is-sleeping\s*\{/.test(read('subpackages/device/wifi-detail/wifi-detail.wxss')), '详情页休眠色')
-    assert.ok(/wifiStatus\.blockedTip\(device\.wifiStatus\)/.test(read('subpackages/device/list/list.js')), '我的设备投屏按 blockedTip 拦')
+    // 2026-11-14 有意改口径：入口改走 requireOnline（内部先按 blockedTip 拦已知不可操作的状态，状态未知再现查、只放行在线），
+    // 原「按 blockedTip 拦」的判据随之挪到 requireOnline 上，见下面「点击入口要在线」一组
+    assert.ok(/wifiStatus\.requireOnline\(device, device\.wifiStatus\)/.test(read('subpackages/device/list/list.js')), '我的设备投屏按已知状态拦')
     const detail = read('subpackages/device/wifi-detail/wifi-detail.js')
-    assert.ok(/wifiStatus\.blockedTip\(this\.data\.status\)/.test(detail), '详情页投屏按 blockedTip 拦')
+    assert.ok(/wifiStatus\.requireOnline\(this\.data\.device, this\.data\.status\)/.test(detail), '详情页投屏按已知状态拦')
     assert.ok(/wifiStatus\.deviceState\(info\)/.test(detail), '详情页状态走同一套映射')
     // 配网第 4 步只认 online=true，SLEEPING 不算成功
     assert.ok(/if \(res && res\.online\)/.test(read('utils/wifi-provision.js')), '配网轮询只认 online')
@@ -107,6 +109,51 @@ async function main() {
     const read = file => fs.readFileSync(path.join(root, file), 'utf8')
     assert.ok(/\.is-shutdown \.meta-wifi-icon/.test(read('subpackages/device/list/list.wxss')), '我的设备卡已关机图标变灰')
     checked('已关机 SHUTDOWN')
+  }
+  {
+    // 点击入口要在线（2026-11-14 产品要求）：WiFi 版投屏、轮播设置、固件升级、优雅刷新升级点击时只放行在线
+    toasts.length = 0
+    let calls = 0
+    onlineReply = { online: true, status: 'ONLINE' }
+    const counting = { productDeviceId: 'X' }
+    const origin = require('../utils/iot-api').getDeviceOnline
+    require('../utils/iot-api').getDeviceOnline = async (...args) => { calls++; return origin(...args) }
+    assert.equal(await wifiStatus.requireOnline(counting, 'offline'), false, '已知离线直接拦')
+    assert.equal(await wifiStatus.requireOnline(counting, 'local'), false, '本地模式拦')
+    assert.equal(await wifiStatus.requireOnline(counting, 'sleeping'), false)
+    assert.equal(await wifiStatus.requireOnline(counting, 'shutdown'), false)
+    assert.deepEqual(toasts, [wifiStatus.OFFLINE_TIP, wifiStatus.LOCAL_TIP, wifiStatus.SLEEPING_TIP, wifiStatus.SHUTDOWN_TIP])
+    assert.equal(calls, 0, '已知不可操作不发请求')
+    assert.equal(await wifiStatus.requireOnline(counting, 'online'), true, '已知在线直接放行')
+    assert.equal(calls, 0)
+    assert.equal(await wifiStatus.requireOnline(counting, 'online', { fresh: true }), true, 'fresh：现查在线放行')
+    assert.equal(calls, 1, 'fresh 时现查一次')
+    toasts.length = 0
+    onlineReply = { online: false, status: 'OFFLINE' }
+    assert.equal(await wifiStatus.requireOnline(counting, 'online', { fresh: true }), false, 'fresh：现查离线拦下')
+    assert.deepEqual(toasts, [wifiStatus.OFFLINE_TIP])
+    toasts.length = 0
+    onlineReply = new Error('503')
+    assert.equal(await wifiStatus.requireOnline(counting, 'unknown'), false, '状态未知现查也查不到：拦下')
+    assert.deepEqual(toasts, [wifiStatus.NOT_ONLINE_TIP])
+    onlineReply = { online: true, status: 'ONLINE' }
+    assert.equal(await wifiStatus.requireOnline(counting, 'loading'), true, '查询中现查在线放行')
+    require('../utils/iot-api').getDeviceOnline = origin
+
+    const read = file => fs.readFileSync(path.join(root, file), 'utf8')
+    const detail = read('subpackages/device/wifi-detail/wifi-detail.js')
+    assert.ok(/async openOta\(\) \{\s*if \(!this\.data\.device \|\| !\(await wifiStatus\.requireOnline\(this\.data\.device, this\.data\.status, \{ fresh: true \}\)\)\)/.test(detail), '固件升级：点击现查在线')
+    assert.ok(/async openSlideshow\(\) \{\s*if \(!this\.data\.device \|\| !\(await wifiStatus\.requireOnline\(this\.data\.device, this\.data\.status\)\)\)/.test(detail), '轮播设置：点击要在线')
+    assert.ok(/async startProjection\(\) \{\s*if \(!this\.data\.device \|\| !\(await wifiStatus\.requireOnline\(/.test(detail), '投屏：点击要在线')
+    assert.ok(/async openFpga\(\) \{\s*if \(!this\._device \|\| !\(await wifiStatus\.requireOnline\(this\._device, this\._state, \{ fresh: true \}\)\)\)/.test(read('subpackages/device/wifi-info/wifi-info.js')), '优雅刷新升级：点击现查在线')
+    assert.ok(/async continueProjection\(\) \{\s*if \(!this\.device \|\| !\(await wifiStatus\.requireOnline\(this\.device, '', \{ fresh: true \}\)\)\)/.test(read('subpackages/projection/wifi-result/wifi-result.js')), '结果页继续投屏：点击现查在线')
+    assert.ok(/wifiStatus\.requireOnline\(current, '', \{ fresh: true \}\)/.test(read('pages/home/home.js')), '首页拍照 / 相册（WiFi 版）：点击现查在线')
+    assert.ok(/status !== 'online'/.test(read('subpackages/device/wifi-tf/wifi-tf.js')), 'TF卡切换：开启前现查只放行在线（原有）')
+    for (const fn of ['clearCopies', 'showUnbindConfirm', 'showDeleteConfirm']) {
+      const body = detail.slice(detail.indexOf(`  ${fn}() {`), detail.indexOf('\n  },', detail.indexOf(`  ${fn}() {`)))
+      assert.ok(body.length > 0 && !/requireOnline|blockedTip/.test(body), `${fn}：不判断在线`)
+    }
+    checked('点击入口要在线')
   }
   console.log(`wifi-sleeping-status: ${checks} groups passed`)
 }
