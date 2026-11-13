@@ -74,6 +74,11 @@ async function main() {
     assert.equal(carousel.indexOf('space-around'), -1, '不再用 space-around')
     const orbit = css.slice(css.indexOf('.device-orbit {'), css.indexOf('}', css.indexOf('.device-orbit {')))
     assert.ok(/flex: 0 0 auto;/.test(orbit), '设备图不被长名称挤小')
+    // 2026-11-14 同 APP：文字块不再固定 min-height（短内容被顶在上半截），与设备图一起上下居中；设备图完整显示不裁切
+    const info = css.slice(css.indexOf('.device-info {'), css.indexOf('}', css.indexOf('.device-info {')))
+    assert.ok(!/min-height/.test(info.replace(/\/\*[\s\S]*?\*\//g, '')), '文字块按内容高度上下居中')
+    assert.ok(/align-items: center;/.test(carousel), '卡片内上下居中')
+    assert.ok(/class="device-orbit"[\s\S]{0,120}mode="aspectFit"/.test(read('pages/home/home.wxml')), '设备图 aspectFit 不裁切')
     console.log('PASS 版式：设备卡内容居中')
   }
   {

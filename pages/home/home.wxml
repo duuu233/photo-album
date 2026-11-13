@@ -103,10 +103,11 @@
                 class="device-carousel-bg"
                 src="https://oss.boltfox.cn/prodFile/202607072104114724571.png"
                 mode="aspectFill" /> -->
+              <!-- 设备图完整显示、不裁切（2026-11-14 同 APP BoxFit.contain；非方图如 13.3 寸原来被 aspectFill 裁偏） -->
               <image
                 class="device-orbit"
                 src="{{item.thumb || '/assets/images/home-device-thumb.png'}}"
-                mode="aspectFill" />
+                mode="aspectFit" />
               <view class="device-info">
                 <view class="device-title">{{item.name}}</view>
                 <!-- 类型 + 尺寸标签（2026-10-27）：与搜索列表同款「WiFi版·5.89寸 / 蓝牙版·5.89寸」，没配尺寸显示 --寸。
