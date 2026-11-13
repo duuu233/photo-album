@@ -67,10 +67,10 @@
   margin-top: 24rpx;
 }
 
+/* 优雅刷新升级入口文字：与上面信息行标签同样式（2026-11-14 产品要求改灰色、常规字重） */
 .info-row__name {
-  color: #2a2d32;
+  color: #8b9098;
   font-size: 28rpx;
-  font-weight: 600;
 }
 
 .info-row__arrow {
