@@ -19,7 +19,7 @@
 const iotApi = require('./iot-api')
 
 const STORAGE_PREFIX = 'ota_inflight:'
-const OTA_TYPE_MAIN = 'main' // 主控升级；FPGA 升级（type=fpga）当前没有入口
+const OTA_TYPE_MAIN = 'main' // 主控升级；FPGA（type=fpga）为渲染固件安装，见 utils/fpga-firmware.js
 
 const STEP_TEXTS = ['已下发，等待设备响应', '设备下载固件中', '设备写入固件中', '升级完成']
 const STEP_OF = { SENT: 0, DOWNLOADING: 1, FLASHING: 2, VERIFYING: 3 }
