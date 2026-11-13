@@ -7,7 +7,8 @@
 //   ⑤ 页面：下发成功立即存 msgid → 第 1 步；WS ota.result 按 msgid 推进；失败在当前步打叉；4045 切「设备正在升级」；
 //      重进页面有 VERIFYING 记录 → 不进步骤页、不提示升级；有 FLASHING 记录 → 直接接着展示步骤；
 //   ⑥ 消息类型 OTA_SUCCESS / OTA_FAILED 有文案；页面已注册、详情页有入口、接口路径对。
-//   ⑦ 进度条（2026-11-12）：progress 20/40/60/80 抬上限、显示值匀速走到 19/39/59/79 停住；固件不上报（null）走到 98 停住；
+//   ⑦ 进度条（2026-11-12）：progress 20/40/60/80 抬上限、显示值匀速走到 19/39/59/79 停住等下一档数值，
+//      状态推进（DOWNLOADING / FLASHING）不放开分档（2026-11-13）；固件不上报（没有数值就进入 FLASHING）走到 98 停住；
 //      VERIFYING 到 100；失败停住；收到过的最大进度存进本地记录，重进接着走；文案用当前那一步的步骤文案。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -120,9 +121,12 @@ async function main() {
     assert.equal(ota.progressCap('DOWNLOADING', 40), 59)
     assert.equal(ota.progressCap('DOWNLOADING', 60), 79)
     assert.equal(ota.progressCap('DOWNLOADING', 80), 98, '80 之后最多 98，等 VERIFYING')
-    assert.equal(ota.progressCap('DOWNLOADING', null), 98, '进入下载却不上报进度：走到 98')
-    assert.equal(ota.progressCap('DOWNLOADING', 0), 98)
-    assert.equal(ota.progressCap('FLASHING', 40), 98, '写入阶段下载已完成')
+    assert.equal(ota.progressCap('DOWNLOADING', null), 19, '进入下载但 20 还没到：仍停 19 等 20')
+    assert.equal(ota.progressCap('DOWNLOADING', 0), 19)
+    assert.equal(ota.progressCap('FLASHING', 40), 59, '写入阶段也要等 60：状态不放开分档')
+    assert.equal(ota.progressCap('FLASHING', 60), 79, '79 等 80')
+    assert.equal(ota.progressCap('FLASHING', 80), 98)
+    assert.equal(ota.progressCap('FLASHING', null), 98, '没有任何数值就进入写入：固件不上报，走到 98')
     assert.equal(ota.progressCap('VERIFYING', 80), 100)
     assert.equal(ota.progressCap('SUCCESS', null), 100)
     assert.equal(ota.activeStep(ota.stepsFor('DOWNLOADING')), 1)
@@ -284,6 +288,9 @@ async function main() {
       emit('ota.result', { msgid: '555', status, progress })
       await flush()
     }
+    await report('DOWNLOADING', null)
+    tick(50)
+    assert.equal(page.data.progress, 19, '进入下载但 20 还没到：19 继续等 20')
     await report('DOWNLOADING', 20)
     assert.equal(page.data.progressText, '设备下载固件中', '文案对应步骤文案')
     tick(50)
@@ -297,7 +304,13 @@ async function main() {
     await report('DOWNLOADING', null)
     tick(50)
     assert.equal(page.data.progress, 59, '收到过进度后偶发的 null 不放开到 98')
-    await report('DOWNLOADING', 80)
+    await report('DOWNLOADING', 60)
+    tick(50)
+    assert.equal(page.data.progress, 79)
+    await report('FLASHING', 60)
+    tick(50)
+    assert.equal(page.data.progress, 79, '进入写入也要等 80：79 停住')
+    await report('FLASHING', 80)
     tick(100)
     assert.equal(page.data.progress, 98, '80 之后停在 98 等 VERIFYING')
     await report('VERIFYING', 100)
@@ -306,7 +319,7 @@ async function main() {
     assert.equal(page.data.progress, 100, 'VERIFYING 到 100')
     assert.equal(page.data.progressText, '升级完成')
 
-    // 固件不上报进度：匀速走到 98 停住
+    // 固件不上报进度：下载阶段停 19，没有任何数值就进入写入 → 匀速走到 98 停住
     Object.keys(storage).forEach(key => delete storage[key])
     const silent = loadPage({ info: { status: 'ONLINE', online: true, firmwareVersion: '0.6.1' } })
     silent.page.onLoad({ id: '9' })
@@ -315,6 +328,11 @@ async function main() {
     await flush()
     otaReplies['555'] = { status: 'DOWNLOADING', progress: null }
     silent.emit('ota.result', { msgid: '555', status: 'DOWNLOADING', progress: null })
+    await flush()
+    silent.tick(200)
+    assert.equal(silent.page.data.progress, 19, '下载阶段为 null 不算不上报，停 19')
+    otaReplies['555'] = { status: 'FLASHING', progress: null }
+    silent.emit('ota.result', { msgid: '555', status: 'FLASHING', progress: null })
     await flush()
     silent.tick(200)
     assert.equal(silent.page.data.progress, 98, '不上报进度停在 98')
@@ -342,7 +360,7 @@ async function main() {
     assert.ok(/wx:if="\{\{showSteps\}\}" class="ota-progress glass-panel/.test(tpl), '进度条与步骤同时显示')
     assert.ok(/class="ota-progress__text">\{\{progressText\}\}</.test(tpl) && /width: \{\{progress\}\}%;/.test(tpl))
     assert.ok(tpl.indexOf('ota-progress') < tpl.indexOf('class="provision-steps'), '进度条在步骤上方')
-    checked('页面：进度条分档匀速、不上报停 98、VERIFYING 到 100、失败停住、重进接着走')
+    checked('页面：进度条分档匀速、19/39/59/79 等下一档、不上报停 98、VERIFYING 到 100、失败停住、重进接着走')
   }
   {
     Object.keys(storage).forEach(key => delete storage[key])
