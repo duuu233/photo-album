@@ -112,11 +112,12 @@
   border-radius: 50%;
 }
 
+/* 查询中转圈：主题橙（2026-11-14，同其它加载转圈与 APP WifiMiniSpinner） */
 .wifi-detail-state__spinner {
   width: 24rpx;
   height: 24rpx;
-  border: 3rpx solid rgba(14, 159, 135, 0.25);
-  border-top-color: #0e9f87;
+  border: 3rpx solid rgba(255, 98, 31, 0.18);
+  border-top-color: #ff621f;
   border-radius: 50%;
   box-sizing: border-box;
   animation: wifiDetailSpin 0.8s linear infinite;

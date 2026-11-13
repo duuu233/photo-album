@@ -81,6 +81,9 @@ async function main() {
     assert.ok(/\.device-status\.wifi-status\.is-sleeping\s*\{/.test(read('pages/home/home.wxss')), '首页卡休眠色')
     assert.ok(/\.wifi-state\.is-sleeping\s*\{/.test(read('subpackages/device/list/list.wxss')), '我的设备卡休眠色')
     assert.ok(/\.wifi-detail-state\.is-sleeping\s*\{/.test(read('subpackages/device/wifi-detail/wifi-detail.wxss')), '详情页休眠色')
+    // 「查询中」转圈用主题橙（2026-11-14，原青绿；同其它加载转圈与 APP WifiMiniSpinner）
+    assert.ok(/\.wifi-state__spinner \{[^}]*border-top-color: #ff621f;/.test(read('subpackages/device/list/list.wxss')), '我的设备查询中转圈为主题橙')
+    assert.ok(/\.wifi-detail-state__spinner \{[^}]*border-top-color: #ff621f;/.test(read('subpackages/device/wifi-detail/wifi-detail.wxss')), '详情页查询中转圈为主题橙')
     // 2026-11-14 有意改口径：入口改走 requireOnline（内部先按 blockedTip 拦已知不可操作的状态，状态未知再现查、只放行在线），
     // 原「按 blockedTip 拦」的判据随之挪到 requireOnline 上，见下面「点击入口要在线」一组
     assert.ok(/wifiStatus\.requireOnline\(device, device\.wifiStatus\)/.test(read('subpackages/device/list/list.js')), '我的设备投屏按已知状态拦')
