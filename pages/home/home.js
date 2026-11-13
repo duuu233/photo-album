@@ -12,6 +12,7 @@ const deviceThumb = require('../../utils/device-thumb')
 const broadcastMatch = require('../../utils/broadcast-match')
 const wifiStatus = require('../../utils/wifi-status')
 const wifiWatch = require('../../utils/wifi-watch')
+const firmwareGate = require('../../utils/firmware-gate')
 
 const app = getApp()
 
@@ -1024,6 +1025,7 @@ Page(tapGuard.wrap({
 
   // 拍照/相册前的统一校验：未登录先跳登录；未绑定先引导绑定；当前选中设备未连接则先自动扫描连接
   // （与设备卡片「连接蓝牙」按钮同一套流程，连不上由 connectCurrentDevice 按标准规则提示）。
+  // 最后做固件升级判断（2026-11-13，只判强制升级，见 utils/firmware-gate.js）：WiFi 版在线、蓝牙版连上之后才判。
   // 任一不满足返回 false，调用方不再继续。
   async ensureCanProject() {
     if (!app.requireLogin()) {
@@ -1036,17 +1038,24 @@ Page(tapGuard.wrap({
     // WiFi 版不走蓝牙（2026-10-27）：确认云端在线即可（明确离线才拦，查不到放行由投屏接口裁决）
     const current = app.globalData.selectedDevice || this.data.currentDevice
     if (broadcastMatch.isWifiDevice(current)) {
-      return wifiStatus.ensureOnline(current)
+      if (!(await wifiStatus.ensureOnline(current))) {
+        return false
+      }
+      return firmwareGate.guardAction(current)
     }
     if (!this.isCurrentDeviceConnected()) {
-      return this.connectCurrentDevice() // 连上后由它弹低电量提醒，这里不再弹第二次
+      // 连上后由它弹低电量提醒，这里不再弹第二次
+      if (!(await this.connectCurrentDevice())) {
+        return false
+      }
+    } else {
+      // 已连接：这一次没走连接流程，低电量提醒得在这里补（2026-08-21：主动点投屏入口就要提示）
+      const selected = app.globalData.selectedDevice || this.data.currentDevice
+      await lowBattery.warnIfLow(activeDevice.findConnectedDeviceId(selected), {
+        device: selected
+      })
     }
-    // 已连接：这一次没走连接流程，低电量提醒得在这里补（2026-08-21：主动点投屏入口就要提示）
-    const selected = app.globalData.selectedDevice || this.data.currentDevice
-    await lowBattery.warnIfLow(activeDevice.findConnectedDeviceId(selected), {
-      device: selected
-    })
-    return true
+    return firmwareGate.guardAction(app.globalData.selectedDevice || this.data.currentDevice)
   },
 
   // 当前展示选中的设备是否已建立真实蓝牙会话（拍照/相册前据此判断是否需要先连接）。

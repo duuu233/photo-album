@@ -8,8 +8,6 @@ const deviceBle = require('./utils/device-ble')
 const aiServiceConsent = require('./utils/ai-service-consent')
 const deviceIdentity = require('./utils/device-identity')
 const iotWs = require('./utils/iot-ws')
-const broadcastMatch = require('./utils/broadcast-match')
-const wifiOta = require('./utils/wifi-ota')
 
 // 将回调式的 wx.login 封装为 Promise，便于在 async 流程中 await
 function wxLogin() {
@@ -36,8 +34,8 @@ App({
     // 启动即从本地缓存恢复上次的登录态与选中设备，避免每次都重新登录
     this.restoreSession()
 
-    // 启动全局固件检测：当前选中设备若为「强制升级」则弹窗阻断使用（提醒升级不处理）。静默失败，不打扰。
-    this.checkForcedFirmwareUpgrade()
+    // 固件升级判断（2026-11-13）不再在启动时做：改到设备详情 / 设备列表 / 首页投屏入口按场景判断，
+    // 见 utils/firmware-gate.js（原启动弹窗「稍后 = 关闭小程序」，且不看设备在线 / 已连接，与新口径不符）。
   },
 
   // 回前台做一次「连接体检」：微信在后台（尤其鸿蒙 HarmonyOS）会挂起蓝牙，可能已断开却没补发断开回调，
@@ -46,60 +44,6 @@ App({
   //（用户点设备卡片的「连接蓝牙」按钮时才连，见 home.connectCurrentDevice）。冷启动/无连接时零开销。
   onShow() {
     deviceBle.reconcileConnections().catch(() => {})
-  },
-
-  // 启动时检测「当前选中设备」的固件升级方式：
-  //   强制升级(upgradeMode==='force') -> 弹二次确认「请升级固件后继续使用」，稍后=关闭小程序 / 立刻更新=进升级页；
-  //   无更新 / 提醒升级 -> 不处理。
-  // 用 _fwChecked 去重，保证一次启动只弹一次；任何异常(未登录/无选中设备/网络失败)都静默返回。
-  // 注：后续「App 版本升级」同理，可另接 /Client/Basic/getLastVersion 走同样的强制/提醒逻辑。
-  async checkForcedFirmwareUpgrade() {
-    if (this.globalData._fwChecked) {
-      return
-    }
-    this.globalData._fwChecked = true
-
-    try {
-      const token = this.globalData.token || wx.getStorageSync('token')
-      const jwtToken =
-        this.globalData.jwtToken || wx.getStorageSync('jwtToken')
-      const selected = this.globalData.selectedDevice
-      if (!token || !jwtToken || !selected || !selected.id) {
-        return
-      }
-
-      const device = await api.getDeviceDetail(selected.id)
-      // 仅「强制升级」才弹窗阻断；无更新 / 提醒升级 → 不处理
-      if (!device || device.upgradeMode !== 'force') {
-        return
-      }
-
-      // WiFi 版（2026-11-02）：本地有进行中的升级（含已到 VERIFYING、等设备重启）时不再弹，避免重复升级（对接文档 3.3）；
-      // 升级页走 WiFi 版步骤页，蓝牙版照旧
-      const isWifi = broadcastMatch.isWifiDevice(device) || broadcastMatch.isWifiDevice(selected)
-      if (isWifi && wifiOta.readInflight(device.productDeviceId || device.deviceNo || selected.productDeviceId || selected.deviceNo)) {
-        return
-      }
-      const otaPage = isWifi ? '/subpackages/device/wifi-ota/wifi-ota' : '/subpackages/device/ota/ota'
-      const version = String(device.newVersionNo || '').trim() || '新版本'
-      wx.showModal({
-        title: '固件升级',
-        content: `检测到新版本：${version}，请升级固件后继续使用`,
-        cancelText: '稍后',
-        confirmText: '立刻更新',
-        success: res => {
-          if (res.confirm) {
-            // 立刻更新：进入固件升级页
-            wx.navigateTo({ url: `${otaPage}?id=${device.id}` })
-          } else if (wx.exitMiniProgram) {
-            // 稍后：关闭小程序
-            wx.exitMiniProgram()
-          }
-        }
-      })
-    } catch (error) {
-      // 启动检测失败静默，不打扰用户
-    }
   },
 
   // 把本地缓存里的会话信息读回内存（globalData），作为全局单一数据源

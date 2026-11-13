@@ -150,7 +150,9 @@ async function main() {
       'wifi-tf': wifiTf,
       'wifi-share': wifiShare,
       // 2026-11-02 详情页加「固件升级」行后多了这个依赖；本地无升级记录（wx 为空桩），不影响本组断言
-      'wifi-ota': require('../utils/wifi-ota')
+      'wifi-ota': require('../utils/wifi-ota'),
+      // 2026-11-13 详情页加固件升级判断后多了这个依赖；本组设备无新版本（不带 newVersionNo），按钮照旧同步执行
+      'firmware-gate': require('../utils/firmware-gate')
     }
     vm.runInNewContext(read('subpackages/device/wifi-detail/wifi-detail.js'), {
       require: target => modules[target.split('/').at(-1)],

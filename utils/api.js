@@ -178,10 +178,11 @@ function normalizeDevice(device = {}) {
     fallbackIntervalSeconds
   )
   const isUpdate = normalizeNumber(device.isUpdate, 0)
-  // 升级方式：后端 updateType 约定 1=强制升级 / 其它(含 2=提醒)=提醒升级（字段名/取值待后端最终确认，仅改此一处即可）。
-  // 归一为 upgradeMode: 'force'(强制) | 'remind'(提醒) | ''(无更新)，供启动全局检测与升级入口判断。
+  // 升级方式：1=强制升级 / 其它(含 2=强提示)=强提醒升级（字段名/取值待后端最终确认，仅改此一处即可）。
+  // 2026-11-13：先认详情出参 swagger 的 `compulsory`（与 App 版本接口同名同义：1 强制 2 强提示），再兜底 updateType 等旧猜测字段。
+  // 归一为 updateType（数字）与 upgradeMode: 'force'(强制) | 'remind'(提醒) | ''(无更新)；固件升级判断见 utils/firmware-gate.js。
   const updateType = normalizeNumber(
-    firstValue(device.updateType, device.upgradeType, device.forceType),
+    firstValue(device.compulsory, device.updateType, device.upgradeType, device.forceType),
     0
   )
   const upgradeMode = isUpdate === 1 ? (updateType === 1 ? 'force' : 'remind') : ''
@@ -916,13 +917,14 @@ module.exports = {
   },
 
   // 获取用户设备详情。可传 userProductId 或 { userProductId, productVersionNo }
-  getUserProductDetail(params) {
+  // options（可选）透传请求层，如 { showError: false }（固件升级判断静默查询，2026-11-13）
+  getUserProductDetail(params, options) {
     const query =
       typeof params === 'object' ? params : { userProductId: params }
 
-    return http.get('/Client/UserProduct/getUserProductDetail', query, {
+    return http.get('/Client/UserProduct/getUserProductDetail', query, Object.assign({
       mock: false
-    })
+    }, options))
   },
 
   // 设备分享的用户（2026-10-29，WiFi 版分享列表）：deviceId 为后端设备号（原样，不去冒号）。
@@ -1220,9 +1222,9 @@ module.exports = {
     })
   },
 
-  getDeviceDetail(deviceId) {
+  getDeviceDetail(deviceId, options) {
     return Promise.all([
-      module.exports.getUserProductDetail(deviceId),
+      module.exports.getUserProductDetail(deviceId, options),
       productCatalogWithin(PRODUCT_CATALOG_WAIT_MS)
     ]).then(([device, products]) =>
       normalizeDevice(

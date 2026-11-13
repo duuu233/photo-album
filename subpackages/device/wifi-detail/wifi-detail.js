@@ -12,6 +12,7 @@ const wifiStatus = require('../../../utils/wifi-status')
 const wifiTf = require('../../../utils/wifi-tf')
 const wifiShare = require('../../../utils/wifi-share')
 const wifiOta = require('../../../utils/wifi-ota')
+const firmwareGate = require('../../../utils/firmware-gate')
 
 const app = getApp()
 
@@ -32,6 +33,8 @@ const app = getApp()
 //     请恢复设备网络再试」；设备信息、休眠设置、消息中心、分享、解绑、删除照常。
 //   · 固件升级（2026-11-02，docs/前端对接文档20261031.md）：功能栏「消息中心」之后，右侧显示设备当前固件版本，
 //     有新版本亮红点（先看本地有没有进行中的升级记录：有则显示「升级中」、不亮红点，对接文档 3.3）；进 wifi-ota 步骤页。
+//   · 固件升级判断（2026-11-13，规则见 utils/firmware-gate.js）：在线才判断，进入后（拿到在线状态时）判断一次、
+//     点功能按钮再判断；强制升级与强提醒升级都弹，判定用红点结果。解除绑定、删除设备、固件升级行、重试不判断。
 function plainDeviceNo(value) {
   return String(value || '').replace(/[:\-\s]/g, '').toUpperCase()
 }
@@ -64,7 +67,7 @@ function otaFields(device, firmwareVersion, inflight) {
   return { otaText: firmwareVersion || '--', otaHasUpdate: result.state === 'available' }
 }
 
-Page(fold.adapt(tapGuard.wrap({
+Page(fold.adapt(tapGuard.wrap(firmwareGate.wrapActions({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -207,7 +210,31 @@ Page(fold.adapt(tapGuard.wrap({
     }
     if (!this.unloaded) {
       this.setData(otaFields(this.data.device, this.data.firmwareVersion, inflight))
+      this.checkFirmwareOnEnter()
     }
+  },
+
+  // 不用弹返回 true；要弹返回 Promise<boolean>（true = 这次操作继续）
+  firmwareGate() {
+    const device = this.data.device
+    if (!device || this.data.status !== 'online') {
+      return true
+    }
+    const decision = firmwareGate.decide(device, { isWifi: true, online: true, hasUpdate: !!this.data.otaHasUpdate })
+    if (!decision.mode) {
+      return true
+    }
+    return firmwareGate.prompt(device, decision, { isWifi: true })
+  },
+
+  // 进入后判断一次：第一次查到设备状态时（在线才会弹）；之后回到本页、状态推送重查都不再弹
+  checkFirmwareOnEnter() {
+    const status = this.data.status
+    if (this._fwEntered || !this.data.device || status === 'loading') {
+      return
+    }
+    this._fwEntered = true
+    this.firmwareGate()
   },
 
   // 消息中心未读红点（2026-11-06 起只亮红点、不显示数字）；查不到不显示，不弹错
@@ -559,4 +586,5 @@ Page(fold.adapt(tapGuard.wrap({
     // 照片删了，服务端会把轮播里对应的图移掉：重查一次轮播标记
     this.refreshSlideshow()
   }
-}, { startProjection: 'projection', chooseCamera: 'pick', chooseAlbum: 'pick' })))
+// 固件升级判断（2026-11-13）：功能按钮先判断再执行（须在 tapGuard 之内套）
+}, ['startProjection', 'openSlideshow', 'openInfo', 'openMessages', 'openTf', 'openShare', 'clearCopies']), { startProjection: 'projection', chooseCamera: 'pick', chooseAlbum: 'pick' })))

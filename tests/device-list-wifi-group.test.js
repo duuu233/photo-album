@@ -23,7 +23,7 @@ const plain = value => JSON.parse(JSON.stringify(value))
 
 function loadListPage(options = {}) {
   let definition
-  const state = { toasts: [], infoCalls: [], navs: [], selected: null, subs: [], unsubs: [], preSubscribed: options.preSubscribed || [] }
+  const state = { toasts: [], infoCalls: [], gateCalls: [], gatePass: true, navs: [], selected: null, subs: [], unsubs: [], preSubscribed: options.preSubscribed || [] }
   const wsHandlers = {}
   state.emit = (type, payload) => (wsHandlers[type] || []).slice().forEach(fn => fn(payload))
   const ws = {
@@ -58,6 +58,8 @@ function loadListPage(options = {}) {
     'tap-guard': require('../utils/tap-guard'),
     'fold-adapt': { adapt: value => value },
     'broadcast-match': match,
+    // 固件升级判断（2026-11-13）：判断本身在 tests/firmware-gate.test.js；这里记下调用并放行，只验接在了哪里
+    'firmware-gate': { guardAction: async device => { state.gateCalls.push(device && device.id); return state.gatePass !== false } },
     'iot-api': {
       getDeviceInfo: (deviceNo, opts) => {
         state.infoCalls.push([deviceNo, opts && opts.showError])
@@ -139,26 +141,39 @@ async function main() {
     state.hang = false
 
     // V1.4 更新说明 1.5：原「刷新状态」改为「轮播设置」；状态未知 / 离线也能进（查询只要权限）
-    page.openWifiSlideshow({ currentTarget: { dataset: { id: '3' } } })
+    await page.openWifiSlideshow({ currentTarget: { dataset: { id: '3' } } })
     assert.equal(state.navs.at(-1), '/subpackages/device/wifi-slideshow/wifi-slideshow?id=3', '进 WiFi 轮播设置页')
+    assert.deepEqual(state.gateCalls, ['3'], '进轮播设置前做固件升级判断')
     const navCount = state.navs.length
-    page.openWifiSlideshow({ currentTarget: { dataset: { id: '2' } } })
+    state.gatePass = false
+    await page.openWifiSlideshow({ currentTarget: { dataset: { id: '3' } } })
+    assert.equal(state.navs.length, navCount, '强制升级取消（或去升级了）就不进轮播设置')
+    state.gatePass = true
+    await page.openWifiSlideshow({ currentTarget: { dataset: { id: '2' } } })
     assert.equal(state.navs.length, navCount, '蓝牙版不走 WiFi 轮播页')
     assert.equal(typeof page.refreshWifiDevice, 'undefined', '「刷新状态」按钮已撤掉')
     checked('轮播设置进 WiFi 轮播页')
 
-    page.startWifiProjection({ currentTarget: { dataset: { id: '1' } } })
+    await page.startWifiProjection({ currentTarget: { dataset: { id: '1' } } })
     assert.equal(page.data.showMediaSheet, true, '在线的 WiFi 版点投屏直接弹拍照 / 相册')
     assert.equal(page._projectionDevice.id, '1')
+    assert.equal(state.gateCalls.at(-1), '1', '弹拍照 / 相册前做固件升级判断')
     assert.equal(state.selected, null, '不改当前选中设备')
     page.data.showMediaSheet = false
-    page.startWifiProjection({ currentTarget: { dataset: { id: '1' } } })
+    await page.startWifiProjection({ currentTarget: { dataset: { id: '1' } } })
     assert.equal(page.data.showMediaSheet, false, '紧接着再点一次投屏被防重复点击挡下（tap-guard 冷却中）')
     page.__tapGuard = {} // 模拟冷却已过，下面测离线拦截
+    state.gatePass = false
+    await page.startWifiProjection({ currentTarget: { dataset: { id: '1' } } })
+    assert.equal(page.data.showMediaSheet, false, '强制升级取消（或去升级了）就不弹拍照 / 相册')
+    state.gatePass = true
+    page.__tapGuard = {}
     page.data.devices = page.data.devices.map(item => (item.id === '1' ? Object.assign({}, item, { wifiStatus: 'offline' }) : item))
-    page.startWifiProjection({ currentTarget: { dataset: { id: '1' } } })
+    const gateCount = state.gateCalls.length
+    await page.startWifiProjection({ currentTarget: { dataset: { id: '1' } } })
     assert.equal(page.data.showMediaSheet, false, '离线先拦下')
     assert.equal(state.toasts.at(-1), '设备已离线，请检查设备网络')
+    assert.equal(state.gateCalls.length, gateCount, '离线先拦下，不做固件升级判断')
 
     page.selectDevice({ currentTarget: { dataset: { id: '1' } } })
     assert.equal(state.navs.at(-1), '/subpackages/device/wifi-detail/wifi-detail?id=1', '点 WiFi 卡进 WiFi 详情')

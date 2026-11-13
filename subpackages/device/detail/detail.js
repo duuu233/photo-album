@@ -15,6 +15,7 @@ const deviceName = require('../../../utils/device-name')
 const deviceIdUtil = require('../../../utils/device-id')
 const deviceIdentity = require('../../../utils/device-identity')
 const fold = require('../../../utils/fold-adapt')
+const firmwareGate = require('../../../utils/firmware-gate')
 
 const app = getApp()
 
@@ -260,7 +261,7 @@ function hasFirmwareUpdate(device) {
 
 // 折叠屏/分屏适配：Page 配置外面包一层 fold.adapt（方案见 utils/fold-adapt.js 与
 // styles/fold-adapt.wxss）。只叠加「形态变化后重测状态栏/安全区」等钩子，页面原有配置一字不改。
-Page(fold.adapt(tapGuard.wrap({
+Page(fold.adapt(tapGuard.wrap(firmwareGate.wrapActions({
   data: {
     statusBarHeight: 20,
     safeBottom: 0,
@@ -501,6 +502,31 @@ Page(fold.adapt(tapGuard.wrap({
       loading: false,
       loadError: false
     })
+    this.checkFirmwareOnEnter()
+  },
+
+  // ── 固件升级判断（2026-11-13，规则见 utils/firmware-gate.js）──
+  // 已连接才判断；强制升级与强提醒升级都弹。判定直接用「固件升级」行红点的结果（firmwareHasUpdate），红点亮 = 会弹。
+  // 不用弹返回 true；要弹返回 Promise<boolean>（true = 这次操作继续）。
+  firmwareGate() {
+    const device = this.data.device
+    if (!device || !device.connected) {
+      return true
+    }
+    this._fwEntered = true // 已连接状态下判断过一次，就不再补「进入后」那一次
+    const decision = firmwareGate.decide(device, { connected: true, hasUpdate: !!this.data.firmwareHasUpdate })
+    if (!decision.mode) {
+      return true
+    }
+    return firmwareGate.prompt(device, decision, { liveId: activeDevice.findConnectedDeviceId(device) || device.deviceId })
+  },
+
+  // 进入后判断一次：本页第一次拿到「已连接」的设备信息时（进页已连着，或在本页连上后）弹，之后回到本页不再弹
+  checkFirmwareOnEnter() {
+    if (this._fwEntered || !this.data.device || !this.data.device.connected) {
+      return
+    }
+    this.firmwareGate()
   },
 
   renameDevice() {
@@ -676,6 +702,10 @@ Page(fold.adapt(tapGuard.wrap({
       // 已连接这一支没走 connectDevice，低电量提醒在这里补（2026-08-21：主动点投屏就要提示）
       await lowBattery.warnIfLow(activeDevice.findConnectedDeviceId(device), { device })
     }
+    // 固件升级判断放在连上之后（未连接时无从判断）：强制升级取消或去升级了就不弹拍照 / 相册
+    if (!(await this.firmwareGate())) {
+      return
+    }
 
     // 设为当前选中设备，预览/结果页据此连接并图传
     app.setSelectedDevice(device)
@@ -792,7 +822,10 @@ Page(fold.adapt(tapGuard.wrap({
       return
     }
 
-    await this.connectDevice()
+    // 在本页连上后补「进入后」那次固件升级判断（进页时未连接无从判断）
+    if (await this.connectDevice()) {
+      this.checkFirmwareOnEnter()
+    }
   },
 
   // 扫描匹配并连接当前设备（「连接」按钮与「投屏」按钮共用）：
@@ -1462,4 +1495,6 @@ Page(fold.adapt(tapGuard.wrap({
       }
     })
   }
-}, { startProjection: 'projection', chooseCamera: 'pick', chooseAlbum: 'pick' })))
+// 固件升级判断（2026-11-13）：功能按钮先判断再执行。投屏在方法内连上之后判断；
+// 连接 / 断开、固件升级行、删除设备、重新加载不判断
+}, ['renameDevice', 'goSlideshow', 'clearCopies']), { startProjection: 'projection', chooseCamera: 'pick', chooseAlbum: 'pick' })))

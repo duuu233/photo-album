@@ -56,6 +56,9 @@ stubModule('../utils/active-device', {
   applyConnectedIdentity: item => item
 })
 stubModule('../utils/low-battery', { warnIfLow: async () => trace.push('lowBattery') })
+// 固件升级判断（2026-11-13）：判断本身在 tests/firmware-gate.test.js；这里记下调用，只验接在在线确认之后
+let gatePass = true
+stubModule('../utils/firmware-gate', { guardAction: async device => { trace.push(`gate:${device && device.id}`); return gatePass } })
 
 let home = null
 global.Page = config => { home = config }
@@ -109,9 +112,15 @@ async function main() {
     online = true
     assert.equal(await page.ensureCanProject(), true, '在线放行')
     assert.equal(trace.filter(item => item.startsWith('ble:')).length, 0, 'WiFi 版不走蓝牙连接')
+    assert.equal(trace.at(-1), 'gate:21', '在线确认之后做固件升级判断')
+    gatePass = false
+    assert.equal(await page.ensureCanProject(), false, '强制升级取消（或去升级了）就不进选图')
+    gatePass = true
     online = false
+    trace.length = 0
     assert.equal(await page.ensureCanProject(), false, '明确离线拦下')
     assert.equal(toasts.at(-1), '设备已离线，请检查设备网络')
+    assert.equal(trace.filter(item => item.startsWith('gate:')).length, 0, '离线不做固件升级判断')
     online = Object.assign(new Error('服务暂时不可用'), { code: 503 })
     assert.equal(await page.ensureCanProject(), true, '查不到放行，由投屏接口裁决')
     console.log('PASS 拍照 / 相册入口：WiFi 版只确认在线，不连蓝牙')

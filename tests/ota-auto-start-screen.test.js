@@ -6,7 +6,7 @@
 // 80ms 后 runUpgrade 才把画面切成进行中 —— 那 80ms 就是用户看到的一闪。
 // auto=1 这条路根本不需要用户再按一次，所以直接以进行中画面落地。
 //
-// 反面用例同样要锁住：**没有 auto** 时（app.js 强制升级弹窗那条路）按钮必须照常出现，
+// 反面用例同样要锁住：**没有 auto** 时（直接进升级页；原 app.js 启动强制升级弹窗那条路 2026-11-13 已撤）按钮必须照常出现，
 // 否则用户进了升级页却没有任何可点的东西。
 const assert = require('assert')
 const path = require('path')
@@ -98,7 +98,7 @@ function makePage(autoStart) {
     assert.strictEqual(ctx.data.progressPercent, 0, '进度从 0 起，接着 runUpgrade 往下走')
   }
 
-  // ── 无 auto（强制升级弹窗那条路）：按钮照常出现 ────────────────────────
+  // ── 无 auto（直接进升级页）：按钮照常出现 ────────────────────────
   {
     const ctx = makePage(false)
     await ctx.loadFirmware()

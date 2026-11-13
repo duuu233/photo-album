@@ -108,9 +108,13 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 同日按修订版 `docs/wifi/前端对接文档20261105-1.md`（与上一版冲突以它为准）：基础配置做成「简单模式」卡片（启用开关默认开；关闭不提交 `timingTime` / `beginTime` / `endTime` / `updateDays` / `updateTimeList` 与基础 `mode` / `imgUrls`，回显时当前模式基础字段为空即关闭）；简单模式或任一高级卡片启用才能保存，否则按钮置灰「至少配置一项」；固定 `updateDays` 1~30（只跟着 `updateTimeList` 带，存量 > 30 回显并提示）；纪念日月 / 日两列选择，2 月最多 28 日；选图统一底部弹层（上滑动效、每行 3 张同「我的上传」、照片按页取每页 21 张、滑到底显示下一页）；时区按语种显示「中国 / 北京」（`time-zone.label` / `options` 收语种，提交仍 IANA）；「设置时间：」+「下次刷新：MM-dd HH:mm · 卡片类型」（`wifi-strategy.nextRefreshLine`）；我的设备 / WiFi 详情「轮播设置」去掉「轮播中」文字，running 且在线时图标变绿（`device-detail-icon01-on.png`）+ 绿点。见 `docs/changes/2026-11-05-WiFi版轮播按对接文档修订版.md`。
 
+## 固件强制升级 / 强提醒升级（2026-11-13，`main`）
+
+`utils/firmware-gate.js`。WiFi 版在线、蓝牙版已连接才判断；升级方式取详情出参 `compulsory`（兜底 `updateType` 等，归一到 `updateType`；1 强制，其它强提醒）；有无新版本与详情页「固件升级」红点同一套判定（WiFi 有进行中的升级不弹）。设备详情页（`detail` / `wifi-detail`）进入后判断一次、点功能按钮先判断（强制 + 强提醒，按钮用 `wrapActions` 包，不用弹时同步执行）；设备列表页投屏 / WiFi 轮播设置、首页拍照 / 相册投屏用 `guardAction` 现查，只判强制。强制升级取消 → 这次操作不继续；强提醒取消 → 继续；立即升级进升级页（蓝牙 `ota?auto=1`）。连接 / 断开、固件升级行、解绑、删除不判断；查询失败放行。见 `docs/changes/2026-11-13-固件强制升级与强提醒升级判断.md`。
+
 ## WiFi 版固件升级（2026-11-02，`main-wifi`）
 
-依据 `docs/前端对接文档20261031.md`。WiFi 详情「固件升级」行（当前 `firmwareVersion` + 新版本红点）→ `subpackages/device/wifi-ota`（版式与配网状态页同一套，`@import` 其 wxss）。目标版本 / 固件包取老服务 `getDeviceDetail` 的 `newVersionNo` / `downloadPath`，`utils/wifi-ota.evaluate` 按 `x.y.z` 数字段比较，当前版本空或旧格式（`M H:3 F:…`）按「无法判断」。`POST /api/device/ota`（`type=main`）成功立即把 `{ type:'ota', msgid, … }` 存到独立 key `ota_inflight:{deviceNo}`；3 秒轮询 `GET /api/device/ota/status` + WS `ota.result` 按 msgid 刷新。四步 `SENT` / `DOWNLOADING` / `FLASHING` / `VERIFYING`：`VERIFYING` 是步骤页成功终点但不是终态（记录保留到 `SUCCESS` / `FAILED` / `TIMEOUT` 或 `4044` 才清）；`FAILED` / `TIMEOUT` 在当前步打叉。**提示「有新版本」前先看本地记录**（详情红点、升级页、`app.js` 强制升级弹窗三处），`VERIFYING` 后重进只显示「升级完成 · 等待设备重启」。`4045` 与 OTA 上的 `4000` 按「设备正在升级」，不当普通失败。消息类型 `OTA_SUCCESS` / `OTA_FAILED`。见 `docs/changes/2026-11-02-WiFi版固件升级OTA.md`。进度条（2026-11-12）：步骤上方一条，文案为当前步骤；`ota/status` 与 WS `ota.result` 的 `progress`（20/40/60/80，VERIFYING 100，不上报为 null）只抬上限，显示值每 200ms 匀速走 1%：没收到停 19、收到 P 走到 P+19（最多 98；19 / 39 / 59 / 79 必须等下一档数值，状态推进不放开，2026-11-13）、一个数值都没收到就进入 FLASHING（不上报）走到 98、VERIFYING 100、失败停住；最大进度存进 `ota_inflight` 记录（`utils/wifi-ota.progressCap`，见 `docs/changes/2026-11-12-WiFi投屏步骤与OTA进度条.md`、`docs/changes/2026-11-13-OTA进度条等待点必须等下一档.md`）。
+依据 `docs/前端对接文档20261031.md`。WiFi 详情「固件升级」行（当前 `firmwareVersion` + 新版本红点）→ `subpackages/device/wifi-ota`（版式与配网状态页同一套，`@import` 其 wxss）。目标版本 / 固件包取老服务 `getDeviceDetail` 的 `newVersionNo` / `downloadPath`，`utils/wifi-ota.evaluate` 按 `x.y.z` 数字段比较，当前版本空或旧格式（`M H:3 F:…`）按「无法判断」。`POST /api/device/ota`（`type=main`）成功立即把 `{ type:'ota', msgid, … }` 存到独立 key `ota_inflight:{deviceNo}`；3 秒轮询 `GET /api/device/ota/status` + WS `ota.result` 按 msgid 刷新。四步 `SENT` / `DOWNLOADING` / `FLASHING` / `VERIFYING`：`VERIFYING` 是步骤页成功终点但不是终态（记录保留到 `SUCCESS` / `FAILED` / `TIMEOUT` 或 `4044` 才清）；`FAILED` / `TIMEOUT` 在当前步打叉。**提示「有新版本」前先看本地记录**（详情红点、升级页、`utils/firmware-gate.js` 固件升级判断三处；2026-11-13 前为 `app.js` 启动强制升级弹窗），`VERIFYING` 后重进只显示「升级完成 · 等待设备重启」。`4045` 与 OTA 上的 `4000` 按「设备正在升级」，不当普通失败。消息类型 `OTA_SUCCESS` / `OTA_FAILED`。见 `docs/changes/2026-11-02-WiFi版固件升级OTA.md`。进度条（2026-11-12）：步骤上方一条，文案为当前步骤；`ota/status` 与 WS `ota.result` 的 `progress`（20/40/60/80，VERIFYING 100，不上报为 null）只抬上限，显示值每 200ms 匀速走 1%：没收到停 19、收到 P 走到 P+19（最多 98；19 / 39 / 59 / 79 必须等下一档数值，状态推进不放开，2026-11-13）、一个数值都没收到就进入 FLASHING（不上报）走到 98、VERIFYING 100、失败停住；最大进度存进 `ota_inflight` 记录（`utils/wifi-ota.progressCap`，见 `docs/changes/2026-11-12-WiFi投屏步骤与OTA进度条.md`、`docs/changes/2026-11-13-OTA进度条等待点必须等下一档.md`）。
 
 ## 投屏按钮防重复点击（2026-11-04，`main-wifi`）
 
@@ -219,7 +223,7 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 ### 应用与会话
 
-- 职责：启动、登录态恢复、用户信息规范化、全局选中设备和强制升级检查。
+- 职责：启动、登录态恢复、用户信息规范化、全局选中设备。固件升级判断（2026-11-13）不在启动时做，见下方「固件强制升级 / 强提醒升级」。
 - 关键文件：
   - `app.js`
   - `pages/login/login.js`
