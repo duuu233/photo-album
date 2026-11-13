@@ -220,8 +220,7 @@ Page(fold.adapt(tapGuard.wrap({
     })).map((item, index, list) => Object.assign({}, item, {
       canDeleteHint: !item.connected && index === list.length - 1
     })).map(item => {
-      // WiFi 版先按接口下发的 versionType（2=wifi版）认，没有该字段再按所属产品的广播 ID（IJ_* 模板）；
-      // 其余一律按蓝牙版，蓝牙版字段与行为不变（与首页同一判断 isWifiDevice）
+      // WiFi 版只按接口下发的 versionType（2=wifi版）认，其余按蓝牙版，蓝牙版字段与行为不变（与首页同一判断 isWifiDevice）
       const isWifi = broadcastMatch.isWifiDevice(item)
       return isWifi
         ? Object.assign({}, item, { isWifi: true }, previousWifiFields(previousById[String(item.id)]))

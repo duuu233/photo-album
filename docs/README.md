@@ -59,7 +59,7 @@
 
 ## 变更记录
 
-- [2026-11-14 按 versionType 认 WiFi 版](changes/2026-11-14-按versionType认WiFi版.md)：`main` 分支。`isWifiDevice` 先认设备列表 / 详情接口的 `versionType`（2=wifi版），不再等产品列表才认出；我的设备列表也改走它。本机无 node 测试未跑。
+- [2026-11-14 按 versionType 认 WiFi 版](changes/2026-11-14-按versionType认WiFi版.md)：`main` 分支。`isWifiDevice` 只认设备列表 / 详情接口的 `versionType`（1=蓝牙版，2=wifi版），不再按 broadcastId 猜；首页透传 versionType，我的设备列表也改走它。本机无 node 测试未跑。
 - [2026-11-14 产品列表本地缓存](changes/2026-11-14-产品列表本地缓存.md)：`main` 分支。WiFi 设备首页 / 我的设备先显示成蓝牙版、首页 loading 偏久：产品列表存本地，下次启动不再等接口，后台再拉最新；详情补机型结果也存本地。本机无 node 测试未跑。
 - [2026-11-14 首页设备卡上下居中](changes/2026-11-14-首页设备卡上下居中.md)：`main` 分支。去掉文字块固定最小高度，与设备图一起上下居中；设备图改 aspectFit 不裁切；同 APP。未在真机核对。
 - [2026-11-14 「我的」页投屏张数统计每页 21](changes/2026-11-14-投屏张数统计每页21.md)：`main` 分支。单页 100 → 21，后端过滤时仍一次请求取总数；其余列表不变。本机无 node 测试未跑。

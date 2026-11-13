@@ -173,7 +173,7 @@ async function main() {
   }
 
   // ⑤ WiFi 版：不连蓝牙，确认在线后下载、进预览，设备带 isWifi
-  const wifiDevice = { id: '21', name: 'WiFi相框', broadcastId: 'IJ_*', productDeviceId: 'E3:48:C2:1E:D4:28' }
+  const wifiDevice = { id: '21', name: 'WiFi相框', broadcastId: 'IJ_*', versionType: 2, productDeviceId: 'E3:48:C2:1E:D4:28' }
   reset()
   connectedId = ''
   wifiOnline = true

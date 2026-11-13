@@ -1,6 +1,7 @@
 // 我的设备按 WiFi 版 / 蓝牙版分组（2026-10-27）：
 //   ① 已绑定记录按所属产品 broadcastId 认 WiFi 版（IJ_* 模板 / IJ_ 前缀），其余按蓝牙版；
-//      2026-11-14 起先认设备列表接口下发的 versionType（1=蓝牙版，2=wifi版），不用等产品列表；没有该字段再按 broadcastId；
+//      2026-11-14 有意改口径：只认设备列表接口下发的 versionType（1=蓝牙版，2=wifi版），不再按 broadcastId 猜；
+//      下面各用例的设备数据因此补上 versionType，原「IJ_* 是 WiFi 版」的判据挪到 versionType 上；
 //   ② WiFi 版状态来自 IoT GET /api/device/info：在线 / 离线 / 查不到（状态未知），在线才显示信号格与电量；
 //   ③ WiFi 版按钮：投屏不连蓝牙、直接弹拍照 / 相册；轮播设置进 WiFi 轮播页（V1.4 取代原「刷新状态」）；
 //      两个按钮点击都要在线（2026-11-14，原「轮播设置不拦离线」撤掉）；
@@ -35,9 +36,9 @@ function loadListPage(options = {}) {
     getSubscriptions: () => state.preSubscribed.slice()
   }
   const devices = options.devices || [
-    { id: '1', name: '客厅WiFi', broadcastId: 'IJ_*', productDeviceId: 'E3:48:C2:1E:D4:28', deviceNo: 'E3:48:C2:1E:D4:28' },
-    { id: '2', name: '卧室蓝牙', broadcastId: 'EF6-370', productDeviceId: 'AA:BB:CC:DD:EE:01', deviceNo: 'AA:BB:CC:DD:EE:01' },
-    { id: '3', name: '书房WiFi', broadcastId: 'IJ_', productDeviceId: 'D0:CF:13:F0:2F:F8', deviceNo: 'D0:CF:13:F0:2F:F8' }
+    { id: '1', name: '客厅WiFi', broadcastId: 'IJ_*', versionType: 2, productDeviceId: 'E3:48:C2:1E:D4:28', deviceNo: 'E3:48:C2:1E:D4:28' },
+    { id: '2', name: '卧室蓝牙', broadcastId: 'EF6-370', versionType: 1, productDeviceId: 'AA:BB:CC:DD:EE:01', deviceNo: 'AA:BB:CC:DD:EE:01' },
+    { id: '3', name: '书房WiFi', broadcastId: 'IJ_', versionType: 2, productDeviceId: 'D0:CF:13:F0:2F:F8', deviceNo: 'D0:CF:13:F0:2F:F8' }
   ]
   const modules = {
     api: { getDevices: async () => devices.map(item => Object.assign({}, item)) },
@@ -111,13 +112,13 @@ async function main() {
     checked('按产品 broadcastId 认 WiFi 版')
   }
   {
-    // versionType 优先（2026-11-14）：产品列表还没回来、记录里没有 broadcastId 时也认得出
+    // 只认 versionType（2026-11-14，用户口径）：产品列表还没回来、记录里没有 broadcastId 时也认得出
     assert.equal(match.isWifiDevice({ versionType: 2 }), true)
     assert.equal(match.isWifiDevice({ versionType: '2' }), true, '字符串也认')
     assert.equal(match.isWifiDevice({ versionType: 1, broadcastId: 'IJ_*' }), false, 'versionType 说是蓝牙版就按蓝牙版')
     assert.equal(match.isWifiDevice({ versionType: 2, broadcastId: 'EF6-370' }), true, 'versionType 说是 WiFi 版就按 WiFi 版')
-    assert.equal(match.isWifiDevice({ broadcastId: 'IJ_*' }), true, '没有 versionType 仍按 broadcastId')
-    assert.equal(match.isWifiDevice({ versionType: null, commType: 'WIFI' }), true, '没有 versionType 仍认 commType')
+    assert.equal(match.isWifiDevice({ broadcastId: 'IJ_*' }), false, '不再按 broadcastId 猜 WiFi 版')
+    assert.equal(match.isWifiDevice({ isWifi: true }), true, '已按 versionType 判过、往下游传的 isWifi 标记照认')
     assert.equal(match.isWifiDevice({}), false)
     assert.equal(match.isWifiDevice(null), false)
 
@@ -237,7 +238,7 @@ async function main() {
     checked('状态推送：订阅 / 推送重查一台 / 重连全部重查 / 隐藏退订')
   }
   {
-    const { page, state } = loadListPage({ devices: [{ id: '9', name: '蓝牙', broadcastId: 'EB-169', productDeviceId: 'AA:BB:CC:DD:EE:09' }] })
+    const { page, state } = loadListPage({ devices: [{ id: '9', name: '蓝牙', broadcastId: 'EB-169', versionType: 1, productDeviceId: 'AA:BB:CC:DD:EE:09' }] })
     await page.loadDevices()
     assert.deepEqual(state.subs, [], '纯蓝牙版用户不订阅、不建长连接')
     assert.equal(page.data.wifiCount, 0, '没有 WiFi 版')
@@ -263,7 +264,7 @@ async function main() {
     assert.equal(empty.page.data.deviceTab, 'wifi', '没有设备：落在 WiFi 版，显示空态')
     empty.page.goBind()
     assert.deepEqual(empty.state.navs, ['/subpackages/device/bind/bind'], '空态点击进搜索设备页')
-    const wifiOnly = loadListPage({ devices: [{ id: '1', name: 'WiFi', broadcastId: 'IJ_*', productDeviceId: 'E3:48:C2:1E:D4:28' }] })
+    const wifiOnly = loadListPage({ devices: [{ id: '1', name: 'WiFi', broadcastId: 'IJ_*', versionType: 2, productDeviceId: 'E3:48:C2:1E:D4:28' }] })
     await wifiOnly.page.loadDevices()
     assert.equal(wifiOnly.page.data.deviceTab, 'wifi')
     const select = loadListPage()
@@ -280,11 +281,11 @@ async function main() {
     assert.equal(ble.page.data.deviceTab, 'ble', '两类都有，从蓝牙版卡进来停在蓝牙版')
     await ble.page.loadDevices()
     assert.equal(ble.page.data.deviceTab, 'ble', '重拉列表保持')
-    const wifi = loadListPage({ devices: [{ id: '9', name: '蓝牙', broadcastId: 'EB-169', productDeviceId: 'AA:BB:CC:DD:EE:09' }] })
+    const wifi = loadListPage({ devices: [{ id: '9', name: '蓝牙', broadcastId: 'EB-169', versionType: 1, productDeviceId: 'AA:BB:CC:DD:EE:09' }] })
     wifi.page.onLoad({ tab: 'wifi' })
     await wifi.page.loadDevices()
     assert.equal(wifi.page.data.deviceTab, 'wifi', '指定了 WiFi版：没有 WiFi 版也停在该 Tab（空态），不落到蓝牙版')
-    const none = loadListPage({ devices: [{ id: '9', name: '蓝牙', broadcastId: 'EB-169', productDeviceId: 'AA:BB:CC:DD:EE:09' }] })
+    const none = loadListPage({ devices: [{ id: '9', name: '蓝牙', broadcastId: 'EB-169', versionType: 1, productDeviceId: 'AA:BB:CC:DD:EE:09' }] })
     none.page.onLoad({})
     await none.page.loadDevices()
     assert.equal(none.page.data.deviceTab, 'ble', '不带 tab（六宫格「我的设备」）仍按默认规则')

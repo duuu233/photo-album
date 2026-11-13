@@ -1464,6 +1464,7 @@ module.exports = {
     }
     const wifiFields = {
       commType: 'WIFI',
+      versionType: 2,
       wifiDeviceNo: serial,
       broadcastName: options.broadcastName || ''
     }

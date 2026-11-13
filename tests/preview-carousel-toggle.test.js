@@ -50,8 +50,8 @@ function page() {
   return instance
 }
 
-const wifiDevice = { id: 'W1', name: 'WiFi相框', broadcastId: 'IJ_*', productDeviceId: 'D0:CF:13:F0:2F:F8' }
-const bleDevice = { id: 'B1', name: '蓝牙相框', broadcastId: 'EF6-370', deviceNo: 'AABBCCDDEE01' }
+const wifiDevice = { id: 'W1', name: 'WiFi相框', broadcastId: 'IJ_*', versionType: 2, productDeviceId: 'D0:CF:13:F0:2F:F8' }
+const bleDevice = { id: 'B1', name: '蓝牙相框', broadcastId: 'EF6-370', versionType: 1, deviceNo: 'AABBCCDDEE01' }
 
 async function main() {
   const log = console.warn

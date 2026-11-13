@@ -221,6 +221,8 @@ function normalizeDevice(device) {
     height: device.height,
     // 尺寸型号（如「5.89寸」，设备列表接口下发的后台产品配置）：设备卡标签显示，蓝牙版 / WiFi 版同口径
     sizeModel: String(device.sizeModel || '').trim(),
+    // 版本类型（设备列表接口下发，1=蓝牙版，2=wifi版）：设备卡 WiFi版 / 蓝牙版只按它判断，必须透传
+    versionType: device.versionType,
     shapeType: device.shapeType,
     // 设备图按机型区分（见 utils/device-thumb.js）；broadcastId 一并透传，选中设备存下来再归一化时仍认得出机型
     broadcastId: device.broadcastId,

@@ -104,8 +104,9 @@ function isWifiBroadcastId(broadcastId) {
 const VERSION_TYPE_BLE = 1
 const VERSION_TYPE_WIFI = 2
 
-// 设备记录是不是 WiFi 版：先认接口下发的 versionType（以后台产品配置为准，不用等产品列表）；
-// 没有该字段时再看列表页打过的 isWifi、配网绑定回来的 commType，或所属产品的广播 ID
+// 设备记录是不是 WiFi 版：只认设备列表 / 详情接口下发的 versionType（2=wifi版，1=蓝牙版）。
+// 没有 versionType 的只认页面已按它判过、往下游传时打上的 isWifi: true（如待投屏设备）；
+// 不再按产品 broadcastId 猜（它要等产品列表，冷启动会先把 WiFi 版当成蓝牙版）。
 function isWifiDevice(device) {
   if (!device) {
     return false
@@ -117,7 +118,7 @@ function isWifiDevice(device) {
   if (versionType === VERSION_TYPE_BLE) {
     return false
   }
-  return device.isWifi === true || device.commType === COMM_WIFI || isWifiBroadcastId(device.broadcastId)
+  return device.isWifi === true
 }
 
 // 完整蓝牙广播名（2026-10-27，绑定时默认昵称用）：name / localName 取较长的那个。

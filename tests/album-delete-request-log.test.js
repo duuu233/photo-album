@@ -119,8 +119,8 @@ global.getApp = () => ({ globalData: {} })
     global.Page = options => { pageOptions = options }
     require('../subpackages/album/list/list.js')
 
-    const wifiDevice = { id: 'W1', userProductId: 'W1', name: 'WiFi相框', broadcastId: 'IJ_*', productDeviceId: 'D0:CF:13:F0:2F:F8' }
-    const bleDevice = { id: 'B1', userProductId: 'B1', name: '蓝牙相框', broadcastId: 'EF6-370', productDeviceId: 'AA:BB:CC:DD:EE:01' }
+    const wifiDevice = { id: 'W1', userProductId: 'W1', name: 'WiFi相框', broadcastId: 'IJ_*', versionType: 2, productDeviceId: 'D0:CF:13:F0:2F:F8' }
+    const bleDevice = { id: 'B1', userProductId: 'B1', name: '蓝牙相框', broadcastId: 'EF6-370', versionType: 1, productDeviceId: 'AA:BB:CC:DD:EE:01' }
     const makePage = (records, selected) => {
       const ctx = Object.create(pageOptions)
       ctx.data = {

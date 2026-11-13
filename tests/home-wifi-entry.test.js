@@ -68,8 +68,8 @@ function newPage(data) {
   return page
 }
 
-const wifiDevice = { id: '21', name: 'WiFi相框', broadcastId: 'IJ_*', productDeviceId: 'E3:48:C2:1E:D4:28' }
-const bleDevice = { id: '9', name: '蓝牙相框', broadcastId: 'EF6-370', productDeviceId: 'AA:BB:CC:DD:EE:09' }
+const wifiDevice = { id: '21', name: 'WiFi相框', broadcastId: 'IJ_*', versionType: 2, productDeviceId: 'E3:48:C2:1E:D4:28' }
+const bleDevice = { id: '9', name: '蓝牙相框', broadcastId: 'EF6-370', versionType: 1, productDeviceId: 'AA:BB:CC:DD:EE:09' }
 
 async function main() {
   {
@@ -90,9 +90,16 @@ async function main() {
     assert.deepEqual(trace.filter(item => item.startsWith('info:')), ['info:E3:48:C2:1E:D4:28'], '只查 WiFi 版')
     console.log('PASS 设备卡：WiFi 版打标记并按云端状态刷新')
 
+    // 只按接口 versionType 判（2026-11-14）：冷启动产品列表没回来、记录没有 broadcastId 也不能先显示成蓝牙版；
+    // 首页 normalizeDevice 是白名单裁剪，必须把 versionType 带过去，否则设备卡拿不到它
+    assert.equal(newPage({ deviceList: [] }).tagWifiCard({ id: '31', versionType: 2 }).isWifi, true, '没有 broadcastId 也按 versionType 认 WiFi 版')
+    assert.equal(newPage({ deviceList: [] }).tagWifiCard({ id: '32', versionType: 1, broadcastId: 'IJ_*' }).isWifi, false, 'versionType=1 就是蓝牙版')
+    assert.ok(/versionType: device\.versionType/.test(fs.readFileSync(path.join(root, 'pages/home/home.js'), 'utf8')), '首页 normalizeDevice 透传 versionType')
+    console.log('PASS 设备卡：只按 versionType 判 WiFi 版 / 蓝牙版')
+
     // 状态推送（2026-10-27，utils/wifi-watch）：推送带去冒号的 deviceNo，只重查那一台
     trace.length = 0
-    const other = page.tagWifiCard({ id: '22', name: 'WiFi相框2', broadcastId: 'IJ_*', productDeviceId: 'D0:CF:13:F0:2F:F8' })
+    const other = page.tagWifiCard({ id: '22', name: 'WiFi相框2', broadcastId: 'IJ_*', versionType: 2, productDeviceId: 'D0:CF:13:F0:2F:F8' })
     const two = newPage({ deviceList: [wifi, other], currentDeviceIndex: 0, currentDevice: wifi })
     await two.refreshWifiCards(['D0CF13F02FF8'])
     assert.deepEqual(trace.filter(item => item.startsWith('info:')), ['info:D0:CF:13:F0:2F:F8'], '推送只重查那一台')

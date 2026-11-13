@@ -76,7 +76,7 @@ WiFi 版设备走独立的 XT IoT 服务（`iot.boltfox.cn`），按 `docs/wifi/
 
 ## 我的设备分组（2026-10-27，`main-wifi`）
 
-「我的设备」按所属产品 `broadcastId` 分 WiFi版 / 蓝牙版两组（`broadcast-match.isWifiBroadcastId` / `isWifiDevice`：`*` 模板或 `IJ_` 前缀为 WiFi 版，其余蓝牙版）。蓝牙卡不变；WiFi 卡状态取 IoT `/api/device/info`（在线 / 离线 / 状态未知，在线显示信号格与电量），按钮「投屏」+「刷新状态」，点卡片进 `subpackages/device/wifi-detail`（蓝牙详情页遇 WiFi 版也会 redirect 过去）；选相框模式不让选 WiFi 版。
+「我的设备」分 WiFi版 / 蓝牙版两组（2026-11-14 起只按接口 `versionType` 判断，见下文「WiFi / 蓝牙版判断」；原按产品 `broadcastId` 的 `*` 模板或 `IJ_` 前缀认 WiFi 版已停用）。蓝牙卡不变；WiFi 卡状态取 IoT `/api/device/info`（在线 / 离线 / 状态未知，在线显示信号格与电量），按钮「投屏」+「刷新状态」，点卡片进 `subpackages/device/wifi-detail`（蓝牙详情页遇 WiFi 版也会 redirect 过去）；选相框模式不让选 WiFi 版。
 
 2026-11-06 起分组改为顶部 Tab 切换（WiFi版 / 蓝牙版，样式同投屏记录页 `.record-tabs`，本地过滤不重新请求）：添加按钮常驻、单独一行在 Tab 上方；当前 Tab 没设备显示默认设备图 + 加号，整块点击进搜索设备页；默认 WiFi版（选相框模式蓝牙版，默认那类没设备而另一类有就落到有设备的），用户点过后重拉列表保持。见 `docs/changes/2026-11-06-我的设备改Tab切换.md`。2026-11-12 起首页设备卡进来带 `?tab=wifi / ble`（按卡片设备类型），列表默认停在该 Tab 并按用户选过处理（没有该类设备显示该 Tab 空态，选相框模式不认），六宫格等其他入口不带、默认规则不变，见 `docs/changes/2026-11-12-首页设备卡进设备列表默认对应Tab.md`。
 
@@ -151,7 +151,7 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 首页设备卡、我的设备、设备详情、搜索设备、命名弹窗、投屏选设备六处设备图统一由 `utils/device-thumb.js` 按产品 `broadcastId` 决定：EB-169（圆屏）用 `home-device-circle-thumb`，EC-370 用 `home-device-rectangle-thumb`，其余用原 `home-device-thumb`。已绑定记录用设备列表接口下发的 `broadcastId`，缺失或不是产品列表里的广播名时（2026-10-23）由 `api.getDevices/getDeviceDetail` 按 productId 回查产品列表补上，`getDevices` 仍认不出的记录再按 userProductId 静默调详情接口补（会话内复用，2026-10-23），`bindDevice` 按广播名命中产品 broadcastId 加权匹配产品并写入；搜索结果按蓝牙广播名；用户起的设备名不参与；兜底 `shapeType === 1` 视为圆屏。新增机型只需在 `THUMB_BY_BROADCAST_ID` 加一行。详见 `docs/changes/2026-10-22-设备图按机型区分.md`。
 
-WiFi / 蓝牙版判断（2026-11-14）：设备列表 / 详情接口下发 `versionType`（1=蓝牙版，2=wifi版），`broadcast-match.isWifiDevice` 先认它，没有该字段再按 isWifi / commType / 产品 `broadcastId`；首页、我的设备等都走 `isWifiDevice`。见 `docs/changes/2026-11-14-按versionType认WiFi版.md`。
+WiFi / 蓝牙版判断（2026-11-14）：设备列表 / 详情接口下发 `versionType`（1=蓝牙版，2=wifi版），`broadcast-match.isWifiDevice` 只认它（没有该字段只认下游已打的 `isWifi: true`），不再按产品 `broadcastId` 猜；首页 `normalizeDevice` 透传 versionType；首页、我的设备等都走 `isWifiDevice`。搜索设备页（绑定前）仍按扫描 `commType`。见 `docs/changes/2026-11-14-按versionType认WiFi版.md`。
 
 产品列表本地缓存（2026-11-14）：冷启动设备列表最多等产品列表 3 秒（设备图 / 机型）。`api.js` 把产品列表存本地 `product_catalog_cache`，冷启动直接用、后台再拉最新覆盖；存的那份认不出设备 productId 时 `getDevices` 仍最多等 3 秒拿最新的；详情补机型认出的 `broadcastId` 存 `device_broadcast_id_cache`。见 `docs/changes/2026-11-14-产品列表本地缓存.md`。
 
