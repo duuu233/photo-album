@@ -49,10 +49,13 @@ module.exports = {
     if (opts.renderMode) {
       formData.renderMode = String(opts.renderMode)
     }
+    // 幂等键（2026-11-13，服务端按 deviceNo + 键去重 10 分钟）：一张图一个，「重试未成功的」复用、新操作换新；见 utils/wifi-projection.js
+    const header = opts.idempotencyKey ? { 'Idempotency-Key': String(opts.idempotencyKey) } : undefined
     return iot.upload('/api/device/play', {
       filePath,
       name: 'file',
       formData,
+      header,
       timeout: PLAY_TIMEOUT_MS,
       showError: opts.showError,
       onProgress: opts.onProgress

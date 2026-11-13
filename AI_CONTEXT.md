@@ -108,6 +108,10 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 同日按修订版 `docs/wifi/前端对接文档20261105-1.md`（与上一版冲突以它为准）：基础配置做成「简单模式」卡片（启用开关默认开；关闭不提交 `timingTime` / `beginTime` / `endTime` / `updateDays` / `updateTimeList` 与基础 `mode` / `imgUrls`，回显时当前模式基础字段为空即关闭）；简单模式或任一高级卡片启用才能保存，否则按钮置灰「至少配置一项」；固定 `updateDays` 1~30（只跟着 `updateTimeList` 带，存量 > 30 回显并提示）；纪念日月 / 日两列选择，2 月最多 28 日；选图统一底部弹层（上滑动效、每行 3 张同「我的上传」、照片按页取每页 21 张、滑到底显示下一页）；时区按语种显示「中国 / 北京」（`time-zone.label` / `options` 收语种，提交仍 IANA）；「设置时间：」+「下次刷新：MM-dd HH:mm · 卡片类型」（`wifi-strategy.nextRefreshLine`）；我的设备 / WiFi 详情「轮播设置」去掉「轮播中」文字，running 且在线时图标变绿（`device-detail-icon01-on.png`）+ 绿点。见 `docs/changes/2026-11-05-WiFi版轮播按对接文档修订版.md`。
 
+## WiFi 投屏幂等键（2026-11-13，`main`）
+
+`POST /api/device/play` 带 Header `Idempotency-Key`（服务端 deviceNo + 键去重 10 分钟、失败不缓存）。play 没有自动网络重试，键为结果页「重试未成功的」服务：**批量投屏每张图各一个新键，不整批共用**；重试同一张、同样刷屏方式复用原键，刷屏方式变了换新键；新进入结果页全部新键。4090 = 同一键首次请求处理中，提示「处理中，请稍后重试」。生成见 `utils/wifi-projection.newPlayKey`，结果页 `_playKeys`。见 `docs/changes/2026-11-13-WiFi投屏幂等键.md`。
+
 ## WiFi 版优雅刷新升级（2026-11-13，`main`，原名渲染固件管理）
 
 渲染模式 `fpga16` 的设备（`api.resolveRenderMode`），设备信息页（`wifi-info`）有「优雅刷新升级」入口，直接进 `wifi-ota?mode=fpga`。最新版本只读设备详情 `newVersionNoFpga` / `downloadPathFpga` / `upgradeTipsFpga`（版本说明），没有版本列表。红点：本地缓存看过的版本号 `fpga_seen:{deviceNo}`，最新版本比缓存新（或缓存为空）时 WiFi 详情「设备信息」与设备信息页入口亮红点，进优雅刷新升级页即记下、消失（`utils/fpga-firmware.js` 的 `hasNew` / `markSeen`）。安装：不比对版本，`POST /api/device/ota` 传 `type=fpga`、`version`、`url`；进度 / 四步 / 本地记录与固件升级一致，只换文字并显示版本说明，记录带 `otaType`。设备不上报 FPGA 版本，不显示版本号；下发 4047 = 今日升级次数已达上限，按语种提示。见 `docs/changes/2026-11-13-WiFi渲染固件管理.md`。

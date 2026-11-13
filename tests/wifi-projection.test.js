@@ -15,6 +15,8 @@
 //      结果页写相册记录时不改文案（100% 只显示「已发送，屏幕即将刷新」）。
 //   ⑪ 相册记录存原图（2026-11-06）：投屏用图已按设备 verticalRotation 转过（IJ_101 竖向 180°，「我的上传」显示倒置），
 //      记录改传预览页备份的原图 _origSrc（云端先下载），长边缩到设备长边；没有 _origSrc / 下载失败才退回投屏图；投屏本身仍用转过的图。
+//   ⑫ 幂等键 Idempotency-Key（2026-11-13，服务端 deviceNo + 键去重 10 分钟、失败不缓存）：一张图一个键，Header 带、不进表单；
+//      「重试未成功的」同一张、同样刷屏方式复用原键，刷屏方式变了换新键；新进入结果页全部新键；4090 = 首次请求处理中。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -32,6 +34,7 @@ function setup(options = {}) {
       log.plays.push({ deviceNo, filePath, type, showError: opts.showError, refresh: opts.refresh })
       if (opts.addToCarousel) log.plays[log.plays.length - 1].addToCarousel = true
       if (opts.renderMode) log.plays[log.plays.length - 1].renderMode = opts.renderMode
+      if (opts.idempotencyKey) log.plays[log.plays.length - 1].idempotencyKey = opts.idempotencyKey
       ;[30, 100].forEach(p => opts.onProgress(p))
       if (options.delayMs) await new Promise(resolve => setTimeout(resolve, options.delayMs))
       if (options.playError) throw options.playError
@@ -66,6 +69,18 @@ function setup(options = {}) {
 }
 
 async function main() {
+  {
+    // ⑫ 幂等键（2026-11-13）：newPlayKey 为 UUID 形状、互不相同；projectOne 原样透传给 iot-api.play
+    const { run, log, projection } = setup()
+    const keys = Array.from({ length: 50 }, () => projection.newPlayKey())
+    assert.ok(keys.every(key => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(key) && key.length <= 64), keys[0])
+    assert.equal(new Set(keys).size, keys.length)
+    await run({ idempotencyKey: 'k-abc' })
+    assert.equal(log.plays[0].idempotencyKey, 'k-abc')
+    await run({})
+    assert.equal(log.plays[1].idempotencyKey, undefined, '不传就不带')
+    checked('projectOne：幂等键生成与透传')
+  }
   {
     const { run, log } = setup()
     const result = await run()
@@ -204,11 +219,20 @@ async function main() {
     assert.deepEqual(plain(uploads[4].opts.formData), { deviceNo: 'E348C21ED428', type: '0', renderMode: 'esp32' }, 'renderMode 原样带')
     assert.deepEqual(plain(uploads[5].opts.formData), { deviceNo: 'E348C21ED428', type: '0' }, '空 renderMode 不带')
     checked('iot-api.play：refresh / addToCarousel / renderMode 字段')
+    // ⑫ 幂等键（2026-11-13）：有键才带 Header Idempotency-Key，不放进表单字段
+    await iotApi.play('E3:48:C2:1E:D4:28', 'wxfile://a.png', 0, { idempotencyKey: 'k-1' })
+    assert.deepEqual(plain(uploads[6].opts.header), { 'Idempotency-Key': 'k-1' })
+    assert.deepEqual(plain(uploads[6].opts.formData), { deviceNo: 'E348C21ED428', type: '0' }, '键不进表单')
+    assert.equal(uploads[5].opts.header, undefined, '没键不带头')
+    const iotErrors = require('../utils/iot-errors')
+    const busy = iotErrors.fromResponse(200, { code: 4090, msg: 'idempotent request in progress' }, {})
+    assert.equal(busy.error.message, '处理中，请稍后重试', '4090：同一键首次请求还在处理中')
+    checked('iot-api.play：幂等键 Header；4090 文案')
   }
   {
     // 结果页：按真实源码装配，projectOne / 写相册记录用桩
     let definition
-    const calls = { plays: [], records: [], renderModeLookups: 0, screenTypeLookups: 0 }
+    const calls = { plays: [], records: [], renderModeLookups: 0, screenTypeLookups: 0, keySeq: 0 }
     const failIndex = { value: -1 }
     const carouselFailIndex = { value: -1 }
     const modules = {
@@ -234,9 +258,10 @@ async function main() {
       'fold-adapt': { adapt: value => value },
       dithering: { typeForDevice: () => '0' },
       'wifi-projection': {
+        newPlayKey: () => `key-${++calls.keySeq}`,
         projectOne: async opts => {
           const n = calls.plays.length
-          calls.plays.push({ file: opts.filePath, type: opts.type, refresh: opts.refresh, addToCarousel: opts.addToCarousel, renderMode: opts.renderMode })
+          calls.plays.push({ file: opts.filePath, type: opts.type, refresh: opts.refresh, addToCarousel: opts.addToCarousel, renderMode: opts.renderMode, key: opts.idempotencyKey })
           // 与真实 projectOne 一样先报上传中、处理中（步骤卡跟着推进）
           opts.onStage({ stage: 'UPLOADING', text: '图片上传中', progress: 10 })
           opts.onStage({ stage: 'PROCESSING', text: '图片处理中', progress: 60 })
@@ -297,6 +322,8 @@ async function main() {
     page.retryFailed()
     await new Promise(resolve => setTimeout(resolve, 20))
     assert.deepEqual(calls.plays.slice(3).map(item => [item.file, item.refresh]), [['wxfile://3.png', true]], '重试只投没成功的，本轮最后一张刷屏')
+    assert.equal(new Set(calls.plays.slice(0, 3).map(item => item.key)).size, 3, '幂等键：一张图一个')
+    assert.equal(calls.plays[3].key, calls.plays[2].key, '幂等键：「重试未成功的」同一张、同样刷屏方式复用原键')
     assert.equal(page.data.items[2].status, 'SENT')
     assert.equal(page.data.stageText, '已发送 3 张，屏幕即将刷新')
     assert.deepEqual(stepStatuses(page), ['done', 'done', 'done', 'done'], '全部成功四步全勾')
@@ -329,6 +356,25 @@ async function main() {
     const resultTpl = fs.readFileSync(path.join(root, 'subpackages/projection/wifi-result/wifi-result.wxml'), 'utf8')
     assert.ok(/wx:if="\{\{phase === 'done' && carouselTip\}\}"/.test(resultTpl), '结果下方追加一行')
     checked('结果页：同时加入轮播，未加入时提示')
+
+    // ⑫ 幂等键：新进入本页是新操作，全部新键；中间那张（原本只上传）失败、重试时成了本轮最后一张要刷屏 → 换新键，
+    // 否则若首次其实已处理，会拿回「只上传未刷屏」的旧结果
+    calls.plays.length = 0
+    pending.addToCarousel = false
+    failIndex.value = 1
+    const page5 = { ...definition, data: plain(definition.data), setData: page.setData }
+    page5.onLoad()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const firstKeys = calls.plays.map(item => item.key)
+    assert.ok(firstKeys.length === 3 && firstKeys.every(key => /^key-\d+$/.test(key)), '每张都带键')
+    assert.equal(page5.data.items[1].status, 'FAILED')
+    failIndex.value = -1
+    page5.retryFailed()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    assert.deepEqual(calls.plays.slice(3).map(item => [item.file, item.refresh]), [['wxfile://2.png', true]])
+    assert.notEqual(calls.plays[3].key, firstKeys[1], '刷屏方式变了：换新键')
+    assert.ok(!firstKeys.includes(calls.plays[3].key))
+    checked('结果页：幂等键按「图 + 刷屏方式」复用，新操作新键')
 
     // ⑪ 相册记录存原图：投屏仍用转过的成品，记录 img 用 _origSrc（本地直用 / 云端下载 / 下载失败退回投屏图）
     calls.plays.length = 0

@@ -17,6 +17,14 @@
 //   ⑥ renderMode（2026-10-28）：后台产品配置的渲染模式，调用方用 api.resolveRenderMode 取好传进来，有值才带、原样传。
 // 返回里带 binUrl：结果页拿它写老服务相册记录（imgBle），「我的上传」、轮播选图、删除都靠这条记录。
 //
+// ── 幂等键 Idempotency-Key（2026-11-13，服务端按 deviceNo + 键去重 10 分钟，失败不缓存）──
+// play 没有自动网络重试，键只为结果页「重试未成功的」：弱网超时而服务端其实已处理时，用原键重试拿回旧结果，不会重复投屏。
+//   · 一张图一个键（一次请求一张）：**批量投屏每张图各生成一个新键，绝不整批共用一个**；新操作（新进入结果页、继续投屏）一律新键；
+//   · 「重试未成功的」复用原键——但同一张图的 refresh 变了（原本只上传、重试时成了本轮最后一张要刷屏）换新键，
+//     否则会拿回「只上传未刷屏」的旧结果；
+//   · 4090 = 同一键的首次请求还在处理中：提示「处理中，请稍后重试」，再点重试复用原键。
+// 由调用方（结果页）管理键，这里只透传 options.idempotencyKey；newPlayKey 生成键（UUID 形状，随机 + 时间戳，36 字符）。
+//
 // ── 投屏日志（options.onLog，同时打控制台 [WiFi投屏]；结果页开发版 / 体验版显示、可复制）──
 // 每个接口按「接口【名称】方法 路径」+「参数」+「返回 / 失败」三行记；阶段只在变化时记一行，上传进度只记 25% 档位。
 // 不记 userToken；图片只记本地路径（尺寸 / 大小由结果页在上传前补一行）。
@@ -108,8 +116,16 @@ function resultStatus(response, refresh) {
   return refresh ? 'SENT' : 'UPLOADED'
 }
 
+// 生成幂等键：UUID v4 形状，末段混入毫秒时间戳，避免小程序没有 crypto.randomUUID 时只靠 Math.random
+function newPlayKey() {
+  const hex = length => Array.from({ length }, () => Math.floor(Math.random() * 16).toString(16)).join('')
+  const time = Date.now().toString(16).padStart(12, '0').slice(-12)
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-${(8 + Math.floor(Math.random() * 4)).toString(16)}${hex(3)}-${time}`
+}
+
 // 投一张图。options：
-//   { deviceNo, filePath, type, renderMode（空 = 不传）, refresh（默认 true）, addToCarousel（默认 false）, onStage({ stage, text, progress }), isCancelled(), onLog(text) }
+//   { deviceNo, filePath, type, renderMode（空 = 不传）, refresh（默认 true）, addToCarousel（默认 false）, idempotencyKey（空 = 不带头）,
+//     onStage({ stage, text, progress }), isCancelled(), onLog(text) }
 // resolve { status: SENT / UPLOADED / FAILED / CANCELLED, text, message, msgid, binUrl, carouselUpdated（true / false / null）, error }，不 reject。
 async function projectOne(options) {
   const deviceNo = plainDeviceNo(options.deviceNo)
@@ -183,10 +199,14 @@ async function projectOne(options) {
   let loggedPercent = -1
   log('接口【投屏】POST /api/device/play（IoT，multipart 上传）')
   log(`参数 ${json(Object.assign({ deviceNo, type: String(options.type) }, renderMode ? { renderMode } : {}, { refresh }, addToCarousel ? { addToCarousel } : {}, { file: options.filePath }))}`)
+  if (options.idempotencyKey) {
+    log(`Idempotency-Key ${options.idempotencyKey}`)
+  }
   const startedAt = Date.now()
   try {
     response = await iotApi.play(deviceNo, options.filePath, options.type, {
       showError: false,
+      idempotencyKey: options.idempotencyKey,
       refresh,
       addToCarousel,
       renderMode,
@@ -229,6 +249,7 @@ async function projectOne(options) {
 
 module.exports = {
   STAGE_TEXT,
+  newPlayKey,
   resultStatus,
   projectOne
 }

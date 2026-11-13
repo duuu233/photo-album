@@ -27,6 +27,8 @@ const toast = require('../../../utils/toast')
 // 「未成功加入轮播，请前往轮播设置添加」；true / null 不额外提示。相册记录照常写（全部相册轮播靠它才拉得到这张）。
 // 投屏日志：2026-11-12 起去掉页面下方的黑底日志面板，过程只打控制台 [WiFi投屏]（开发版 / 体验版用左下角「日志」浮窗查看、复制）。
 // 渲染模式 renderMode（2026-10-28）：首轮投屏前按设备取一次后台产品配置（api.resolveRenderMode），每张原样带上，重试复用。
+// 幂等键（2026-11-13，规则见 utils/wifi-projection.js 文件头）：本页每张图按「序号 + 是否刷屏」各记一个键（批量投屏每张一个新键，不共用），
+// 「重试未成功的」复用；新进入本页（含继续投屏重定向回来）是新操作，键全部重新生成。
 // type 同日改取产品屏幕方向 screenType（api.resolveScreenType），同样只查一次。
 // 本页记设备信息（尺寸 / 旋转字段，排查横竖向用）与每张图上传前的像素尺寸、文件大小；接口过程由 projectOne 自己打。
 // 投屏步骤（2026-11-12）：进度条下方四步，对应进度文案「准备投屏 → 图片上传中 → 图片处理中 → 已发送，屏幕即将刷新」，
@@ -218,6 +220,7 @@ Page(fold.adapt(tapGuard.wrap({
     const pending = wx.getStorageSync('pendingProjection') || {}
     this.device = pending.device || null
     this.images = (pending.images || []).filter(image => imageSrc(image))
+    this._playKeys = {} // `${序号}:${refresh}` → Idempotency-Key
     this.addToCarousel = pending.addToCarousel === true
     this.setData({
       deviceName: (this.device && (this.device.name || this.device.productName)) || '',
@@ -339,10 +342,14 @@ Page(fold.adapt(tapGuard.wrap({
               `${image.tempFilePath ? '' : '（云端图已下载到本地）'}`
           )
         }
+        // 同一张图、同样的刷屏方式复用原键；本轮刷屏方式变了（原只上传、重试成最后一张）换新键
+        const keyId = `${index}:${refresh}`
+        const idempotencyKey = this._playKeys[keyId] || (this._playKeys[keyId] = wifiProjection.newPlayKey())
         result = await wifiProjection.projectOne({
           deviceNo,
           filePath,
           type,
+          idempotencyKey,
           renderMode: this.renderMode,
           refresh,
           addToCarousel: this.addToCarousel,
