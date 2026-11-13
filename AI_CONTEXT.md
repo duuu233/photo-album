@@ -114,7 +114,7 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 ## WiFi 版优雅刷新升级（2026-11-13，`main`，原名渲染固件管理）
 
-渲染模式 `fpga16` 的设备（`api.resolveRenderMode`），设备信息页（`wifi-info`）有「优雅刷新升级」入口，直接进 `wifi-ota?mode=fpga`。最新版本只读设备详情 `newVersionNoFpga` / `downloadPathFpga` / `upgradeTipsFpga`（版本说明），没有版本列表。红点：本地缓存看过的版本号 `fpga_seen:{deviceNo}`，最新版本比缓存新（或缓存为空）时 WiFi 详情「设备信息」与设备信息页入口亮红点，进优雅刷新升级页即记下、消失（`utils/fpga-firmware.js` 的 `hasNew` / `markSeen`）。安装：不比对版本，`POST /api/device/ota` 传 `type=fpga`、`version`、`url`；进度 / 四步 / 本地记录与固件升级一致，只换文字并显示版本说明，记录带 `otaType`。设备不上报 FPGA 版本，不显示版本号；下发 4047 = 今日升级次数已达上限，按语种提示。见 `docs/changes/2026-11-13-WiFi渲染固件管理.md`。
+渲染模式 `fpga16` 的设备（`api.resolveRenderMode`），设备信息页（`wifi-info`）有「优雅刷新升级」入口，直接进 `wifi-ota?mode=fpga`。最新版本只读设备详情 `newVersionNoFpga` / `downloadPathFpga` / `upgradeTipsFpga`（版本说明），没有版本列表。不做红点（2026-11-14 产品要求，原 `fpga_seen` 缓存与两处红点已去掉）。入口文字与上面信息行标签同为灰色。安装：不比对版本，`POST /api/device/ota` 传 `type=fpga`、`version`、`url`；进度 / 四步 / 本地记录与固件升级一致，只换文字并显示版本说明，记录带 `otaType`。设备不上报 FPGA 版本，不显示版本号；下发 4047 = 今日升级次数已达上限，按语种提示。见 `docs/changes/2026-11-13-WiFi渲染固件管理.md`。
 
 ## 固件升级强提醒（2026-11-13，`main`）
 

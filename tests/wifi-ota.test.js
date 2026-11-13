@@ -237,15 +237,15 @@ async function main() {
   {
     // 优雅刷新升级（2026-11-13，原名渲染固件管理）：最新版本只读设备详情（newVersionNoFpga / downloadPathFpga / upgradeTipsFpga），
     // 没有版本列表；mode=fpga 不比对版本、显示版本说明；下发 type=fpga、version=最新版本；进度、四步与固件升级一致，只换文字；
-    // 设备不上报 FPGA 版本，不显示当前版本；本地记录带 otaType，重进按它选文字；进页记下看过的版本号（红点消失）；4047 多语种提示
+    // 设备不上报 FPGA 版本，不显示当前版本；本地记录带 otaType，重进按它选文字；4047 多语种提示。
+    // 2026-11-14 有意改口径：优雅刷新不做红点——原「本机没看过亮红点 / 进页记下看过的版本 / 红点规则」各条撤掉，改为断言不再记、不再显示
     const FPGA_DEVICE = { newVersionNoFpga: '1.0.3', downloadPathFpga: 'https://oss/fpga.bin', upgradeTipsFpga: '修复刷新闪烁' }
     Object.keys(storage).forEach(key => delete storage[key])
     const { page, state, emit } = loadPage({ device: FPGA_DEVICE, info: { status: 'ONLINE', online: true, firmwareVersion: '0.6.1' } })
-    assert.equal(fpga.hasNew(Object.assign({ productDeviceId: '38:44:BE:2E:52:20' }, FPGA_DEVICE), 'fpga16'), true, '本机没看过：亮红点')
     page.onLoad({ id: '9', mode: 'fpga' })
     await flush()
-    assert.equal(storage['fpga_seen:3844BE2E5220'], '1.0.3', '进优雅刷新升级即记下看过的版本')
-    assert.equal(fpga.hasNew(Object.assign({ productDeviceId: '38:44:BE:2E:52:20' }, FPGA_DEVICE), 'fpga16'), false, '看过后红点消失')
+    assert.equal(storage['fpga_seen:3844BE2E5220'], undefined, '不做红点：不再记看过的版本号')
+    assert.equal(typeof fpga.hasNew, 'undefined', '红点判定已去掉')
     assert.equal(page.data.navTitle, '优雅刷新升级')
     assert.equal(page.data.phase, 'available', '不比对版本，直接可安装')
     assert.equal(page.data.showCurrent, false, '设备不上报 FPGA 版本，不显示当前版本')
@@ -305,24 +305,14 @@ async function main() {
     assert.equal(fpga.limitText('ja'), '本日のアップデート回数の上限に達しました')
     assert.equal(fpga.limitText('xx'), '今日升级次数已达上限', '认不出的语种按简中')
 
-    // 红点规则：缓存为空或最新版本更高才亮；非 fpga16、没有版本、地址无效都不亮
-    const dev = extra => Object.assign({ productDeviceId: 'AA:BB:CC:DD:EE:FF', newVersionNoFpga: '1.0.3', downloadPathFpga: 'https://oss/f.bin' }, extra)
-    Object.keys(storage).forEach(key => delete storage[key])
-    assert.equal(fpga.hasNew(dev(), 'esp32'), false, '非 fpga16 不亮')
-    assert.equal(fpga.hasNew(dev({ newVersionNoFpga: '' }), 'fpga16'), false, '后台没有版本不亮')
-    assert.equal(fpga.hasNew(dev({ downloadPathFpga: 'ftp://x' }), 'fpga16'), false, '地址无效不亮')
-    fpga.markSeen('AABBCCDDEEFF', '1.0.3')
-    assert.equal(fpga.hasNew(dev(), 'fpga16'), false, '看过同版本不亮')
-    assert.equal(fpga.hasNew(dev({ newVersionNoFpga: '1.0.10' }), 'fpga16'), true, '按数字段比：1.0.10 > 1.0.3')
-    assert.equal(fpga.hasNew(dev({ newVersionNoFpga: '1.0.2' }), 'fpga16'), false, '比看过的旧不亮')
-    assert.equal(fpga.isNewer('V2', 'V1'), true, '非 x.y.z 不同即算新')
-
-    // 接入位置：入口直接进安装页、两处红点、版本列表页已去掉
+    // 接入位置：入口直接进安装页、不做红点、版本列表页已去掉
     const infoJs = read('subpackages/device/wifi-info/wifi-info.js')
-    assert.ok(/fpgaFirmware\.isFpgaRender\(renderMode\)/.test(infoJs) && /fpgaFirmware\.hasNew\(device, renderMode\)/.test(infoJs), '设备信息页按渲染模式显示入口与红点')
+    assert.ok(/fpgaFirmware\.isFpgaRender\(renderMode\)/.test(infoJs), '设备信息页按渲染模式显示入口')
     assert.ok(/wifi-ota\/wifi-ota\?id=\$\{this\.data\.id\}&mode=fpga/.test(infoJs), '直接进安装页')
-    assert.ok(/wx:if="\{\{showFpga\}\}"[\s\S]*?优雅刷新升级[\s\S]*?wx:if="\{\{fpgaHasNew\}\}"/.test(read('subpackages/device/wifi-info/wifi-info.wxml')), '入口红点')
-    assert.ok(/bindtap="openInfo"[\s\S]*?wx:if="\{\{infoHasNew\}\}"/.test(read('subpackages/device/wifi-detail/wifi-detail.wxml')), '详情页「设备信息」红点')
+    assert.ok(/wx:if="\{\{showFpga\}\}"[\s\S]*?优雅刷新升级/.test(read('subpackages/device/wifi-info/wifi-info.wxml')), '入口')
+    assert.ok(!/fpgaHasNew/.test(read('subpackages/device/wifi-info/wifi-info.wxml') + infoJs), '设备信息页入口不做红点')
+    assert.ok(!/infoHasNew/.test(read('subpackages/device/wifi-detail/wifi-detail.wxml') + read('subpackages/device/wifi-detail/wifi-detail.js')), '详情页「设备信息」不做红点')
+    assert.ok(!/markSeen/.test(read('subpackages/device/wifi-ota/wifi-ota.js')), '安装页不再记看过的版本')
     assert.equal(infoJs.indexOf('fpgaVersion'), -1, '设备信息页不显示 FPGA 版本号')
     assert.ok(!JSON.parse(read('app.json')).subpackages.find(item => item.root === 'subpackages/device').pages.includes('wifi-fpga/wifi-fpga'), '版本列表页已去掉')
     checked('页面：优雅刷新升级（mode=fpga）')

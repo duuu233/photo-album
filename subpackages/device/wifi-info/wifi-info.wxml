@@ -35,7 +35,6 @@
       <view class="info-row info-row--link" hover-class="info-row--hover" bindtap="openFpga">
         <text class="info-row__name">优雅刷新升级</text>
         <view class="info-row__right">
-          <view wx:if="{{fpgaHasNew}}" class="info-row__dot"></view>
           <text class="info-row__arrow">›</text>
         </view>
       </view>

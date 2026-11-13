@@ -25,7 +25,7 @@ const fpgaFirmware = require('../../../utils/fpga-firmware')
 //     显示值由本页计时器匀速往上限走（规则见 utils/wifi-ota.js「升级进度条」）；失败停住，VERIFYING 走到 100。
 //     收到过的最大进度存进本地记录，重进页面从那里接着走。
 //   · 优雅刷新升级（2026-11-13，mode=fpga，从设备信息页「优雅刷新升级」进来，见 utils/fpga-firmware.js）：不比对版本，安装目标
-//     取设备详情的 newVersionNoFpga / downloadPathFpga / upgradeTipsFpga（版本说明）；进页即记下看过的版本号（红点消失）；下发同一个 POST /api/device/ota，type=fpga、version=目标版本；
+//     取设备详情的 newVersionNoFpga / downloadPathFpga / upgradeTipsFpga（版本说明）；下发同一个 POST /api/device/ota，type=fpga、version=目标版本；
 //     进度条、四步、轮询 / WS、本地进行中记录与固件升级完全一致，只换文字（fpgaFirmware.TEXTS）并显示简介。
 //     设备不上报 FPGA 版本（baseVersion 为 null），版本卡只显示安装版本；下发返回 4047（今日升级次数已达上限）按语种提示。
 //     本地记录带 otaType，重进时（无论从哪个入口）按记录里的类型选文字。
@@ -201,14 +201,6 @@ Page(fold.adapt({
       this._subscribed = deviceNo
     }
 
-    // 从「优雅刷新升级」进来即算看过最新版本（含正有安装在进行、直接接着展示的情况），红点消失
-    if (this._entryMode === fpgaFirmware.OTA_TYPE_FPGA) {
-      const latest = fpgaFirmware.latestOf(device)
-      if (latest) {
-        fpgaFirmware.markSeen(deviceNo, latest.version)
-      }
-    }
-
     // ① 先看本地进行中的升级（展示「有新版本」之前必须先查，对接文档 3.3）
     const inflight = await wifiOta.refreshInflight(deviceNo)
     if (this.unloaded) {
@@ -242,7 +234,7 @@ Page(fold.adapt({
   },
 
   // 优雅刷新升级：不比对版本，直接展示设备详情下发的最新版本（newVersionNoFpga）与版本说明（upgradeTipsFpga）；
-  // 设备不上报 FPGA 版本，不显示当前版本。看到了就把版本号记进本地缓存，详情 / 设备信息的红点随之消失
+  // 设备不上报 FPGA 版本，不显示当前版本（2026-11-14 起不做红点，也不再记看过的版本号）
   showFpgaTarget() {
     const latest = fpgaFirmware.latestOf(this.device)
     if (!latest) {
@@ -258,7 +250,6 @@ Page(fold.adapt({
       })
       return
     }
-    fpgaFirmware.markSeen(this.deviceNo(), latest.version)
     const ok = fpgaFirmware.isHttpUrl(latest.url)
     const result = { state: ok ? 'available' : 'invalid', current: '', latest: latest.version, url: latest.url, intro: latest.intro }
     this.evaluation = result

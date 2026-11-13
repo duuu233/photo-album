@@ -9,7 +9,7 @@ const fpgaFirmware = require('../../../utils/fpga-firmware')
 // WiFi 版「设备信息」二级页（2026-10-29，原详情页的信息行挪到这里）：WiFi信号、WiFi名称、最后上线、最后心跳、固件版本；
 // 不再显示国家码。数据：老服务 getDeviceDetail 取设备号 → IoT GET /api/device/info。非在线时信号不显示（本地模式影子冻结）。
 // 2026-11-13：产品渲染模式 = fpga16 的设备多一个「优雅刷新升级」入口，直接进安装步骤页（wifi-ota?mode=fpga，见 utils/fpga-firmware.js）；
-// 设备详情下发的最新版本比本机看过的新时入口亮红点，进去看过即消失。设备不上报 FPGA 版本，不显示版本号。
+// 2026-11-14 起不做红点。设备不上报 FPGA 版本，不显示版本号。
 function infoRows(info) {
   const i = info || {}
   const shadow = i.shadow || {}
@@ -32,20 +32,12 @@ Page(fold.adapt({
     loading: true,
     loadError: false,
     rows: [],
-    showFpga: false, // 渲染模式 = fpga16 才显示「优雅刷新升级」
-    fpgaHasNew: false // 有没看过的新版本：入口亮红点
+    showFpga: false // 渲染模式 = fpga16 才显示「优雅刷新升级」
   },
 
   onLoad(options) {
     this.setData(Object.assign(system.getLayoutMetrics(), { id: (options && options.id) || '' }))
     this.load()
-  },
-
-  // 从安装页回来：看过了，红点按缓存重新算
-  onShow() {
-    if (this._device && this._renderMode !== undefined) {
-      this.setData({ fpgaHasNew: fpgaFirmware.hasNew(this._device, this._renderMode) })
-    }
   },
 
   onUnload() {
@@ -66,20 +58,17 @@ Page(fold.adapt({
       iotApi.getDeviceInfo(device.productDeviceId || device.deviceNo || '', { showError: false }).catch(() => null),
       api.resolveRenderMode(device).catch(() => '')
     ])
-    this._device = device
-    this._renderMode = renderMode
     if (!this.unloaded) {
       this.setData({
         loading: false,
         loadError: false,
         rows: infoRows(info),
-        showFpga: fpgaFirmware.isFpgaRender(renderMode),
-        fpgaHasNew: fpgaFirmware.hasNew(device, renderMode)
+        showFpga: fpgaFirmware.isFpgaRender(renderMode)
       })
     }
   },
 
-  // 「优雅刷新升级」：直接进安装步骤页（最新版本取设备详情）；看过的版本号在安装页记下，红点消失
+  // 「优雅刷新升级」：直接进安装步骤页（最新版本取设备详情）
   openFpga() {
     wx.navigateTo({ url: `/subpackages/device/wifi-ota/wifi-ota?id=${this.data.id}&mode=fpga` })
   },

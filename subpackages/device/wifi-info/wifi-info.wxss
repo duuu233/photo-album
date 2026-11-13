@@ -88,11 +88,3 @@
   align-items: center;
   gap: 12rpx;
 }
-
-/* 有新的优雅刷新版本（2026-11-13），样式同详情页红点 */
-.info-row__dot {
-  width: 14rpx;
-  height: 14rpx;
-  border-radius: 50%;
-  background: #ff3b30;
-}

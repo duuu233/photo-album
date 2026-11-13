@@ -13,7 +13,6 @@ const wifiTf = require('../../../utils/wifi-tf')
 const wifiShare = require('../../../utils/wifi-share')
 const wifiOta = require('../../../utils/wifi-ota')
 const firmwareGate = require('../../../utils/firmware-gate')
-const fpgaFirmware = require('../../../utils/fpga-firmware')
 
 const app = getApp()
 
@@ -98,7 +97,6 @@ Page(fold.adapt(tapGuard.wrap({
     firmwareVersion: '',
     otaText: '--',
     otaHasUpdate: false,
-    infoHasNew: false, // 「设备信息」红点：有没看过的优雅刷新版本（2026-11-13，见 utils/fpga-firmware.js）
     slideshowOn: false, // 轮播开启中（2026-11-02，strategy.running）：「轮播设置」旁显示标记
     showMediaSheet: false,
     mediaSheetClosing: false,
@@ -191,15 +189,6 @@ Page(fold.adapt(tapGuard.wrap({
     this.refreshUnread()
     this.refreshOta(true)
     this.refreshSlideshow()
-    this.refreshFpgaDot(device)
-  },
-
-  // 「设备信息」红点：fpga16 设备、设备详情下发的最新优雅刷新版本比本机看过的新（每次进页 / 回到本页按缓存重算）
-  async refreshFpgaDot(device) {
-    const renderMode = await api.resolveRenderMode(device).catch(() => '')
-    if (!this.unloaded) {
-      this.setData({ infoHasNew: fpgaFirmware.hasNew(device, renderMode) })
-    }
   },
 
   // 轮播开启中标记：每次进页（含从轮播设置页回来）查一次；查不到保持原样
