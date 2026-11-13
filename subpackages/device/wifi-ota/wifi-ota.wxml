@@ -7,7 +7,8 @@
   <page-nav title="{{navTitle}}"></page-nav>
 
   <view class="mock-content provision-content">
-    <image class="ota-art" src="{{art}}" mode="aspectFit"></image>
+    <!-- 顶部图标：优雅刷新升级（mode=fpga）不显示（2026-11-14 产品要求），固件升级照旧 -->
+    <image wx:if="{{showArt}}" class="ota-art" src="{{art}}" mode="aspectFit"></image>
 
     <view class="provision-title {{phase === 'failed' || phase === 'error' ? 'is-failed' : ''}} {{phase === 'verifying' ? 'is-success' : ''}}">
       <view wx:if="{{phase === 'checking'}}" class="ota-title-spinner"></view>

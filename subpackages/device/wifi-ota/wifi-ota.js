@@ -62,6 +62,7 @@ Page(fold.adapt({
     steps: wifiOta.stepsFor('').steps,
     currentVersion: '',
     showCurrent: true, // 优雅刷新不显示设备当前版本（设备不上报）
+    showArt: true, // 顶部图标：优雅刷新升级不显示（2026-11-14 产品要求）
     latestVersion: '',
     showVersions: false,
     progress: 0,
@@ -137,7 +138,8 @@ Page(fold.adapt({
       confirmText: this.texts.confirmText,
       retryText: this.texts.retryText,
       targetLabel: this.texts.targetLabel,
-      showCurrent: this._otaType !== fpgaFirmware.OTA_TYPE_FPGA
+      showCurrent: this._otaType !== fpgaFirmware.OTA_TYPE_FPGA,
+      showArt: this._otaType !== fpgaFirmware.OTA_TYPE_FPGA
     })
   },
 

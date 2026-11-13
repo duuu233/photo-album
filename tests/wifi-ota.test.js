@@ -249,6 +249,7 @@ async function main() {
     assert.equal(page.data.navTitle, '优雅刷新升级')
     assert.equal(page.data.phase, 'available', '不比对版本，直接可安装')
     assert.equal(page.data.showCurrent, false, '设备不上报 FPGA 版本，不显示当前版本')
+    assert.equal(page.data.showArt, false, '优雅刷新升级不显示顶部图标（2026-11-14）')
     assert.equal(page.data.latestVersion, '1.0.3')
     assert.equal(page.data.targetLabel, '最新版本')
     assert.equal(page.data.intro, '修复刷新闪烁', '显示版本说明')
@@ -289,6 +290,8 @@ async function main() {
     assert.equal(main.page.data.navTitle, '固件升级')
     assert.equal(main.page.data.confirmText, '立即升级')
     assert.equal(main.page.data.showCurrent, true, '普通固件升级照常显示当前版本')
+    assert.equal(main.page.data.showArt, true, '普通固件升级照常显示顶部图标')
+    assert.ok(/<image wx:if="\{\{showArt\}\}" class="ota-art"/.test(read('subpackages/device/wifi-ota/wifi-ota.wxml')), '顶部图标按 showArt 显示')
 
     // 4047：今日升级次数已达上限（多语种），不进步骤页、不存记录
     Object.keys(storage).forEach(key => delete storage[key])
