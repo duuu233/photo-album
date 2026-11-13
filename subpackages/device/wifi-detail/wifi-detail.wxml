@@ -115,21 +115,20 @@
       </view>
 
       <!-- 一键清空 + 解除绑定（2026-11-09）：布局样式同蓝牙版详情 .action-list（图标 + 橙 / 红字，中间细分隔线）。
-           一键清空仅所有者（会删掉这台设备全部云端照片），接收者这张卡片只有解除绑定 -->
+           2026-11-14 产品要求：两行随页面一起显示、不等身份查询；一键清空仅所有者能用（会删掉这台设备全部云端照片），
+           接收者点了无反应（clearCopies 里判 isOwner） -->
       <view class="detail-list action-list glass-panel">
-        <block wx:if="{{isOwner}}">
-          <view class="detail-row action-row clear-row" hover-class="none" bindtap="clearCopies">
-            <view class="row-left">
-              <image class="row-icon" src="/assets/images/device-detail-icon05.png" mode="aspectFit"></image>
-              <text>一键清空</text>
-            </view>
-            <view class="row-right">
-              <text>清空电子纸设备及小程序/APP内的照片</text>
-              <view class="ui-chevron"></view>
-            </view>
+        <view class="detail-row action-row clear-row" hover-class="none" bindtap="clearCopies">
+          <view class="row-left">
+            <image class="row-icon" src="/assets/images/device-detail-icon05.png" mode="aspectFit"></image>
+            <text>一键清空</text>
           </view>
-          <view class="thin-divider"></view>
-        </block>
+          <view class="row-right">
+            <text>清空电子纸设备及小程序/APP内的照片</text>
+            <view class="ui-chevron"></view>
+          </view>
+        </view>
+        <view class="thin-divider"></view>
         <view class="detail-row action-row delete-row" hover-class="none" bindtap="showUnbindConfirm">
           <view class="row-left">
             <image class="row-icon" src="/assets/images/device-detail-icon06.png" mode="aspectFit"></image>

@@ -290,7 +290,10 @@ async function main() {
     assert.ok(positions.every(pos => pos > -1), '入口齐全')
     assert.deepEqual(positions.slice().sort((a, b) => a - b), positions, '投屏 / 轮播在功能栏之前，功能栏顺序：设备信息、消息、TF卡、分享；再一张卡片：一键清空、解绑；页底删除')
     const actionCard = tpl.slice(tpl.indexOf('<view class="detail-list action-list glass-panel">'), tpl.indexOf('class="outline-delete-device"'))
-    assert.ok(/<block wx:if="\{\{isOwner\}\}">\s*<view class="detail-row action-row clear-row" hover-class="none" bindtap="clearCopies">/.test(actionCard), '一键清空仅所有者，行样式同蓝牙版 clear-row')
+    // 2026-11-14 有意改口径：一键清空行随页面一起显示、不再按 isOwner 隐藏（避免查完身份后才冒出来）；
+    // 「仅所有者能清空」改由 clearCopies / confirmClearCopies 判 isOwner 守，见上面「接收者不弹确认 / 不能一键清空」两条
+    assert.ok(/<view class="detail-list action-list glass-panel">\s*<view class="detail-row action-row clear-row" hover-class="none" bindtap="clearCopies">/.test(actionCard), '一键清空随页面显示，行样式同蓝牙版 clear-row')
+    assert.ok(!/isOwner/.test(actionCard.slice(0, actionCard.indexOf('bindtap="showUnbindConfirm"'))), '一键清空 / 解除绑定不按身份隐藏')
     assert.ok(/device-detail-icon05\.png[\s\S]*?<text>一键清空<\/text>[\s\S]*?class="thin-divider"[\s\S]*?class="detail-row action-row delete-row" hover-class="none" bindtap="showUnbindConfirm">[\s\S]*?device-detail-icon06\.png[\s\S]*?<text>解除绑定<\/text>/.test(actionCard), '一键清空 / 分隔线 / 解除绑定，图标同蓝牙版')
     assert.equal(tpl.indexOf('unbind-entry'), -1, '解除绑定不再在功能栏里')
     assert.ok(/bindtap="openClearStep2"/.test(tpl) && /bindtap="confirmClearCopies"/.test(tpl) && /confirm-icon clear-icon/.test(tpl), '一键清空两级确认同蓝牙版')
