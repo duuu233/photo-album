@@ -6,7 +6,8 @@
 
   <page-nav title="{{navTitle}}"></page-nav>
 
-  <view class="mock-content provision-content">
+  <!-- 优雅刷新「暂无可用版本」（2026-11-14）：标题与提示在页面里上下居中（is-empty） -->
+  <view class="mock-content provision-content {{!showArt && phase === 'latest' && !showVersions ? 'is-empty' : ''}}">
     <!-- 顶部图标：优雅刷新升级（mode=fpga）不显示（2026-11-14 产品要求），固件升级照旧 -->
     <image wx:if="{{showArt}}" class="ota-art" src="{{art}}" mode="aspectFit"></image>
 

@@ -282,6 +282,11 @@ async function main() {
     await flush()
     assert.equal(none.page.data.phase, 'latest')
     assert.equal(none.page.data.title, '暂无可用的优雅刷新版本')
+    // 2026-11-14：暂无可用版本时内容上下居中（模板按 showArt / phase / showVersions 加 is-empty）
+    assert.equal(none.page.data.showArt, false)
+    assert.equal(none.page.data.showVersions, false)
+    assert.ok(/provision-content \{\{!showArt && phase === 'latest' && !showVersions \? 'is-empty' : ''\}\}/.test(read('subpackages/device/wifi-ota/wifi-ota.wxml')), '暂无可用版本加 is-empty')
+    assert.ok(/\.provision-content\.is-empty \{[^}]*top: 50%;[^}]*transform: translateY\(-50%\);/.test(read('subpackages/device/wifi-ota/wifi-ota.wxss')), 'is-empty 上下居中')
 
     // 普通固件升级入口文字不变
     const main = loadPage({ info: { status: 'ONLINE', online: true, firmwareVersion: '0.6.1' } })
