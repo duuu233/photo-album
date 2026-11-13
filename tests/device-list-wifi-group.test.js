@@ -1,5 +1,6 @@
 // 我的设备按 WiFi 版 / 蓝牙版分组（2026-10-27）：
 //   ① 已绑定记录按所属产品 broadcastId 认 WiFi 版（IJ_* 模板 / IJ_ 前缀），其余按蓝牙版；
+//      2026-11-14 起先认设备列表接口下发的 versionType（1=蓝牙版，2=wifi版），不用等产品列表；没有该字段再按 broadcastId；
 //   ② WiFi 版状态来自 IoT GET /api/device/info：在线 / 离线 / 查不到（状态未知），在线才显示信号格与电量；
 //   ③ WiFi 版按钮：投屏不连蓝牙、直接弹拍照 / 相册；轮播设置进 WiFi 轮播页（V1.4 取代原「刷新状态」）；
 //      两个按钮点击都要在线（2026-11-14，原「轮播设置不拦离线」撤掉）；
@@ -108,6 +109,31 @@ async function main() {
     assert.equal(match.isWifiBroadcastId(''), false, '认不出广播 ID 的记录按蓝牙版，行为不变')
     assert.equal(match.isWifiBroadcastId(undefined), false)
     checked('按产品 broadcastId 认 WiFi 版')
+  }
+  {
+    // versionType 优先（2026-11-14）：产品列表还没回来、记录里没有 broadcastId 时也认得出
+    assert.equal(match.isWifiDevice({ versionType: 2 }), true)
+    assert.equal(match.isWifiDevice({ versionType: '2' }), true, '字符串也认')
+    assert.equal(match.isWifiDevice({ versionType: 1, broadcastId: 'IJ_*' }), false, 'versionType 说是蓝牙版就按蓝牙版')
+    assert.equal(match.isWifiDevice({ versionType: 2, broadcastId: 'EF6-370' }), true, 'versionType 说是 WiFi 版就按 WiFi 版')
+    assert.equal(match.isWifiDevice({ broadcastId: 'IJ_*' }), true, '没有 versionType 仍按 broadcastId')
+    assert.equal(match.isWifiDevice({ versionType: null, commType: 'WIFI' }), true, '没有 versionType 仍认 commType')
+    assert.equal(match.isWifiDevice({}), false)
+    assert.equal(match.isWifiDevice(null), false)
+
+    const { page } = loadListPage({
+      devices: [
+        { id: '7', name: '13.3寸', versionType: 2, productDeviceId: 'D0:CF:13:F0:28:04', deviceNo: 'D0:CF:13:F0:28:04' },
+        { id: '8', name: '蓝牙', versionType: 1, productDeviceId: 'AA:BB:CC:DD:EE:02', deviceNo: 'AA:BB:CC:DD:EE:02' }
+      ]
+    })
+    await page.loadDevices()
+    await flush()
+    assert.equal(page.data.devices.find(item => item.id === '7').isWifi, true, '没有 broadcastId 也按 versionType 认 WiFi 版')
+    assert.equal(page.data.devices.find(item => item.id === '8').isWifi, false)
+    assert.equal(page.data.wifiCount, 1)
+    assert.equal(page.data.deviceTab, 'wifi')
+    checked('按接口 versionType 认 WiFi 版')
   }
   {
     const { page, state } = loadListPage({

@@ -100,9 +100,24 @@ function isWifiBroadcastId(broadcastId) {
   return !!id && (isWildcard(id) || id.indexOf(BUILTIN_WIFI_TEMPLATE.replace('*', '')) === 0)
 }
 
-// 设备记录是不是 WiFi 版：列表页打过的 isWifi、配网绑定回来的 commType，或所属产品的广播 ID
+// 设备列表 / 详情接口的版本类型 versionType：1=蓝牙版，2=wifi版（2026-11-14 起优先认它）
+const VERSION_TYPE_BLE = 1
+const VERSION_TYPE_WIFI = 2
+
+// 设备记录是不是 WiFi 版：先认接口下发的 versionType（以后台产品配置为准，不用等产品列表）；
+// 没有该字段时再看列表页打过的 isWifi、配网绑定回来的 commType，或所属产品的广播 ID
 function isWifiDevice(device) {
-  return !!device && (device.isWifi === true || device.commType === COMM_WIFI || isWifiBroadcastId(device.broadcastId))
+  if (!device) {
+    return false
+  }
+  const versionType = Number(device.versionType)
+  if (versionType === VERSION_TYPE_WIFI) {
+    return true
+  }
+  if (versionType === VERSION_TYPE_BLE) {
+    return false
+  }
+  return device.isWifi === true || device.commType === COMM_WIFI || isWifiBroadcastId(device.broadcastId)
 }
 
 // 完整蓝牙广播名（2026-10-27，绑定时默认昵称用）：name / localName 取较长的那个。
@@ -117,6 +132,8 @@ function fullBroadcastName(device) {
 module.exports = {
   COMM_WIFI,
   COMM_BLE,
+  VERSION_TYPE_BLE,
+  VERSION_TYPE_WIFI,
   WIFI_DEVICE_ID_LENGTH,
   isWildcard,
   fullBroadcastName,
