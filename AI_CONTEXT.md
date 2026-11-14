@@ -149,11 +149,11 @@ WiFi 设备详情有「休眠设置」（`subpackages/device/wifi-sleep`，`GET/
 
 ## 设备图按机型区分（2026-10-22）
 
-首页设备卡、我的设备、设备详情、搜索设备、命名弹窗、投屏选设备六处设备图统一由 `utils/device-thumb.js` 按产品 `broadcastId` 决定：EB-169（圆屏）用 `home-device-circle-thumb`，EC-370 用 `home-device-rectangle-thumb`，其余用原 `home-device-thumb`。已绑定记录用设备列表接口下发的 `broadcastId`，缺失或不是产品列表里的广播名时（2026-10-23）由 `api.getDevices/getDeviceDetail` 按 productId 回查产品列表补上，`getDevices` 仍认不出的记录再按 userProductId 静默调详情接口补（会话内复用，2026-10-23），`bindDevice` 按广播名命中产品 broadcastId 加权匹配产品并写入；搜索结果按蓝牙广播名；用户起的设备名不参与；兜底 `shapeType === 1` 视为圆屏。新增机型只需在 `THUMB_BY_BROADCAST_ID` 加一行。详见 `docs/changes/2026-10-22-设备图按机型区分.md`。
+首页设备卡、我的设备、设备详情、搜索设备、命名弹窗、投屏选设备六处设备图统一由 `utils/device-thumb.js` 按产品 `broadcastId` 决定：EB-169（圆屏）用 `home-device-circle-thumb`，EC-370 用 `home-device-rectangle-thumb`，其余用原 `home-device-thumb`。已绑定记录用设备列表接口下发的 `broadcastId`（2026-11-14 起列表接口下发 `productId` / `broadcastId`，`api.getDevices` 只调列表、不再回查产品列表或逐台调详情）；设备详情接口不带 `broadcastId`，`api.getDeviceDetail` 按 productId 回查产品列表补上；`bindDevice` 按广播名命中产品 broadcastId 加权匹配产品并写入；搜索结果按蓝牙广播名；用户起的设备名不参与；兜底 `shapeType === 1` 视为圆屏。新增机型只需在 `THUMB_BY_BROADCAST_ID` 加一行。详见 `docs/changes/2026-10-22-设备图按机型区分.md`。
 
 WiFi / 蓝牙版判断（2026-11-14）：设备列表 / 详情接口下发 `versionType`（1=蓝牙版，2=wifi版），`broadcast-match.isWifiDevice` 只认它（没有该字段只认下游已打的 `isWifi: true`），不再按产品 `broadcastId` 猜；首页 `normalizeDevice` 透传 versionType；首页、我的设备等都走 `isWifiDevice`。搜索设备页（绑定前）仍按扫描 `commType`。见 `docs/changes/2026-11-14-按versionType认WiFi版.md`。
 
-产品列表本地缓存（2026-11-14）：冷启动设备列表最多等产品列表 3 秒（设备图 / 机型）。`api.js` 把产品列表存本地 `product_catalog_cache`，冷启动直接用、后台再拉最新覆盖；存的那份认不出设备 productId 时 `getDevices` 仍最多等 3 秒拿最新的；详情补机型认出的 `broadcastId` 存 `device_broadcast_id_cache`。见 `docs/changes/2026-11-14-产品列表本地缓存.md`。
+设备列表直接用接口字段（2026-11-14）：`getUserProductList` 下发 `productId` / `broadcastId` / `versionType`，`api.getDevices` 只调这一个接口，首页 / 我的设备不再等产品列表；同日加的产品列表、详情补机型本地缓存已撤掉，产品列表回到会话内缓存（详情、投屏、绑定用）。见 `docs/changes/2026-11-14-设备列表直接用接口机型字段.md`。
 
 ## 设备详情屏幕尺寸（2026-10-23）
 

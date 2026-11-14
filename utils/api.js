@@ -334,46 +334,21 @@ function extractUploadUrl(result) {
   )
 }
 
-// 产品列表缓存：设备图按机型区分要用产品的 broadcastId。设备列表接口已下发 productId 与 broadcastId，
-// 这里只给没带 broadcastId 的记录（如详情接口、旧缓存）按 productId 回查兜底。
-// 成功才缓存（整次会话复用），失败静默返回空数组、不弹错误提示——查不到只是设备图退回默认那张，
-// 不能因此挡住设备列表/详情。绑定时 bindDevice 会顺手用最新拉到的列表刷新它。
-//
-// 本地也存一份（2026-11-14）：冷启动产品列表要重新拉，设备列表最多等它 3 秒（设备图 / 机型靠它），
-// 首页 loading 跟着白等。现在启动时先用上次存的那份（立即可用），同时后台拉一次最新的，
-// 成功后覆盖内存和本地。存的那份认不全设备的 productId（后台新加了产品）时，设备列表再等最新的那份。
-// （WiFi / 蓝牙版以接口下发的 versionType 为准，见 broadcast-match.isWifiDevice，不依赖这里。）
+// 产品列表缓存（整次会话复用）：设备详情接口不带 broadcastId，详情页设备图 / 机型按 productId 回查它；
+// 投屏取渲染模式 / 屏幕方向、绑定选产品也用它。设备列表接口自 2026-11-14 起直接下发 productId 与
+// broadcastId，getDevices 不再用它（也不再逐台调详情补机型）。
+// 成功才缓存，失败静默返回空数组、不弹错误提示——查不到只是设备图退回默认那张。绑定时 bindDevice 会顺手刷新它。
 let productCatalog = null
 let productCatalogLoading = null
-// 本次启动是否已从接口拿到过最新的产品列表（本地存的那份只算临时可用）
-let productCatalogFresh = false
-const PRODUCT_CATALOG_STORAGE_KEY = 'product_catalog_cache'
 
-// 设备列表/详情最多为产品列表多等这么久（请求层超时 + 静默重试能拖到半分钟）：
-// 超时就先按已有信息出图，请求本身照常跑完，成功了下次进页面就用上。
+// 详情 / 投屏最多为产品列表多等这么久（请求层超时 + 静默重试能拖到半分钟）：
+// 超时就先按已有信息出图，请求本身照常跑完，成功了下次就用上。
 const PRODUCT_CATALOG_WAIT_MS = 3000
 
-function readStoredProductCatalog() {
-  try {
-    const list = wx.getStorageSync(PRODUCT_CATALOG_STORAGE_KEY)
-    return Array.isArray(list) && list.length ? list : null
-  } catch (e) {
-    return null
+function loadProductCatalog() {
+  if (productCatalog) {
+    return Promise.resolve(productCatalog)
   }
-}
-
-function rememberProductCatalog(list) {
-  productCatalog = list
-  productCatalogFresh = true
-  try {
-    wx.setStorageSync(PRODUCT_CATALOG_STORAGE_KEY, list)
-  } catch (e) {
-    // 存不进本地不影响本次使用
-  }
-}
-
-// 从接口拉最新产品列表（同一时间只发一次）：成功写内存和本地；失败静默返回空数组、不缓存
-function fetchProductCatalog() {
   if (!productCatalogLoading) {
     productCatalogLoading = Promise.resolve()
       .then(() =>
@@ -386,7 +361,7 @@ function fetchProductCatalog() {
       .then(data => {
         const list = pageData(data)
         if (list.length) {
-          rememberProductCatalog(list)
+          productCatalog = list
         }
         return list
       })
@@ -397,37 +372,6 @@ function fetchProductCatalog() {
       })
   }
   return productCatalogLoading
-}
-
-function loadProductCatalog() {
-  if (productCatalog) {
-    return Promise.resolve(productCatalog)
-  }
-  const stored = readStoredProductCatalog()
-  if (stored) {
-    productCatalog = stored
-    fetchProductCatalog()
-    return Promise.resolve(stored)
-  }
-  return fetchProductCatalog()
-}
-
-function hasProductId(device) {
-  const productId = device && device.productId
-  return productId !== undefined && productId !== null && productId !== ''
-}
-
-// 设备列表用的产品列表：手上这份是本地存的、且有设备的 productId 在里面找不到（后台新加了产品），
-// 再等接口最新的一份（最多 ms，拿不到仍用手上这份）。其余情况直接用手上这份。
-function productCatalogForDevices(rows, products, ms) {
-  const missing = !productCatalogFresh && products.length && rows.some(row =>
-    hasProductId(row) &&
-    !products.some(item => item && String(item.productId) === String(row.productId))
-  )
-  if (!missing) {
-    return Promise.resolve(products)
-  }
-  return settleWithin(fetchProductCatalog(), ms, products).then(list => (list.length ? list : products))
 }
 
 // 最多等 ms：超时按 fallback 先返回，请求本身照常跑完
@@ -448,22 +392,9 @@ function productCatalogWithin(ms) {
   return settleWithin(loadProductCatalog(), ms, [])
 }
 
-// broadcastId 是否为产品列表里某个产品的广播名（去首尾空白、不区分大小写）
-function isProductBroadcastId(broadcastId, products) {
-  const own = String(broadcastId || '').trim().toUpperCase()
-  return (
-    !!own &&
-    products.some(item => item && String(item.broadcastId || '').trim().toUpperCase() === own)
-  )
-}
-
-// 给设备记录补上所属产品的 broadcastId：记录自带、且是产品列表里认得的广播名就不动；
-// 没带，或带的不是任何产品的广播名（字段口径对不上时）才按 productId 精确匹配产品列表覆盖。
+// 给设备详情补上所属产品的 broadcastId：记录自带就不动；没带才按 productId 精确匹配产品列表。
 function withProductBroadcastId(device, products) {
-  if (!device || !products.length) {
-    return device
-  }
-  if (isProductBroadcastId(device.broadcastId, products)) {
+  if (!device || !products.length || String(device.broadcastId || '').trim()) {
     return device
   }
   const productId = device.productId
@@ -473,81 +404,6 @@ function withProductBroadcastId(device, products) {
   const matched = products.find(item => item && String(item.productId) === String(productId))
   const broadcastId = String((matched && matched.broadcastId) || '').trim()
   return broadcastId ? Object.assign({}, device, { broadcastId }) : device
-}
-
-// 设备列表记录按上面仍认不出机型时，按 userProductId 调一次详情接口补（2026-10-23）。
-// 反馈：EC-370 详情页设备图/容量都对，首页与我的设备不对——同一条绑定记录，详情接口认得出机型、
-// 列表接口那条没有可用的 productId / broadcastId。只给认不出的记录调；详情正常返回的结果
-// （认不出记为空串）整次会话复用，绑定记录的机型不会变；请求失败静默、不缓存，下次再试。
-// 2026-11-14 起认出来的（非空）也存本地，冷启动不必再等这次详情；认不出的仍只在本次会话记住。
-const DETAIL_BROADCAST_STORAGE_KEY = 'device_broadcast_id_cache'
-const detailBroadcastIds = {}
-let storedDetailBroadcastIds = null
-
-function storedDetailBroadcastIdMap() {
-  if (!storedDetailBroadcastIds) {
-    let stored = null
-    try {
-      stored = wx.getStorageSync(DETAIL_BROADCAST_STORAGE_KEY)
-    } catch (e) {
-      stored = null
-    }
-    storedDetailBroadcastIds = Object.assign({}, stored && typeof stored === 'object' ? stored : {})
-  }
-  return storedDetailBroadcastIds
-}
-
-function knownDetailBroadcastId(userProductId) {
-  if (Object.prototype.hasOwnProperty.call(detailBroadcastIds, userProductId)) {
-    return detailBroadcastIds[userProductId]
-  }
-  const stored = storedDetailBroadcastIdMap()[userProductId]
-  return stored ? String(stored) : null
-}
-
-function rememberDetailBroadcastId(userProductId, broadcastId) {
-  detailBroadcastIds[userProductId] = broadcastId
-  if (!broadcastId) {
-    return
-  }
-  const map = storedDetailBroadcastIdMap()
-  map[userProductId] = broadcastId
-  try {
-    wx.setStorageSync(DETAIL_BROADCAST_STORAGE_KEY, map)
-  } catch (e) {
-    // 存不进本地不影响本次使用
-  }
-}
-
-function withDetailBroadcastId(device, products) {
-  const userProductId = String(firstValue(device && device.userProductId, ''))
-  if (!userProductId || !products.length || isProductBroadcastId(device.broadcastId, products)) {
-    return Promise.resolve(device)
-  }
-  const apply = broadcastId =>
-    broadcastId ? Object.assign({}, device, { broadcastId }) : device
-  const known = knownDetailBroadcastId(userProductId)
-  if (known !== null) {
-    return Promise.resolve(apply(known))
-  }
-  return http
-    .get(
-      '/Client/UserProduct/getUserProductDetail',
-      { userProductId },
-      { mock: false, showError: false }
-    )
-    .then(detail => {
-      const resolved = withProductBroadcastId(detail || {}, products)
-      const broadcastId = isProductBroadcastId(resolved.broadcastId, products)
-        ? String(resolved.broadcastId).trim()
-        : ''
-      // 用的是本地存的旧产品列表、又没认出来时不记：可能是后台新加的产品，等拿到最新列表再认
-      if (broadcastId || productCatalogFresh) {
-        rememberDetailBroadcastId(userProductId, broadcastId)
-      }
-      return apply(broadcastId)
-    })
-    .catch(() => device)
 }
 
 // 搜索结果（绑定前、还没有设备记录）的屏幕尺寸：蓝牙广播名 name / localName 包含哪个产品的
@@ -1321,25 +1177,13 @@ module.exports = {
     return module.exports.userOff()
   },
 
+  // 设备列表：接口直接下发 productId / broadcastId / versionType（2026-11-14），设备图、机型、WiFi版 / 蓝牙版
+  // 都按记录自带的字段，不再等产品列表、也不再逐台调详情补机型
   getDevices() {
-    return Promise.all([
-      module.exports.getUserProductList({
-        pageIndex: 1,
-        pageSize: 100
-      }),
-      productCatalogWithin(PRODUCT_CATALOG_WAIT_MS)
-    ]).then(([data, stored]) => {
-      const raw = pageData(data)
-      return productCatalogForDevices(raw, stored, PRODUCT_CATALOG_WAIT_MS).then(products => {
-        const rows = raw.map(device => withProductBroadcastId(device, products))
-        // 详情补机型最多再等 PRODUCT_CATALOG_WAIT_MS，超时先按已有信息出图，成功了下次进页面就用上
-        return settleWithin(
-          Promise.all(rows.map(device => withDetailBroadcastId(device, products))),
-          PRODUCT_CATALOG_WAIT_MS,
-          rows
-        ).then(list => list.map(normalizeDevice))
-      })
-    })
+    return module.exports.getUserProductList({
+      pageIndex: 1,
+      pageSize: 100
+    }).then(data => pageData(data).map(normalizeDevice))
   },
 
   getDeviceDetail(deviceId, options) {
@@ -1373,7 +1217,7 @@ module.exports = {
       })
       list = pageData(products)
       if (list.length) {
-        rememberProductCatalog(list)
+        productCatalog = list
       }
     } catch (error) {
       throw new Error('获取产品列表失败，无法确定产品(productId)，请稍后重试')
